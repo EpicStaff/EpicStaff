@@ -82,7 +82,7 @@
     &__dropdown {
         border-radius: 10px;
         border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
+        background-color: rgb(33, 35, 37);
         color: var(--color-text-primary);
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
         overflow: hidden;
@@ -105,34 +105,25 @@
     &__month-year {
         font-size: 0.875rem;
         font-weight: 500;
-        color: var(--color-text-primary);
-    }
-
-    &__nav {
-        display: flex;
-        align-items: center;
-        gap: 4px;
+        color: var(--active-color, var(--accent-color, #685fff));
     }
 
     &__nav-btn {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: 36px;
+        height: 36px;
         border-radius: 4px;
         border: none;
-        background: #2b2d30;
+        background: transparent;
         color: var(--color-text-primary);
         cursor: pointer;
-        transition:
-            background 0.15s ease,
-            color 0.15s ease;
+        transition: color 0.15s ease;
         padding: 0;
 
         &:hover {
-            background: var(--active-color, var(--accent-color, #685fff));
-            color: #fff;
+            color: var(--active-color, var(--accent-color, #685fff));
         }
     }
 
@@ -142,9 +133,14 @@
     }
 
     &__weekday {
+        font-family: 'Inter', sans-serif;
+        font-weight: 400;
+        font-size: 12px;
+        line-height: 130%;
+        letter-spacing: 0;
         text-align: center;
-        font-size: 0.6875rem;
-        font-weight: 500;
+        text-transform: uppercase;
+        vertical-align: middle;
         color: var(--color-input-text-placeholder);
         padding: 2px 0 6px;
     }

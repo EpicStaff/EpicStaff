@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
 import { ChatsService } from '../../../services/chats.service';
 import { ChatControlsComponent } from './chat-controls/chat-controls.component';
 import { ChatHeaderComponent } from './chat-header/chat-header.component';
@@ -19,7 +18,7 @@ import { ChatMessagesComponent } from './chat-messages/chat-messages.component';
 export class ChatComponent {
     constructor(public chatsService: ChatsService) {}
 
-    get agent(): FullAgent | null {
-        return this.chatsService.selectedAgent$();
+    get hasSelection(): boolean {
+        return this.chatsService.selectedChatAgent$() !== null;
     }
 }

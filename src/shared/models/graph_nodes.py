@@ -3,9 +3,11 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from .agent_service import CollectionSpec, S3FileSpec
 from .agents import CrewData
 from .ai_providers import LLMData
-from .tools import PythonCodeData
+from .surfaces import CombinedSurfaceData
+from .tools import BaseToolData, PythonCodeData
 
 
 class CrewNodeData(BaseModel):
@@ -13,7 +15,6 @@ class CrewNodeData(BaseModel):
     crew: CrewData
     input_map: dict[str, Any]
     output_variable_path: str | None = None
-    stream_config: dict[str, Any] = {}
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,7 +24,6 @@ class PythonNodeData(BaseModel):
     python_code: PythonCodeData
     input_map: dict[str, Any]
     output_variable_path: str | None = None
-    stream_config: dict[str, Any] = {}
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,24 +114,65 @@ class ClassificationDecisionTableNodeData(BaseModel):
     next_error_node: str | None = None
 
 
-class CodeAgentNodeData(BaseModel):
-    node_name: str
+class AgentDefinitionData(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    instructions: str = ""
     llm_config_id: int | None = None
-    agent_mode: str = "build"
-    session_id: str = ""
-    system_prompt: str = ""
-    stream_handler_code: str = ""
-    libraries: list[str] = []
-    polling_interval_ms: int = 1000
-    silence_indicator_s: int = 3
-    indicator_repeat_s: int = 5
-    chunk_timeout_s: int = 30
-    inactivity_timeout_s: int = 120
-    max_wait_s: int = 300
+    fcm_llm_config_id: int | None = None
+    max_iter: int | None = None
+    max_rpm: int | None = None
+    max_execution_time: int | None = None
+    cache: bool | None = None
+    max_retry_limit: int | None = None
+    default_temperature: float | None = None
+    max_tool_calls: int | None = None
+    tool_timeout: int | None = None
+    max_consecutive_failures: int | None = None
+    schema_max_retries: int | None = None
+    llm: LLMData | None = None
+    fcm_llm: LLMData | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskNodeData(BaseModel):
+    node_name: str
+    agent_definition: AgentDefinitionData | None = None
+    instructions: str = ""
     input_map: dict[str, Any] = {}
     output_variable_path: str | None = None
-    stream_config: dict[str, Any] = {}
     output_schema: dict[str, Any] = {}
+    remember_output: bool = False
+    surface: CombinedSurfaceData = CombinedSurfaceData()
+    tools: list[BaseToolData] = []
+    collections: list[CollectionSpec] = []
+    s3_files: list[S3FileSpec] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentNodeTaskData(BaseModel):
+    name: str
+    order: int
+    instructions: str = ""
+    output_schema: dict[str, Any] = {}
+    context_tasks: list[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentNodeData(BaseModel):
+    node_name: str
+    agent_definition: AgentDefinitionData | None = None
+    input_map: dict[str, Any] = {}
+    output_variable_path: str | None = None
+    surface: CombinedSurfaceData = CombinedSurfaceData()
+    tools: list[BaseToolData] = []
+    collections: list[CollectionSpec] = []
+    s3_files: list[S3FileSpec] = []
+    tasks: list[AgentNodeTaskData] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -215,7 +256,8 @@ class GraphData(BaseModel):
     file_extractor_node_list: list[FileExtractorNodeData] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []
-    code_agent_node_list: list[CodeAgentNodeData] = []
+    task_node_list: list[TaskNodeData] = []
+    agent_node_list: list[AgentNodeData] = []
     edge_list: list[EdgeData] = []
     conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []

@@ -1,0 +1,187 @@
+<ng-content />
+
+@if (!triggerDir()) {
+    <div
+        #defaultTrigger
+        class="select-dropdown__default-trigger"
+        (click)="toggle()"
+    >
+        <app-svg-icon
+            icon="chevron-down-filled"
+            size="8px"
+        />
+    </div>
+}
+
+<ng-template #panelTemplate>
+    <div
+        class="select-dropdown__panel"
+        [style.max-height]="panelMaxHeight()"
+        [style.min-height.px]="panelMinHeight()"
+    >
+        @if (searchable()) {
+            <label class="select-dropdown__search">
+                <app-svg-icon
+                    icon="search"
+                    size="14px"
+                />
+                <input
+                    type="search"
+                    [placeholder]="searchPlaceholder()"
+                    [value]="search()"
+                    (input)="onSearchInput($any($event.target).value)"
+                />
+            </label>
+        }
+
+        @if (tabs().length || headerAction()) {
+            <div
+                class="select-dropdown__tabs"
+                [class.select-dropdown__tabs--action-only]="!tabs().length"
+            >
+                @if (tabs().length) {
+                    <div class="select-dropdown__tabs-list">
+                        @for (tab of tabs(); track tab.id) {
+                            <button
+                                type="button"
+                                class="select-dropdown__tab"
+                                [class.select-dropdown__tab--active]="tab.id === resolvedActiveTabId()"
+                                (click)="selectTab(tab.id)"
+                            >
+                                {{ tab.label }}
+                            </button>
+                        }
+                    </div>
+                }
+                @if (headerAction(); as action) {
+                    <button
+                        type="button"
+                        class="select-dropdown__action"
+                        (click)="onHeaderAction()"
+                    >
+                        @if (action.icon) {
+                            <app-svg-icon
+                                [icon]="action.icon"
+                                size="10px"
+                            />
+                        }
+                        {{ action.label }}
+                    </button>
+                }
+            </div>
+        }
+
+        <div class="select-dropdown__list">
+            @if (mode() === 'list') {
+                @for (item of filteredItems(); track itemTrackBy($index, item)) {
+                    <button
+                        type="button"
+                        class="select-dropdown__row"
+                        [class.select-dropdown__row--selected]="isItemSelected(item)"
+                        [class.select-dropdown__row--disabled]="item.disabled"
+                        (click)="selectItem(item)"
+                    >
+                        @if (selectionMode() === 'multiple') {
+                            <app-checkbox
+                                mod="multiselect"
+                                [checked]="isItemSelected(item)"
+                            />
+                        } @else if (isItemSelected(item)) {
+                            <app-svg-icon
+                                class="select-dropdown__check"
+                                icon="check"
+                                size="12px"
+                            />
+                        } @else {
+                            <span class="select-dropdown__check-spacer"></span>
+                        }
+                        @if (item.icon) {
+                            <app-svg-icon
+                                [icon]="item.icon"
+                                size="14px"
+                            />
+                        }
+                        <span class="select-dropdown__row-name">{{ item.name }}</span>
+                        @if (item.tip) {
+                            <span class="select-dropdown__row-tip">{{ item.tip }}</span>
+                        }
+                    </button>
+                } @empty {
+                    <p class="select-dropdown__empty">{{ emptyText() }}</p>
+                }
+            } @else {
+                @for (row of visibleTree(); track rowTrackBy($index, row)) {
+                    <div
+                        class="select-dropdown__row select-dropdown__row--tree"
+                        [class.select-dropdown__row--selected]="isNodeChecked(row.node)"
+                        [class.select-dropdown__row--disabled]="row.node.disabled"
+                        [style.margin-left.px]="row.level * 16"
+                        (click)="onTreeRowClick(row.node)"
+                    >
+                        @if (row.node.type === 'folder' && (row.node.hasChildren || row.node.children.length)) {
+                            <button
+                                type="button"
+                                class="select-dropdown__chevron"
+                                [class.select-dropdown__chevron--open]="row.node.isExpanded"
+                                (click)="toggleExpand($event, row.node)"
+                            >
+                                <app-svg-icon
+                                    icon="chevron-down-filled"
+                                    size="8px"
+                                />
+                            </button>
+                        } @else {
+                            <span class="select-dropdown__chevron-spacer"></span>
+                        }
+
+                        @if (selectionMode() === 'multiple') {
+                            <app-checkbox
+                                mod="multiselect"
+                                [checked]="isNodeChecked(row.node)"
+                            />
+                        }
+
+                        <app-svg-icon
+                            class="select-dropdown__row-icon"
+                            [icon]="row.node.icon ?? (row.node.type === 'folder' ? 'folder' : 'file')"
+                            size="12px"
+                        />
+                        <span class="select-dropdown__row-name">{{ row.node.name }}</span>
+                        @if (row.node.isLoading) {
+                            <span class="select-dropdown__row-tip">…</span>
+                        }
+                    </div>
+                } @empty {
+                    <p class="select-dropdown__empty">{{ emptyText() }}</p>
+                }
+            }
+        </div>
+
+        @if (selectionMode() === 'multiple') {
+            <div class="select-dropdown__footer">
+                <app-button
+                    class="select-dropdown__clear"
+                    [class.select-dropdown__clear--empty]="draftEmpty()"
+                    type="ghost"
+                    (click)="clearFilter()"
+                >
+                    Clear Filter
+                </app-button>
+                <div class="select-dropdown__footer-right">
+                    <app-button
+                        type="outline-primary"
+                        (click)="cancel()"
+                    >
+                        Cancel
+                    </app-button>
+                    <app-button
+                        type="primary"
+                        (click)="saveChanges()"
+                    >
+                        Save Changes
+                    </app-button>
+                </div>
+            </div>
+        }
+    </div>
+</ng-template>

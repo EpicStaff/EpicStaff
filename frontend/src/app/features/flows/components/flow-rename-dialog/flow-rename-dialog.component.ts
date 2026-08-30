@@ -12,12 +12,11 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ButtonComponent, LabelDropdownComponent } from '@shared/components';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { FlowsStorageService } from '../../services/flows-storage.service';
-import { LabelDropdownComponent } from '../label-dropdown/label-dropdown.component';
 
 interface FlowRenameData {
     flowName: string;

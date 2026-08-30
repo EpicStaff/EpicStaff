@@ -48,6 +48,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             storage_allowed_paths=python_code_data.storage_allowed_paths,
             storage_org_prefix=python_code_data.storage_org_prefix,
             session_id=python_code_data.session_id,
+            secrets=python_code_data.secrets,
             org_id=python_code_data.org_id,
         )
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)

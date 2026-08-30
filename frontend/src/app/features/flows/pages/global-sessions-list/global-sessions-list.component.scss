@@ -10,26 +10,38 @@
 .global-sessions-header {
     display: flex;
     align-items: center;
-    margin-bottom: 24px;
+    margin: 0 -32px 24px;
+    padding: 0 32px 16px;
+    border-bottom: 1px solid var(--color-divider-regular);
     flex-shrink: 0;
 }
 
 .flows-prefix {
-    color: rgba(255, 255, 255, 0.6);
-    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    cursor: pointer;
     font-size: 24px;
     font-weight: 400;
     letter-spacing: -0.02em;
     line-height: 1.2;
     color: var(--white);
 
+    .flows-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: rgba(255, 255, 255, 0.6);
+        text-decoration: none;
+        cursor: pointer;
+        transition: color 0.2s ease;
+
+        &:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+    }
+
     .back-arrow {
         margin-top: 2px;
-        opacity: 1;
         transition: all 0.3s ease;
     }
 
@@ -38,8 +50,9 @@
         font-weight: 500;
     }
 
-    &:hover {
-        color: rgba(255, 255, 255, 0.9);
+    .current {
+        color: var(--color-text-primary);
+        font-weight: 500;
     }
 }
 
@@ -202,28 +215,35 @@
 .panel-toggle-btn {
     position: absolute;
     top: 50%;
+    right: 0;
     transform: translateY(-50%);
-    width: 20px;
-    height: 40px;
+    width: 24px;
+    height: 56px;
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-divider-regular);
-    border-radius: 4px;
+    border-right: none;
+    border-radius: 8px 0 0 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     padding: 0;
     color: var(--color-text-secondary);
+    box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
     transition:
         background 0.15s,
         border-color 0.15s,
         color 0.15s;
 
     &:hover {
-        background: color-mix(in srgb, var(--accent-color) 15%, var(--color-sidenav-background));
+        background: color-mix(in srgb, var(--accent-color) 18%, var(--color-sidenav-background));
         border-color: var(--accent-color);
         color: var(--color-text-primary);
     }
+}
+
+.panel-divider:not(.panel-divider--open) .panel-toggle-btn {
+    right: -32px;
 }
 
 .right-panel {

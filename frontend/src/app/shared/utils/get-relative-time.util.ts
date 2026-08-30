@@ -1,10 +1,3 @@
-/**
- * Formats a past date/timestamp as a relative-time label:
- * `just now`, `Nm ago`, `Nh ago`, `1 day ago` / `N days ago`,
- * `1 month ago` / `N months ago`, `1 year ago` / `N years ago`.
- *
- * Returns an em dash (`—`) when the input is `null`, `undefined`, or an invalid date.
- */
 export function getRelativeTime(value: Date | string | null | undefined): string {
     if (value === null || value === undefined) return '—';
     const date = value instanceof Date ? value : new Date(value);

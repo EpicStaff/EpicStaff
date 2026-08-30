@@ -1,0 +1,74 @@
+<div class="dialog-container">
+    <div class="header">
+        <h2 class="dialog-title">Additional Settings</h2>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            (onClick)="dialogRef.close()"
+        />
+    </div>
+
+    <div class="tabs">
+        @for (tab of tabs; track tab.id) {
+            <app-tab-button
+                mod="sm"
+                [active]="tab.id === activeTab()"
+                (click)="activeTab.set(tab.id)"
+            >
+                {{ tab.label }}
+            </app-tab-button>
+            @if (!$last) {
+                <div class="divider">/</div>
+            }
+        }
+    </div>
+
+    <div class="scrollable-content">
+        <app-general-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.GENERAL"
+            [form]="form"
+            [combinedLLMs]="combinedLLMs()"
+            [loadingLLMs]="loadingLLMs()"
+        />
+        <app-execution-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.EXECUTION"
+            [form]="form"
+        />
+        <app-voice-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.VOICE"
+            [form]="form"
+            [activeProvider]="activeProvider()"
+            [openaiConfigItems]="openaiConfigItems()"
+            [elevenLabsConfigItems]="elevenLabsConfigItems()"
+            [geminiConfigItems]="geminiConfigItems()"
+            [voicesMap]="voicesMap()"
+            (providerChange)="onProviderSelect($event)"
+        />
+        <app-advanced-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.ADVANCED"
+            [form]="form"
+            cacheTooltip="Not available yet — response caching is not supported by the runtime."
+        />
+    </div>
+
+    <div class="actions">
+        <app-button
+            type="outline-primary"
+            (click)="dialogRef.close()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="form.invalid"
+            (click)="save()"
+        >
+            Save Changes
+        </app-button>
+    </div>
+</div>

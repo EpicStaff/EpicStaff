@@ -1,3 +1,6 @@
+# SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): the `docker compose` subprocess
+# calls in this module (build / up -d / down) bring up the mcp-test-tool fixture
+# compose project used by MCP integration tests. Test-fixture scope only.
 from pathlib import Path
 import subprocess
 

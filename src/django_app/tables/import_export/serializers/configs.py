@@ -10,11 +10,14 @@ from tables.models import (
     RealtimeTranscriptionModel,
     RealtimeTranscriptionConfig,
 )
+from tables.models.realtime_models import (
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+)
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
-    api_key = serializers.CharField(write_only=True, required=False)
-
     model_class = None
     provider_field = None
     config_model = None
@@ -23,7 +26,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         abstract = True
         model = None
-        exclude = ["created_by"]
+        exclude = ["created_by", "api_key_secret"]
 
     def get_fields(self):
         fields = super().get_fields()
@@ -82,3 +85,26 @@ class RealtimeTranscriptionConfigImportSerializer(BaseConfigImportSerializer):
 
     class Meta(BaseConfigImportSerializer.Meta):
         model = RealtimeTranscriptionConfig
+
+
+class OpenAIRealtimeConfigImportSerializer(serializers.ModelSerializer):
+    """Secrets never travel through import/export -- same convention as
+    BaseConfigImportSerializer's `exclude = [..., "api_key_secret"]` for
+    LLMConfig/EmbeddingConfig. The imported config lands with no key; the
+    destination org's admin must assign one after import."""
+
+    class Meta:
+        model = OpenAIRealtimeConfig
+        exclude = ["created_by", "api_key_secret", "transcription_api_key_secret"]
+
+
+class ElevenLabsRealtimeConfigImportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ElevenLabsRealtimeConfig
+        exclude = ["created_by", "api_key_secret"]
+
+
+class GeminiRealtimeConfigImportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GeminiRealtimeConfig
+        exclude = ["created_by", "api_key_secret"]

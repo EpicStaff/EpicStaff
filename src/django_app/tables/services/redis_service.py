@@ -22,6 +22,7 @@ from src.shared.models import (
     SessionData,
     StopSessionMessage,
 )
+from tables.services.secrets import secret_resolver
 from utils.singleton_meta import SingletonMeta
 from utils.logger import logger
 
@@ -79,10 +80,11 @@ class RedisService(metaclass=SingletonMeta):
             self._initialize_async()
         return self._async_redis_client
 
-    def publish_session_data(self, session_data: SessionData) -> int:
-        return self.redis_client.publish(
-            "sessions:schema", session_data.model_dump_json()
-        )
+    def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
+        # Resolve here, not upstream: the caller's object is what gets persisted
+        # to Session.graph_schema, so plaintext must exist only on this copy.
+        resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
+        return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
 
     def send_user_input(
         self,
@@ -113,34 +115,55 @@ class RedisService(metaclass=SingletonMeta):
         logger.info(f"Sent collection_id: {collection_id} to {channel}.")
 
     def publish_rag_indexing(
-        self, rag_id: int, rag_type: str, collection_id: int
+        self,
+        *,
+        rag_id: int,
+        rag_type: str,
+        collection_id: int,
+        org_id: int,
+        embedder_api_key_secret_id: int | None = None,
+        llm_api_key_secret_id: int | None = None,
     ) -> None:
-        """
-        Publish RAG indexing message to knowledge service.
-
-        Args:
-            rag_id: ID of the specific RAG implementation (e.g., NaiveRag.naive_rag_id)
-            rag_type: Type of RAG ("naive" or "graph")
-            collection_id: Source collection ID
-        """
+        """Publish a RAG indexing request with its credentials resolved to plaintext."""
         message = ProcessRagIndexingMessage(
-            rag_id=rag_id, rag_type=rag_type, collection_id=collection_id
+            rag_id=rag_id,
+            rag_type=rag_type,
+            collection_id=collection_id,
+            embedder_api_key_secret_id=embedder_api_key_secret_id,
+            llm_api_key_secret_id=llm_api_key_secret_id,
         )
+        resolved = secret_resolver.resolve_payload(payload=message, org_id=org_id)
         self.redis_client.publish(
-            channel=KNOWLEDGE_INDEXING_CHANNEL, message=message.model_dump_json()
+            channel=KNOWLEDGE_INDEXING_CHANNEL, message=resolved.model_dump_json()
         )
         logger.info(
-            f"Sent RAG indexing request to {KNOWLEDGE_INDEXING_CHANNEL}: "
-            f"rag_type={rag_type}, rag_id={rag_id}, collection_id={collection_id}"
+            "Sent RAG indexing request to {}: rag_type={}, rag_id={}, collection_id={}",
+            KNOWLEDGE_INDEXING_CHANNEL,
+            rag_type,
+            rag_id,
+            collection_id,
         )
 
     def publish_realtime_agent_chat(
-        self, rt_agent_chat_data: RealtimeAgentChatData
+        self, *, rt_agent_chat_data: RealtimeAgentChatData, org_id: int
     ) -> None:
-        self.redis_client.publish(
-            "realtime_agents:schema", rt_agent_chat_data.model_dump_json()
+        resolved = secret_resolver.resolve_payload(
+            payload=rt_agent_chat_data, org_id=org_id
         )
+        # Temporary diagnostic checkpoint (visibility only, no behavior
+        # change) for the live org_id-null investigation: confirms whether
+        # `org_id` is still present on the object at the exact instant it's
+        # about to be published, immediately before it crosses into JSON /
+        # Redis. `org_id` alone is safe to log (not a secret).
+        logger.info(
+            "publish_realtime_agent_chat: connection_key={} resolved.org_id={}",
+            resolved.connection_key,
+            resolved.org_id,
+        )
+        self.redis_client.publish("realtime_agents:schema", resolved.model_dump_json())
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
+        # Deliberately dumps the UNRESOLVED original: logging `resolved` would
+        # write plaintext credentials into the log stream.
         logger.debug(f"Schema: {rt_agent_chat_data.model_dump()}.")
 
     def publish_user_graph_message(

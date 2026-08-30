@@ -1,18 +1,17 @@
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
-import { GetAgentRequest } from '../../../features/staff/models/agent.model';
-import { CreateTaskRequest } from '../../../features/tasks/models/task.model';
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
-import { CodeAgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
+import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
+import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { TelegramTriggerNodeField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
 import { NodeType } from '../enums/node-type';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
-import { WebhookTriggerModel } from './webhook-trigger.model';
+import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
 
 export interface BaseNodeModel {
     id: string;
@@ -31,7 +30,6 @@ export interface BaseNodeModel {
     output_variable_path: string | null;
     /** Unique incrementing number per graph, displayed as the #N badge. */
     nodeNumber?: number;
-    // UI-only flag for invalid references (e.g. deleted subgraph)
     isBlocked?: boolean;
 }
 export interface StartNodeData {
@@ -57,12 +55,12 @@ export interface ProjectNodeModel extends BaseNodeModel {
 }
 export interface TaskNodeModel extends BaseNodeModel {
     type: NodeType.TASK;
-    data: CreateTaskRequest;
+    data: TaskNodeData;
 }
 
 export interface AgentNodeModel extends BaseNodeModel {
     type: NodeType.AGENT;
-    data: GetAgentRequest;
+    data: AgentNodeData;
 }
 export interface ToolNodeModel extends BaseNodeModel {
     type: NodeType.TOOL;
@@ -81,7 +79,7 @@ export interface EdgeNodeModel extends BaseNodeModel {
 export interface DecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.TABLE;
     data: {
-        name: string; // this was used somehere  for saving dec table
+        name: string;
         table: DecisionTableNode;
     };
 }
@@ -107,7 +105,8 @@ export interface AudioToTextNodeModel extends BaseNodeModel {
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
-        webhook_trigger: WebhookTriggerModel | null;
+        webhook_trigger: WebhookTriggerWrite | null;
+        webhook_node_auth: WebhookNodeAuthModel | null;
         python_code: CustomPythonCode;
     };
 }
@@ -115,8 +114,8 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
 export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
-        telegram_bot_api_key: string;
-        webhook_trigger: WebhookTriggerModel | null;
+        telegram_bot_api_key_secret_id: number | null;
+        webhook_trigger: WebhookTriggerWrite | null;
         fields: TelegramTriggerNodeField[];
     };
 }
@@ -130,6 +129,7 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.CLASSIFICATION_TABLE;
     data: {
         name?: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         table: any;
     };
 }
@@ -146,12 +146,6 @@ export interface EndNodeModel extends BaseNodeModel {
 export interface SubGraphNodeModel extends BaseNodeModel {
     type: NodeType.SUBGRAPH;
     data: GetGraphLightRequest;
-}
-
-export interface CodeAgentNodeModel extends BaseNodeModel {
-    type: NodeType.CODE_AGENT;
-    data: CodeAgentNodeData;
-    stream_config?: Record<string, boolean>;
 }
 
 export type NodeModel =
@@ -172,5 +166,4 @@ export type NodeModel =
     | TelegramTriggerNodeModel
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
-    | EndNodeModel
-    | CodeAgentNodeModel;
+    | EndNodeModel;

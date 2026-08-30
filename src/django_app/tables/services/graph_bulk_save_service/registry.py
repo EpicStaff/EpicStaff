@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 
 from tables.models.graph_models import (
+    AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    CodeAgentNode,
     ConditionalEdge,
     CrewNode,
     DecisionTableNode,
@@ -15,13 +15,14 @@ from tables.models.graph_models import (
     ScheduleTriggerNode,
     StartNode,
     SubGraphNode,
+    TaskNode,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
 from tables.serializers.graph_bulk_save_serializers import (
+    AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
     ClassificationDecisionTableNodeBulkSerializer,
-    CodeAgentNodeBulkSerializer,
     CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
@@ -31,6 +32,7 @@ from tables.serializers.graph_bulk_save_serializers import (
     ScheduleTriggerNodeBulkSerializer,
     StartNodeBulkSerializer,
     SubGraphNodeBulkSerializer,
+    TaskNodeBulkSerializer,
     TelegramTriggerNodeBulkSerializer,
     WebhookTriggerNodeBulkSerializer,
 )
@@ -82,12 +84,6 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
-    NodeTypeConfig(
-        "code_agent_node_list",
-        "code_agent_node_ids",
-        CodeAgentNode,
-        CodeAgentNodeBulkSerializer,
-    ),
     NodeTypeConfig(
         "crew_node_list",
         "crew_node_ids",
@@ -167,6 +163,18 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "schedule_trigger_node_ids",
         ScheduleTriggerNode,
         ScheduleTriggerNodeBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "task_node_list",
+        "task_node_ids",
+        TaskNode,
+        TaskNodeBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "agent_node_list",
+        "agent_node_ids",
+        AgentNode,
+        AgentNodeBulkSerializer,
     ),
 ]
 

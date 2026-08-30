@@ -115,7 +115,11 @@ class ImportService:
         )
         if instance is None:
             return denied
-        id_mapper.map(entity_type, old_id, instance.id, was_created)
+        # Some strategies (e.g. GraphStrategy) register their own mapping
+        # at creation time so downstream logic within the same
+        # create_entity call can resolve it. Don't overwrite that mapping.
+        if not id_mapper.has_mapping(entity_type, old_id):
+            id_mapper.map(entity_type, old_id, instance.id, was_created)
         return denied
 
     def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:

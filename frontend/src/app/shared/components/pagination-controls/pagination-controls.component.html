@@ -4,11 +4,25 @@
     aria-label="Pagination"
 >
     <button
-        class="page-btn prev"
+        class="page-btn nav"
         (click)="prev()"
         [disabled]="currentPage === 1"
+        aria-label="Previous page"
     >
-        Prev
+        <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+        >
+            <path
+                d="M15 6l-6 6 6 6"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            />
+        </svg>
     </button>
 
     <ul class="page-list">
@@ -32,10 +46,24 @@
     </ul>
 
     <button
-        class="page-btn next"
+        class="page-btn nav"
         (click)="next()"
         [disabled]="currentPage === totalPages"
+        aria-label="Next page"
     >
-        Next
+        <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+        >
+            <path
+                d="M9 6l6 6-6 6"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            />
+        </svg>
     </button>
 </nav>

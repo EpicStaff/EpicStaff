@@ -32,7 +32,13 @@ class EmbeddingConfig(OrgScopedModel, models.Model):
     task_type = models.CharField(
         max_length=255, choices=EmbedderTask.choices, default=EmbedderTask.RETRIEVAL_DOC
     )
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="embedding_configs",
+    )
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(
         EmbeddingConfigTag, blank=True, related_name="embedding_configs"
@@ -46,21 +52,9 @@ class EmbeddingConfig(OrgScopedModel, models.Model):
             ),
         ]
 
-    def delete(self, *args, **kwargs):
-        from tables.models import set_field_value_null_in_tool_configs
-        from tables.models import ToolConfigField
-
-        embedding_config_id = self.pk
-        super().delete(*args, **kwargs)
-        set_field_value_null_in_tool_configs(
-            field_type=ToolConfigField.FieldType.EMBEDDING_CONFIG,
-            value=embedding_config_id,
-        )
-
 
 class DefaultEmbeddingConfig(DefaultBaseModel):
     model = models.ForeignKey("EmbeddingModel", on_delete=models.SET_NULL, null=True)
     task_type = models.CharField(
         max_length=255, choices=EmbedderTask.choices, default=EmbedderTask.RETRIEVAL_DOC
     )
-    api_key = models.TextField(null=True, blank=True)
