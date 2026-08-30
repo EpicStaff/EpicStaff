@@ -6,18 +6,23 @@
     flex-direction: column;
     gap: 16px;
     width: 364px;
-    height: 465px;
+    // `max-*` rather than fixed, and shrinkable: CDK gives the pane a height
+    // capped at the space between the anchor and the viewport edge, and a fixed
+    // 465px panel overflows it bottom-first — taking the footer, and with it Save,
+    // off screen on a short viewport. The list scrolls instead.
+    max-width: 100%;
+    max-height: 465px;
+    min-height: 0;
     padding-top: 20px;
     padding-bottom: 20px;
     font-family: Inter, Roboto, sans-serif;
     font-size: 14px;
     line-height: 1.3;
     color: var(--color-text-primary);
-    // The fallback is load-bearing. CDK moves the pane out to
-    // `.cdk-overlay-container` under `<body>`, where `--cdt-tree-raised` —
-    // declared on the dialog's `:host` — no longer resolves, and an invalid
-    // `background` leaves the panel transparent over the canvas.
-    background: var(--cdt-tree-raised, var(--color-nodes-background));
+    // The page surface, one step below the entries. Read directly rather than
+    // through the dialog's `--cdt-tree-*` aliases: CDK moves the pane out to
+    // `.cdk-overlay-container` under `<body>`, where they no longer resolve.
+    background: var(--color-background-body);
     border-radius: 10px;
     // A ring, not a border: with `box-sizing: border-box` a 1px border eats into
     // the design's 364px and leaves its 324px rows 2px short.
@@ -38,8 +43,7 @@
     padding: 0 20px;
 }
 
-// Same size as the entries it heads, per the design — it is a label, not fine
-// print, and only the colour sets it apart.
+// Same size as the entries it heads, per the design — only the colour sets it apart.
 .cdt-tree-search__group-label {
     color: var(--color-text-secondary);
 }
@@ -55,7 +59,10 @@
     color: inherit;
     text-align: left;
     cursor: pointer;
-    background: transparent;
+    // A step above the panel so an entry reads as a card. `--color-nodes-background`
+    // rather than the design's literal `--color-flow-card-bg`, which is defined only
+    // in the dark theme and would leave dark text on a dark card in the light one.
+    background: var(--color-nodes-background);
     border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
 

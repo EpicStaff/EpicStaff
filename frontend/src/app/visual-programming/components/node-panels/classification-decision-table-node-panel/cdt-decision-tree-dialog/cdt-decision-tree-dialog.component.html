@@ -56,49 +56,67 @@
                     Fit
                 </button>
 
-                <div class="cdt-tree__search">
+                <button
+                    #searchToggle
+                    class="cdt-tree__search-toggle"
+                    type="button"
+                    aria-label="Search blocks"
+                    [class.cdt-tree__search-toggle--active]="searchExpanded()"
+                    [attr.aria-expanded]="searchExpanded()"
+                    (click)="toggleSearch()"
+                >
                     <app-svg-icon
                         icon="search"
                         size="0.95rem"
                     />
-                    <input
-                        #searchInput
-                        class="cdt-tree__search-input"
-                        type="text"
-                        placeholder="Search item..."
-                        aria-label="Search blocks"
-                        aria-haspopup="listbox"
-                        aria-controls="cdt-tree-search-panel"
-                        [attr.aria-expanded]="isSearchOpen()"
-                        [value]="draftQuery()"
-                        (input)="onQueryInput($event)"
-                        (click)="openSearch()"
-                        (keydown.enter)="applySearch()"
-                    />
-                    @if (hasQuery()) {
-                        <span class="cdt-tree__search-count">
-                            {{ matchIds().length ? activeMatch() + 1 : 0 }} / {{ matchIds().length }}
-                        </span>
-                        <button
-                            class="cdt-tree__search-step"
-                            type="button"
-                            aria-label="Previous match"
-                            [disabled]="!matchIds().length"
-                            (click)="stepMatch(-1)"
-                        >
-                            ‹
-                        </button>
-                        <button
-                            class="cdt-tree__search-step"
-                            type="button"
-                            aria-label="Next match"
-                            [disabled]="!matchIds().length"
-                            (click)="stepMatch(1)"
-                        >
-                            ›
-                        </button>
-                    }
-                </div>
+                </button>
+
+                @if (searchExpanded()) {
+                    <div
+                        #searchBox
+                        class="cdt-tree__search"
+                    >
+                        <input
+                            #searchInput
+                            class="cdt-tree__search-input"
+                            type="text"
+                            placeholder="Search item..."
+                            aria-label="Search blocks"
+                            aria-controls="cdt-tree-search-panel"
+                            [attr.aria-expanded]="isSearchOpen()"
+                            [value]="draftQuery()"
+                            (input)="onQueryInput($event)"
+                            (click)="openSearch()"
+                            (keydown.enter)="applySearch()"
+                        />
+                        @if (hasQuery()) {
+                            <span
+                                class="cdt-tree__search-count"
+                                aria-live="polite"
+                            >
+                                {{ matchIds().length ? activeMatch() + 1 : 0 }} / {{ matchIds().length }}
+                            </span>
+                            <button
+                                class="cdt-tree__search-step"
+                                type="button"
+                                aria-label="Previous match"
+                                [disabled]="!matchIds().length"
+                                (click)="stepMatch(-1)"
+                            >
+                                ‹
+                            </button>
+                            <button
+                                class="cdt-tree__search-step"
+                                type="button"
+                                aria-label="Next match"
+                                [disabled]="!matchIds().length"
+                                (click)="stepMatch(1)"
+                            >
+                                ›
+                            </button>
+                        }
+                    </div>
+                }
 
                 @if (layout.hiddenRowCount > 0) {
                     <span class="cdt-tree__hidden-chip">

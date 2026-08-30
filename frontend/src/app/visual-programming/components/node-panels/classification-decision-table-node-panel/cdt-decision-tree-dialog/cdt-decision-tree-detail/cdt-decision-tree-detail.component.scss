@@ -12,6 +12,10 @@
     // Load-bearing for the slide-in: the host narrows, and without this the
     // content spills over the canvas instead of being revealed by it.
     overflow: hidden;
+    // The design specifies Inter throughout this panel. `@fontsource/inter` (300,
+    // 400, 500) is imported in `styles.scss`; the app's body font is Roboto, so
+    // Inter is opted into per component — as `cdt-decision-tree-search` does.
+    font-family: Inter, Roboto, sans-serif;
     background: var(--cdt-detail-surface);
     border-left: 1px solid var(--color-divider-subtle);
 }

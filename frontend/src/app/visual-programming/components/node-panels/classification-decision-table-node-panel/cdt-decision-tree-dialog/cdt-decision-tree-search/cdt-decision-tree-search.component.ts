@@ -15,10 +15,8 @@ interface CdtTreeSearchGroup {
 /**
  * The search panel: the tree's blocks as a grouped, clickable list.
  *
- * Stateless on purpose. The dialog owns the text — its keyboard policy needs to
- * know whether there is anything to clear — along with the overlay, the anchor
- * and everything that moves the canvas. Only the list lives here, which is what
- * lets the filtering be exercised without a canvas or an overlay.
+ * Stateless on purpose — the dialog owns the text, the overlay, the anchor and
+ * everything that moves the canvas — so the list can be exercised on its own.
  */
 @Component({
     selector: 'app-cdt-decision-tree-search',
@@ -35,7 +33,7 @@ export class CdtDecisionTreeSearchComponent {
     /** Every drawn block, so a group's ids can be resolved to what to render. */
     public readonly blocks = input.required<readonly CdtTreePositionedBlock[]>();
 
-    /** What is typed. Read, never written — the dialog holds it. */
+    /** What is typed. Read-only here; the dialog holds it. */
     public readonly query = input<string>('');
 
     public readonly picked = output<string>();
@@ -46,10 +44,7 @@ export class CdtDecisionTreeSearchComponent {
     /** The same icons the canvas blocks carry, so an entry looks like its block. */
     protected readonly iconByShape = ICON_BY_SHAPE;
 
-    /**
-     * The list: groups narrowed by the query, with emptied ones dropped so a
-     * heading never stands over nothing.
-     */
+    /** Groups narrowed by the query, emptied ones dropped so no heading stands alone. */
     protected readonly visibleGroups = computed<CdtTreeSearchGroup[]>(() => {
         const byId = new Map(this.blocks().map((block) => [block.id, block]));
         const query = this.query().trim();

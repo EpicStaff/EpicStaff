@@ -1,38 +1,39 @@
 /**
  * Keyboard policy for the Decision Tree dialog.
  *
- * A read-only viewer must not be able to mutate the flow behind it, and the flow
- * page is covered in global shortcuts that do exactly that:
+ * A read-only viewer must not mutate the flow behind it, and the flow page's
+ * global shortcuts do exactly that: `FlowVisualProgrammingComponent.handleCtrlS`
+ * runs a real `POST /api/graphs/{id}/save/`, and `ShortcutListenerDirective` saves
+ * the open panel on Escape and deletes the selected node on Delete. Neither
+ * exempts text fields for every key it acts on.
  *
- * - `FlowVisualProgrammingComponent.handleCtrlS` — a `document:keydown`
- *   `@HostListener` that calls `onHeaderSave()`, i.e. a real
- *   `POST /api/graphs/{id}/save/`. It does not exempt text fields.
- * - `ShortcutListenerDirective` — a `window` keydown subscription, live three
- *   times (main canvas, node panel shell, shortcuts button), where Escape saves
- *   the open panel and Delete removes the selected node. It exempts text fields
- *   for everything except Escape.
+ * The dialog feeds this from `DialogRef.keydownEvents`, which CDK dispatches from a
+ * bubble-phase listener on `document.body` — earlier than the handlers above, none
+ * of which capture, so `stopPropagation()` here preempts all of them. The
+ * subscriber must stay synchronous: deferring it past the dispatcher's stack frame
+ * makes `stopPropagation` and `preventDefault` no-ops.
  *
- * The dialog feeds this from `DialogRef.keydownEvents`, which CDK dispatches from
- * a bubble-phase listener on `document.body`. The event reaches `body` before
- * `document` or `window`, so a `stopPropagation()` there preempts every handler
- * above — none of them listens in the capture phase. The subscriber has to
- * stay synchronous: a `debounceTime` or a `setTimeout` would defer it past the
- * dispatcher's stack frame, and by then `stopPropagation` and `preventDefault`
- * are both no-ops.
- *
- * Only the page's own shortcut set is swallowed. Everything else — typing, Tab,
- * and Enter or Space activating a block — has already reached its target by the
- * time this runs, and is passed through untouched.
+ * Only the page's own shortcut set is swallowed; typing, Tab and Enter or Space
+ * activating a block have already reached their target and pass through.
  *
  * Pure and Angular-free so the policy can be unit-tested without a dialog.
  */
 
-export type CdtTreeKeyAction = 'clear-search' | 'close-detail' | 'close-search' | 'close-dialog' | 'none';
+export type CdtTreeKeyAction =
+    | 'clear-search'
+    | 'collapse-search'
+    | 'close-detail'
+    | 'close-search'
+    | 'close-dialog'
+    | 'none';
 
 export interface CdtTreeKeyState {
     /** Whether the docked detail window is showing a block. */
     readonly detailOpen: boolean;
+    /** Whether the dropdown under the search box is showing. */
     readonly searchOpen: boolean;
+    /** Whether the search box itself is showing, beside its icon button. */
+    readonly searchExpanded: boolean;
     readonly searchHasText: boolean;
     readonly targetIsSearch: boolean;
 }
@@ -102,9 +103,9 @@ export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeySt
 }
 
 /**
- * Topmost first, then the focused control, then the docked window, then the
- * dialog — otherwise the whole dialog closes underneath whatever the user meant to
- * dismiss.
+ * Innermost first: the dropdown, then the text in the focused box, then the box
+ * itself, then the docked window, then the dialog — otherwise the whole dialog
+ * closes underneath whatever the user meant to dismiss.
  *
  * The search dropdown leads because it is the only real overlay left. The detail
  * window used to lead, back when it was an anchored popover that could not coexist
@@ -115,11 +116,16 @@ function resolveEscapeAction(state: CdtTreeKeyState): CdtTreeKeyAction {
         return 'close-search';
     }
 
-    // Ahead of the detail window because the caret is in the box, behind
-    // `close-search` because the caret stays there while the dropdown is open —
-    // testing the text first would empty it on an Escape meant for the dropdown.
+    // Behind `close-search` because the caret stays in the box while the dropdown
+    // is open — testing the text first would empty it on an Escape meant for the
+    // dropdown. Ahead of `collapse-search` because emptying a box is smaller than
+    // dismissing it.
     if (state.targetIsSearch && state.searchHasText) {
         return 'clear-search';
+    }
+
+    if (state.searchExpanded) {
+        return 'collapse-search';
     }
 
     if (state.detailOpen) {

@@ -2,12 +2,14 @@ import { animate, style, transition, trigger } from '@angular/animations';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     ElementRef,
     inject,
+    Injector,
     signal,
     TemplateRef,
     viewChild,
@@ -37,11 +39,9 @@ import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-dec
 /**
  * Read-only flowchart of a Classification Decision Table node.
  *
- * The canvas cannot be edited: nodes have no drag handle and are explicitly
- * drag- and selection-disabled, every connector is disabled, and no mutating
- * Foblex output is bound. The component also injects nothing that could write to
- * the canvas — no `FlowService`, no `SidePanelService`, no `HttpClient` — so the
- * read-only guarantee is structural rather than a matter of discipline.
+ * The read-only guarantee is structural: nodes are drag- and selection-disabled,
+ * no mutating Foblex output is bound, and nothing that could write to the canvas
+ * is injected — no `FlowService`, no `SidePanelService`, no `HttpClient`.
  */
 @Component({
     selector: 'app-cdt-decision-tree-dialog',
@@ -59,12 +59,10 @@ import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-dec
     styleUrls: ['./cdt-decision-tree-dialog.component.scss'],
     animations: [
         /**
-         * The detail window's slide-in. `width`, not `transform: translateX` — the
+         * The detail window's slide-in. `width`, not `transform: translateX`: the
          * window is a flex sibling, so translating would collapse the canvas in one
-         * frame and only then slide the window into the gap.
-         *
-         * Declared here rather than on the window's host because this component
-         * owns the `@if` and needs the `done` callback — see `onDetailSettled`.
+         * frame and only then slide the window into the gap. Declared here because
+         * this component owns the `@if` and needs the `done` callback.
          */
         trigger('panelSlide', [
             transition(':enter', [style({ width: '0' }), animate('200ms ease-out', style({ width: '*' }))]),
@@ -77,19 +75,17 @@ export class CdtDecisionTreeDialogComponent {
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly data = inject<CdtDecisionTreeInput>(DIALOG_DATA);
 
-    /**
-     * The search panel's overlay — the only one left; the detail window is docked.
-     *
-     * Opened with `hasBackdrop: false`, because the two can now be open at once
-     * and CDK's transparent backdrop would swallow the first click on the window.
-     * See `openSearch`.
-     */
+    /** The search panel's overlay; the detail window is docked, not overlaid. */
     private readonly searchCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     private readonly fCanvas = viewChild(FCanvasComponent);
     private readonly fZoom = viewChild(FZoomDirective);
     private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+    private readonly searchToggle = viewChild<ElementRef<HTMLButtonElement>>('searchToggle');
+    /** The box, so the dropdown under it lines up with its edges. */
+    private readonly searchBox = viewChild<ElementRef<HTMLElement>>('searchBox');
     private readonly searchTpl = viewChild.required<TemplateRef<unknown>>('searchTpl');
 
     /** Built once: the dialog holds a snapshot and never re-layouts. */
@@ -97,11 +93,7 @@ export class CdtDecisionTreeDialogComponent {
 
     protected readonly legend = CDT_TREE_LEGEND;
 
-    /**
-     * The same icons the canvas blocks carry, so a legend entry is the block it
-     * names rather than only its outline. Exposed as the map rather than through
-     * a method so the template reads a property instead of calling on every pass.
-     */
+    /** The same icons the canvas blocks carry, so a legend entry is its block. */
     protected readonly iconByShape = ICON_BY_SHAPE;
 
     protected readonly eMarkerType = EFMarkerType;
@@ -121,36 +113,38 @@ export class CdtDecisionTreeDialogComponent {
      * Edges are added one pass after the blocks.
      *
      * `f-canvas` projects connections before nodes, so an `f-connection` created
-     * in the same pass as its blocks resolves its endpoints against a connector
-     * store that is still filling up. Foblex returns null for the ones it cannot
-     * find yet, draws no path, logs nothing, and never retries — `redraw()` does
-     * not re-resolve them either. Filling this list only once every connector is
-     * registered makes the diagram deterministic.
+     * alongside its blocks resolves its endpoints against a connector store that is
+     * still filling up: Foblex draws no path, logs nothing, and never retries —
+     * `redraw()` does not re-resolve them either.
      *
-     * It has to be an empty list rather than an `@if`: `f-canvas` projects by
-     * selector with no catch-all slot, and elements inside a control-flow block
-     * are dropped instead of being projected.
+     * An empty list rather than an `@if`, because `f-canvas` projects by selector
+     * with no catch-all slot and drops elements inside a control-flow block.
      */
     protected readonly visibleEdges = signal<readonly CdtTreeEdge[]>([]);
 
     /**
-     * The filter actually applied to the canvas — what dims and highlights blocks.
-     *
-     * Only Save writes it. Typing writes `draftQuery`, so the diagram does not
-     * move or change under a panel the user is still reading.
+     * The filter applied to the canvas — what dims and highlights blocks. Typing
+     * writes `draftQuery` instead, so the diagram does not move under a panel the
+     * user is still reading.
      */
     protected readonly query = signal('');
 
     /** What is typed in the dropdown. Reset to `query` when the panel is cancelled. */
     protected readonly draftQuery = signal('');
 
+    /**
+     * Whether the search box is showing. Collapsed, the toolbar carries only the
+     * 28px icon button; expanded, the button goes accent and the box appears beside
+     * it with the dropdown under it.
+     */
+    protected readonly searchExpanded = signal(false);
+
     protected readonly zoomPercent = signal(100);
     protected readonly activeMatch = signal(0);
 
     /**
-     * Which block the detail window is showing, or null when closed. An id rather
-     * than the block, so a second pick re-renders the window instead of destroying
-     * it and replaying the slide-in.
+     * Which block the detail window is showing. An id rather than the block, so a
+     * second pick re-renders the window instead of replaying the slide-in.
      */
     private readonly selectedBlockId = signal<string | null>(null);
 
@@ -160,10 +154,8 @@ export class CdtDecisionTreeDialogComponent {
     });
 
     /**
-     * Every block the search can offer, in reading order.
-     *
-     * `layout.blocks` is construction order and puts the exits before the rules.
-     * The region is in no group, which keeps that titleless outline out.
+     * Every block the search can offer, in reading order — `layout.blocks` is
+     * construction order and puts the exits before the rules.
      */
     private readonly orderedBlocks = computed<CdtTreePositionedBlock[]>(() => {
         const byId = new Map(this.layout.blocks.map((block) => [block.id, block]));
@@ -221,11 +213,6 @@ export class CdtDecisionTreeDialogComponent {
         }, 0);
     }
 
-    /**
-     * Nothing but the zoom readout. This used to dismiss the anchored popover on
-     * every transform, because CDK measured its anchor once at attach; a docked
-     * window has no anchor to drift.
-     */
     protected onCanvasChange(event: FCanvasChangeEvent): void {
         this.zoomPercent.set(Math.round(event.scale * 100));
     }
@@ -237,11 +224,9 @@ export class CdtDecisionTreeDialogComponent {
     }
 
     /**
-     * Point the window at a block, or shut it if that block is not openable.
-     *
-     * Shutting matters for the search, which offers every block including the
-     * terminators: leaving the window alone would centre on the picked block while
-     * still describing the previous one.
+     * Point the window at a block, or shut it if that block is not openable — the
+     * search offers the terminators too, and a stale window would describe the
+     * previously picked block while the canvas centred on this one.
      */
     private openDetailFor(blockId: string): void {
         const block = this.layout.blocks.find((entry) => entry.id === blockId);
@@ -269,30 +254,87 @@ export class CdtDecisionTreeDialogComponent {
     // -- search --------------------------------------------------------------
 
     /**
-     * Typing narrows the panel and nothing else — the canvas moves only when the
-     * filter is applied or a block is picked.
-     *
-     * Enter applies it, and that is the whole keyboard path: CDK traps focus in
-     * `cdk-dialog-container` and the panel is a sibling overlay outside the trap,
-     * so Tab never reaches Save.
+     * Typing narrows the panel and nothing else; the canvas moves only on Save or
+     * on a pick. Enter applies it, and that is the whole keyboard path: the panel
+     * is a sibling overlay outside CDK's focus trap, so Tab never reaches Save.
      */
     protected onQueryInput(event: Event): void {
         this.draftQuery.set((event.target as HTMLInputElement).value);
         this.openSearch();
     }
 
+    /**
+     * The icon button always moves towards "search visible", and dismisses only
+     * from the fully open state: it reveals the box with its dropdown, reopens a
+     * dropdown that was cancelled, and collapses everything on the press after.
+     *
+     * Reading `isOpen()` here is only reliable because the button is passed as
+     * `ignoreOutsideFor`, so the panel has not already closed itself by click time.
+     *
+     * Collapsing clears the applied filter as well as the draft: the filter dims
+     * every non-matching block, and leaving it on with no box to see it in would
+     * dim the canvas with nothing in the toolbar explaining why.
+     */
+    protected toggleSearch(): void {
+        if (!this.searchExpanded()) {
+            this.searchExpanded.set(true);
+            // The box is inside an `@if`, so neither it nor the input exists until
+            // the next render.
+            afterNextRender(() => this.focusAndOpenSearch(), { injector: this.injector });
+            return;
+        }
+
+        if (!this.searchCtrl.isOpen()) {
+            this.focusAndOpenSearch();
+            return;
+        }
+
+        this.collapseSearch();
+    }
+
+    protected collapseSearch(): void {
+        this.searchCtrl.close();
+        this.searchExpanded.set(false);
+        this.draftQuery.set('');
+        this.query.set('');
+        this.activeMatch.set(0);
+        // The input is inside the `@if` above and has just been destroyed: without
+        // this, focus falls to `<body>`, outside the dialog's focus trap, and the
+        // next Tab lands on the flow page behind the modal.
+        this.searchToggle()?.nativeElement.focus();
+    }
+
+    private focusAndOpenSearch(): void {
+        this.searchInput()?.nativeElement.focus();
+        this.openSearch();
+    }
+
     protected openSearch(): void {
-        const anchor = this.searchInput()?.nativeElement;
+        // The box, not the input: the dropdown is the box's width, so anchoring to
+        // the input would leave it offset by the box's padding.
+        const anchor = this.searchBox()?.nativeElement ?? this.searchInput()?.nativeElement;
         if (!anchor) return;
 
-        // The detail window is left open — docked, it is part of the dialog like
-        // the toolbar is, and searching is no reason to throw away the block being
-        // read. `hasBackdrop: false` is what makes that safe: with a backdrop the
-        // first click on the open window would only dismiss this panel.
+        const toggle = this.searchToggle()?.nativeElement;
+
         this.searchCtrl.open(anchor, this.searchTpl(), {
-            panelClass: 'cdt-tree-search',
             offsetY: 8,
+            // The toolbar clips before the box does, and the pane sits in a `fixed`
+            // container that clips at nothing: aligning to the box's right edge
+            // would put the dropdown under an edge the user cannot see, off beside
+            // the visible input. Its left edge is always on screen.
+            alignX: 'start',
+            // What CDK shrinks the panel to fit inside, so its footer stays on
+            // screen on a short viewport instead of being cut off — see the panel's
+            // own `max-height`.
+            viewportMargin: 12,
+            // The detail window is left open: docked, it is part of the dialog, and
+            // searching is no reason to throw away the block being read. A backdrop
+            // would make the first click on that window only dismiss this panel.
             hasBackdrop: false,
+            // The toggle owns its own open/close and must not read as an outside
+            // click — see `toggleSearch`.
+            ignoreOutsideFor: toggle ? [toggle] : [],
         });
     }
 
@@ -322,9 +364,16 @@ export class CdtDecisionTreeDialogComponent {
         this.searchCtrl.close();
     }
 
-    /** Clear Filter: empty the box. The canvas follows on Save. */
+    /**
+     * Clear Filter: empty the box and drop the filter the canvas is drawn with.
+     *
+     * Both, not just the draft — otherwise a button labelled "Clear Filter" leaves
+     * the canvas dimmed with a `3 / 7` counter standing over an empty box.
+     */
     protected clearSearch(): void {
         this.draftQuery.set('');
+        this.query.set('');
+        this.activeMatch.set(0);
         this.searchInput()?.nativeElement.focus();
     }
 
@@ -363,8 +412,7 @@ export class CdtDecisionTreeDialogComponent {
     /**
      * Re-centre the selected block once the window has finished sliding: opening it
      * narrows the canvas and can push the just-clicked block out of view. Fitting
-     * the whole diagram would work too, but would throw away the zoom the user
-     * arrived with. On close there is no selection and the viewport only grows.
+     * the diagram instead would throw away the zoom the user arrived with.
      */
     protected onDetailSettled(): void {
         const id = this.selectedBlockId();
@@ -380,11 +428,11 @@ export class CdtDecisionTreeDialogComponent {
     private onKeydown(event: KeyboardEvent): void {
         const result = resolveTreeKeyAction(event, {
             detailOpen: this.selectedBlockId() !== null,
+            searchExpanded: this.searchExpanded(),
             searchOpen: this.searchCtrl.isOpen(),
-            // The box holds the draft, so that is what `clear-search` empties and
-            // therefore what decides whether there is anything to clear. Reading
-            // the applied filter here made Escape clear an already-empty box for
-            // ever and never reach the dialog.
+            // The draft, not the applied filter: that is what the box shows and
+            // what `clear-search` empties. Reading the filter here made Escape clear
+            // an already-empty box for ever and never reach the dialog.
             searchHasText: this.draftQuery().trim().length > 0,
             targetIsSearch: event.target === this.searchInput()?.nativeElement,
         });
@@ -401,6 +449,9 @@ export class CdtDecisionTreeDialogComponent {
                 break;
             case 'clear-search':
                 this.clearSearch();
+                break;
+            case 'collapse-search':
+                this.collapseSearch();
                 break;
             case 'close-dialog':
                 this.close();

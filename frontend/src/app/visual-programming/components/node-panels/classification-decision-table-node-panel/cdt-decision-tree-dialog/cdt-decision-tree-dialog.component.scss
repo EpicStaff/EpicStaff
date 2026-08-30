@@ -1,16 +1,12 @@
 :host {
     // Modal chrome and canvas share the page surface; blocks and controls sit one
-    // step above it, on the token the real canvas nodes use
-    // (`flow-base-node.component.scss`). Aliased locally so each role is named
-    // once. The detail window inherits both, which works because it is in this
-    // template rather than in an overlay.
+    // step above it, on the token the real canvas nodes use. The detail window
+    // inherits both — it is in this template rather than in an overlay.
     --cdt-tree-surface: var(--color-background-body);
     --cdt-tree-raised: var(--color-nodes-background);
 
-    // The rules region is the boundary the `Error` edge leaves, so the design
-    // draws it in the error colour, at 40%. `--color-error` is opaque, and the
-    // design's #f5424266 is exactly that token at that alpha — mixed rather than
-    // written out so it keeps tracking the token.
+    // The design's #f5424266 is `--color-error` at 40% — mixed rather than written
+    // out so it keeps tracking the token.
     --cdt-tree-region-border: color-mix(in srgb, var(--color-error) 40%, transparent);
 
     display: block;
@@ -37,16 +33,18 @@
     flex-shrink: 0;
     gap: 0.75rem;
     align-items: center;
-    // 32px / 40px per the design. The header spans the whole modal — only the
-    // toolbar, canvas and legend below it give way to the detail window.
+    // 32px / 40px per the design. The header spans the whole modal; only the
+    // toolbar, canvas and legend give way to the detail window.
     padding: 2rem 2.5rem;
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
 .cdt-tree__title {
     margin: 0;
-    // 20px / 500 / 100%. `--color-text-primary` is exactly the design's #D9D9DE in
-    // the dark theme, and flips with the light one — a literal would not.
+    // 20px / 500 / 100% Inter per the design. Inter is opted into per component,
+    // the body font being Roboto; `--color-text-primary` is the design's #D9D9DE in
+    // the dark theme and flips with the light one, where a literal would not.
+    font-family: Inter, Roboto, sans-serif;
     font-size: 1.25rem;
     font-weight: 500;
     line-height: 1;
@@ -89,6 +87,11 @@
     flex-shrink: 0;
     gap: 0.6rem;
     align-items: center;
+    // The row is squeezed hard once the 600px detail window is docked, and
+    // `.cdt-tree` clips rather than scrolls — so anything that cannot shrink is
+    // silently cut off instead of being laid out. Only the search box gives way;
+    // see `.cdt-tree__search`.
+    min-width: 0;
     padding: 0.6rem 1.25rem;
 }
 
@@ -135,19 +138,59 @@
     border-radius: 6px;
 }
 
+// 28x28 per the design, and the only search affordance until it is pressed. Goes
+// accent while the box beside it is showing, which is the design's pressed state.
+.cdt-tree__search-toggle {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    background: var(--color-background-body);
+    // The design's #2B2D30 is `--color-flow-card-bg`, which has no light-theme
+    // value and would draw a near-black hairline on a white toolbar.
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 4px;
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+
+    &--active {
+        color: var(--color-text-primary);
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+}
+
+// 364x28 per the design. Same two colours as the toggle, so the pair reads as one
+// control even though only one of them is ever the accent.
+//
+// 364px is the preferred width, not a fixed one: it is the widest thing in the
+// toolbar, so with the detail window docked on a laptop it is what has to give.
+// Shrinking eats the text field, which has `min-width: 0`, and leaves the match
+// counter and the step buttons — the parts that are useless once clipped — alone.
 .cdt-tree__search {
     display: flex;
-    gap: 0.4rem;
+    flex: 0 1 22.75rem;
+    gap: 0.5rem;
     align-items: center;
-    height: 2rem;
-    padding: 0 0.6rem;
+    min-width: 8rem;
+    height: 1.75rem;
+    padding: 0 0.75rem;
     color: var(--color-text-secondary);
-    background: var(--cdt-tree-raised);
-    border-radius: 6px;
+    background: var(--color-background-body);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 4px;
 }
 
 .cdt-tree__search-input {
-    width: 12rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: Inter, Roboto, sans-serif;
     font-size: 0.8rem;
     color: var(--color-text-primary);
     background: transparent;
@@ -158,6 +201,14 @@
 .cdt-tree__search-count {
     font-size: 0.72rem;
     white-space: nowrap;
+}
+
+// Overrides the height it inherits from the zoom controls above: those are 32px
+// tall, and these sit inside the 28px box.
+.cdt-tree__search-step {
+    flex-shrink: 0;
+    height: 1.25rem;
+    padding: 0 0.25rem;
 }
 
 .cdt-tree__hidden-chip {
@@ -174,17 +225,16 @@
 // ---------------------------------------------------------------------------
 
 // Everything below the header shares one row with the detail window, so opening
-// the window narrows the diagram instead of covering it — and the toolbar and
-// legend move with the canvas rather than staying full width around it.
+// the window narrows the diagram instead of covering it.
 .cdt-tree__main {
     display: flex;
     flex: 1;
     min-height: 0;
 }
 
-// Toolbar, canvas and legend, stacked. This is the part the window pushes.
-// `min-width: 0` on both this and the canvas: without it they refuse to shrink
-// below their content and push the window off the right edge of the modal.
+// Toolbar, canvas and legend, stacked — the part the window pushes. `min-width: 0`
+// here and on the canvas, or they refuse to shrink below their content and push
+// the window off the right edge of the modal.
 .cdt-tree__stage {
     display: flex;
     flex: 1 1 auto;
@@ -229,9 +279,9 @@
     align-items: center;
 }
 
-// A legend entry is a miniature of the block it names: the same outline, with
-// the same icon inside it. The outline is absolutely positioned by the shape
-// component, so the icon is the only thing in flow and the centring lands on it.
+// A miniature of the block it names. The outline is absolutely positioned by the
+// shape component, so the icon is the only thing in flow and the centring lands
+// on it.
 .cdt-tree__legend-glyph {
     position: relative;
     display: flex;
@@ -240,9 +290,8 @@
     width: 34px;
     height: 18px;
 
-    // The icons are sized for a full canvas block, which is several times this
-    // tall. Scaling keeps each one's own proportions — the sprite is not square,
-    // so passing one size for both axes would squash half of them.
+    // The icons are sized for a full canvas block. Scaling keeps each one's own
+    // proportions; one size for both axes would squash the non-square ones.
     app-svg-icon {
         transform: scale(0.62);
     }
@@ -251,15 +300,14 @@
 // ---------------------------------------------------------------------------
 // Foblex
 //
-// The app never imports Foblex's own stylesheet — the main canvas hand-styles
-// every `.f-*` class under its own `::ng-deep`. Without the rules below the
-// connections render as filled blobs or as nothing at all, which looks exactly
-// like the connection worker having failed to resolve their endpoints.
+// The app never imports Foblex's own stylesheet; the main canvas hand-styles every
+// `.f-*` class the same way. Without the rules below, connections render as
+// filled blobs or as nothing at all.
 // ---------------------------------------------------------------------------
 
 :host ::ng-deep {
-    // `--color-divider-regular` is a 14%-alpha hairline meant for borders; used on
-    // a connection stroke it is effectively invisible against the canvas.
+    // A literal: `--color-divider-regular` is a 14%-alpha hairline meant for
+    // borders and is invisible as a connection stroke.
     --cdt-tree-edge-color: #8a8f9c;
 
     f-flow {
