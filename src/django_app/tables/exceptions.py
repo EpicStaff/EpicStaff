@@ -406,3 +406,26 @@ class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
             f"Classification decision table node {pk} not found.",
             code=self.default_code,
         )
+
+
+class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config doesn't resolve within the caller's org, or can't build a client."""
+
+    status_code = 404
+    default_code = "cdt_explain_llm_config_not_found"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} doesn't exist, belongs to another organization, "
+            "or has no usable model.",
+            code=self.default_code,
+        )
+
+
+class CdtExplainUpstreamError(CustomAPIExeption):
+    """Raised when every batch of the explain request failed upstream."""
+
+    status_code = 502
+    default_detail = "The explanation could not be generated. Please try again."
+    default_code = "cdt_explain_upstream_failed"

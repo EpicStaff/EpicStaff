@@ -236,6 +236,11 @@ from tables.services.rbac.permissions import (
 )
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.cdt_explain.service import CdtExplainService
+from tables.serializers.cdt_explain_serializers import (
+    CdtExplainRequestSerializer,
+    CdtExplainResponseSerializer,
+)
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
@@ -2378,7 +2383,11 @@ class ClassificationDecisionTableNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "export": Permission.EXPORT}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "export": Permission.EXPORT,
+        "explain": Permission.READ,
+    }
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.all()
     serializer_class = ClassificationDecisionTableNodeSerializer
@@ -2388,6 +2397,7 @@ class ClassificationDecisionTableNodeModelViewSet(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._node_service = ClassificationDecisionTableNodeService()
+        self._explain_service = CdtExplainService()
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -2435,6 +2445,34 @@ class ClassificationDecisionTableNodeModelViewSet(
         response = HttpResponse(result.content, content_type=result.content_type)
         response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
         return response
+
+    @extend_schema(
+        request=CdtExplainRequestSerializer,
+        responses={200: CdtExplainResponseSerializer},
+        description=(
+            "Generate plain-language explanations of one or more steps of this "
+            "Classification Decision Table. Send a single block to explain one step, "
+            "or every block to explain them all. Step content is read from the request "
+            "body, not the database, so unsaved panel edits are explained as shown."
+        ),
+    )
+    @action(detail=True, methods=["post"], url_path="explain")
+    def explain(self, request, pk=None):
+        serializer = CdtExplainRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self._explain_service.explain(
+            pk=pk,
+            org_id=self.get_active_org_id(),
+            llm_config_id=data["llm_config"],
+            table=data["table"],
+            blocks=data["blocks"],
+        )
+        return Response(
+            {"explanations": result.explanations, "failures": result.failures},
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(
