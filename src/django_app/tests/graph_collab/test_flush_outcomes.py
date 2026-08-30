@@ -333,7 +333,7 @@ async def test_flush_none_entry_in_node_list_does_not_raise(
     corrupted_graph_id = 99998
 
     async def _fake_db_flush(graph_id, snapshot):
-        return _fs_module._DbFlushResult.GRAPH_NOT_FOUND
+        return _fs_module._DbFlushOutcome(kind=_fs_module._DbFlushResult.GRAPH_NOT_FOUND)
 
     monkeypatch.setattr(_fs_module, "_async_do_db_flush", _fake_db_flush)
 
@@ -390,7 +390,10 @@ async def test_flush_builds_temp_id_to_list_key_including_edge_lists(
         captured["flushed_temp_id_to_list_key"] = flushed_temp_id_to_list_key
 
     async def _fake_db_flush(graph_id_arg, snapshot):
-        return 1, {"tmp-edge": 111, "tmp-cond-edge": 222, "tmp-py": 333}
+        return _fs_module._DbFlushOutcome(
+            new_save_version=1,
+            temp_id_map={"tmp-edge": 111, "tmp-cond-edge": 222, "tmp-py": 333},
+        )
 
     monkeypatch.setattr(_fs_module, "_async_do_db_flush", _fake_db_flush)
     monkeypatch.setattr(

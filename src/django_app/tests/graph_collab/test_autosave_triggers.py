@@ -385,7 +385,7 @@ async def test_persistent_failed_broadcasts_save_failed(
     test_graph, test_user, monkeypatch
 ):
     from tables.graph_collab.autosave_loop import _autosave_pass
-    from tables.graph_collab.flush_service import _DbFlushResult
+    from tables.graph_collab.flush_service import _DbFlushOutcome, _DbFlushResult
     import tables.graph_collab.flush_service as _fs_module
 
     communicator = _make_communicator(test_graph.pk, test_user)
@@ -397,7 +397,7 @@ async def test_persistent_failed_broadcasts_save_failed(
 
     # Force a persistent validation failure.
     async def _persistent_failure(graph_id, snapshot):
-        return _DbFlushResult.SKIP, "validation_error"
+        return _DbFlushOutcome(kind=_DbFlushResult.SKIP, reason="validation_error")
 
     monkeypatch.setattr(_fs_module, "_async_do_db_flush", _persistent_failure)
 
@@ -421,7 +421,7 @@ async def test_version_conflict_does_not_broadcast_save_failed(
     test_graph, test_user, monkeypatch
 ):
     from tables.graph_collab.autosave_loop import _autosave_pass
-    from tables.graph_collab.flush_service import _DbFlushResult
+    from tables.graph_collab.flush_service import _DbFlushOutcome, _DbFlushResult
     import tables.graph_collab.flush_service as _fs_module
 
     communicator = _make_communicator(test_graph.pk, test_user)
@@ -432,7 +432,7 @@ async def test_version_conflict_does_not_broadcast_save_failed(
     await apply_create_op(communicator, test_graph.pk, test_user, temp_id)
 
     async def _version_conflict(graph_id, snapshot):
-        return _DbFlushResult.VERSION_CONFLICT
+        return _DbFlushOutcome(kind=_DbFlushResult.VERSION_CONFLICT)
 
     monkeypatch.setattr(_fs_module, "_async_do_db_flush", _version_conflict)
 
@@ -452,7 +452,7 @@ async def test_version_conflict_does_not_broadcast_save_failed(
 @pytest.mark.django_db(transaction=True)
 async def test_version_conflict_retains_snapshot(test_graph, test_user, monkeypatch):
     from tables.graph_collab.autosave_loop import _autosave_pass
-    from tables.graph_collab.flush_service import _DbFlushResult
+    from tables.graph_collab.flush_service import _DbFlushOutcome, _DbFlushResult
     import tables.graph_collab.flush_service as _fs_module
 
     communicator = _make_communicator(test_graph.pk, test_user)
@@ -466,7 +466,7 @@ async def test_version_conflict_retains_snapshot(test_graph, test_user, monkeypa
     assert snap_before is not None
 
     async def _version_conflict(graph_id, snapshot):
-        return _DbFlushResult.VERSION_CONFLICT
+        return _DbFlushOutcome(kind=_DbFlushResult.VERSION_CONFLICT)
 
     monkeypatch.setattr(_fs_module, "_async_do_db_flush", _version_conflict)
 
