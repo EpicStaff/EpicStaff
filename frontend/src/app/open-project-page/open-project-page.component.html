@@ -64,17 +64,14 @@
                                     }
                                 </span>
                                 @if (section.showAddButton) {
-                                    <span
+                                    <app-button
                                         class="add-button"
+                                        type="primary"
+                                        leftIcon="plus"
                                         (click)="onAddAction($event, section.id)"
-                                        matTooltip="Create new agent"
-                                        matTooltipPosition="above"
                                     >
-                                        <app-svg-icon
-                                            icon="plus"
-                                            size="16px"
-                                        />
-                                    </span>
+                                        Create agent
+                                    </app-button>
                                 }
                             </div>
                             <div
