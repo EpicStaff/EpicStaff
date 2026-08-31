@@ -37,12 +37,16 @@ export class MembershipsService {
         if (params.page_size !== undefined) httpParams = httpParams.set('page_size', String(params.page_size));
         return this.http.get<ApiGetRequest<AdminMembershipRow>>(this.apiUrl, {
             params: httpParams,
-            context: withCrossOrgPermission<ApiGetRequest<AdminMembershipRow>>(ResourceCode.Users, ActionCode.Read, {
-                count: 0,
-                next: null,
-                previous: null,
-                results: [],
-            }),
+            context: withCrossOrgPermission<ApiGetRequest<AdminMembershipRow>>(
+                ResourceCode.Memberships,
+                ActionCode.Read,
+                {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }
+            ),
         });
     }
 

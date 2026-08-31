@@ -9,17 +9,17 @@
  * endpoint later by mirroring the same shape.
  */
 export const PERMISSION_RELATIONS: Record<string, string[]> = {
-    'organizations:read': ['users:read', 'roles:read'],
+    'organizations:read': ['memberships:read', 'roles:read'],
     'organizations:create': ['organizations:read'], //superadmin only
-    'organizations:update': ['organizations:read', 'users:read', 'roles:read'],
+    'organizations:update': ['organizations:read', 'memberships:read', 'roles:read'],
     'organizations:delete': ['organizations:read'], //superadmin only
     'organizations:export': [],
 
-    'users:read': [],
-    'users:create': ['users:read', 'roles:read'],
-    'users:update': ['users:read', 'roles:read'],
-    'users:delete': ['users:read'],
-    'users:export': [],
+    'memberships:read': [],
+    'memberships:create': ['memberships:read', 'roles:read'],
+    'memberships:update': ['memberships:read', 'roles:read'],
+    'memberships:delete': ['memberships:read'],
+    'memberships:export': [],
 
     'roles:read': [],
     'roles:create': ['roles:read'],

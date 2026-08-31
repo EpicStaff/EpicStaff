@@ -145,9 +145,9 @@ export class PermissionsService implements StorageService {
     resolveDefaultWorkspaceTab(): string | null {
         if (this._isSuperadmin()) return '/workspace/main';
         if (this.canInAnyOrg(ResourceCode.Organizations, ActionCode.Read)) return '/workspace/organizations';
-        if (this.canInAnyOrg(ResourceCode.Users, ActionCode.Read)) return '/workspace/users';
+        if (this.canInAnyOrg(ResourceCode.Memberships, ActionCode.Read)) return '/workspace/users';
         if (this.canInAnyOrg(ResourceCode.Roles, ActionCode.Read)) return '/workspace/roles';
-        if (this.canInAnyOrg(ResourceCode.Secrets, ActionCode.Read)) return '/workspace/api-keys';
+        if (this.can(ResourceCode.Secrets, ActionCode.Read)) return '/workspace/api-keys';
         return null;
     }
 

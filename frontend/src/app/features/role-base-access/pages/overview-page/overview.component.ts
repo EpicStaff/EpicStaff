@@ -33,7 +33,7 @@ export class OverviewComponent {
             routerLink: 'users',
             icon: 'profile',
             label: 'Users',
-            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Users, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Memberships, ActionCode.Read),
         },
         {
             routerLink: 'roles',
@@ -45,7 +45,7 @@ export class OverviewComponent {
             routerLink: 'api-keys',
             icon: 'key',
             label: 'API Keys',
-            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read),
         },
     ];
 }

@@ -1,4 +1,4 @@
-import { ActionCode } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 export const ACTION_ICONS: Partial<Record<ActionCode, string>> = {
     create: 'plus',
@@ -25,9 +25,9 @@ export interface ResourceMeta {
     description: string;
 }
 
-export const RESOURCE_META: Record<string, ResourceMeta> = {
+export const RESOURCE_META: Record<ResourceCode, ResourceMeta> = {
     organizations: { description: 'Create, rename, deactivate organizations' },
-    users: { description: 'Add/remove members, assign roles within org' },
+    memberships: { description: 'Add/remove members, assign roles within org' },
     roles: { description: 'Create/edit custom roles and assign to users' },
     flows: { description: 'Automation pipelines' },
     agents: { description: 'Manage AI agents and their capabilities' },

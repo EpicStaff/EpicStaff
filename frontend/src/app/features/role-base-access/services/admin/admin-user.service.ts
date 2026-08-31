@@ -31,7 +31,7 @@ export class AdminUserService {
     getUsers(): Observable<ApiGetRequest<AdminCreateUserResponse>> {
         return this.http.get<ApiGetRequest<AdminCreateUserResponse>>(this.apiUrl, {
             context: withCrossOrgPermission<ApiGetRequest<AdminCreateUserResponse>>(
-                ResourceCode.Users,
+                ResourceCode.Memberships,
                 ActionCode.Read,
                 { count: 0, next: null, previous: null, results: [] }
             ),

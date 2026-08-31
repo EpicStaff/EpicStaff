@@ -70,7 +70,7 @@ export class OrgMembersEditorComponent implements OnInit {
         if (this.permissionsService.isSuperadmin) return true;
         const orgId = this.organizationId();
         if (!this.isEditMode() || orgId === null) return false;
-        return this.permissionsService.canInOrg(orgId, ResourceCode.Users, ActionCode.Read);
+        return this.permissionsService.canInOrg(orgId, ResourceCode.Memberships, ActionCode.Read);
     });
     readonly hasInvalidRow = computed(() => this.selectedUsers().some((row) => row['role'] == null));
 

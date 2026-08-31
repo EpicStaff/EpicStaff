@@ -73,7 +73,7 @@ export class StepAssignToOrgComponent implements OnInit {
         const assignableOrgs = this.organizations().filter((org) =>
             this.permissionsService.canInOrg(
                 org.id,
-                ResourceCode.Users,
+                ResourceCode.Memberships,
                 this.isEditMode() ? ActionCode.Update : ActionCode.Create
             )
         );

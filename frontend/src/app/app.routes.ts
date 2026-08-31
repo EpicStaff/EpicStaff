@@ -310,7 +310,7 @@ export const routes: Routes = [
                                         (m) => m.UsersTabComponent
                                     ),
                                 canActivate: [workspacePermissionGuard],
-                                data: { permission: [ResourceCode.Users, ActionCode.Read] },
+                                data: { permission: [ResourceCode.Memberships, ActionCode.Read] },
                             },
                             {
                                 path: 'roles',
@@ -327,7 +327,7 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/api-keys-tab/api-keys-tab.component').then(
                                         (m) => m.ApiKeysTabComponent
                                     ),
-                                canActivate: [workspacePermissionGuard],
+                                canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Secrets, ActionCode.Read] },
                             },
                         ],

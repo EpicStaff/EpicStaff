@@ -290,7 +290,7 @@ export class UsersTabComponent implements OnInit {
         const user = this.aggregatedUsers().find((u) => u.id === userId);
         if (!user || user.id === this.profileService.currentUserSignal()?.id) return [];
         return user.memberships.filter((m) =>
-            this.permissionsService.canInOrg(m.organization.id, ResourceCode.Users, action)
+            this.permissionsService.canInOrg(m.organization.id, ResourceCode.Memberships, action)
         );
     }
 
