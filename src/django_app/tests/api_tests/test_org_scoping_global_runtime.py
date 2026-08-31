@@ -1,5 +1,5 @@
-"""Plan 5 — global singletons (superadmin write-lockdown), VoiceSettings/Twilio
-(superadmin), and reachable runtime models (RealtimeAgentChat)."""
+"""Plan 5 — global singletons (superadmin write-lockdown) and reachable
+runtime models (RealtimeAgentChat)."""
 
 from unittest.mock import patch
 
@@ -94,20 +94,7 @@ def test_default_models_write_permitted_for_superadmin(client_super):
     )
 
 
-# ---- VoiceSettings: superadmin only (holds the platform Twilio secret) ----
-
-
-@pytest.mark.django_db
-def test_voice_settings_denied_for_member(client_member):
-    assert client_member.get("/api/voice-settings/").status_code == 403
-
-
-@pytest.mark.django_db
-def test_voice_settings_allowed_for_superadmin(client_super):
-    assert client_super.get("/api/voice-settings/").status_code == 200
-
-
-# ---- RealtimeAgentChat: scoped via rt_agent_definition -> agent_definition -> org ----
+# ---- RealtimeAgentChat: scoped via rt_agent -> agent -> org ----
 
 
 def _chat(org):
@@ -222,9 +209,7 @@ def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat
 
 
 @pytest.mark.django_db
-def test_conversation_recording_create_allowed_for_own_orgs_chat(
-    client_member, org_a
-):
+def test_conversation_recording_create_allowed_for_own_orgs_chat(client_member, org_a):
     own_chat = _chat(org_a)
 
     resp = client_member.post(

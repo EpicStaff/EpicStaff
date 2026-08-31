@@ -234,7 +234,13 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TwilioChannel
-        fields = ["channel", "account_sid", "auth_token_secret_id", "phone_number", "webhook_trigger"]
+        fields = [
+            "channel",
+            "account_sid",
+            "auth_token_secret_id",
+            "phone_number",
+            "webhook_trigger",
+        ]
 
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
@@ -245,11 +251,34 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
+        queryset=RealtimeAgentDefinition.objects.all(),
+        org_lookup="agent_definition__organization_id",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = RealtimeChannel
         fields = "__all__"
         read_only_fields = ["org", "created_by"]
+
+    def validate(self, attrs):
+        realtime_agent = attrs.get(
+            "realtime_agent", getattr(self.instance, "realtime_agent", None)
+        )
+        realtime_agent_definition = attrs.get(
+            "realtime_agent_definition",
+            getattr(self.instance, "realtime_agent_definition", None),
+        )
+
+        if realtime_agent is not None and realtime_agent_definition is not None:
+            raise serializers.ValidationError(
+                "A RealtimeChannel may have at most one destination set "
+                "(realtime_agent or realtime_agent_definition)."
+            )
+
+        return attrs
 
 
 class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
