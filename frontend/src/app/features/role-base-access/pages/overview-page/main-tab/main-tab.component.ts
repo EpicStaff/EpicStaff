@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { finalize } from 'rxjs';
 
+import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import { CreateOrganizationDialogComponent } from '../../../components/create-organization-dialog/create-organization-dialog.component';
 import { OrgCardComponent } from '../../../components/org-card/org-card.component';
@@ -26,7 +27,10 @@ export class MainTabComponent implements OnInit {
     private organizationStorage = inject(OrganizationsStorageService);
     private adminUserService = inject(AdminUserService);
     private rolesService = inject(RolesService);
+    private permissionsService = inject(PermissionsService);
     private toast = inject(ToastService);
+
+    protected readonly isSuperadmin = this.permissionsService.isSuperadmin;
 
     organizations = this.organizationStorage.organizations;
     isOrgsLoading = signal(true);
@@ -99,6 +103,7 @@ export class MainTabComponent implements OnInit {
     }
 
     onCreateOrganization(): void {
+        if (!this.isSuperadmin) return;
         this.dialog.open(CreateOrganizationDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',

@@ -30,7 +30,6 @@ import { AggregatedUser } from '../../../../models/aggregated-user.model';
 export class StepUserDetailsComponent {
     private fb = inject(FormBuilder);
 
-    canToggleSuperadmin = input<boolean>(false);
     editMode = input<boolean>(false);
     userData = input<AggregatedUser | null>(null);
 

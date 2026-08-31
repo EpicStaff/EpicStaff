@@ -15,7 +15,7 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { HasPermissionDirective, HasPermissionInAnyOrgDirective } from '@shared/directives';
+import { HasPermissionInAnyOrgDirective } from '@shared/directives';
 import { ActionCode, FullMembership, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 import { concat, Observable, of } from 'rxjs';
@@ -29,6 +29,10 @@ import {
     OverflowItemDirective,
     OverflowItemsDirective,
 } from '../../../../../shared/directives/overflow-items.directive';
+import {
+    CreateMembershipDialogComponent,
+    MembershipDialogData,
+} from '../../../components/create-membership-dialog/create-membership-dialog.component';
 import {
     CreateUserDialogComponent,
     UserDialogData,
@@ -65,12 +69,10 @@ const STATUS_ITEMS: SelectItem[] = [
         OverflowItemDirective,
         OverflowBadgeDirective,
         MatTooltipModule,
-        HasPermissionDirective,
         HasPermissionInAnyOrgDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-// TODO rename modal for membership (invite user)
 export class UsersTabComponent implements OnInit {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
@@ -300,13 +302,21 @@ export class UsersTabComponent implements OnInit {
     }
 
     private openUserDialog(user?: AggregatedUser): void {
-        const data: UserDialogData = { user };
-        const ref = this.dialog.open(CreateUserDialogComponent, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            disableClose: true,
-            data,
-        });
+        // SA → Create User (email/password/superadmin + memberships).
+        // Delegated → Create Membership (link existing account to org).
+        const ref = this.permissionsService.isSuperadmin
+            ? this.dialog.open(CreateUserDialogComponent, {
+                  width: 'calc(100vw - 2rem)',
+                  height: 'calc(100vh - 2rem)',
+                  disableClose: true,
+                  data: { user } as UserDialogData,
+              })
+            : this.dialog.open(CreateMembershipDialogComponent, {
+                  width: 'calc(100vw - 2rem)',
+                  height: 'calc(100vh - 2rem)',
+                  disableClose: true,
+                  data: { user } as MembershipDialogData,
+              });
 
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
@@ -389,4 +399,5 @@ export class UsersTabComponent implements OnInit {
     protected readonly getRelativeTime = getRelativeTime;
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly isSuperadmin = this.permissionsService.isSuperadmin;
 }

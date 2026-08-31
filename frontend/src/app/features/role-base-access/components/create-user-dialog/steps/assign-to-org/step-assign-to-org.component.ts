@@ -49,10 +49,11 @@ export class StepAssignToOrgComponent implements OnInit {
     searchTerm = signal('');
     isOrgsLoading = signal<boolean>(false);
     selectedOrganizations = signal<TableRow[]>([]);
-    selectedOrgIds = computed(() => new Set(this.selectedOrganizations().map((r) => r['id'] as number)));
-
-    /** Per-org assignable role items (built-ins ∪ custom), keyed by orgId. */
+    selectionIds = signal<number[]>([]);
     private roleItemsByOrg = signal<Map<number, SelectItem[]>>(new Map());
+
+    selectedOrgIds = computed(() => new Set(this.selectedOrganizations().map((r) => r['id'] as number)));
+    readonly hasInvalidRow = computed(() => this.selectedOrganizations().some((r) => r['role'] == null));
 
     filteredOrganizations = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -64,8 +65,6 @@ export class StepAssignToOrgComponent implements OnInit {
         { key: 'organization', label: 'Organization', width: '1fr' },
         { key: 'role', label: 'Role', width: '1fr' },
     ];
-
-    selectionIds = signal<number[]>([]);
 
     ngOnInit(): void {
         const memberships = this.existingMemberships();
@@ -133,11 +132,14 @@ export class StepAssignToOrgComponent implements OnInit {
     }
 
     onRoleSelected(row: TableRow, value: unknown): void {
-        row['role'] = value;
         const rowId = row['id'] as number;
-        const currentIds = this.selectedOrganizations().map((r) => r['id'] as number);
-        if (!currentIds.includes(rowId)) {
-            this.selectionIds.set([...currentIds, rowId]);
+        const patch = (r: TableRow): TableRow => (r['id'] === rowId ? { ...r, role: value } : r);
+        this.organizationsTableData.update((rows) => rows.map(patch));
+
+        if (this.selectedOrgIds().has(rowId)) {
+            this.selectedOrganizations.update((rows) => rows.map(patch));
+        } else {
+            this.selectionIds.set([...this.selectionIds(), rowId]);
         }
     }
 

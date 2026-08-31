@@ -11,7 +11,7 @@
             type="primary"
             leftIcon="plus"
             (click)="onCreateUser()"
-            >Create User</app-button
+            >{{ isSuperadmin ? 'Create User' : 'Add Membership' }}</app-button
         >
         <!--        <button-->
         <!--            class="settings-btn"-->
