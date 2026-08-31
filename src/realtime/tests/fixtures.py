@@ -55,6 +55,7 @@ def mock_ws_client():
 def sample_chat_data() -> RealtimeAgentChatData:
     return RealtimeAgentChatData(
         connection_key=CONNECTION_KEY,
+        org_id=1,
         rt_api_key="fake_key",
         rt_model_name="test_model",
         wake_word="wake",

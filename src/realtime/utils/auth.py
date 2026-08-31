@@ -14,7 +14,7 @@ def validate_api_key() -> bool:
     try:
         resp = httpx.get(
             f"{settings.DJANGO_AUTH_URL}/api/auth/api-key/validate/",
-            headers={"X-API-Key": settings.DJANGO_API_KEY},
+            headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
             timeout=settings.DJANGO_AUTH_TIMEOUT,
         )
     except Exception:
@@ -41,7 +41,7 @@ def introspect_token(token: str) -> dict | None:
         resp = httpx.post(
             f"{settings.DJANGO_AUTH_URL}/api/auth/introspect/",
             json={"token": token},
-            headers={"X-API-Key": settings.DJANGO_API_KEY},
+            headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
             timeout=settings.DJANGO_AUTH_TIMEOUT,
         )
     except Exception:

@@ -112,7 +112,7 @@ class PythonCodeToolData(BaseModel):
 
 class BaseToolData(BaseModel):
     unique_name: str
-    data: PythonCodeToolData | ConfiguredToolData | McpToolData
+    data: PythonCodeToolData | McpToolData
 
     # validator exist only in crew and realtime
     @model_validator(mode="before")
@@ -137,12 +137,6 @@ class BaseToolData(BaseModel):
                 data
                 if isinstance(data, PythonCodeToolData)
                 else PythonCodeToolData(**data)
-            )
-        elif prefix == "configured-tool":
-            values["data"] = (
-                data
-                if isinstance(data, ConfiguredToolData)
-                else ConfiguredToolData(**data)
             )
         elif prefix == "mcp-tool":
             values["data"] = (

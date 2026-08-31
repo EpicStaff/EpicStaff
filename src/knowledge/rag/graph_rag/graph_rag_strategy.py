@@ -205,12 +205,28 @@ class GraphRAGStrategy(BaseRAGStrategy):
 
         Args:
             config: GraphRagConfig instance
+
+        Raises:
+            RuntimeError: If any workflow in the pipeline reported errors.
+                graphrag catches per-workflow exceptions internally (e.g. a
+                misconfigured input file_pattern matching zero files) and
+                returns them in each PipelineRunResult.errors instead of
+                raising -- build_index() itself returns normally either way,
+                so an indexing run that loaded 0 documents and produced no
+                index would otherwise be logged and stored as "completed".
         """
         # Deferred: keeps this module importable on CPUs without AVX2 (lancedb requires AVX2)
         from graphrag.api.index import build_index
 
         # GraphRAG's build_index is async
-        asyncio.run(build_index(config))
+        results = asyncio.run(build_index(config))
+
+        failed = [r for r in results if r.errors]
+        if failed:
+            details = "; ".join(
+                f"{r.workflow}: {[str(e) for e in r.errors]}" for r in failed
+            )
+            raise RuntimeError(f"GraphRAG indexing workflow(s) failed: {details}")
 
     # ==================== Search ====================
 
@@ -221,6 +237,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
         query: str,
         collection_id: int,
         rag_search_config: GraphRagSearchConfig,
+        credentials: RagCredentials | None = None,
     ) -> dict:
         """
         Search using GraphRAG. Dispatches to basic or local search
@@ -235,6 +252,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
             query: Search query
             collection_id: Collection ID (for response)
             rag_search_config: Search configuration with search_method
+            credentials: Unused here -- the embedder/llm key is baked into the
+                persisted GraphRagConfig at indexing time (see
+                process_rag_indexing). Accepted only so this method matches
+                the BaseRAGStrategy.search(**kwargs) contract every caller
+                (e.g. CollectionProcessorService.search) invokes uniformly
+                across strategies.
 
         Returns:
             Dict with search results

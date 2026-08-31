@@ -19,12 +19,23 @@ async def get_db():
         yield session
 
 
-async def save_realtime_session_item_to_db(data, connection_key):
-    """Save data to the database."""
+async def save_realtime_session_item_to_db(
+    data, connection_key, org_id: int | None = None, user_id: int | None = None
+):
+    """Save data to the database.
+
+    `user_id` maps to `created_by_id` — populated for browser /chats sessions
+    (a real authenticated user started them) and left `None` for Twilio voice
+    calls, which have no end-user identity to attribute to.
+    """
     async with SessionLocal() as db_session:
         try:
             realtime_session_item = RealtimeSessionItem(
-                connection_key=connection_key, data=data, created_at=datetime.utcnow()
+                connection_key=connection_key,
+                data=data,
+                org_id=org_id,
+                created_by_id=user_id,
+                created_at=datetime.utcnow(),
             )
             db_session.add(realtime_session_item)
             await db_session.commit()

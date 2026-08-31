@@ -5,6 +5,7 @@ from tables.import_export.constants import IMPORT_VERSION
 from tables.models import (
     GraphVersion,
     Graph,
+    Label,
 )
 
 
@@ -59,7 +60,7 @@ class GraphVersioningService:
         )
 
         # Copy labels from source graph
-        new_graph.labels.set(source_graph.labels.all())
+        new_graph.labels.set(source_graph.labels.filter(scope=Label.Scope.FLOW))
 
         warnings.extend(
             self._manager.restore_secret_declarations(

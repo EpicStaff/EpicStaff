@@ -49,6 +49,13 @@ class TokenIntrospectResponseSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=False)
     email = serializers.EmailField(required=False)
     scopes = serializers.ListField(child=serializers.CharField(), required=False)
+    org_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="Org ids the token's user is a member of. Used by internal "
+        "services (e.g. realtime) to verify the caller owns a given resource's org.",
+    )
+    is_superadmin = serializers.BooleanField(required=False)
 
 
 # ---- Reset user ----
@@ -113,7 +120,7 @@ class PasswordResetRequestResponseSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     # Schema-only: real validation in
     # `AuthValidationService.validate_password_reset_confirm`.
-    token = serializers.UUIDField()
+    token = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
 
 

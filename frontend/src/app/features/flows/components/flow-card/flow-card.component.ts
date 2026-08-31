@@ -1,12 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
+import { getLabelColorOption } from '@shared/models';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { CheckboxComponent } from '../../../../shared/components/checkbox/checkbox.component';
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
-import { getLabelColorOption } from '../../models/label.model';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowMenuComponent } from './flow-menu/flow-menu.component';
 
@@ -19,7 +17,6 @@ export interface FlowCardAction {
 
 @Component({
     selector: 'app-flow-card',
-    standalone: true,
     imports: [
         CommonModule,
         ButtonComponent,

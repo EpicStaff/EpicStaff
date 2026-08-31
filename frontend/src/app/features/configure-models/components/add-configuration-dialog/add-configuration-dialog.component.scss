@@ -1,0 +1,171 @@
+.dialog {
+    width: 480px;
+    height: 95vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--color-modals-background);
+    border: 1px solid var(--color-ks-line, #2b2d30);
+    border-radius: 10px;
+    color: var(--color-text-primary);
+
+    .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.25rem 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .title {
+        font-size: 1.25rem;
+        font-weight: 500;
+        margin: 0;
+    }
+
+    .tabs {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0 1.5rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+    }
+
+    .tab {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        padding: 0.75rem 0.25rem;
+        font-size: 0.9375rem;
+        font-weight: 400;
+        cursor: pointer;
+        color: var(--color-primary, #6b6eff);
+        transition:
+            color 0.15s,
+            border-color 0.15s;
+
+        &:hover:not(.active) {
+            color: var(--color-text-primary);
+        }
+
+        &.active {
+            color: var(--color-text-primary);
+            border-bottom-color: var(--color-text-primary);
+            font-weight: 500;
+        }
+    }
+
+    .tab-divider {
+        color: var(--color-divider-subtle);
+        font-size: 1rem;
+        user-select: none;
+        line-height: 1;
+    }
+
+    .provider-section {
+        padding: 1.25rem 1.5rem 0;
+        flex-shrink: 0;
+    }
+
+    .provider-label {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.9375rem;
+        color: var(--color-text-primary);
+        margin-bottom: 0.75rem;
+    }
+
+    .provider-buttons {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .provider-btn {
+        background: var(--color-surface-2, #2b2d30);
+        border: none;
+        border-right: 1px solid var(--color-ks-line, #3a3c40);
+        padding: 0.625rem 1rem;
+        font-size: 0.9375rem;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition:
+            background 0.15s,
+            color 0.15s;
+        text-align: center;
+        white-space: nowrap;
+
+        &:last-child {
+            border-right: none;
+        }
+
+        &:hover:not(.active) {
+            background: var(--color-surface-3, #35373b);
+            color: var(--color-text-primary);
+        }
+
+        &.active {
+            background: var(--color-primary, #6b6eff);
+            color: #fff;
+            font-weight: 500;
+        }
+    }
+
+    .form {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    .section {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        &:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+    }
+
+    .section-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-text-secondary);
+        margin: 0;
+    }
+
+    .error {
+        background-color: rgba(255, 77, 79, 0.1);
+        color: var(--color-error, #ff4d4f);
+        padding: 0.75rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+
+        p {
+            margin: 0;
+            font-size: 0.875rem;
+        }
+    }
+
+    .footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+    }
+}

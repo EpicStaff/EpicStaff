@@ -1,0 +1,51 @@
+.dialog {
+    background-color: var(--color-modals-background);
+    border-radius: 8px;
+    width: 480px;
+    max-height: 95vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+    color: var(--color-text-primary);
+
+    &__header {
+        padding: 1.25rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        font-size: 1.25rem;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+
+    &__error-message {
+        background-color: rgba(255, 77, 79, 0.1);
+        color: var(--color-error, #ff4d4f);
+        padding: 0.75rem;
+        border-radius: 4px;
+
+        p {
+            margin: 0;
+            font-size: 0.875rem;
+        }
+    }
+
+    &__form {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+        padding: 1.25rem 1.25rem 1.5rem;
+        min-height: 0;
+        overflow-y: auto;
+        min-width: 0;
+    }
+
+    &__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        padding: 1.25rem;
+        border-top: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+    }
+}

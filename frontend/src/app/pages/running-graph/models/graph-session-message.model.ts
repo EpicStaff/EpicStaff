@@ -33,7 +33,6 @@ export enum MessageType {
     CONDITION_GROUP = 'condition_group',
     CLASSIFICATION_PROMPT = 'classification_prompt',
     CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
-    CODE_AGENT_STREAM = 'code_agent_stream',
     FINDINGS = 'findings',
     TASK_NODE_STREAM = 'task_node_stream',
     AGENT_NODE_STREAM = 'agent_node_stream',
@@ -222,21 +221,6 @@ export interface ConditionGroupManipulationMessageData {
     message_type: MessageType.CONDITION_GROUP_MANIPULATION;
 }
 
-export interface CodeAgentToolCall {
-    name: string;
-    input: string;
-    output: string;
-    state: string;
-}
-
-export interface CodeAgentStreamMessageData {
-    text: string;
-    tool_calls?: CodeAgentToolCall[];
-    is_final: boolean;
-    step_id?: number;
-    message_type: MessageType.CODE_AGENT_STREAM;
-}
-
 export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
 export interface Finding {
@@ -337,7 +321,6 @@ export type MessageData =
     | ConditionGroupMessageData
     | ClassificationPromptMessageData
     | ConditionGroupManipulationMessageData
-    | CodeAgentStreamMessageData
     | FindingsMessageData
     | TaskNodeStreamMessageData
     | AgentNodeStreamMessageData;
