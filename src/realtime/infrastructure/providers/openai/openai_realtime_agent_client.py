@@ -51,7 +51,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
 
         self.tool_manager_service = tool_manager_service
         self.model = model
-        self.voice = voice
+        self.voice = voice or "alloy"
         self.instructions = instructions
         self.base_url = "wss://api.openai.com/v1/realtime"
         self.turn_detection_mode = turn_detection_mode
@@ -117,7 +117,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         """
         Update session configuration using the GA `session` object shape.
         """
-        voice = config.get("voice", self.voice)
+        voice = config.get("voice") or self.voice
         turn_detection = config.get("turn_detection")
         tool_choice = config.get("tool_choice", "auto")
         input_audio_transcription = config.get(

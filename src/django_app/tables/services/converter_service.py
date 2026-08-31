@@ -437,6 +437,8 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         storage_allowed_paths_override: list[str] | None = None,
+        storage_org_prefix_override: str | None = None,
+        org_id_override: int | None = None,
     ) -> BaseToolData:
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
@@ -445,6 +447,8 @@ class ConverterService(metaclass=SingletonMeta):
                 graph_id=graph_id,
                 session_id=session_id,
                 storage_allowed_paths_override=storage_allowed_paths_override,
+                storage_org_prefix_override=storage_org_prefix_override,
+                org_id_override=org_id_override,
             )
         elif isinstance(tool, PythonCodeToolConfig):
             unique_name = f"python-code-tool-config:{tool.pk}"
@@ -718,6 +722,8 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         storage_allowed_paths_override: list[str] | None = None,
+        storage_org_prefix_override: str | None = None,
+        org_id_override: int | None = None,
     ) -> PythonCodeToolData:
         storage_allowed_paths = None
         storage_org_prefix = None
@@ -726,11 +732,13 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if graph_id is not None:
+            if storage_org_prefix_override is not None:
+                storage_org_prefix = storage_org_prefix_override
+            elif graph_id is not None:
                 storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
-        org_id = None
-        if graph_id is not None:
+        org_id = org_id_override
+        if org_id is None and graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
 
         variables = python_code_tool.variables or []

@@ -87,3 +87,63 @@ async def test_request_response_sends_response_create_event(client):
     client.send_server.assert_awaited_once()
     event = client.send_server.await_args[0][0]
     assert event["type"] == "response.create"
+
+
+def test_blank_voice_falls_back_to_alloy():
+    """A falsy `voice` (empty string, as allow_blank serializers permit) must
+    not reach OpenAI unguarded -- it errors/garbles audio there."""
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+        voice="",
+    )
+    assert c.voice == "alloy"
+
+
+def test_omitted_voice_falls_back_to_alloy():
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+    )
+    assert c.voice == "alloy"
+
+
+def test_explicit_voice_is_preserved():
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+        voice="verse",
+    )
+    assert c.voice == "verse"
+
+
+@pytest.mark.asyncio
+async def test_update_session_blank_voice_override_falls_back_to_instance_voice(client):
+    """`config.get("voice", self.voice)` does not fall back on an explicit
+    empty string -- only `.get(key, default) or self.voice` does."""
+    client.voice = "verse"
+
+    await client.update_session(config={"voice": ""})
+
+    event = client.send_server.await_args[0][0]
+    assert event["session"]["audio"]["output"]["voice"] == "verse"
+
+
+@pytest.mark.asyncio
+async def test_update_session_missing_voice_key_falls_back_to_instance_voice(client):
+    client.voice = "verse"
+
+    await client.update_session(config={})
+
+    event = client.send_server.await_args[0][0]
+    assert event["session"]["audio"]["output"]["voice"] == "verse"
+
+
+@pytest.mark.asyncio
+async def test_update_session_explicit_voice_override_is_used(client):
+    client.voice = "alloy"
+
+    await client.update_session(config={"voice": "coral"})
+
+    event = client.send_server.await_args[0][0]
+    assert event["session"]["audio"]["output"]["voice"] == "coral"
