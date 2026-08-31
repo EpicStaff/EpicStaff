@@ -1,8 +1,10 @@
+from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 from loguru import logger
 
 from src.shared.models import (
     AgentData,
+    LocalhostConfigData,
     ArgsSchema,
     AudioTranscriptionNodeData,
     BaseToolData,
@@ -37,6 +39,7 @@ from src.shared.models import (
     TaskData,
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
+    WebhookNodeAuthData,
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
@@ -51,11 +54,9 @@ from tables.models import (
     Task,
 )
 from tables.models.crew_models import (
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
     TaskPythonCodeTools,
@@ -82,17 +83,22 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.llm_models import (
-    LLMConfig,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-)
+from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.realtime_models import RealtimeAgentChat
-from tables.models.webhook_models import NgrokWebhookConfig
+from tables.models.realtime_models import (
+    RealtimeAgentChat,
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+)
+from tables.models.webhook_models import (
+    LocalhostWebhookConfig,
+    NgrokWebhookConfig,
+    WebhookTrigger,
+)
 from tables.services.realtime_surface_service import RealtimeSurfaceService
-from tables.services.secrets import assert_tool_secrets_declared
+from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from utils.graph_utils import (
@@ -259,10 +265,6 @@ class ConverterService(metaclass=SingletonMeta):
             .select_related("agent")
             .prefetch_related(
                 Prefetch(
-                    "task_configured_tool_list",
-                    queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
-                ),
-                Prefetch(
                     "task_python_code_tool_list",
                     queryset=TaskPythonCodeTools.objects.select_related(
                         "tool__python_code"
@@ -338,12 +340,6 @@ class ConverterService(metaclass=SingletonMeta):
                     "python_code_tool_configs",
                     queryset=AgentPythonCodeToolConfigs.objects.select_related(
                         "pythoncodetoolconfig__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "configured_tools",
-                    queryset=AgentConfiguredTools.objects.select_related(
-                        "toolconfig__tool"
                     ),
                 ),
                 Prefetch(
@@ -443,14 +439,6 @@ class ConverterService(metaclass=SingletonMeta):
         python_tool_configs = [
             entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
         ]
-        configured_tools = [entry.toolconfig for entry in agent.configured_tools.all()]
-        if configured_tools:
-            logger.warning(
-                "Agent {} has {} configured tool(s) attached, but the "
-                "configured-tool mechanism was removed; skipping them.",
-                agent.pk,
-                len(configured_tools),
-            )
         mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
 
         all_tools = python_tools + python_tool_configs + mcp_tools
@@ -565,14 +553,9 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_rt_agent_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
+        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
     ) -> RealtimeAgentChatData:
         agent: Agent = rt_agent_chat.rt_agent.agent.fill_with_defaults(crew_id=None)
-
-        rt_config: RealtimeConfig = rt_agent_chat.realtime_config
-        rt_transcription_config: RealtimeTranscriptionConfig = (
-            rt_agent_chat.realtime_transcription_config
-        )
 
         knowledge_collection_id = None
         if agent.knowledge_collection is not None:
@@ -586,10 +569,47 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id, all_search_configs
         )
 
+        # Resolve provider-specific fields from the active config FK snapshot
+        rt_model_name = None
+        rt_api_key_secret_id = None
+        rt_provider = None
+        transcript_model_name = None
+        transcript_api_key_secret_id = None
+
+        if rt_agent_chat.openai_config_id is not None:
+            cfg: OpenAIRealtimeConfig = rt_agent_chat.openai_config
+            rt_provider = "openai"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+            transcript_model_name = cfg.transcription_model_name
+            transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
+        elif rt_agent_chat.elevenlabs_config_id is not None:
+            cfg: ElevenLabsRealtimeConfig = rt_agent_chat.elevenlabs_config
+            rt_provider = "elevenlabs"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+        elif rt_agent_chat.gemini_config_id is not None:
+            cfg: GeminiRealtimeConfig = rt_agent_chat.gemini_config
+            rt_provider = "gemini"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
+            raise ValidationError(
+                f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
+                "provider config (openai_config, elevenlabs_config, and "
+                "gemini_config are all null on this session snapshot, or the "
+                "active config has no api_key_secret assigned) — cannot build "
+                "realtime session data. The referenced provider config was "
+                "likely deleted after this chat was created."
+            )
+
         rt_agent_chat_data = RealtimeAgentChatData(
             role=agent.role,
             goal=agent.goal,
             backstory=agent.backstory,
+            org_id=agent.org_id,
+            user_id=user_id,
             knowledge_collection_id=knowledge_collection_id,
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
@@ -597,14 +617,10 @@ class ConverterService(metaclass=SingletonMeta):
             llm=self.convert_llm_config_to_pydantic(agent.llm_config),
             memory=agent.memory,
             tools=self._get_agent_base_tools(agent=agent),
-            rt_model_name=rt_config.realtime_model.name,
-            rt_api_key_secret_id=rt_config.api_key_secret_id,
-            transcript_model_name=rt_transcription_config.realtime_transcription_model.name
-            if rt_transcription_config
-            else None,
-            transcript_api_key_secret_id=rt_transcription_config.api_key_secret_id
-            if rt_transcription_config
-            else None,
+            rt_model_name=rt_model_name,
+            rt_api_key_secret_id=rt_api_key_secret_id,
+            transcript_model_name=transcript_model_name,
+            transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=agent.default_temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
@@ -612,45 +628,72 @@ class ConverterService(metaclass=SingletonMeta):
             language=rt_agent_chat.language,
             voice_recognition_prompt=rt_agent_chat.voice_recognition_prompt,
             voice=rt_agent_chat.voice,
-            input_audio_format=rt_agent_chat.input_audio_format.value,
-            output_audio_format=rt_agent_chat.output_audio_format.value,
-            rt_provider=rt_config.realtime_model.provider.name
-            if rt_config.realtime_model.provider
-            else "openai",
+            input_audio_format=rt_agent_chat.input_audio_format,
+            output_audio_format=rt_agent_chat.output_audio_format,
+            rt_provider=rt_provider,
         )
 
         return rt_agent_chat_data
 
     def convert_rt_agent_definition_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
+        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
     ) -> RealtimeAgentChatData:
         ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
 
-        rt_config: RealtimeConfig = rt_agent_chat.realtime_config
-        rt_transcription_config: RealtimeTranscriptionConfig = (
-            rt_agent_chat.realtime_transcription_config
-        )
-
         surface_resolution = self.realtime_surface_service.resolve(ad)
+
+        # Resolve provider-specific fields from the active config FK snapshot
+        rt_model_name = None
+        rt_api_key_secret_id = None
+        rt_provider = None
+        transcript_model_name = None
+        transcript_api_key_secret_id = None
+
+        if rt_agent_chat.openai_config_id is not None:
+            cfg: OpenAIRealtimeConfig = rt_agent_chat.openai_config
+            rt_provider = "openai"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+            transcript_model_name = cfg.transcription_model_name
+            transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
+        elif rt_agent_chat.elevenlabs_config_id is not None:
+            cfg: ElevenLabsRealtimeConfig = rt_agent_chat.elevenlabs_config
+            rt_provider = "elevenlabs"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+        elif rt_agent_chat.gemini_config_id is not None:
+            cfg: GeminiRealtimeConfig = rt_agent_chat.gemini_config
+            rt_provider = "gemini"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
+            raise ValidationError(
+                f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
+                "provider config (openai_config, elevenlabs_config, and "
+                "gemini_config are all null on this session snapshot, or the "
+                "active config has no api_key_secret assigned) — cannot build "
+                "realtime session data. The referenced provider config was "
+                "likely deleted after this chat was created."
+            )
 
         rt_agent_chat_data = RealtimeAgentChatData(
             role=ad.name,
             goal=ad.description or "assist the user",
             backstory=ad.instructions or "You are a helpful voice assistant",
+            org_id=ad.organization_id,
+            user_id=user_id,
             knowledge_collection_id=surface_resolution.knowledge_collection_id,
             rag_type_id=surface_resolution.rag_type_id,
             rag_search_config=surface_resolution.rag_search_config,
+            rag_embedder_api_key_secret_id=surface_resolution.rag_embedder_api_key_secret_id,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,
-            rt_model_name=rt_config.realtime_model.name,
-            rt_api_key_secret_id=rt_config.api_key_secret_id,
-            transcript_model_name=rt_transcription_config.realtime_transcription_model.name
-            if rt_transcription_config
-            else None,
-            transcript_api_key_secret_id=rt_transcription_config.api_key_secret_id
-            if rt_transcription_config
-            else None,
+            rt_model_name=rt_model_name,
+            rt_api_key_secret_id=rt_api_key_secret_id,
+            transcript_model_name=transcript_model_name,
+            transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=ad.default_temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
@@ -658,11 +701,9 @@ class ConverterService(metaclass=SingletonMeta):
             language=rt_agent_chat.language,
             voice_recognition_prompt=rt_agent_chat.voice_recognition_prompt,
             voice=rt_agent_chat.voice,
-            input_audio_format=rt_agent_chat.input_audio_format.value,
-            output_audio_format=rt_agent_chat.output_audio_format.value,
-            rt_provider=rt_config.realtime_model.provider.name
-            if rt_config.realtime_model.provider
-            else "openai",
+            input_audio_format=rt_agent_chat.input_audio_format,
+            output_audio_format=rt_agent_chat.output_audio_format,
+            rt_provider=rt_provider,
         )
 
         return rt_agent_chat_data
@@ -909,7 +950,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
-            stream_config=python_node.stream_config or {},
         )
 
     def convert_conditional_edge_to_pydantic(
@@ -1044,7 +1084,6 @@ class ConverterService(metaclass=SingletonMeta):
             crew=crew_data,
             input_map=crew_node.input_map,
             output_variable_path=crew_node.output_variable_path,
-            stream_config=crew_node.stream_config or {},
         )
 
     def convert_end_node_to_pydantic(
@@ -1053,6 +1092,64 @@ class ConverterService(metaclass=SingletonMeta):
         return EndNodeData(
             node_name=resolver(end_node.id),
             output_map=end_node.output_map,
+        )
+
+    def _get_node_auths_for_trigger(
+        self, trigger: WebhookTrigger
+    ) -> tuple[list[WebhookNodeAuthData], bool]:
+        """Collect enabled WebhookNodeAuths from nodes attached to this
+        trigger, and report whether at least one attached node has NO
+        enabled auth configured.
+
+        The second element (`has_unauthenticated_node`) drives
+        `BaseTunnelConfigData.has_unauthenticated_node`: when a path mixes an
+        authenticated node (e.g. Telegram, mandatory auth) with an auth-free
+        node, `webhook_routes.handle_webhook` must let an unauthenticated
+        request through -- scoped only to the auth-free node(s) via
+        `UNAUTHENTICATED_FALLBACK_PRINCIPAL` -- instead of 401ing the whole
+        path just because `auths` is non-empty.
+        """
+        nodes = [
+            *trigger.telegram_trigger_nodes.all(),
+            *trigger.webhook_trigger_nodes.all(),
+        ]
+        auth_data_list: list[WebhookNodeAuthData] = []
+        has_unauthenticated_node = False
+        for node in nodes:
+            auth_data = self._convert_node_auth(node)
+            if auth_data is None:
+                has_unauthenticated_node = True
+            else:
+                auth_data_list.append(auth_data)
+        return auth_data_list, has_unauthenticated_node
+
+    @staticmethod
+    def _convert_node_auth(
+        node: TelegramTriggerNode | WebhookTriggerNode,
+    ) -> WebhookNodeAuthData | None:
+        """Convert `node.webhook_node_auth` (a reverse OneToOne) to
+        `WebhookNodeAuthData`, or `None` if there's no enabled auth row.
+
+        `getattr(node, "webhook_node_auth", None)` is deliberate, not a
+        simplification-for-its-own-sake: accessing a reverse OneToOne
+        descriptor with no related row raises `RelatedObjectDoesNotExist`
+        (a subclass of `AttributeError`), and `getattr(..., None)` -- like
+        `hasattr` -- swallows that specific `AttributeError` and returns the
+        default. Using `getattr` instead of `hasattr` + a second attribute
+        access avoids triggering that descriptor lookup twice.
+        """
+        auth = getattr(node, "webhook_node_auth", None)
+        if not auth or not auth.enabled:
+            return None
+        return WebhookNodeAuthData(
+            enabled=auth.enabled,
+            scheme=auth.scheme,
+            header_name=auth.header_name,
+            timestamp_header_name=auth.timestamp_header_name,
+            tolerance_seconds=auth.tolerance_seconds,
+            secret_hash=auth.secret_hash,
+            signing_secret=auth.signing_secret,
+            principal=f"{node._meta.label_lower}:{node.pk}",
         )
 
     def convert_webhook_trigger_node_to_pydantic(
@@ -1193,9 +1290,39 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_ngrok_webhook_config_to_pydantic(
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
+        auth_token = (
+            secret_resolver.resolve(
+                secret_id=ngrok_webhook_config.auth_token_secret_id,
+                org_id=ngrok_webhook_config.trigger.org_id,
+                context="NgrokWebhookConfig.auth_token",
+            )
+            or ""
+        )
+        auths, has_unauthenticated_node = self._get_node_auths_for_trigger(
+            ngrok_webhook_config.trigger
+        )
+
         return NgrokConfigData(
-            name=ngrok_webhook_config.name,
-            auth_token=ngrok_webhook_config.auth_token,
+            name=ngrok_webhook_config.trigger.path,
+            org_id=ngrok_webhook_config.trigger.org_id,
+            auth_token=auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
+            auths=auths,
+            has_unauthenticated_node=has_unauthenticated_node,
+        )
+
+    def convert_localhost_webhook_config_to_pydantic(
+        self, localhost_webhook_config: LocalhostWebhookConfig
+    ) -> LocalhostConfigData:
+        auths, has_unauthenticated_node = self._get_node_auths_for_trigger(
+            localhost_webhook_config.trigger
+        )
+
+        return LocalhostConfigData(
+            name=localhost_webhook_config.trigger.path,
+            org_id=localhost_webhook_config.trigger.org_id,
+            domain=localhost_webhook_config.domain,
+            auths=auths,
+            has_unauthenticated_node=has_unauthenticated_node,
         )

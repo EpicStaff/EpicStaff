@@ -11,7 +11,6 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
     AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
@@ -29,6 +28,7 @@ from tables.serializers.model_serializers.tag_serializers import GraphTagSeriali
 from tables.models.graph_models import (
     Graph,
     GraphNote,
+    GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
 )
@@ -74,7 +74,6 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
 
         exec_to_subgraph_id = {exec_id: message_data.get("subgraph_id")}
         counts_by_exec_id: dict[str, dict[str, int]] = {}
-        seen_code_agent_streams = set()
         for msg in subtree_messages:
             msg_data = msg["message_data"] or {}
             msg_type = msg_data.get("message_type")
@@ -91,12 +90,6 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
             if not parent_exec:
                 continue
             parent_exec = str(parent_exec)
-
-            if msg_type == "code_agent_stream":
-                dedup_key = (parent_exec, msg["name"])
-                if dedup_key in seen_code_agent_streams:
-                    continue
-                seen_code_agent_streams.add(dedup_key)
 
             per_type = counts_by_exec_id.setdefault(parent_exec, {})
             per_type[msg_type] = per_type.get(msg_type, 0) + 1
@@ -115,6 +108,16 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
             "messages_count_by_subgraph": messages_count_by_subgraph,
         }
         return data
+
+
+class GraphOrganizationSerializer(serializers.ModelSerializer):
+    # Read-only: org is derived from graph.org and the row is created
+    # alongside its graph (see GraphViewSet.perform_create), so this
+    # serializer only ever needs to expose the current state.
+    class Meta:
+        model = GraphOrganization
+        fields = ["id", "graph", "persistent_variables", "user_variables"]
+        read_only_fields = ["id", "graph", "persistent_variables", "user_variables"]
 
 
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
@@ -174,7 +177,6 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
-    code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
     knowledge_node_list = KnowledgeNodeReadSerializer(many=True, read_only=True)
     task_node_list = TaskNodeSerializer(many=True, read_only=True)
     agent_node_list = AgentNodeSerializer(many=True, read_only=True)
@@ -186,7 +188,10 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     label_ids = OrgScopedPrimaryKeyRelatedField(
-        many=True, source="labels", queryset=Label.objects.all(), required=False
+        many=True,
+        source="labels",
+        queryset=Label.objects.filter(scope=Label.Scope.FLOW),
+        required=False,
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
@@ -217,7 +222,6 @@ class GraphSerializer(serializers.ModelSerializer):
             "decision_table_node_list",
             "classification_decision_table_node_list",
             "subgraph_node_list",
-            "code_agent_node_list",
             "task_node_list",
             "agent_node_list",
             "knowledge_node_list",
