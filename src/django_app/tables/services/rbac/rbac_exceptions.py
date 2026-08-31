@@ -343,3 +343,28 @@ class SelfMembershipModificationError(CustomAPIExeption):
     status_code = 403
     default_detail = "You cannot modify your own membership."
     default_code = "cannot_modify_self_membership"
+
+
+class SuperadminNotAssignableError(CustomAPIExeption):
+    """Raised when a membership write targets a superadmin. A superadmin holds
+    every permission in every organization, so a membership row grants nothing
+    and a role on it means nothing. Covers both adding one as a member and
+    changing the role on a membership they already hold."""
+
+    status_code = 400
+    default_detail = (
+        "Superadmins have access to every organization and cannot be added "
+        "as members or given an organization role."
+    )
+    default_code = "superadmin_not_assignable"
+
+
+class InactiveUserError(CustomAPIExeption):
+    """Raised when a membership write targets a deactivated account. The
+    account cannot sign in, so a membership would be inert."""
+
+    status_code = 400
+    default_detail = (
+        "This account is deactivated and cannot be added to an organization."
+    )
+    default_code = "user_not_active"

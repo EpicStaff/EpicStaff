@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Prefetch, Q
+from django.db.models.functions import Lower
 from loguru import logger
 from rest_framework.exceptions import PermissionDenied
 
@@ -75,6 +76,47 @@ class MembershipManagementService(CrossOrgResourceService):
             qs = qs.filter(user__is_active=False)
         return qs
 
+    def list_assignable_users(self, actor, search=None, scopes=None):
+        """Accounts the actor may attach to an organization: active,
+        non-superadmin users already visible to them through an org where they
+        can read members. A superadmin sees every active non-superadmin account,
+        including ones that belong to no organization yet.
+
+        Each row carries `_visible_memberships` — the user's memberships limited
+        to the actor's readable orgs — so the serializer can report where they
+        already belong without widening what the actor can see.
+
+        `Lower("email")` is annotated rather than used directly in `order_by`
+        because the queryset is DISTINCT, and Postgres requires every ORDER BY
+        expression to appear in the select list.
+        """
+        UserModel = get_user_model()
+        readable = self.resolve_readable_org_ids(actor, scopes=scopes)
+
+        visible_memberships = OrganizationUser.objects.select_related("org")
+        if readable is not None:
+            visible_memberships = visible_memberships.filter(org_id__in=readable)
+
+        qs = UserModel.objects.filter(is_active=True, is_superadmin=False)
+        if readable is not None:
+            qs = qs.filter(organization_memberships__org_id__in=readable)
+        if search:
+            qs = qs.filter(
+                Q(email__icontains=search) | Q(display_name__icontains=search)
+            )
+        return (
+            qs.prefetch_related(
+                Prefetch(
+                    "organization_memberships",
+                    queryset=visible_memberships,
+                    to_attr="_visible_memberships",
+                )
+            )
+            .annotate(email_sort=Lower("email"))
+            .order_by("email_sort", "id")
+            .distinct()
+        )
+
     # ---- create (link an existing user) ----
 
     @transaction.atomic
@@ -87,6 +129,7 @@ class MembershipManagementService(CrossOrgResourceService):
         if not Organization.objects.filter(pk=org_id).exists():
             raise OrganizationNotFoundError()
         target = self._resolve_target_user(email=email, user_id=user_id)
+        UserManagementGuards.assert_user_is_assignable_member(target)
         role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(role, org_id=org_id)
         if OrganizationUser.objects.filter(user=target, org_id=org_id).exists():
@@ -120,6 +163,7 @@ class MembershipManagementService(CrossOrgResourceService):
         effective = self.resolve_for_write(actor, membership.org_id)  # no-leak 404
         self._assert_not_self(actor, membership)
         self.assert_can(effective, Permission.UPDATE)
+        UserManagementGuards.assert_membership_holder_is_assignable(membership)
         new_role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(
             new_role, org_id=membership.org_id
@@ -168,7 +212,7 @@ class MembershipManagementService(CrossOrgResourceService):
     def _get_membership_locked(membership_id):
         membership = (
             OrganizationUser.objects.select_for_update(of=["self"])
-            .select_related("org", "role")
+            .select_related("org", "role", "user")
             .filter(pk=membership_id)
             .first()
         )

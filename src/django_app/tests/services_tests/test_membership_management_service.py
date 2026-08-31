@@ -229,3 +229,109 @@ def test_remove_last_admin_is_allowed_no_guard(admin_acme, acme, superadmin):
     own = OrganizationUser.objects.get(user=admin_acme, org=acme)
     svc.remove_member(actor=superadmin, membership_id=own.id)
     assert not OrganizationUser.objects.filter(pk=own.id).exists()
+
+
+# ---- assignable users ----
+
+
+@pytest.mark.django_db
+def test_assignable_users_scoped_to_readable_orgs(
+    admin_acme, acme, beta, role_member, django_user_model
+):
+    visible = django_user_model.objects.create_user(
+        email="visible@x.com", password="StrongPass123!"
+    )
+    hidden = django_user_model.objects.create_user(
+        email="hidden@x.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=visible, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=hidden, org=beta, role=role_member)
+
+    emails = set(
+        svc.list_assignable_users(actor=admin_acme).values_list("email", flat=True)
+    )
+    assert "visible@x.com" in emails
+    assert "hidden@x.com" not in emails
+
+
+@pytest.mark.django_db
+def test_assignable_users_excludes_superadmins_and_inactive(
+    admin_acme, acme, role_member, django_user_model
+):
+    sa = django_user_model.objects.create_user(
+        email="pool-sa@x.com", password="StrongPass123!", is_superadmin=True
+    )
+    off = django_user_model.objects.create_user(
+        email="pool-off@x.com", password="StrongPass123!", is_active=False
+    )
+    OrganizationUser.objects.create(user=sa, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=off, org=acme, role=role_member)
+
+    emails = set(
+        svc.list_assignable_users(actor=admin_acme).values_list("email", flat=True)
+    )
+    assert "pool-sa@x.com" not in emails
+    assert "pool-off@x.com" not in emails
+
+
+@pytest.mark.django_db
+def test_assignable_users_superadmin_sees_orgless_accounts(
+    superadmin, django_user_model
+):
+    django_user_model.objects.create_user(
+        email="orgless@x.com", password="StrongPass123!"
+    )
+    emails = set(
+        svc.list_assignable_users(actor=superadmin).values_list("email", flat=True)
+    )
+    assert "orgless@x.com" in emails
+
+
+@pytest.mark.django_db
+def test_assignable_users_org_ids_limited_to_readable(
+    admin_acme, acme, beta, role_member, django_user_model
+):
+    """A candidate in both Acme and Beta exposes only Acme to an Acme admin."""
+    user = django_user_model.objects.create_user(
+        email="both@x.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=user, org=beta, role=role_member)
+
+    row = svc.list_assignable_users(actor=admin_acme).get(email="both@x.com")
+    assert [m.org_id for m in row._visible_memberships] == [acme.id]
+
+
+@pytest.mark.django_db
+def test_assignable_users_search_matches_email_and_display_name(
+    admin_acme, acme, role_member, django_user_model
+):
+    user = django_user_model.objects.create_user(
+        email="zoe@x.com", password="StrongPass123!", display_name="Zoe Quinn"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+
+    by_email = svc.list_assignable_users(actor=admin_acme, search="zoe@")
+    by_name = svc.list_assignable_users(actor=admin_acme, search="quinn")
+    no_match = svc.list_assignable_users(actor=admin_acme, search="nobody")
+
+    assert by_email.filter(email="zoe@x.com").exists()
+    assert by_name.filter(email="zoe@x.com").exists()
+    assert not no_match.filter(email="zoe@x.com").exists()
+
+
+@pytest.mark.django_db
+def test_assignable_users_no_duplicate_rows_for_multi_org_member(
+    admin_acme, acme, beta, role_member, role_org_admin, django_user_model
+):
+    """The membership join is multi-valued; a user in two readable orgs must
+    still appear once."""
+    OrganizationUser.objects.create(user=admin_acme, org=beta, role=role_org_admin)
+    user = django_user_model.objects.create_user(
+        email="dup@x.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=user, org=beta, role=role_member)
+
+    rows = svc.list_assignable_users(actor=admin_acme)
+    assert rows.filter(email="dup@x.com").count() == 1

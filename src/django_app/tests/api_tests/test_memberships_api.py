@@ -309,3 +309,105 @@ def test_remove_last_admin_allowed_for_superadmin(
     own = OrganizationUser.objects.get(user=admin_acme, org=acme)
     resp = client_as(superadmin).delete(detail_url(own.id))
     assert resp.status_code == status.HTTP_204_NO_CONTENT
+
+
+# ---- assignable-target guards ----
+
+
+@pytest.mark.django_db
+def test_add_superadmin_by_email_400(
+    client_as, admin_acme, acme, role_member, django_user_model
+):
+    django_user_model.objects.create_user(
+        email="sa-target@x.com", password="StrongPass123!", is_superadmin=True
+    )
+    resp = client_as(admin_acme).post(
+        LIST_URL,
+        {"org_id": acme.id, "email": "sa-target@x.com", "role_id": role_member.id},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "superadmin_not_assignable"
+    assert not OrganizationUser.objects.filter(
+        user__email="sa-target@x.com", org=acme
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_add_superadmin_by_user_id_400(
+    client_as, admin_acme, acme, role_member, django_user_model
+):
+    target = django_user_model.objects.create_user(
+        email="sa-byid@x.com", password="StrongPass123!", is_superadmin=True
+    )
+    resp = client_as(admin_acme).post(
+        LIST_URL,
+        {"org_id": acme.id, "user_id": target.id, "role_id": role_member.id},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "superadmin_not_assignable"
+
+
+@pytest.mark.django_db
+def test_add_inactive_user_400(
+    client_as, admin_acme, acme, role_member, django_user_model
+):
+    django_user_model.objects.create_user(
+        email="off@x.com", password="StrongPass123!", is_active=False
+    )
+    resp = client_as(admin_acme).post(
+        LIST_URL,
+        {"org_id": acme.id, "email": "off@x.com", "role_id": role_member.id},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "user_not_active"
+
+
+@pytest.mark.django_db
+def test_change_role_of_superadmin_400(
+    client_as, admin_acme, acme, role_member, role_viewer, django_user_model
+):
+    sa = django_user_model.objects.create_user(
+        email="sa-rerole@x.com", password="StrongPass123!", is_superadmin=True
+    )
+    membership = OrganizationUser.objects.create(user=sa, org=acme, role=role_member)
+    resp = client_as(admin_acme).patch(
+        detail_url(membership.id), {"role_id": role_viewer.id}, format="json"
+    )
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "superadmin_not_assignable"
+    membership.refresh_from_db()
+    assert membership.role_id == role_member.id
+
+
+@pytest.mark.django_db
+def test_change_role_denied_before_superadmin_reason(
+    client_as, member_only, acme, role_member, role_viewer, django_user_model
+):
+    """A caller without MEMBERSHIPS.UPDATE gets permission_denied, not the
+    superadmin reason — the guard must not disclose the target to someone
+    who could not write anyway."""
+    sa = django_user_model.objects.create_user(
+        email="sa-hidden@x.com", password="StrongPass123!", is_superadmin=True
+    )
+    membership = OrganizationUser.objects.create(user=sa, org=acme, role=role_member)
+    resp = client_as(member_only).patch(
+        detail_url(membership.id), {"role_id": role_viewer.id}, format="json"
+    )
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_remove_superadmin_membership_allowed(
+    client_as, admin_acme, acme, role_member, django_user_model
+):
+    """Removal converges toward the invariant and destroys no access."""
+    sa = django_user_model.objects.create_user(
+        email="sa-remove@x.com", password="StrongPass123!", is_superadmin=True
+    )
+    membership = OrganizationUser.objects.create(user=sa, org=acme, role=role_member)
+    resp = client_as(admin_acme).delete(detail_url(membership.id))
+    assert resp.status_code == status.HTTP_204_NO_CONTENT
+    assert not OrganizationUser.objects.filter(pk=membership.pk).exists()

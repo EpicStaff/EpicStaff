@@ -3,8 +3,10 @@ from django.contrib.auth import get_user_model
 from tables.models.rbac_models import Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.rbac_exceptions import (
+    InactiveUserError,
     InvalidRoleAssignmentError,
     LastSuperadminError,
+    SuperadminNotAssignableError,
 )
 
 
@@ -49,3 +51,21 @@ class UserManagementGuards:
             raise InvalidRoleAssignmentError()
         if role.org_id is not None and role.org_id != org_id:
             raise InvalidRoleAssignmentError()
+
+    @staticmethod
+    def assert_user_is_assignable_member(target) -> None:
+        """Refuses accounts that cannot hold a membership: a superadmin (the
+        row would grant nothing they do not already have) and a deactivated
+        account (it cannot sign in to use one). Superadmin is checked first —
+        it is the structural reason, and reactivating would not change it."""
+        if target.is_superadmin:
+            raise SuperadminNotAssignableError()
+        if not target.is_active:
+            raise InactiveUserError()
+
+    @staticmethod
+    def assert_membership_holder_is_assignable(membership) -> None:
+        """Refuses a role change on a membership held by a superadmin. Takes
+        the membership so the check reads off the row the caller locked."""
+        if membership.user.is_superadmin:
+            raise SuperadminNotAssignableError()
