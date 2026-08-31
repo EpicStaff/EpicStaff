@@ -6,7 +6,6 @@ import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_CODE_AGENT_NODE_PORTS } from '../rules/code-agent-ports/code-agent-node-default-ports';
 import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
@@ -79,8 +78,6 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_END_NODE_PORTS;
         case NodeType.SUBGRAPH:
             return DEFAULT_SUBGRAPH_NODE_PORTS;
-        case NodeType.CODE_AGENT:
-            return DEFAULT_CODE_AGENT_NODE_PORTS;
         case NodeType.NOTE:
             return [];
         default:

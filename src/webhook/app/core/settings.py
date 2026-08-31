@@ -16,7 +16,6 @@ else:
 
 class Settings(BaseSettings):
     WEBHOOK_TUNNEL: Optional[str] = None
-    WEBHOOK_AUTH: Optional[str] = None
     NGROK_DOMAIN: Optional[str] = None
     WEBHOOK_PORT: int = 8009
     REDIS_HOST: str = "localhost"

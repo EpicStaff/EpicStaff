@@ -120,6 +120,34 @@ class TestMcpAndLabelCrossOrg:
         assert created, "label must be created in org_b"
         assert Label.objects.get(id=created[0]).org_id == org_b.id
 
+    def test_tool_scope_label_not_attached_to_imported_graph(
+        self, export_service, default_org
+    ):
+        graph = Graph.objects.create(name="label-scope-graph", org=default_org)
+        flow_label = Label.objects.create(
+            name="flow-label", org=default_org, scope=Label.Scope.FLOW
+        )
+        tool_label = Label.objects.create(
+            name="tool-label", org=default_org, scope=Label.Scope.TOOL
+        )
+        graph.labels.add(flow_label, tool_label)
+
+        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+
+        id_mapper, _ = ImportService(entity_registry).import_data(
+            export_data,
+            EntityType.GRAPH,
+            settings=ImportSettings(import_labels=True),
+            org_id=default_org.id,
+        )
+
+        new_graph = Graph.objects.get(
+            id=id_mapper.get_created_ids(EntityType.GRAPH)[0]
+        )
+        new_graph_label_names = set(new_graph.labels.values_list("name", flat=True))
+        assert "flow-label" in new_graph_label_names
+        assert "tool-label" not in new_graph_label_names
+
 
 @pytest.mark.django_db
 class TestHybridCrossOrg:

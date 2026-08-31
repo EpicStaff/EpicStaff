@@ -38,6 +38,10 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 RUN apt-get update && apt-get install -y ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 
+# Create the non-root user that child subprocesses (pip, venv creation, and
+# user code execution) run as.
+RUN useradd --system --no-create-home --uid 1000 sandboxuser
+
 # Copy built app from builder
 COPY --from=builder /app /app
 

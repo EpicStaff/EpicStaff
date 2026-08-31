@@ -64,7 +64,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Tools",
         "group": "workspace",
         "description": "Tool definitions and configurations",
-        "applicable_actions": ["create", "read", "update", "delete"],
+        "applicable_actions": ["create", "read", "update", "delete", "export"],
     },
     {
         "code": ResourceType.SURFACES.value,

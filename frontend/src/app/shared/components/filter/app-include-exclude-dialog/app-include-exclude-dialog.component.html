@@ -1,0 +1,141 @@
+<div class="include-exclude-dialog">
+    <header class="dialog-header">
+        <h2 class="title">{{ title }}</h2>
+    </header>
+
+    <div class="tab-switch">
+        <button
+            type="button"
+            class="tab-btn"
+            [class.active]="activeTab() === 'primary'"
+            (click)="setActiveTab('primary')"
+        >
+            <app-svg-icon
+                [icon]="primaryTab.icon"
+                size="0.95rem"
+            />
+            <span>{{ primaryTab.label }}</span>
+        </button>
+        <button
+            type="button"
+            class="tab-btn"
+            [class.active]="activeTab() === 'labels'"
+            (click)="setActiveTab('labels')"
+        >
+            <app-svg-icon
+                [icon]="labelsTab.icon"
+                size="0.95rem"
+            />
+            <span>{{ labelsTab.label }}</span>
+        </button>
+    </div>
+
+    @if (activeTab() === 'primary') {
+        <div class="selection-counter">
+            <span>Selected</span>
+            <span>
+                <span class="count-current">{{ selectedItemCount() }}</span>
+                <span class="count-total"> / {{ totalItemCount() }}</span>
+            </span>
+        </div>
+
+        <input
+            type="text"
+            class="search-input"
+            [placeholder]="primaryTab.searchPlaceholder ?? 'Search...'"
+            [ngModel]="primarySearch()"
+            (ngModelChange)="primarySearch.set($event)"
+        />
+
+        <div class="list">
+            @for (item of filteredItems(); track item.id) {
+                <label
+                    class="list-row"
+                    [title]="item.name"
+                >
+                    <app-checkbox
+                        [checked]="isItemSelected(item.id)"
+                        (changed)="toggleItem(item.id)"
+                    />
+                    <span class="row-label">{{ item.name }}</span>
+                </label>
+            }
+            @if (filteredItems().length === 0) {
+                <div class="empty">{{ primaryTab.emptyText ?? 'No items match the search.' }}</div>
+            }
+        </div>
+    } @else {
+        <div class="selection-counter">
+            <span>Selected</span>
+            <span>
+                <span class="count-current">{{ selectedLabelCount() }}</span>
+                <span class="count-total"> / {{ totalLabelCount() }}</span>
+            </span>
+        </div>
+
+        <input
+            type="text"
+            class="search-input"
+            [placeholder]="labelsTab.searchPlaceholder ?? 'Search label...'"
+            [ngModel]="labelSearch()"
+            (ngModelChange)="labelSearch.set($event)"
+        />
+
+        <div class="list">
+            @for (entry of flatLabelTree(); track entry.node.id) {
+                <div
+                    class="list-row label-row"
+                    [style.paddingLeft]="indentPadding(entry.depth)"
+                    [title]="entry.node.name"
+                >
+                    <button
+                        type="button"
+                        class="expand-btn"
+                        [style.visibility]="entry.node.children.length > 0 ? 'visible' : 'hidden'"
+                        (click)="toggleExpand(entry.node.id)"
+                    >
+                        <app-svg-icon
+                            icon="expand"
+                            size="0.6rem"
+                            class="expand-icon"
+                            [class.expanded]="isExpanded(entry.node.id)"
+                        />
+                    </button>
+                    <label class="row-checkbox-wrap">
+                        <app-checkbox
+                            [checked]="isLabelSelected(entry.node.id)"
+                            (changed)="toggleLabel(entry.node.id)"
+                        />
+                        <span class="row-label">{{ entry.node.name }}</span>
+                    </label>
+                </div>
+            }
+            @if (flatLabelTree().length === 0) {
+                <div class="empty">{{ labelsTab.emptyText }}</div>
+            }
+        </div>
+    }
+
+    <footer class="dialog-footer">
+        <app-button
+            type="outline-primary"
+            (click)="selectAll()"
+        >
+            Select All
+        </app-button>
+        <div class="footer-right">
+            <app-button
+                type="outline-primary"
+                (click)="cancel()"
+            >
+                Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                (click)="save()"
+            >
+                Save Changes
+            </app-button>
+        </div>
+    </footer>
+</div>

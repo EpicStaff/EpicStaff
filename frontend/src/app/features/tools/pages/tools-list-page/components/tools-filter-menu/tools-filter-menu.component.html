@@ -1,0 +1,83 @@
+<div
+    class="filter-menu"
+    role="menu"
+    (click)="$event.stopPropagation()"
+>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('show_favorite')"
+    >
+        <span class="label">Show Favorite</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('sort_asc')"
+    >
+        <span class="label">Sort from A to Z</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('sort_desc')"
+    >
+        <span class="label">Sort from Z to A</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('used_in_projects')"
+    >
+        <span class="label">Used in Projects</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('used_in_agents')"
+    >
+        <span class="label">Used in Agents</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('most_used')"
+    >
+        <span class="label">Most Used</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('unused_first')"
+    >
+        <span class="label">Unused First</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('include_exclude')"
+    >
+        <span class="label">Include / Exclude</span>
+        <app-svg-icon
+            icon="arrow-right"
+            size="0.7rem"
+            class="chevron"
+        />
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('custom_filter')"
+    >
+        <span class="label">Custom filter</span>
+    </button>
+</div>
