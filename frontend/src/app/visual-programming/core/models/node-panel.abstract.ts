@@ -263,6 +263,28 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
     }
 
+    public invalidPayloadFields(): string[] {
+        if (!this.form) return [];
+        const fields: string[] = [];
+        for (const [name, control] of Object.entries(this.form.controls)) {
+            if (control.invalid) fields.push(...this.controlToPayloadFields(name));
+        }
+        return fields;
+    }
+
+    protected controlToPayloadFields(controlName: string): string[] {
+        return [controlName];
+    }
+
+    public captureForBroadcast(): T | null {
+        if (!this.form) return null;
+        try {
+            return this.createUpdatedNode();
+        } catch {
+            return null;
+        }
+    }
+
     /**
      * Captures the panel's current node state for a flow-wide save, regardless of whether
      * the form is currently valid. Unlike `onSaveSilently()` (which returns `null` on an

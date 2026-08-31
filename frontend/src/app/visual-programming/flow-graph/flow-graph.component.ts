@@ -958,7 +958,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    public onNodePanelAutosaved(updatedNode: NodeModel): void {
+    public onNodePanelAutosaved(updatedNode: NodeModel, excludeFields: string[] = []): void {
         this.recordAfterChange();
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         const prev = this.flowService.nodes().find((n) => n.id === normalizedNode.id) ?? null;
@@ -971,7 +971,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.flowService.connections(),
             prev,
             false,
-            prevConnections
+            prevConnections,
+            excludeFields
         );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
 

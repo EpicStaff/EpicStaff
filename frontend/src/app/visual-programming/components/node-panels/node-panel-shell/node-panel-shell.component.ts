@@ -107,7 +107,7 @@ export class NodePanelShellComponent {
     public readonly currentFlowId = input<number | null>(null);
     public readonly canEdit = input<boolean>(true);
     public readonly save = output<NodeModel>();
-    public readonly autosave = output<NodeModel>();
+    public readonly autosave = output<{ node: NodeModel; excludeFields: string[] }>();
 
     public readonly panelComponent = computed(() => {
         const node = this.node();
@@ -161,6 +161,8 @@ export class NodePanelShellComponent {
         | (NodePanel & {
               onSaveSilently?: () => NodeModel | null;
               captureForValidation?: () => NodeModel | null;
+              captureForBroadcast?: () => NodeModel | null;
+              invalidPayloadFields?: () => string[];
           })
         | null = null;
     protected readonly panelInstanceSig = signal<{
@@ -222,6 +224,8 @@ export class NodePanelShellComponent {
                     if (outletRef?.componentInstance) {
                         this.panelInstance = outletRef.componentInstance as NodePanel & {
                             onSaveSilently?: () => NodeModel | null;
+                            captureForBroadcast?: () => NodeModel | null;
+                            invalidPayloadFields?: () => string[];
                         };
                         this.panelInstanceSig.set(
                             outletRef.componentInstance as {
@@ -304,15 +308,24 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
-        if (
-            this.panelInstance &&
-            typeof this.panelInstance.onSave === 'function' &&
-            (this.panelInstanceSig()?.isDirty?.() ?? true)
-        ) {
-            const updatedNode = this.panelInstance.onSave();
-            if (updatedNode) {
-                this.autosave.emit(updatedNode);
-            }
+        const panel = this.panelInstance;
+        if (!panel || typeof panel.onSave !== 'function') return;
+        if (!(this.panelInstanceSig()?.isDirty?.() ?? true)) return;
+
+        const updatedNode = panel.onSave();
+        if (updatedNode) {
+            this.autosave.emit({ node: updatedNode, excludeFields: [] });
+            return;
+        }
+
+        if (typeof panel.captureForBroadcast !== 'function' || typeof panel.invalidPayloadFields !== 'function') {
+            return;
+        }
+        const excludeFields = panel.invalidPayloadFields();
+        if (excludeFields.length === 0) return;
+        const partialNode = panel.captureForBroadcast();
+        if (partialNode) {
+            this.autosave.emit({ node: partialNode, excludeFields });
         }
     }
 

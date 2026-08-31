@@ -365,12 +365,15 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
                 this.errorsChange.emit([]);
             }
         }
-        this.monacoEditor
-            ?.getAction('editor.action.formatDocument')
-            ?.run()
-            ?.then(() => {
-                this.isProgrammaticChange = false;
-                this.runExtraValidation();
-            });
+        const formatting = this.monacoEditor?.getAction('editor.action.formatDocument')?.run();
+        const release = () => {
+            this.isProgrammaticChange = false;
+            this.runExtraValidation();
+        };
+        if (formatting && typeof formatting.then === 'function') {
+            formatting.then(release, release);
+        } else {
+            release();
+        }
     }
 }

@@ -837,7 +837,8 @@ export class GraphCollaborationWsService {
         connections: ConnectionModel[] = [],
         prevNode: NodeModel | null = null,
         withExpected = false,
-        prevConnections?: ConnectionModel[]
+        prevConnections?: ConnectionModel[],
+        excludeFields: string[] = []
     ): string | null {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return null;
@@ -850,19 +851,21 @@ export class GraphCollaborationWsService {
             const prevPayload = buildNodeBackendPayload(prevNode, graphId, allNodes, prevConnections ?? connections);
             if (prevPayload) {
                 const { node: partial, changed_fields } = buildPartialNodePayload(prevPayload, payload);
-                if (changed_fields.length === 0) return null;
+                const broadcast_fields = changed_fields.filter((f) => !excludeFields.includes(f));
+                if (broadcast_fields.length === 0) return null;
+                for (const key of excludeFields) delete partial[key];
                 const op_id = crypto.randomUUID();
                 const message: NodeUpdatedMessage = {
                     type: 'node_updated',
                     node: partial,
                     list_key,
-                    changed_fields,
+                    changed_fields: broadcast_fields,
                     op_id,
                     editor,
                 };
                 if (withExpected) {
                     const expected: Record<string, unknown> = {};
-                    for (const key of changed_fields) expected[key] = prevPayload[key];
+                    for (const key of broadcast_fields) expected[key] = prevPayload[key];
                     message.expected = expected;
                 }
                 this.sendRaw(message);
@@ -870,6 +873,7 @@ export class GraphCollaborationWsService {
             }
         }
 
+        if (excludeFields.length > 0) return null;
         this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
         return null;
     }

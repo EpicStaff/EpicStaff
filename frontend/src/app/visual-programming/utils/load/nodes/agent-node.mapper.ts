@@ -2,10 +2,13 @@ import { generateUuid } from '@shared/utils';
 
 import {
     AgentNode,
+    AgentNodeTaskDto,
     AgentNodeTaskUi,
+    AgentNodeTaskWrite,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { AgentNodeModel } from '../../../core/models/node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapAgentNodeToModel(an: AgentNode): AgentNodeModel {
@@ -13,20 +16,29 @@ export function mapAgentNodeToModel(an: AgentNode): AgentNodeModel {
 
     const tasks: AgentNodeTaskUi[] = [...(an.tasks ?? [])]
         .sort((a, b) => a.order - b.order)
-        .map((task) => ({
-            id: task.id,
-            // Fresh client-side id for stable row tracking (drag-reorder, table trackBy).
-            // Persistence still keys off `id`; `tempId` is never sent for existing tasks.
-            tempId: generateUuid(),
-            name: task.name,
-            instructions: task.instructions,
-            output_schema: task.output_schema ?? {},
-            output_schema_invalid: false,
-            contextRefs: (task.context_tasks ?? []).map((id) => ({ id })),
-        }));
+        .map((task) => {
+            const wire = task as AgentNodeTaskDto & AgentNodeTaskWrite;
+            const contextRefs =
+                wire.context_tasks !== undefined
+                    ? wire.context_tasks.map((id) => ({ id }))
+                    : [
+                          ...(wire.context_task_ids ?? []).map((id) => ({ id })),
+                          ...(wire.context_task_temp_ids ?? []).map((tempId) => ({ tempId })),
+                      ];
+
+            return {
+                id: task.id,
+                tempId: wire.temp_id ?? generateUuid(),
+                name: task.name,
+                instructions: task.instructions,
+                output_schema: task.output_schema ?? {},
+                output_schema_invalid: false,
+                contextRefs,
+            };
+        });
 
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.AGENT, an.id),
         backendId: an.id,
         type: NodeType.AGENT,
         node_name: an.node_name,

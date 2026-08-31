@@ -106,7 +106,12 @@ export class AgentTasksTableComponent {
         const trimmed = draft.trim();
         try {
             const parsed = trimmed === '' ? {} : JSON.parse(trimmed);
-            this.setInvalid(task.tempId, !isValidOutputSchema(parsed));
+            const rulesOk = isValidOutputSchema(parsed);
+            this.setInvalid(task.tempId, !rulesOk);
+            if (!rulesOk) {
+                this.updateTask(index, { output_schema_invalid: true });
+                return;
+            }
             this.schemaDrafts.update((drafts) =>
                 Object.fromEntries(Object.entries(drafts).filter(([key]) => key !== task.tempId))
             );

@@ -55,6 +55,7 @@ import {
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import {
     InstructionsView,
@@ -85,6 +86,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         VariableHighlightTextareaComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        LockableFieldComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -448,8 +450,12 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         const trimmed = json.trim();
         try {
             const parsed = trimmed === '' ? {} : JSON.parse(trimmed);
-            this.updateSelectedTaskField(task.tempId, { output_schema: parsed, output_schema_invalid: false });
-            this.setRightSchemaError(task.tempId, isValidOutputSchema(parsed) ? '' : OUTPUT_SCHEMA_RULE_ERROR);
+            const rulesOk = isValidOutputSchema(parsed);
+            this.updateSelectedTaskField(
+                task.tempId,
+                rulesOk ? { output_schema: parsed, output_schema_invalid: false } : { output_schema_invalid: true }
+            );
+            this.setRightSchemaError(task.tempId, rulesOk ? '' : OUTPUT_SCHEMA_RULE_ERROR);
         } catch {
             this.updateSelectedTaskField(task.tempId, { output_schema_invalid: true });
             this.setRightSchemaError(task.tempId, OUTPUT_SCHEMA_JSON_ERROR);
@@ -508,10 +514,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.selectedSurfaceIds.set(data.surface_list ?? []);
         this.inlineSurface.set(data.inline_surface ?? null);
         this.tasks.set(this.cloneTasks(data.tasks ?? []));
-        this.rightPane.set(null);
-        this.rightSchemaDrafts.set({});
-        this.rightSchemaErrors.set({});
-        this.instructionsViewByTask.set({});
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -524,6 +526,13 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.initializeInputMap(form);
 
         return form;
+    }
+
+    protected override onFormReinitialized(): void {
+        this.rightPane.set(null);
+        this.rightSchemaDrafts.set({});
+        this.rightSchemaErrors.set({});
+        this.instructionsViewByTask.set({});
     }
 
     createUpdatedNode(): AgentNodeModel {
@@ -544,6 +553,10 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
                 tasks: this.tasks(),
             },
         };
+    }
+
+    protected override controlToPayloadFields(controlName: string): string[] {
+        return controlName === 'tasksValidity' ? ['tasks'] : [controlName];
     }
 
     private tasksValidator(): ValidatorFn {

@@ -52,6 +52,7 @@ import {
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import {
     InstructionsView,
@@ -80,6 +81,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ToggleSwitchComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        LockableFieldComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -371,7 +373,10 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     onSchemaValidChange(isValid: boolean): void {
-        if (isValid) return;
+        if (isValid) {
+            this.recomputeOutputSchemaValidity(this.outputSchemaText);
+            return;
+        }
         this.outputSchemaDraftInvalid = true;
         this.outputSchemaError = OUTPUT_SCHEMA_JSON_ERROR;
     }
@@ -386,8 +391,9 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         }
         try {
             const parsed = JSON.parse(trimmed);
-            this.outputSchemaDraftInvalid = false;
-            this.outputSchemaError = isValidOutputSchema(parsed) ? '' : OUTPUT_SCHEMA_RULE_ERROR;
+            const rulesOk = isValidOutputSchema(parsed);
+            this.outputSchemaDraftInvalid = !rulesOk;
+            this.outputSchemaError = rulesOk ? '' : OUTPUT_SCHEMA_RULE_ERROR;
         } catch {
             this.outputSchemaDraftInvalid = true;
             this.outputSchemaError = OUTPUT_SCHEMA_JSON_ERROR;
@@ -400,9 +406,6 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.agentDefinitionId.set(data.agent_definition ?? null);
         this.selectedSurfaceIds.set(data.surface_list ?? []);
         this.inlineSurface.set(data.inline_surface ?? null);
-        this.outputSchemaExpanded.set(false);
-        this.mainView.set('instructions');
-        this.instructionsView.set((data.instructions || '').trim() ? 'preview' : 'edit');
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -415,12 +418,29 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
         this.initializeInputMap(form);
 
-        const schema = data.output_schema;
-        this.outputSchemaText = schema && Object.keys(schema).length > 0 ? JSON.stringify(schema, null, 2) : '{}';
+        return form;
+    }
+
+    protected override onFormReinitialized(): void {
+        const data = this.node().data;
+        this.outputSchemaExpanded.set(false);
+        this.mainView.set('instructions');
+        this.instructionsView.set((data.instructions || '').trim() ? 'preview' : 'edit');
+        this.outputSchemaText = this.schemaToText(data.output_schema);
         this.outputSchemaDraftInvalid = false;
         this.outputSchemaError = '';
+    }
 
-        return form;
+    protected override onRemoteFormMerged(): void {
+        if (this.outputSchemaDraftInvalid) return;
+        const remote = this.node().data.output_schema ?? {};
+        if (JSON.stringify(this.parsedOutputSchema()) === JSON.stringify(remote)) return;
+        this.outputSchemaText = this.schemaToText(remote);
+        this.outputSchemaError = '';
+    }
+
+    private schemaToText(schema: Record<string, unknown> | undefined): string {
+        return schema && Object.keys(schema).length > 0 ? JSON.stringify(schema, null, 2) : '{}';
     }
 
     createUpdatedNode(): TaskNodeModel {
@@ -454,7 +474,9 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         const trimmed = this.outputSchemaText.trim();
         if (!trimmed) return {};
         try {
-            return JSON.parse(trimmed);
+            const parsed = JSON.parse(trimmed);
+            if (!isValidOutputSchema(parsed)) return this.node().data.output_schema ?? {};
+            return parsed;
         } catch {
             return this.node().data.output_schema ?? {};
         }
