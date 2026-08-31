@@ -172,4 +172,5 @@ export type NodeModel =
     | TelegramTriggerNodeModel
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
+    | KnowledgeRetrieverNodeModel
     | EndNodeModel;
