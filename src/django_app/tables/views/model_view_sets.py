@@ -2858,7 +2858,7 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is enforced in two
+    OrgScopedModel) — org isolation is enforced in two
     layers here: `HasOrgPermission` checks that the caller's role has
     VOICE:UPDATE permission in their active org (a generic role-bit check,
     with no knowledge of this specific channel), and the manual

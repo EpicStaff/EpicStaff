@@ -55,7 +55,7 @@ class WebhookTriggerNestedSerializer(serializers.ModelSerializer):
         # create two separate WebhookTrigger rows (unique_together allows
         # it). No existing-row lookup/merge/config-deletion here — that
         # get-or-create behavior used to hijack another provider's row on a
-        # path collision (EST-3625).
+        # path collision.
         request = self.context.get("request")
         org_id = resolve_active_org_id(request) if request is not None else None
         if org_id is None:

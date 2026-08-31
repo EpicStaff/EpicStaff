@@ -47,7 +47,7 @@ def _fake_request(
 def _channel_with_nested_webhook_trigger(live_url: str | None, ngrok_domain: str | None):
     """Mimics `RealtimeChannelInternalSerializer`/`_TwilioChannelInternalSerializer` output:
     `ngrok_config` and `live_url` live under `twilio.webhook_trigger`, not directly on
-    `twilio` (see EST-1869 regression — they were previously read one level too shallow,
+    `twilio` (see regression — they were previously read one level too shallow,
     always resolving to an empty string and forcing a 503).
     """
     return {
