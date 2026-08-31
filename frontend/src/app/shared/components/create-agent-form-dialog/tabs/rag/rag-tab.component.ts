@@ -11,6 +11,7 @@ import {
     TextareaComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 
 import {
     GetCollectionRagsResponse,
@@ -36,6 +37,8 @@ import { AgentSearchConfigs, GraphBasicSearchConfig, GraphLocalSearchConfig } fr
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RagTabComponent implements OnInit {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
 

@@ -74,7 +74,7 @@
                         mod="small"
                         [min]="20"
                         [max]="8000"
-                        [stepSize]="50"
+                        [stepSize]="DEFAULT_STEP_SIZE"
                         [(value)]="bulkChunkSize"
                     />
                 </div>
@@ -85,7 +85,7 @@
                         mod="small"
                         [min]="0"
                         [max]="1000"
-                        [stepSize]="50"
+                        [stepSize]="DEFAULT_STEP_SIZE"
                         [(value)]="bulkChunkOverlap"
                     />
                 </div>
@@ -168,7 +168,7 @@
                                     mod="small"
                                     [min]="20"
                                     [max]="8000"
-                                    [stepSize]="50"
+                                    [stepSize]="DEFAULT_STEP_SIZE"
                                     [(value)]="d.chunk_size"
                                     [invalid]="!!d.errors?.chunk_size"
                                     (changed)="onDocFieldChange(d, 'chunk_size', $event)"
@@ -181,7 +181,7 @@
                                     mod="small"
                                     [min]="0"
                                     [max]="1000"
-                                    [stepSize]="50"
+                                    [stepSize]="DEFAULT_STEP_SIZE"
                                     [(value)]="d.chunk_overlap"
                                     [invalid]="!!d.errors?.chunk_overlap"
                                     (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"

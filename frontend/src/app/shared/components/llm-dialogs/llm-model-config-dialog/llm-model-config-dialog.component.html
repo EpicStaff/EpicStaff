@@ -145,7 +145,7 @@
                     formControlName="timeout"
                     [min]="1"
                     [max]="600"
-                    [stepSize]="50"
+                    [stepSize]="DEFAULT_STEP_SIZE"
                     label="Timeout (seconds)"
                     tooltipText="How long to wait for the model to respond before the request is cancelled"
                     [alwaysShowSteps]="true"
@@ -160,7 +160,7 @@
                 <app-input-number
                     formControlName="seed"
                     placeholder="random"
-                    [stepSize]="50"
+                    [stepSize]="DEFAULT_STEP_SIZE"
                     label="Seed"
                     tooltipText="Fixed seed for reproducible outputs. Leave empty to let the model pick randomly."
                     [alwaysShowSteps]="true"

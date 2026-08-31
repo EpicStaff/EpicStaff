@@ -58,7 +58,7 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     onSliderChange(event: Event) {
         const target = event.target as HTMLInputElement;
         const newValue = parseFloat(target.value);
-        this.updateValue(newValue);
+        this.updateValue(this.roundToDecimals(newValue));
     }
 
     onStepDown() {

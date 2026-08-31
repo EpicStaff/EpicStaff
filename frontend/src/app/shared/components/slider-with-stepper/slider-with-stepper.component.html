@@ -71,7 +71,7 @@
                 class="slider-stepper__slider"
                 [min]="min()"
                 [max]="max()"
-                [step]="step()"
+                step="any"
                 [ngModel]="value() ?? min()"
                 (input)="onSliderChange($event)"
                 (blur)="onTouched()"
