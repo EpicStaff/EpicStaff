@@ -16,6 +16,7 @@
             <app-input-number
                 formControlName="chunk_size"
                 [alwaysShowSteps]="true"
+                [stepSize]="50"
                 [invalid]="!!getMainParamControl('chunk_size')?.invalid"
             />
             <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
@@ -34,6 +35,7 @@
             <app-input-number
                 formControlName="chunk_overlap"
                 [alwaysShowSteps]="true"
+                [stepSize]="50"
                 [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
             />
             <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
