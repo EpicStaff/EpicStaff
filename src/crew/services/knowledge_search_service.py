@@ -148,6 +148,7 @@ class KnowledgeSearchService:
         rag_search_config: Dict[str, Any],
         stop_event: Optional[StopEvent] = None,
         timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
     ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
         return self._search(
             sender=sender,
@@ -157,6 +158,7 @@ class KnowledgeSearchService:
             rag_search_config=rag_search_config,
             stop_event=stop_event,
             timeout=timeout,
+            rag_embedder_api_key=rag_embedder_api_key,
         )
 
     def _search(

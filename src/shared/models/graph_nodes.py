@@ -40,6 +40,8 @@ class KnowledgeNodeData(BaseModel):
     rag_search_config: RagSearchConfig | None = None
     input_map: dict[str, Any]
     output_variable_path: str | None = None
+    embedder_api_key: str | None = None
+    embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 

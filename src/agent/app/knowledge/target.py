@@ -32,3 +32,4 @@ class KnowledgeSearchTarget(BaseModel):
     rag_id: int
     rag_type: Literal["naive", "graph"]
     search_config: RagSearchConfig
+    embedder_api_key: str | None = None

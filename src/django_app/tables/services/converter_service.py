@@ -101,6 +101,7 @@ from utils.graph_utils import (
 )
 from utils.singleton_meta import SingletonMeta
 from tables.services.rag_assignment_service import SearchConfigService
+from tables.services.rag_registry import resolve_rag_in_collection
 
 from tables.models.embedding_models import EmbeddingConfig
 
@@ -170,6 +171,7 @@ class ConverterService(metaclass=SingletonMeta):
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs
         )
+        embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
         return KnowledgeNodeData(
             node_name=resolver(knowledge_node.id),
             collection_id=collection_id,
@@ -178,7 +180,22 @@ class ConverterService(metaclass=SingletonMeta):
             rag_search_config=rag_search_config,
             input_map=knowledge_node.input_map,
             output_variable_path=knowledge_node.output_variable_path,
+            embedder_api_key_secret_id=embedder_api_key_secret_id,
         )
+
+    @staticmethod
+    def _node_rag_embedder_secret_id(knowledge_node: KnowledgeNode) -> int | None:
+        """Secret id of the node's RAG embedder, resolved by the same (collection,
+        rag_id, rag_type) coordinates the knowledge service searches by."""
+        if not (knowledge_node.rag_type and knowledge_node.rag_id):
+            return None
+        rag = resolve_rag_in_collection(
+            knowledge_node.rag_type,
+            knowledge_node.rag_id,
+            knowledge_node.source_collection,
+        )
+        embedder = rag.embedder
+        return embedder.api_key_secret_id if embedder else None
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
