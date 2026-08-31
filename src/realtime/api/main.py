@@ -67,7 +67,7 @@ transcription_client_factory = TranscriptionClientFactory()
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -366,7 +366,8 @@ async def _twilio_voice_webhook(
             )
             raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     else:
-        logger.warning("[voice_webhook] no auth_token — skipping signature validation")
+        logger.warning("[voice_webhook] no auth_token — rejecting request (fail closed)")
+        raise HTTPException(status_code=503, detail="Twilio auth not configured")
 
     if not voice_stream_url:
         logger.error("[voice_webhook] no voice_stream_url configured")
