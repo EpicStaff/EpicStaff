@@ -57,8 +57,11 @@
         }
     </div>
 
-    @if (!readonly() && globalPendingCount() > 0) {
-        <div class="related-banner">
+    @if (!readonly()) {
+        <div
+            class="related-banner"
+            [class.is-open]="globalPendingCount() > 0"
+        >
             <span class="text"> Related permissions needed — {{ globalPendingCount() }} pending </span>
 
             <app-button
@@ -170,42 +173,43 @@
                             }
                         </div>
 
-                        @if (
-                            !readonly() &&
-                                !isBannerDismissed(resource.code) &&
-                                recommendedByResource().get(resource.code);
-                            as rec
-                        ) {
-                            <div class="related-banner">
-                                <app-svg-icon
-                                    icon="warning"
-                                    size="12px"
-                                    class="icon"
-                                />
-                                <span class="text">
-                                    This also needs
-                                    @for (k of rec.missingKeys; track k; let last = $last) {
-                                        <span class="missing-permission">{{ keyLabel(k) }}</span>
-                                        @if (!last) {
-                                            ,
+                        @if (!readonly()) {
+                            @let rec = recommendedByResource().get(resource.code);
+                            <div
+                                class="related-banner"
+                                [class.is-open]="!isBannerDismissed(resource.code) && !!rec"
+                            >
+                                @if (rec) {
+                                    <app-svg-icon
+                                        icon="warning"
+                                        size="12px"
+                                        class="icon"
+                                    />
+                                    <span class="text">
+                                        This also needs
+                                        @for (k of rec.missingKeys; track k; let last = $last) {
+                                            <span class="missing-permission">{{ keyLabel(k) }}</span>
+                                            @if (!last) {
+                                                ,
+                                            }
                                         }
-                                    }
-                                    to work correctly.
-                                </span>
+                                        to work correctly.
+                                    </span>
 
-                                <app-button
-                                    type="secondary"
-                                    mod="small"
-                                    (click)="onEnableResourceRecommended(resource.code)"
-                                    >Enable</app-button
-                                >
+                                    <app-button
+                                        type="secondary"
+                                        mod="small"
+                                        (click)="onEnableResourceRecommended(resource.code)"
+                                        >Enable</app-button
+                                    >
 
-                                <app-button
-                                    type="secondary"
-                                    mod="small"
-                                    (click)="onDismissResourceRecommended(resource.code)"
-                                    >Dismiss</app-button
-                                >
+                                    <app-button
+                                        type="secondary"
+                                        mod="small"
+                                        (click)="onDismissResourceRecommended(resource.code)"
+                                        >Dismiss</app-button
+                                    >
+                                }
                             </div>
                         }
                     }
