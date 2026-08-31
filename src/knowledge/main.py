@@ -178,7 +178,7 @@ async def execute_preview_chunking(
                 chunking_job_id=chunking_job_id,
                 rag_type=rag_type,
                 document_config_id=config_id,
-                status="completed",
+                status=KnowledgeStatus.COMPLETED,
                 chunk_count=chunk_count,
                 elapsed_time=elapsed_time,
             )
@@ -206,7 +206,7 @@ async def execute_preview_chunking(
                 chunking_job_id=chunking_job_id,
                 rag_type=rag_type,
                 document_config_id=config_id,
-                status="cancelled",
+                status=KnowledgeStatus.CANCELLED,
                 message="Job cancelled by newer request",
                 elapsed_time=elapsed_time,
             )
@@ -229,7 +229,7 @@ async def execute_preview_chunking(
                 chunking_job_id=chunking_job_id,
                 rag_type=rag_type,
                 document_config_id=config_id,
-                status="failed",
+                status=KnowledgeStatus.FAILED,
                 message=error_message,
                 elapsed_time=elapsed_time,
             )
