@@ -88,7 +88,7 @@ of caller and org. Cache-friendly.
   ],
   "resource_types": [
     { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Rename and manage organization settings",        "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"] },
-    { "code": "users",             "label": "Users",               "group": "admin",     "description": "Add/remove members, assign roles within org",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "memberships",       "label": "Members",             "group": "admin",     "description": "Add, remove, and re-role members within an org", "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
@@ -134,7 +134,7 @@ gating.
   "is_superadmin": false,
   "role": { "id": 3, "name": "Member" },
   "permissions": {
-    "USERS": ["READ"],
+    "MEMBERSHIPS": ["READ"],
     "ROLES": ["READ"],
     "ORGANIZATIONS": ["READ"],
     "PROJECTS": ["CREATE", "READ", "UPDATE"],

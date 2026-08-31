@@ -35,10 +35,14 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": ["create", "delete"],
     },
     {
-        "code": ResourceType.USERS.value,
-        "label": "Users",
+        "code": ResourceType.MEMBERSHIPS.value,
+        "label": "Memberships",
         "group": "admin",
-        "description": "Add/remove members, assign roles within org",
+        # Governs org MEMBERSHIP (add/remove/re-role members). The global user
+        # ACCOUNT entity (create account, reset password, grant superadmin,
+        # activate/deactivate) is a separate superadmin-only surface, not part
+        # of this matrix — which is why there are no platform_actions here.
+        "description": "Add, remove, and re-role members within an organization",
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },

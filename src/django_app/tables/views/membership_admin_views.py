@@ -40,12 +40,12 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
     partial_update:  PATCH  /api/admin/memberships/{id}/       (role_id)
     destroy:         DELETE /api/admin/memberships/{id}/
 
-    Door gate: HasResourcePermissionAnywhere(USERS); precise per-org checks
+    Door gate: HasResourcePermissionAnywhere(MEMBERSHIPS); precise per-org checks
     and invariants live in MembershipManagementService.
     """
 
     pagination_class = MembershipsPagination
-    rbac_resource_type = ResourceType.USERS
+    rbac_resource_type = ResourceType.MEMBERSHIPS
     rbac_action_map = {
         "list": Permission.READ,
         "create": Permission.CREATE,

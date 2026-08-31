@@ -10,9 +10,9 @@ def test_catalog_marks_org_create_delete_as_platform(client_as, admin_acme):
     assert orgs["applicable_actions"] == ["read", "update"]
     assert orgs["platform_actions"] == ["create", "delete"]
 
-    users = next(r for r in body["resource_types"] if r["code"] == "users")
-    assert users["applicable_actions"] == ["create", "read", "update", "delete"]
-    assert users["platform_actions"] == []
+    members = next(r for r in body["resource_types"] if r["code"] == "memberships")
+    assert members["applicable_actions"] == ["create", "read", "update", "delete"]
+    assert members["platform_actions"] == []
 
     # Every resource entry carries the key (default []).
     assert all("platform_actions" in r for r in body["resource_types"])

@@ -13,7 +13,7 @@ class ResourceType(models.TextChoices):
     PROJECTS = "projects", "Projects"
     LLM_CONFIGS = "llm_configs", "LLM Configs"
     SECRETS = "secrets", "Secrets"
-    USERS = "users", "Users"
+    MEMBERSHIPS = "memberships", "Members"
     ROLES = "roles", "Roles"
 
 

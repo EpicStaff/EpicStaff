@@ -68,7 +68,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 ```python
 class ResourceType(models.TextChoices):
     ORGANIZATIONS, FLOWS, AGENTS, TOOLS, KNOWLEDGE_SOURCES,
-    FILES, PROJECTS, LLM_CONFIGS, SECRETS, USERS, ROLES
+    FILES, PROJECTS, LLM_CONFIGS, SECRETS, MEMBERSHIPS, ROLES
 
 class Permission(IntFlag):
     CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
@@ -91,7 +91,7 @@ Superadmin role row has **zero** `RolePermission` rows — authority comes exclu
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
 | secrets | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
-| users | 15 (CRUD) | 0 | 0 |
+| memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
 | organizations | 6 (R+U) | 0 | 0 |
 
@@ -460,7 +460,7 @@ path — the default org is only for bootstrap and data migrations.
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
 | Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs |
 | Org management (list/read/rename permission-aware; create/deactivate superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
-| Membership management (cross-org, USERS-gated) | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
+| Membership management (cross-org, MEMBERSHIPS-gated) | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
 | User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
 | Roles CRUD + ceiling + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |

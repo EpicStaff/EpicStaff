@@ -18,7 +18,7 @@ from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 _FORBIDDEN_403 = OpenApiResponse(
     description=(
-        "Caller lacks the required USERS permission (permission_denied), a "
+        "Caller lacks the required MEMBERSHIPS permission (permission_denied), a "
         "forbidden ?org_ids= entry, or an attempt to modify one's own "
         "membership (cannot_modify_self_membership)."
     )
@@ -99,7 +99,7 @@ MEMBERSHIPS_CREATE_POST = dict(
     description=(
         "Links an EXISTING account to `org_id` with `role_id`. Provide exactly "
         "one of `email` or `user_id`. Account creation stays a superadmin-only "
-        "operation on /api/admin/users/. Requires USERS create in the target org."
+        "operation on /api/admin/users/. Requires MEMBERSHIPS create in the target org."
     ),
     request=MembershipCreateRequestSerializer,
     responses={
@@ -122,7 +122,7 @@ MEMBERSHIPS_UPDATE_PATCH = dict(
     description=(
         "Assigns `role_id` to the membership. Any existing assignable role may "
         "be assigned to others; a non-superadmin cannot change their own "
-        "membership. Requires USERS update in the row's org."
+        "membership. Requires MEMBERSHIPS update in the row's org."
     ),
     request=MembershipRoleUpdateRequestSerializer,
     responses={
@@ -138,7 +138,7 @@ MEMBERSHIPS_DESTROY_DELETE = dict(
     summary="Remove a member from an organization",
     description=(
         "Deletes the membership row (the user account stays). A non-superadmin "
-        "cannot remove their own membership. Requires USERS delete in the "
+        "cannot remove their own membership. Requires MEMBERSHIPS delete in the "
         "row's org."
     ),
     responses={

@@ -44,6 +44,13 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
             "tables.migrations.0209_seed_org_admin_organizations_perm"
         )
         org_perm_module.seed_org_admin_organizations_perm(django_apps, None)
+        # 0210 renames the `users` permission resource_type to `memberships`.
+        # The seeds above (0171/0183) still write `users` rows, so replay the
+        # rename here or tests would see the stale `users` resource_type.
+        rename_module = import_module(
+            "tables.migrations.0210_alter_rolepermission_resource_type"
+        )
+        rename_module.rename_users_to_memberships(django_apps, None)
 
 
 @pytest.fixture(autouse=True)
