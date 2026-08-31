@@ -3,7 +3,7 @@
 from sqlalchemy import create_engine, event
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import create_sql_agent
-from langchain_openai import ChatOpenAI
+from langchain_litellm import ChatLiteLLM
 
 READ_ONLY_SESSION_STATEMENTS = {
     "postgresql": "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY",
@@ -14,7 +14,15 @@ READ_ONLY_SESSION_STATEMENTS = {
 class NaturalLanguageToSQLTool:
     def __init__(self):
         self.db_uri = state["variables"]["DB_URI"]
-        self.openai_api_key = state["variables"]["OPENAI_API_KEY"]
+        self.model = state["variables"].get("MODEL") or "gpt-4o-mini"
+        self.api_key = state["variables"].get("API_KEY") or state["variables"].get(
+            "OPENAI_API_KEY"
+        )
+        if not self.api_key:
+            raise RuntimeError(
+                "No API key configured. Set the 'API_KEY' domain variable "
+                "(or 'OPENAI_API_KEY' for backward compatibility)."
+            )
         self.read_only = state["variables"]["READ_ONLY"]
 
     def _create_engine(self):
@@ -37,10 +45,7 @@ class NaturalLanguageToSQLTool:
         return engine
 
     def _create_agent(self):
-        # TODO chould we parametrize that? at least model?
-        llm = ChatOpenAI(
-            model="gpt-4o-mini", temperature=0, api_key=self.openai_api_key
-        )
+        llm = ChatLiteLLM(model=self.model, temperature=0, api_key=self.api_key)
         engine = self._create_engine()
         db = SQLDatabase(engine)
 

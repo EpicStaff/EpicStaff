@@ -1,6 +1,7 @@
-langchain_openai
 langchain_community
 langchain
+langchain-litellm
+litellm
 sqlalchemy
 psycopg2-binary
 pymysql
