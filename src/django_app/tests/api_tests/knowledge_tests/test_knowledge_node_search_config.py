@@ -459,25 +459,7 @@ class TestKnowledgeNodeRunValidation:
             validator.validate_runnable([node])
         assert "rag_type/rag_id" in str(exc.value.detail)
 
-    def test_empty_query_and_no_input_blocks(
-        self, validator, graph, collection, naive_rag_type
-    ):
-        impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
-        node = KnowledgeNode.objects.create(
-            graph=graph,
-            source_collection=collection,
-            rag_type="naive",
-            rag_id=impl.naive_rag_id,
-            query="",
-            input_map={},
-        )
-        with pytest.raises(self._error()) as exc:
-            validator.validate_runnable([node])
-        assert "query or input" in str(exc.value.detail)
-
-    def test_empty_query_with_input_passes(
-        self, validator, graph, collection, naive_rag_type
-    ):
+    def test_empty_query_blocks(self, validator, graph, collection, naive_rag_type):
         impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
         node = KnowledgeNode.objects.create(
             graph=graph,
@@ -487,12 +469,14 @@ class TestKnowledgeNodeRunValidation:
             query="",
             input_map={"text": "some_var"},
         )
-        validator.validate_runnable([node])  # no raise
+        with pytest.raises(self._error()) as exc:
+            validator.validate_runnable([node])
+        assert "query" in str(exc.value.detail)
 
     def test_all_offending_nodes_reported_together(self, validator, graph):
         n1 = KnowledgeNode.objects.create(graph=graph, query="q")  # no collection/rag
         n2 = KnowledgeNode.objects.create(graph=graph)  # empty everything
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([n1, n2])
-        reported = exc.value.detail["knowledge_nodes"]
-        assert len(reported) == 2
+        detail = str(exc.value.detail)
+        assert f"#{n1.id}" in detail and f"#{n2.id}" in detail

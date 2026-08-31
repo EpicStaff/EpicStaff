@@ -130,6 +130,7 @@ class KnowledgeSearchService:
             rag_search_config=rag_search_config,
             stop_event=stop_event,
             timeout=timeout,
+            rag_embedder_api_key=rag_embedder_api_key,
         )
 
         if self.writer is not None:

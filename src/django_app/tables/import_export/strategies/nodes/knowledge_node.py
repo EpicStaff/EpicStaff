@@ -39,7 +39,7 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
         configs = {key: data.pop(key, None) for key in self._CONFIG_MODELS}
 
         source_collection = SourceCollection.objects.filter(
-            pk=data.get("source_collection")
+            pk=data.get("source_collection"), org_id=kwargs.get("org_id")
         ).first()
         if source_collection is None:
             data["source_collection"] = None
