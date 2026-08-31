@@ -1,8 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { AdminCreateUserRequest, AdminCreateUserResponse } from '@shared/models';
+import { ActionCode, AdminCreateUserRequest, AdminCreateUserResponse, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 
+import { withCrossOrgPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
 
@@ -28,7 +29,13 @@ export class AdminUserService {
     }
 
     getUsers(): Observable<ApiGetRequest<AdminCreateUserResponse>> {
-        return this.http.get<ApiGetRequest<AdminCreateUserResponse>>(this.apiUrl);
+        return this.http.get<ApiGetRequest<AdminCreateUserResponse>>(this.apiUrl, {
+            context: withCrossOrgPermission<ApiGetRequest<AdminCreateUserResponse>>(
+                ResourceCode.Users,
+                ActionCode.Read,
+                { count: 0, next: null, previous: null, results: [] }
+            ),
+        });
     }
 
     grantSuperadmin(userId: number): Observable<void> {

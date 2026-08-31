@@ -113,7 +113,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
     ngOnInit(): void {
         if (this.isEditMode) {
-            const canRename = this.permissionsService.canIn(
+            const canRename = this.permissionsService.canInOrg(
                 this.organizationId!,
                 ResourceCode.Organizations,
                 ActionCode.Update
@@ -244,7 +244,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
     private computeCanManageMembers(): boolean {
         if (this.permissionsService.isSuperadmin) return true;
         if (!this.isEditMode || this.organizationId === null) return false;
-        return this.permissionsService.canIn(this.organizationId, ResourceCode.Users, ActionCode.Read);
+        return this.permissionsService.canInOrg(this.organizationId, ResourceCode.Users, ActionCode.Read);
     }
 
     /** Superadmin → `/api/admin/users/` (full account list).

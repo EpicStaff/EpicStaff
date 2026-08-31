@@ -33,6 +33,7 @@
             />
         } @else {
             <app-step-assign-to-org
+                [isEditMode]="editMode()"
                 [organizations]="availableOrganizations()"
                 [existingMemberships]="existingMemberships()"
             />

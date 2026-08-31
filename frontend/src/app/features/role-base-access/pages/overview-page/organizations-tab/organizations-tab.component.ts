@@ -188,7 +188,7 @@ export class OrganizationsTabComponent implements OnInit {
     }
 
     private canEditRow(row: TableRow): boolean {
-        return this.permissionsService.canIn(row['id'] as number, ResourceCode.Organizations, ActionCode.Update);
+        return this.permissionsService.canInOrg(row['id'] as number, ResourceCode.Organizations, ActionCode.Update);
     }
 
     private orgToRow(org: GetOrganizationResponse): TableRow {

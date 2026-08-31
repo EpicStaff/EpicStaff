@@ -1,13 +1,16 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import {
+    ActionCode,
     AdminMembershipRow,
     CreateMembershipRequest,
     ListMembershipsParams,
+    ResourceCode,
     UpdateMembershipRequest,
 } from '@shared/models';
 import { Observable } from 'rxjs';
 
+import { withCrossOrgPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
 
@@ -32,7 +35,15 @@ export class MembershipsService {
         if (params.ordering) httpParams = httpParams.set('ordering', params.ordering);
         if (params.page !== undefined) httpParams = httpParams.set('page', String(params.page));
         if (params.page_size !== undefined) httpParams = httpParams.set('page_size', String(params.page_size));
-        return this.http.get<ApiGetRequest<AdminMembershipRow>>(this.apiUrl, { params: httpParams });
+        return this.http.get<ApiGetRequest<AdminMembershipRow>>(this.apiUrl, {
+            params: httpParams,
+            context: withCrossOrgPermission<ApiGetRequest<AdminMembershipRow>>(ResourceCode.Users, ActionCode.Read, {
+                count: 0,
+                next: null,
+                previous: null,
+                results: [],
+            }),
+        });
     }
 
     /** POST /api/admin/memberships/ — link an existing account to an org. */

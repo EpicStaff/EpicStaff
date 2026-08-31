@@ -125,7 +125,7 @@ export class CreateRoleDialogComponent implements OnInit {
         const disabled = new Set<string>();
         for (const rt of catalog.resource_types) {
             for (const action of rt.applicable_actions) {
-                if (!this.permissionsService.canIn(orgId, rt.code as ResourceCode, action)) {
+                if (!this.permissionsService.canInOrg(orgId, rt.code as ResourceCode, action)) {
                     disabled.add(`${rt.code}:${action}`);
                 }
             }

@@ -16,8 +16,8 @@ export const PERMISSION_RELATIONS: Record<string, string[]> = {
     'organizations:export': [],
 
     'users:read': [],
-    'users:create': ['users:read'],
-    'users:update': ['users:read'],
+    'users:create': ['users:read', 'roles:read'],
+    'users:update': ['users:read', 'roles:read'],
     'users:delete': ['users:read'],
     'users:export': [],
 

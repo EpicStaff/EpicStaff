@@ -27,26 +27,25 @@ export class OverviewComponent {
             routerLink: 'organizations',
             icon: 'buildings',
             label: 'Organizations',
-            isPermitted: () => this.permissionsService.can(ResourceCode.Organizations, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Organizations, ActionCode.Read),
         },
         {
             routerLink: 'users',
             icon: 'profile',
             label: 'Users',
-            isPermitted: () => this.permissionsService.can(ResourceCode.Users, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Users, ActionCode.Read),
         },
         {
             routerLink: 'roles',
             icon: 'briefcase',
             label: 'Roles',
-            // Roles is a cross-org resource — permit if Roles.Read is granted in ANY org (via /me/orgs/).
-            isPermitted: () => this.permissionsService.hasRolesAccess(),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Roles, ActionCode.Read),
         },
         {
             routerLink: 'api-keys',
             icon: 'key',
             label: 'API Keys',
-            isPermitted: () => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Secrets, ActionCode.Read),
         },
     ];
 }

@@ -1,8 +1,15 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { CreateOrganizationRequest, GetOrganizationResponse, UpdateOrganizationRequest } from '@shared/models';
+import {
+    ActionCode,
+    CreateOrganizationRequest,
+    GetOrganizationResponse,
+    ResourceCode,
+    UpdateOrganizationRequest,
+} from '@shared/models';
 import { Observable } from 'rxjs';
 
+import { withCrossOrgPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
 
@@ -37,7 +44,14 @@ export class AdminOrganizationsService {
         if (params.ordering) httpParams = httpParams.set('ordering', params.ordering);
         if (params.page !== undefined) httpParams = httpParams.set('page', String(params.page));
         if (params.page_size !== undefined) httpParams = httpParams.set('page_size', String(params.page_size));
-        return this.http.get<ApiGetRequest<GetOrganizationResponse>>(this.apiUrl, { params: httpParams });
+        return this.http.get<ApiGetRequest<GetOrganizationResponse>>(this.apiUrl, {
+            params: httpParams,
+            context: withCrossOrgPermission<ApiGetRequest<GetOrganizationResponse>>(
+                ResourceCode.Organizations,
+                ActionCode.Read,
+                { count: 0, next: null, previous: null, results: [] }
+            ),
+        });
     }
 
     updateOrganization(id: number, data: UpdateOrganizationRequest): Observable<GetOrganizationResponse> {

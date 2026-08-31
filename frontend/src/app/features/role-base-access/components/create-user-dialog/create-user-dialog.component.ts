@@ -37,6 +37,7 @@ export interface UserDialogData {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ButtonComponent, StepUserDetailsComponent, StepAssignToOrgComponent, LoadingSpinnerComponent],
 })
+// TODO separate create user (superadmin) and create/update membership
 export class CreateUserDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private dialogRef = inject(DialogRef);
