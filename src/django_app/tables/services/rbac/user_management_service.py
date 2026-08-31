@@ -131,10 +131,14 @@ class UserManagementService:
         target.save(update_fields=["is_superadmin", "updated_at"])
         target.refresh_from_db()
 
+        purged = self._purge_memberships(target)
+
         logger.info(
-            "UserManagementService.grant_superadmin actor={a} target={t}",
+            "UserManagementService.grant_superadmin actor={a} target={t} "
+            "memberships_purged={p}",
             a=getattr(actor, "email", "system"),
             t=target.email,
+            p=purged,
         )
         return target
 
@@ -192,6 +196,15 @@ class UserManagementService:
         return target
 
     # ---- internal helpers ----
+
+    @staticmethod
+    def _purge_memberships(target) -> int:
+        """A superadmin reaches every organization through the permission
+        bypass, so a membership row grants nothing and its role is never read.
+        Dropping them keeps the table honest. Revoking superadmin does not
+        restore them — the account lands with no organizations."""
+        _, per_model = OrganizationUser.objects.filter(user=target).delete()
+        return per_model.get("tables.OrganizationUser", 0)
 
     def _resolve_role(self, role_id, default_org_id):
         """If role_id is None, returns the built-in Member role. Otherwise

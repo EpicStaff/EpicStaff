@@ -1,4 +1,7 @@
+from importlib import import_module
+
 import pytest
+from django.apps import apps as django_apps
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -427,3 +430,104 @@ class TestActivateDeactivate:
             user_action_url(member_acme.pk, "deactivate")
         )
         assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestGrantSuperadminPurgesMemberships:
+    def test_grant_purges_memberships(
+        self,
+        authed_client,
+        superadmin,
+        org_acme,
+        org_globex,
+        role_member,
+        role_org_admin,
+        django_user_model,
+    ):
+        target = django_user_model.objects.create_user(
+            email="promote@x.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=target, org=org_acme, role=role_org_admin)
+        OrganizationUser.objects.create(user=target, org=org_globex, role=role_member)
+
+        resp = authed_client(superadmin).post(
+            user_action_url(target.pk, "grant-superadmin")
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["is_superadmin"] is True
+        assert resp.data["memberships"] == []
+        assert not OrganizationUser.objects.filter(user=target).exists()
+
+    def test_grant_on_existing_superadmin_leaves_rows(
+        self, authed_client, superadmin, org_acme, role_member, django_user_model
+    ):
+        """Already a superadmin: the method short-circuits before any write, so
+        a pre-existing row survives. The data migration reconciles those."""
+        target = django_user_model.objects.create_user(
+            email="already@x.com", password="StrongPass123!", is_superadmin=True
+        )
+        OrganizationUser.objects.create(user=target, org=org_acme, role=role_member)
+
+        resp = authed_client(superadmin).post(
+            user_action_url(target.pk, "grant-superadmin")
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert OrganizationUser.objects.filter(user=target).count() == 1
+
+    def test_revoke_does_not_restore_memberships(
+        self, authed_client, superadmin, org_acme, role_org_admin, django_user_model
+    ):
+        target = django_user_model.objects.create_user(
+            email="roundtrip@x.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=target, org=org_acme, role=role_org_admin)
+
+        authed_client(superadmin).post(user_action_url(target.pk, "grant-superadmin"))
+        resp = authed_client(superadmin).post(
+            user_action_url(target.pk, "revoke-superadmin")
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["is_superadmin"] is False
+        assert resp.data["memberships"] == []
+
+
+@pytest.mark.django_db
+class TestSuperadminMembershipMigration:
+    def test_purges_lesser_roles_but_keeps_bootstrap(
+        self,
+        org_acme,
+        role_member,
+        role_org_admin,
+        role_superadmin,
+        django_user_model,
+    ):
+        sa_lesser = django_user_model.objects.create_user(
+            email="legacy-sa@x.com", password="StrongPass123!", is_superadmin=True
+        )
+        sa_bootstrap = django_user_model.objects.create_user(
+            email="bootstrap-sa@x.com", password="StrongPass123!", is_superadmin=True
+        )
+        ordinary = django_user_model.objects.create_user(
+            email="ordinary@x.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(
+            user=sa_lesser, org=org_acme, role=role_org_admin
+        )
+        OrganizationUser.objects.create(
+            user=sa_bootstrap, org=org_acme, role=role_superadmin
+        )
+        OrganizationUser.objects.create(user=ordinary, org=org_acme, role=role_member)
+
+        module = import_module("tables.migrations.0211_purge_superadmin_memberships")
+        module.purge_superadmin_memberships(django_apps, None)
+
+        assert not OrganizationUser.objects.filter(user=sa_lesser).exists()
+        assert OrganizationUser.objects.filter(user=sa_bootstrap).exists()
+        assert OrganizationUser.objects.filter(user=ordinary).exists()
+
+        module.purge_superadmin_memberships(django_apps, None)
+        assert OrganizationUser.objects.filter(user=sa_bootstrap).count() == 1
+        assert OrganizationUser.objects.filter(user=ordinary).count() == 1
