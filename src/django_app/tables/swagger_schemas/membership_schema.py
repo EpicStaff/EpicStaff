@@ -42,47 +42,61 @@ MEMBERSHIPS_LIST_GET = dict(
     parameters=[
         OpenApiParameter(
             "org_ids",
-            OpenApiParameter.QUERY,
-            OpenApiTypes.STR,
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
             required=False,
             description="Comma-separated org ids, e.g. `10,20`. Forbidden org → 403.",
         ),
         OpenApiParameter(
             "search",
-            OpenApiParameter.QUERY,
-            OpenApiTypes.STR,
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
             required=False,
             description="Case-insensitive match on member email or display name.",
         ),
         OpenApiParameter(
             "role_id",
-            OpenApiParameter.QUERY,
-            OpenApiTypes.INT,
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
             required=False,
             description="Exact role id (a built-in role id spans orgs).",
         ),
         OpenApiParameter(
             "status",
-            OpenApiParameter.QUERY,
-            OpenApiTypes.STR,
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
             required=False,
             enum=["active", "inactive"],
             description="Filter by member account status.",
         ),
         OpenApiParameter(
             "ordering",
-            OpenApiParameter.QUERY,
-            OpenApiTypes.STR,
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
             required=False,
-            description="Sort field; prefix '-' for descending. One of email, joined_at, role, org.",
+            enum=[
+                "email",
+                "-email",
+                "joined_at",
+                "-joined_at",
+                "role",
+                "-role",
+                "org",
+                "-org",
+            ],
+            description="Sort field; prefix '-' for descending. Default: org, then email.",
         ),
         OpenApiParameter(
-            "page", OpenApiParameter.QUERY, OpenApiTypes.INT, required=False
+            "page",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="1-based page number.",
         ),
         OpenApiParameter(
             "page_size",
-            OpenApiParameter.QUERY,
-            OpenApiTypes.INT,
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
             required=False,
             description="Items per page (default 50, max 200).",
         ),
@@ -146,5 +160,44 @@ MEMBERSHIPS_DESTROY_DELETE = dict(
         401: UNAUTHORIZED_401_RESPONSE,
         403: _FORBIDDEN_403,
         404: _NOT_FOUND_404,
+    },
+)
+
+MEMBERSHIPS_ASSIGNABLE_USERS_GET = dict(
+    summary="List accounts that can be added to an organization",
+    description=(
+        "Candidates for POST /api/admin/memberships/: active, non-superadmin "
+        "accounts visible to the caller through an org where they can read "
+        "members. Each row carries `org_ids` — where that account already "
+        "belongs, limited to the caller's readable orgs. Requires MEMBERSHIPS "
+        "create in at least one org."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "search",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="Case-insensitive match on email or display name.",
+        ),
+        OpenApiParameter(
+            "page",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="1-based page number.",
+        ),
+        OpenApiParameter(
+            "page_size",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="Items per page (default 50, max 200).",
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description="Paginated candidate accounts."),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: _FORBIDDEN_403,
     },
 )

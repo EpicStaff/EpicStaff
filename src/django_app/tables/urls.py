@@ -202,6 +202,11 @@ urlpatterns = [
         name="admin-memberships",
     ),
     path(
+        "admin/memberships/assignable-users/",
+        MembershipAdminViewSet.as_view({"get": "assignable_users"}),
+        name="admin-memberships-assignable-users",
+    ),
+    path(
         "admin/memberships/<int:pk>/",
         MembershipAdminViewSet.as_view(
             {"patch": "partial_update", "delete": "destroy"}

@@ -4,12 +4,16 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.serializers.membership_serializers import MembershipResponseSerializer
+from tables.serializers.membership_serializers import (
+    AssignableUserSerializer,
+    MembershipResponseSerializer,
+)
 from tables.services.rbac.membership_management_service import (
     MembershipManagementService,
 )
 from tables.services.rbac.user_validation_service import UserValidationService
 from tables.swagger_schemas.membership_schema import (
+    MEMBERSHIPS_ASSIGNABLE_USERS_GET,
     MEMBERSHIPS_CREATE_POST,
     MEMBERSHIPS_DESTROY_DELETE,
     MEMBERSHIPS_LIST_GET,
@@ -48,6 +52,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
     rbac_resource_type = ResourceType.MEMBERSHIPS
     rbac_action_map = {
         "list": Permission.READ,
+        "assignable_users": Permission.CREATE,
         "create": Permission.CREATE,
         "partial_update": Permission.UPDATE,
         "destroy": Permission.DELETE,
@@ -76,6 +81,20 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
             MembershipResponseSerializer(
                 page, many=True, context={"request": request}
             ).data
+        )
+
+    @extend_schema(**MEMBERSHIPS_ASSIGNABLE_USERS_GET)
+    def assignable_users(self, request):
+        scopes = getattr(request, "_rbac_org_scopes", None)
+        qs = self._service.list_assignable_users(
+            actor=request.user,
+            search=request.query_params.get("search"),
+            scopes=scopes,
+        )
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        return paginator.get_paginated_response(
+            AssignableUserSerializer(page, many=True, context={"request": request}).data
         )
 
     @extend_schema(**MEMBERSHIPS_CREATE_POST)
