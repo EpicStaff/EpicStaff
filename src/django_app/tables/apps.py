@@ -56,7 +56,6 @@ class TablesConfig(AppConfig):
             subgraph_node,
             end_node,
             note_node,
-            code_agent_node,
             schedule_trigger_node,
             knowledge_node,
             agent_node,
@@ -96,6 +95,9 @@ class TablesConfig(AppConfig):
         entity_registry.register(configs.EmbeddingConfigStrategy())
         entity_registry.register(configs.RealtimeConfigStrategy())
         entity_registry.register(configs.RealtimeTranscriptionConfigStrategy())
+        entity_registry.register(configs.OpenAIRealtimeConfigStrategy())
+        entity_registry.register(configs.ElevenLabsRealtimeConfigStrategy())
+        entity_registry.register(configs.GeminiRealtimeConfigStrategy())
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())
         entity_registry.register(agent.AgentStrategy())
@@ -128,7 +130,6 @@ class TablesConfig(AppConfig):
         entity_registry.register(subgraph_node.SubgraphNodeStrategy())
         entity_registry.register(end_node.EndNodeStrategy())
         entity_registry.register(note_node.NoteNodeStrategy())
-        entity_registry.register(code_agent_node.CodeAgentNodeStrategy())
         entity_registry.register(schedule_trigger_node.ScheduleTriggerNodeStrategy())
         entity_registry.register(agent_node.AgentNodeStrategy())
         entity_registry.register(task_node.TaskNodeStrategy())

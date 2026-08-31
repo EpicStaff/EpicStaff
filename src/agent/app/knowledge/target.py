@@ -4,10 +4,7 @@ KnowledgeSearchTarget — the minimal wire-ready description of one search call.
 Decoupled from ``CollectionSpec`` / ``SearchConfigEntry`` so that
 ``KnowledgeClient`` and ``KnowledgeSearchExecutor`` have no dependency on the
 full collection model.  Maps 1-to-1 onto the fields required by
-``BaseKnowledgeSearchMessage``.
-
-Note: ``embedder`` is intentionally absent.  It lives on ``SearchConfigEntry``
-for forward-compatibility but is not part of the Redis wire message.
+``BaseKnowledgeSearchMessage``, including the resolved embedder credential.
 """
 
 from __future__ import annotations

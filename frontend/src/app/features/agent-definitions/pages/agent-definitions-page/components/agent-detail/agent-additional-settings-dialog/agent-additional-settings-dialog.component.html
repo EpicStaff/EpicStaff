@@ -37,6 +37,17 @@
             [class.visible-tab]="activeTab() === TabId.EXECUTION"
             [form]="form"
         />
+        <app-voice-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.VOICE"
+            [form]="form"
+            [activeProvider]="activeProvider()"
+            [openaiConfigItems]="openaiConfigItems()"
+            [elevenLabsConfigItems]="elevenLabsConfigItems()"
+            [geminiConfigItems]="geminiConfigItems()"
+            [voicesMap]="voicesMap()"
+            (providerChange)="onProviderSelect($event)"
+        />
         <app-advanced-tab
             class="tab-content"
             [class.visible-tab]="activeTab() === TabId.ADVANCED"

@@ -1,8 +1,8 @@
 import { IPoint } from '@foblex/2d';
 
 import { NodeType } from '../enums/node-type';
-import { DecisionTableNodeModel, NodeModel } from '../models/node.model';
-import { getDecisionTableVisualHeight } from './node-size.util';
+import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../models/node.model';
+import { getClassificationDecisionTableVisualHeight, getDecisionTableVisualHeight } from './node-size.util';
 
 export interface CollisionBounds {
     width: number;
@@ -36,6 +36,16 @@ export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data
             return {
                 width: node.size.width + 40,
                 height: getDecisionTableVisualHeight(conditionGroups) + 68,
+                offsetX: -20,
+                offsetY: -15,
+            };
+        }
+
+        case NodeType.CLASSIFICATION_TABLE: {
+            const conditionGroups = (node as ClassificationDecisionTableNodeModel).data.table?.condition_groups ?? [];
+            return {
+                width: node.size.width + 40,
+                height: getClassificationDecisionTableVisualHeight(conditionGroups) + 30,
                 offsetX: -20,
                 offsetY: -15,
             };

@@ -1,6 +1,7 @@
 import re
 import uuid
 from copy import deepcopy
+from loguru import logger
 from typing import Optional
 
 from tables.models import (
@@ -67,9 +68,7 @@ class GraphStrategy(EntityImportExportStrategy):
         deps[EntityType.GRAPH] = set(
             instance.subgraph_node_list.values_list("subgraph_id", flat=True)
         )
-        deps[EntityType.LLM_CONFIG] = set(
-            instance.code_agent_node_list.values_list("llm_config_id", flat=True)
-        )
+        deps[EntityType.LLM_CONFIG] = set()
         deps[EntityType.LABEL] = set(instance.labels.values_list("id", flat=True))
         deps[EntityType.LLM_CONFIG] |= set(
             instance.classification_decision_table_node_list.values_list(
@@ -269,6 +268,18 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_type = "GraphNote"
             old_id = node_data.get("id")
 
+            # Old archives still contain nodes of types that no longer exist.
+            # The edge passes below drop anything that pointed at them.
+            entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
+            if entity_type is None:
+                logger.warning(
+                    "Skipping node id={} of unsupported node_type={} during import "
+                    "(no longer supported)",
+                    old_id,
+                    node_type,
+                )
+                continue
+
             if node_data.get("node_name"):
                 counter += 1
                 node_data["node_name"] = self._with_node_number(
@@ -292,7 +303,6 @@ class GraphStrategy(EntityImportExportStrategy):
                     EntityType.GRAPH, node_data["graph"], graph.id, was_created=False
                 )
 
-            entity_type = NODE_TYPE_TO_ENTITY_TYPE[node_type]
             strategy = entity_registry.get_strategy(entity_type)
             node = strategy.create_entity(node_data, id_mapper)
 
@@ -332,12 +342,24 @@ class GraphStrategy(EntityImportExportStrategy):
 
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:
-            edge_data["start_node_id"] = id_mapper.get(
+            # An endpoint is unmapped when its node was skipped above (unsupported
+            # type). Such an edge cannot be recreated — both columns are NOT NULL —
+            # so drop it rather than raise "No mapping found for node:N".
+            start_id = id_mapper.get_or_none(
                 NODE_MAPPING_KEY, edge_data["start_node_id"]
             )
-            edge_data["end_node_id"] = id_mapper.get(
-                NODE_MAPPING_KEY, edge_data["end_node_id"]
-            )
+            end_id = id_mapper.get_or_none(NODE_MAPPING_KEY, edge_data["end_node_id"])
+            if start_id is None or end_id is None:
+                logger.warning(
+                    "Skipping edge {} -> {} during import: endpoint node was not "
+                    "imported",
+                    edge_data["start_node_id"],
+                    edge_data["end_node_id"],
+                )
+                continue
+
+            edge_data["start_node_id"] = start_id
+            edge_data["end_node_id"] = end_id
 
             serializer = EdgeImportSerializer(data=edge_data)
             serializer.is_valid(raise_exception=True)
@@ -356,9 +378,20 @@ class GraphStrategy(EntityImportExportStrategy):
             edge_data["graph"] = graph.id
             edge_data["python_code_id"] = python_code.id
             if edge_data["source_node_id"] is not None:
-                edge_data["source_node_id"] = id_mapper.get(
+                # ConditionalEdge.clean() rejects a source that does not resolve,
+                # NULL included, so a branch whose source was skipped is dropped
+                # rather than saved with a blank source.
+                source_id = id_mapper.get_or_none(
                     NODE_MAPPING_KEY, edge_data["source_node_id"]
                 )
+                if source_id is None:
+                    logger.warning(
+                        "Skipping conditional edge from {} during import: source "
+                        "node was not imported",
+                        edge_data["source_node_id"],
+                    )
+                    continue
+                edge_data["source_node_id"] = source_id
 
             serializer = ConditionalEdgeImportSerializer(data=edge_data)
             serializer.is_valid(raise_exception=True)
@@ -452,7 +485,9 @@ class GraphStrategy(EntityImportExportStrategy):
             id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids
         ]
         if new_label_ids:
-            graph.labels.add(*Label.objects.filter(id__in=new_label_ids))
+            graph.labels.add(
+                *Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.FLOW)
+            )
 
     def update_metadata(self, metadata: dict, id_mapper: IDMapper) -> dict:
         # TODO: Remove metadata when save functionality reworked

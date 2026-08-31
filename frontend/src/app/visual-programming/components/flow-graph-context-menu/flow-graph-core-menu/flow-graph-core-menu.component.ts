@@ -162,12 +162,6 @@ export class FlowGraphCoreMenuComponent {
             color: NODE_COLORS[NodeType.SCHEDULE_TRIGGER],
         },
         {
-            label: 'Code Agent',
-            type: NodeType.CODE_AGENT,
-            icon: NODE_ICONS[NodeType.CODE_AGENT],
-            color: NODE_COLORS[NodeType.CODE_AGENT],
-        },
-        {
             label: 'Task Node',
             type: NodeType.TASK,
             icon: NODE_ICONS[NodeType.TASK],

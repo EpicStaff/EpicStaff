@@ -54,7 +54,6 @@ _GRAPH_RELATION_NAMES = (
     "telegram_trigger_node_list",
     "end_node",
     "graph_note_list",
-    "code_agent_node_list",
     "agent_node_list",
     "task_node_list",
     "knowledge_node_list",

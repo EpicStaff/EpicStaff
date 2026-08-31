@@ -15,7 +15,6 @@ from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     CrewNode,
     Edge,
     FileExtractorNode,
@@ -257,24 +256,6 @@ class AudioTranscriptionNodeSerializer(
 
     class Meta:
         model = AudioTranscriptionNode
-        fields = "__all__"
-
-
-class CodeAgentNodeSerializer(serializers.ModelSerializer):
-    """
-    DEPRECATED: CodeAgentNodeSerializer is deprecated. Use AgentNodeSerializer
-    or TaskNodeSerializer instead. Exists only for backward compatibility with
-    existing CodeAgentNode rows.
-    """
-
-    # Org isolation: only an LLMConfig from the caller's active org may be referenced.
-    llm_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=LLMConfig.objects.all(), required=False, allow_null=True
-    )
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta:
-        model = CodeAgentNode
         fields = "__all__"
 
 

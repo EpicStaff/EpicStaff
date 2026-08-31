@@ -19,9 +19,6 @@ SAVE_FLOW_SWAGGER = dict(
     request=inline_serializer(
         name="SaveFlowRequest",
         fields={
-            "code_agent_node_list": drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False
-            ),
             "crew_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
@@ -70,7 +67,6 @@ SAVE_FLOW_SWAGGER = dict(
             "deleted": inline_serializer(
                 name="DeletedIds",
                 fields={
-                    "code_agent_node_ids": _id_list_field,
                     "crew_node_ids": _id_list_field,
                     "python_node_ids": _id_list_field,
                     "file_extractor_node_ids": _id_list_field,

@@ -102,7 +102,7 @@ podman run -d   --name django_app   --network backend-network   -p 8000:8000   -
 ### Manager
 
 ```bash
-podman run -d   --name manager_container   --network backend-network   --env-file .env   -p 8001:8000   -t   -i   -v /var/run/podman/podman.sock:/var/run/docker.sock   manager
+podman run -d   --name manager_container   --network backend-network   --env-file .env   -t   -i   manager
 ```
 
 ---

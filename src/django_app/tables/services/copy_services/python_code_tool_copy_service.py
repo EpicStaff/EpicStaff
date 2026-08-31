@@ -1,14 +1,17 @@
 from tables.import_export.utils import ensure_unique_identifier
+from tables.models import Label
 from tables.models.python_models import PythonCodeTool
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code
 
 
 class PythonCodeToolCopyService(BaseCopyService):
-    def copy(self, tool: PythonCodeTool, name: str | None = None) -> PythonCodeTool:
-        if tool.built_in:
-            raise ValueError("Cannot copy a built-in tool.")
-
+    def copy(
+        self,
+        tool: PythonCodeTool,
+        name: str | None = None,
+        org_id: int | None = None,
+    ) -> PythonCodeTool:
         new_code = copy_python_code(tool.python_code)
 
         existing_names = PythonCodeTool.objects.values_list("name", flat=True)
@@ -17,10 +20,15 @@ class PythonCodeToolCopyService(BaseCopyService):
             existing_names=existing_names,
         )
 
-        return PythonCodeTool.objects.create(
+        target_org_id = org_id if org_id is not None else tool.org_id
+        new_tool = PythonCodeTool.objects.create(
             name=new_name,
             description=tool.description,
             variables=tool.variables,
             python_code=new_code,
-            favorite=tool.favorite,
+            org_id=target_org_id,
         )
+        new_tool.labels.set(
+            tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id)
+        )
+        return new_tool

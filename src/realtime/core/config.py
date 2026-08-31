@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: str = "knowledge:search:response"
     REALTIME_AGENTS_SCHEMA_CHANNEL: str = "realtime_agents:schema"
 
+    CONNECTION_KEY_TTL_SECONDS: int = 300
+
+    # --- Twilio Media Stream WS auth (per-call single-use token) ---
+    STREAM_TOKEN_TTL_SECONDS: int = 120
+    MAX_CALL_DURATION_SECONDS: int = 1800
+
     # --- Django Auth ---
     DJANGO_AUTH_URL: str
     DJANGO_API_KEY: str
@@ -45,8 +51,12 @@ class Settings(BaseSettings):
     DJANGO_PORT: int = 8000
 
     @property
+    def DJANGO_API_BASE_URL(self) -> str:
+        return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api"
+
+    @property
     def INIT_API_URL(self) -> str:
-        return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api/init-realtime/"
+        return f"{self.DJANGO_API_BASE_URL}/init-realtime/"
 
     @property
     def DATABASE_URL(self) -> str:

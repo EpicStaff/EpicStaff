@@ -79,8 +79,10 @@ class SearchConfigEntry(BaseModel):
     graph-local).  ``AgentResolver`` builds one search tool per entry so the
     LLM can choose the appropriate strategy at runtime.
 
-    ``embedder`` is carried for forward-compatibility; it is NOT included in
-    the ``BaseKnowledgeSearchMessage`` wire format.
+    ``embedder`` itself is not part of the ``BaseKnowledgeSearchMessage``
+    wire format -- ``ToolRegistryBuilder`` extracts ``embedder.config.api_key``
+    onto ``KnowledgeSearchTarget.embedder_api_key``, which is what actually
+    reaches the wire message.
     """
 
     model_config = ConfigDict(frozen=True)

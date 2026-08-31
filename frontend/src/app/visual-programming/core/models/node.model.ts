@@ -3,7 +3,6 @@ import { GetProjectRequest } from '../../../features/projects/models/project.mod
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { CodeAgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/knowledge-retriever-node.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
@@ -14,7 +13,7 @@ import { NodeType } from '../enums/node-type';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
-import { WebhookTriggerModel } from './webhook-trigger.model';
+import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
 
 export interface BaseNodeModel {
     id: string;
@@ -108,7 +107,8 @@ export interface AudioToTextNodeModel extends BaseNodeModel {
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
-        webhook_trigger: WebhookTriggerModel | null;
+        webhook_trigger: WebhookTriggerWrite | null;
+        webhook_node_auth: WebhookNodeAuthModel | null;
         python_code: CustomPythonCode;
     };
 }
@@ -117,7 +117,7 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
         telegram_bot_api_key_secret_id: number | null;
-        webhook_trigger: WebhookTriggerModel | null;
+        webhook_trigger: WebhookTriggerWrite | null;
         fields: TelegramTriggerNodeField[];
     };
 }
@@ -149,12 +149,6 @@ export interface SubGraphNodeModel extends BaseNodeModel {
     data: GetGraphLightRequest;
 }
 
-export interface CodeAgentNodeModel extends BaseNodeModel {
-    type: NodeType.CODE_AGENT;
-    data: CodeAgentNodeData;
-    stream_config?: Record<string, boolean>;
-}
-
 export interface KnowledgeRetrieverNodeModel extends BaseNodeModel {
     type: NodeType.KNOWLEDGE_RETRIEVER;
     data: GetKnowledgeRetrieverNodeRequest;
@@ -178,6 +172,4 @@ export type NodeModel =
     | TelegramTriggerNodeModel
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
-    | EndNodeModel
-    | CodeAgentNodeModel
-    | KnowledgeRetrieverNodeModel;
+    | EndNodeModel;

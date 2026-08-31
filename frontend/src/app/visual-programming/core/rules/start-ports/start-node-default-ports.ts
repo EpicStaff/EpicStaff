@@ -16,7 +16,6 @@ export const DEFAULT_START_NODE_PORTS: BasePort[] = [
             'end-in',
             'subgraph-in',
             'audio-to-text-in',
-            'code-agent-in',
             'task-in',
             'agent-in',
             'knowledge-retriever-in',

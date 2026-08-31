@@ -13,7 +13,6 @@ from .basic_node_serializers import (
     AgentNodeSerializer,
     AgentNodeTaskSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
@@ -28,6 +27,8 @@ from .trigger_serializers import (
     ScheduleTriggerNodeSerializer,
     TelegramTriggerNodeDataFieldsSerializer,
     TelegramTriggerNodeFieldSerializer,
+    TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )

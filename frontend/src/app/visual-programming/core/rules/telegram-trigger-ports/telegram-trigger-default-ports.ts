@@ -16,7 +16,6 @@ export const DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS: BasePort[] = [
             'subgraph-in',
             'audio-to-text-in',
             'end-in',
-            'code-agent-in',
             'task-in',
             'agent-in',
             'knowledge-retriever-in',

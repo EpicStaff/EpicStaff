@@ -5,7 +5,6 @@ from django.db import transaction
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
-    CodeAgentNode,
     CrewNode,
     Edge,
     FileExtractorNode,
@@ -31,7 +30,6 @@ from tables.models.graph_models import (
 )
 from src.shared.models import (
     AgentNodeData,
-    CodeAgentNodeData,
     ConditionalEdgeData,
     EdgeData,
     GraphData,
@@ -372,7 +370,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         ).select_related("python_code")
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
-        code_agent_node_list = CodeAgentNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(
                 graph=graph.pk
@@ -469,7 +466,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             webhook_trigger_node_list,
             telegram_trigger_node_list,
             schedule_trigger_node_list,
-            code_agent_node_list,
             task_node_list,
             agent_node_list,
         ):
@@ -561,29 +557,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             for item in audio_transcription_node_list
         ]
-        code_agent_node_data_list: list[CodeAgentNodeData] = []
-        for item in code_agent_node_list:
-            code_agent_node_data_list.append(
-                CodeAgentNodeData(
-                    node_name=resolver(item.id),
-                    llm_config_id=item.llm_config_id,
-                    agent_mode=item.agent_mode,
-                    session_id=item.session_id,
-                    system_prompt=item.system_prompt,
-                    stream_handler_code=item.stream_handler_code,
-                    libraries=item.libraries or [],
-                    polling_interval_ms=item.polling_interval_ms,
-                    silence_indicator_s=item.silence_indicator_s,
-                    indicator_repeat_s=item.indicator_repeat_s,
-                    chunk_timeout_s=item.chunk_timeout_s,
-                    inactivity_timeout_s=item.inactivity_timeout_s,
-                    max_wait_s=item.max_wait_s,
-                    input_map=item.input_map,
-                    output_variable_path=item.output_variable_path,
-                    stream_config=item.stream_config or {},
-                    output_schema=item.output_schema or {},
-                )
-            )
 
         task_node_payload_service = TaskNodePayloadService(cv)
         task_node_data_list: list[TaskNodeData] = [
@@ -694,7 +667,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             knowledge_node_list=knowledge_node_data_list,
             file_extractor_node_list=file_extractor_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
-            code_agent_node_list=code_agent_node_data_list,
             task_node_list=task_node_data_list,
             agent_node_list=agent_node_data_list,
             edge_list=edge_data_list,
