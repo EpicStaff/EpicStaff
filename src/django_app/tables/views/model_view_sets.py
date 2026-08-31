@@ -267,8 +267,6 @@ from tables.serializers.model_serializers import (
     StartNodeSerializer,
     SubGraphNodeSerializer,
     TaskNodeSerializer,
-    TaskReadSerializer,
-    TaskWriteSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
