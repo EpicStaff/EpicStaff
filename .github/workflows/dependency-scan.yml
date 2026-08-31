@@ -25,51 +25,96 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Scan lockfiles with Trivy
+      - name: Scan src/ with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln
-          scan-ref: .
+          scan-ref: src
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          # remove later when deleted? 
-          skip-dirs: 'src/crew/libraries/crewAI,src/crew/libraries/mem0,**/node_modules'
+          skip-dirs: '**/crew/libraries/crewAI,**/crew/libraries/mem0'
           format: table
-          output: trivy-report.txt
+          output: trivy-src.txt
           exit-code: '0'
         env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
-      - name: Publish report to the run summary
+      - name: Scan frontend/ with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          scan-ref: frontend
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          skip-dirs: '**/node_modules'
+          format: table
+          output: trivy-frontend.txt
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+
+      - name: Combine reports
+        if: always()
+        run: |
+          {
+            echo "EpicStaff dependency scan"
+            echo "repo:   ${{ github.repository }}"
+            echo "ref:    ${{ github.ref }}"
+            echo "sha:    ${{ github.sha }}"
+            echo "event:  ${{ github.event_name }}"
+            echo "run:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            for scope in src frontend; do
+              echo "================ $scope/ ================"
+              if [ -s "trivy-$scope.txt" ]; then
+                cat "trivy-$scope.txt"
+              else
+                echo "NO REPORT PRODUCED -- the scan step did not complete."
+              fi
+              echo
+            done
+          } > scan-report.txt
+          echo "REPORT_NAME=$(date -u +%Y-%m-%dT%H%M%SZ)-${{ github.event_name }}-${{ github.run_id }}.txt" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        run: pip install google-api-python-client google-auth
+
+      - name: Upload report to Google Drive
+        id: upload
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        run: python .github/scripts/upload_security_report.py
+        env:
+          SECURITY_GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.SECURITY_GDRIVE_SERVICE_ACCOUNT_JSON }}
+          SECURITY_GDRIVE_ROOT_ID: ${{ vars.SECURITY_GDRIVE_ROOT_ID }}
+          REPORT_PATH: scan-report.txt
+          REPORT_NAME: ${{ env.REPORT_NAME }}
+
+      - name: Publish pointer to the run summary
         if: always()
         run: |
           {
             echo '## Dependency scan'
             echo
-            if [ ! -s trivy-report.txt ]; then
-              echo 'No HIGH or CRITICAL vulnerabilities with an available fix.'
+            if [ '${{ steps.upload.outcome }}' = 'success' ]; then
+              echo 'Report stored in the private security Drive folder.'
+            elif [ '${{ steps.upload.outcome }}' = 'skipped' ]; then
+              echo 'Report NOT stored: fork pull requests have no Drive credentials.'
+              echo 'A maintainer should re-run this scan from a branch in this repository.'
             else
-              echo '<details><summary>Findings</summary>'
-              echo
-              echo '```'
-              cat trivy-report.txt
-              echo '```'
-              echo
-              echo '</details>'
+              echo ':warning: Report NOT stored -- the upload step failed. Check the job log.'
             fi
             echo
-            echo '_Report-only: this job does not fail the pull request. See'
-            echo '`.github/workflows/dependency-scan.yml`._'
+            echo '_Findings are intentionally not published here. This repository is'
+            echo 'public; see `docs/security-scan-reports.md`._'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependency-scan-report
-          path: trivy-report.txt
-          if-no-files-found: ignore
-          retention-days: 30
-
