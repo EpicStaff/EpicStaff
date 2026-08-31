@@ -129,14 +129,6 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
         return result
 
 
-# ---------------------------------------------------------------------------
-# DEPRECATED: generic realtime model registry
-# These tables are kept for backward compatibility with quickstart,
-# import/export, and management commands, but are no longer used by the
-# realtime agent flow. New agents use OpenAIRealtimeConfig,
-# ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
-# ---------------------------------------------------------------------------
-
 class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""
 

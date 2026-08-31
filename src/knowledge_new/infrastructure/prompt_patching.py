@@ -18,7 +18,7 @@ that the available documents do not cover this topic.
 
 ---End of Data Grounding Rules---"""
 
-DRIFT_LENGTH_LIMIT_PROMPT_PATCH = """
+DRIFT_RESPONSE_LENGTH_PROMPT_PATCH = """
 
 ---Response Length Override---
 
@@ -41,7 +41,7 @@ def patch_graphrag_prompts() -> None:
     _global.MAP_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
     _global.REDUCE_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
     _drift.DRIFT_LOCAL_SYSTEM_PROMPT += (
-        GROUNDING_PROMPT_PATCH + DRIFT_LENGTH_LIMIT_PROMPT_PATCH
+        GROUNDING_PROMPT_PATCH + DRIFT_RESPONSE_LENGTH_PROMPT_PATCH
     )
     _drift.DRIFT_REDUCE_PROMPT += GROUNDING_PROMPT_PATCH
 

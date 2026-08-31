@@ -91,9 +91,8 @@ class LocalhostWebhookConfig(models.Model):
 
 
 class WebhookAuthScheme(models.TextChoices):
-    STATIC_HEADER = "static_header"  # Telegram: literal header value compare
-    HMAC_SHA256 = "hmac_sha256"  # Generic: signed body + one-sided timestamp
-    # window + Redis-backed replay check (see `webhook_routes.handle_webhook`)
+    STATIC_HEADER = "static_header"
+    HMAC_SHA256 = "hmac_sha256"
 
 
 class WebhookNodeAuth(models.Model):
@@ -343,13 +342,6 @@ class TwilioChannel(models.Model):
                 "Use ngrok or a publicly accessible provider."
             )
         return None
-
-
-# ---------------------------------------------------------------------------
-# VoiceSettings — DEPRECATED
-# Superseded by RealtimeChannel + TwilioChannel.
-# Kept temporarily for backward compatibility; remove after full migration.
-# ---------------------------------------------------------------------------
 
 
 class VoiceSettings(DefaultBaseModel):
