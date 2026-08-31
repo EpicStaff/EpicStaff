@@ -84,12 +84,6 @@ class KnowledgeNode(BaseNode):
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ) -> str:
-        if self.collection_id is None or self.rag_type_id is None:
-            raise ValueError(
-                f"Knowledge node '{self.node_name}' is not configured: "
-                "select a knowledge collection and RAG type."
-            )
-
         query = self._build_query(input_)
 
         if not query.strip():

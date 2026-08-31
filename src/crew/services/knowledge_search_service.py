@@ -4,6 +4,7 @@ import time
 from uuid import uuid4
 from typing import Dict, Any, Optional
 from loguru import logger
+from pydantic import ValidationError
 from langgraph.types import StreamWriter
 
 from models.graph_models import GraphMessage
@@ -343,5 +344,5 @@ class KnowledgeSearchReceiver:
                 logger.debug(f"Results: {self._results.results}")
                 self._token_usage = data.get("token_usage", {})
                 logger.info(f"Tokens used for knowledge retrieval: {self._token_usage}")
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, ValidationError) as e:
             logger.error(f"Error parsing search results: {e}")
