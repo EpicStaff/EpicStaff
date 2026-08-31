@@ -97,6 +97,25 @@
     font-weight: 600;
 }
 
+::ng-deep .caution-message details {
+    margin: 0;
+}
+
+::ng-deep .caution-message summary {
+    cursor: pointer;
+    margin-bottom: 4px;
+}
+
+::ng-deep .caution-message ul {
+    margin: 4px 0 0 0;
+    list-style: revert;
+    padding-left: 20px;
+}
+
+::ng-deep .caution-message li {
+    line-height: 1.5;
+}
+
 .dialog-actions {
     display: flex;
     justify-content: flex-end;

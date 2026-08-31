@@ -1,0 +1,29 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.wt-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.wt-hint {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.65);
+    word-break: break-all;
+    margin: 0;
+}
+
+// Match app-select (app-tooltip) labels to the app-custom-input labels.
+// Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
+:host ::ng-deep app-select .tooltip-label {
+    color: var(--color-ks-text);
+    font-weight: 400;
+}
+
+:host ::ng-deep app-select .tooltip-label-container {
+    margin-bottom: 8px;
+}

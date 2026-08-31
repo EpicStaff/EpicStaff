@@ -1,0 +1,49 @@
+<div
+    class="bulk-menu"
+    role="menu"
+    (click)="$event.stopPropagation()"
+>
+    @if (showManageLabels()) {
+        <button
+            type="button"
+            class="menu-item"
+            role="menuitem"
+            (click)="$event.stopPropagation(); ld.openAt($any($event.currentTarget))"
+        >
+            <span class="label">Manage Labels</span>
+            <app-svg-icon
+                icon="arrow-right"
+                size="0.7rem"
+                class="chevron"
+            />
+        </button>
+
+        <app-label-dropdown
+            #ld
+            [hideTrigger]="true"
+            [selectedLabelIds]="commonLabelIds()"
+            [indeterminateLabelIds]="partialLabelIds()"
+            (bulkChange)="onLabelsApplied($event)"
+        />
+    }
+
+    @for (action of actions(); track action.label) {
+        @if (action.isPermitted) {
+            <button
+                type="button"
+                class="menu-item"
+                role="menuitem"
+                (click)="onSelect(action)"
+            >
+                <span class="label">{{ action.label }}</span>
+                @if (action.hasSubmenu) {
+                    <app-svg-icon
+                        icon="arrow-right"
+                        size="0.7rem"
+                        class="chevron"
+                    />
+                }
+            </button>
+        }
+    }
+</div>

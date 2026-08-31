@@ -109,20 +109,24 @@
     &--icon-left {
         &-default {
             padding-left: 2.4rem;
+            padding-right: 1rem;
         }
 
         &-small {
             padding-left: 2rem;
+            padding-right: 0.75rem;
         }
     }
 
     &--icon-right {
         &-default {
             padding-right: 2.4rem;
+            padding-left: 1rem;
         }
 
         &-small {
             padding-right: 2rem;
+            padding-left: 0.75rem;
         }
     }
 }

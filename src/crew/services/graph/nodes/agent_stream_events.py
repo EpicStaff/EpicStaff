@@ -46,7 +46,6 @@ class AgentStreamEventForwarder:
             self._write_message(
                 {
                     "message_type": "extracted_chunks",
-                    "sse_visible": True,
                     **envelope.payload,
                 }
             )
@@ -63,7 +62,6 @@ class AgentStreamEventForwarder:
                 "event": event,
                 "step_id": self._step_id,
                 "is_final": False,
-                "sse_visible": True,
                 "data": envelope.payload,
             }
         )

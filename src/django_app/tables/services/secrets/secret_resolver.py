@@ -53,6 +53,29 @@ class SecretResolver:
         secret = self._fetch(secret_id=secret_id, org_id=org_id, context=context)
         return self._decrypt(secret=secret, context=context)
 
+    def resolve_many(
+        self, *, secret_ids: list[int | None], org_id: int, context: str = ""
+    ) -> dict[int, str]:
+        """Resolve several secret ids for one org in a single query."""
+        unique_ids = {sid for sid in secret_ids if sid is not None}
+        if not unique_ids:
+            return {}
+
+        rows = {
+            secret.pk: secret
+            for secret in Secret.objects.filter(pk__in=unique_ids, org_id=org_id).only(
+                "id", "name", "value"
+            )
+        }
+
+        resolved: dict[int, str] = {}
+        for secret_id, secret in rows.items():
+            try:
+                resolved[secret_id] = self._decrypt(secret=secret, context=context)
+            except SecretResolutionError:
+                continue
+        return resolved
+
     def resolve_named(
         self, *, names: list[str], org_id: int, context: str = ""
     ) -> dict[str, str]:

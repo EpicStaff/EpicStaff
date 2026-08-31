@@ -65,6 +65,96 @@ class TestResolveById:
         assert "sk-must-not-appear" not in message
 
 
+@pytest.mark.django_db
+class TestResolveMany:
+    """Batched counterpart to `resolve()` -- one `pk__in` query for N secret
+    ids belonging to the same org, instead of N individual queries. No caller
+    in this codebase yet; exists so a future batch-resolution need (e.g. a
+    node type with multiple secret-backed fields) doesn't have to reinvent
+    the org-scoped-batch-lookup pattern."""
+
+    def test_empty_list_returns_empty_dict_with_no_query(self, org, django_assert_num_queries):
+        with django_assert_num_queries(0):
+            assert secret_resolver.resolve_many(secret_ids=[], org_id=org.id) == {}
+
+    def test_none_entries_are_ignored(self, org):
+        secret = secret_service.create(text="sk-many-1", org=org, name="many-one")
+
+        resolved = secret_resolver.resolve_many(
+            secret_ids=[None, secret.pk, None], org_id=org.id
+        )
+
+        assert resolved == {secret.pk: "sk-many-1"}
+
+    def test_resolves_every_id_in_a_single_query(self, org, django_assert_num_queries):
+        secret_a = secret_service.create(text="sk-many-a", org=org, name="many-a")
+        secret_b = secret_service.create(text="sk-many-b", org=org, name="many-b")
+        secret_c = secret_service.create(text="sk-many-c", org=org, name="many-c")
+
+        with django_assert_num_queries(1):
+            resolved = secret_resolver.resolve_many(
+                secret_ids=[secret_a.pk, secret_b.pk, secret_c.pk], org_id=org.id
+            )
+
+        assert resolved == {
+            secret_a.pk: "sk-many-a",
+            secret_b.pk: "sk-many-b",
+            secret_c.pk: "sk-many-c",
+        }
+
+    def test_duplicate_ids_are_deduplicated_into_one_row(self, org, django_assert_num_queries):
+        secret = secret_service.create(text="sk-many-dup", org=org, name="many-dup")
+
+        with django_assert_num_queries(1):
+            resolved = secret_resolver.resolve_many(
+                secret_ids=[secret.pk, secret.pk, secret.pk], org_id=org.id
+            )
+
+        assert resolved == {secret.pk: "sk-many-dup"}
+
+    def test_missing_row_is_omitted_not_raised(self, org):
+        """Unlike `resolve()`, a missing/unresolvable id must not raise --
+        the whole point of batching is that one bad id in the list must not
+        take the others down with it. Absence from the result IS the signal;
+        callers that need fail-closed behavior treat a missing key as
+        unresolvable themselves -- see the module docstring above."""
+        secret = secret_service.create(text="sk-many-gone", org=org, name="many-gone")
+        secret_id = secret.pk
+        secret.delete()
+
+        assert secret_resolver.resolve_many(secret_ids=[secret_id], org_id=org.id) == {}
+
+    def test_foreign_org_id_is_omitted(self, org, other_org):
+        foreign = secret_service.create(
+            text="sk-many-foreign", org=other_org, name="many-foreign"
+        )
+
+        assert (
+            secret_resolver.resolve_many(secret_ids=[foreign.pk], org_id=org.id) == {}
+        )
+
+    def test_corrupt_ciphertext_is_omitted_not_raised(self, org):
+        """A row that exists but fails to decrypt is treated the same as a
+        missing row for batching purposes -- omitted, not propagated -- so
+        one corrupt secret cannot abort resolution for every other id in the
+        same batch."""
+        secret = secret_service.create(text="sk-many-ok", org=org, name="many-ok")
+        good = secret_service.create(text="sk-many-good", org=org, name="many-good")
+        Secret.objects.filter(pk=secret.pk).update(value="not-valid-fernet")
+
+        resolved = secret_resolver.resolve_many(
+            secret_ids=[secret.pk, good.pk], org_id=org.id
+        )
+
+        assert resolved == {good.pk: "sk-many-good"}
+
+    def test_org_id_has_no_default(self, org):
+        secret = secret_service.create(text="sk-many-req", org=org, name="many-req")
+
+        with pytest.raises(TypeError):
+            secret_resolver.resolve_many(secret_ids=[secret.pk])
+
+
 from src.shared.models import (
     EmbedderConfigData,
     LLMConfigData,
