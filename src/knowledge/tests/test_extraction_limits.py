@@ -366,6 +366,20 @@ def test_default_budget_caps_are_finite():
     assert 0 < budget.max_content_bytes < 1_000_000_000
 
 
+def test_caps_match_the_upload_path():
+    """django_app must refuse at upload anything this service would refuse.
+
+    Separate containers, so the numbers cannot be imported across -- they are
+    asserted on both sides. See
+    django_app/tests/services_tests/test_document_upload_limits.py
+    ::test_caps_match_the_knowledge_service.
+    """
+    budget = default_budget()
+
+    assert budget.max_input_bytes == 50 * 1024 * 1024
+    assert budget.max_unpacked_bytes == 256 * 1024 * 1024
+
+
 def test_limit_error_is_a_value_error_so_existing_handlers_still_catch_it():
     """execute_preview_chunking reports ValueError as a `failed` job, not a crash."""
     assert issubclass(ExtractionLimitExceeded, ValueError)

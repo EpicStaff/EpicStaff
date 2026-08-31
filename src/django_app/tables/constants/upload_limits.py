@@ -3,14 +3,11 @@ from dataclasses import dataclass
 
 
 # nginx caps a request body at 50M (nginx/templates/default.conf.template);
-# the batch total is aligned with it so the API rejects with a readable 400
-# instead of nginx dropping the connection.
-DEFAULT_MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
+DEFAULT_MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_UPLOAD_TOTAL_BYTES = 50 * 1024 * 1024
 
-# Archive expansion, measured from archive headers before anything is extracted.
 DEFAULT_MAX_ARCHIVE_ENTRIES = 2_000
-DEFAULT_MAX_ARCHIVE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+DEFAULT_MAX_ARCHIVE_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
 
 
 @dataclass(frozen=True, kw_only=True)

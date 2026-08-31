@@ -146,18 +146,6 @@ class FileSizeExceededException(DocumentUploadException):
         )
 
 
-class TotalUploadSizeExceededException(DocumentUploadException):
-    """Raised when the combined size of an upload batch exceeds the allowed limit."""
-
-    def __init__(self, total_bytes, max_bytes):
-        self.total_bytes = total_bytes
-        self.max_bytes = max_bytes
-        super().__init__(
-            f"Total upload size is {total_bytes} bytes, over the limit of "
-            f"{max_bytes} bytes"
-        )
-
-
 class InvalidFileTypeException(DocumentUploadException):
     """Raised when file type is not allowed."""
 
