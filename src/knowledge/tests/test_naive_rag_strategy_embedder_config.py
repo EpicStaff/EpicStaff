@@ -1,7 +1,6 @@
 """_set_embedder_config dropped base_url on every known-provider branch except
 CustomEmbedder -- OpenAIEmbedder had no parameter to receive it, so a
-local/self-hosted endpoint configured for provider="openai" was silently ignored
-(EST-3696, break b, strategy half).
+local/self-hosted endpoint configured for provider="openai" was silently ignored.
 
 Also guards the outer-exception fallback: a construction failure used to be
 swallowed and served by a default OpenAI embedder built from the container's

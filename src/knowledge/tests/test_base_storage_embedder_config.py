@@ -3,8 +3,7 @@
 EmbeddingModel.base_url is mapped on both the Django model and this SQLAlchemy
 model, so a local/self-hosted embedding endpoint could be configured -- but
 get_embedder_configuration's returned dict never selected the column, so every
-consumer (_set_embedder_config) received a config with no base_url at all
-(EST-3696, break a).
+consumer (_set_embedder_config) received a config with no base_url at all.
 """
 
 from unittest.mock import MagicMock

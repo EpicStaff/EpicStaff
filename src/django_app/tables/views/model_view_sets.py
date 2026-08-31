@@ -2562,7 +2562,7 @@ class VoiceSettingsView(generics.RetrieveUpdateAPIView):
         # caller gets the resolved plaintext Twilio credentials; a regular
         # superadmin JWT session only ever sees the `*_secret_id` fields.
         # Same trust boundary as `RealtimeChannelViewSet.lookup_by_token`'s
-        # `RealtimeChannelInternalSerializer` (EST-3633).
+        # `RealtimeChannelInternalSerializer`.
         if (
             isinstance(self.request.auth, ApiKey)
             and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
@@ -2646,7 +2646,7 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is the boundary here,
+    OrgScopedModel) — org isolation is the boundary here,
     not a superadmin gate: any authenticated member of the channel's own org
     may configure their own org's Twilio number. A channel belonging to
     another org (or none at all) is rejected exactly like a missing token,

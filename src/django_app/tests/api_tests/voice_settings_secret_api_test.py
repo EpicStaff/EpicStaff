@@ -1,5 +1,5 @@
-"""Coverage for the `VoiceSettings` Twilio-credential secret-FK migration
-(EST-3207 follow-up): `twilio_account_sid`/`twilio_auth_token` moved from
+"""Coverage for the `VoiceSettings` Twilio-credential secret-FK migration:
+`twilio_account_sid`/`twilio_auth_token` moved from
 plaintext CharFields to `Secret` FKs (`twilio_account_sid_secret` /
 `twilio_auth_token_secret`).
 
@@ -10,7 +10,7 @@ Two trust boundaries on the same `/api/voice-settings/` endpoint:
   `POST /voice` webhook, which needs the real `twilio_auth_token` to
   validate `X-Twilio-Signature`) gets the resolved plaintext values too
   (`VoiceSettingsInternalSerializer`) — mirrors
-  `RealtimeChannelInternalSerializer` / EST-3633.
+  `RealtimeChannelInternalSerializer`.
 """
 
 import pytest

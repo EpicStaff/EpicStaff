@@ -1,7 +1,6 @@
 """OpenAIEmbedder silently ignored base_url -- it had no constructor parameter for
 it at all, so any local/self-hosted OpenAI-compatible endpoint configured for an
-`openai`-provider row was never reached; requests always went to api.openai.com
-(EST-3696, break b, embedder half).
+`openai`-provider row was never reached; requests always went to api.openai.com.
 """
 
 from unittest.mock import patch

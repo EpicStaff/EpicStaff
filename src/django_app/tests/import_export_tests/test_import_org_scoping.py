@@ -146,7 +146,7 @@ class TestHybridCrossOrg:
 
 @pytest.mark.django_db
 class TestProviderRealtimeConfigCrossOrg:
-    """EST-3629/3630 follow-up: OpenAIRealtimeConfig (and its Eleven/Gemini
+    """OpenAIRealtimeConfig (and its Eleven/Gemini
     siblings, same base strategy) now own `org` NOT NULL — create_entity must
     stamp it, and find_existing/uniqueness must not leak across orgs."""
 

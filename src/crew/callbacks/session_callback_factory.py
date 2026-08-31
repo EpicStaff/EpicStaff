@@ -28,7 +28,7 @@ SESSION_STATUS_CHANNEL = os.environ.get(
     "SESSION_STATUS_CHANNEL", "sessions:session_status"
 )
 
-# Typed findings channel (EST-3285 5.3): src/shared/tools/report_findings_tool/main.py
+# Typed findings channel: src/shared/tools/report_findings_tool/main.py
 # returns a dict carrying this marker key when it successfully reports findings.
 # The tool's return value goes to CrewAI as a JSON string (result_data is always
 # json.dumps(...) of whatever the sandboxed main() returns), so we recognize it

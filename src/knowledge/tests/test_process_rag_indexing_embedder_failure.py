@@ -2,7 +2,7 @@
 construction fails.
 
 The `_get_cached_embedder(...)` call used to sit BEFORE process_rag_indexing's
-own try/except block. Since EmbedderConfigurationError (EST-3696) now raises
+own try/except block. Since EmbedderConfigurationError now raises
 instead of silently falling back to a default embedder, a construction failure
 at that call site used to escape uncaught -- NaiveRag.status was never set to
 "failed", defeating the point of raising loudly in the first place. It must be

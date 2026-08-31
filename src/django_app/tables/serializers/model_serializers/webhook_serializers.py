@@ -110,9 +110,7 @@ class VoiceSettingsInternalSerializer(VoiceSettingsSerializer):
     this endpoint to validate the inbound `X-Twilio-Signature` header against
     the real `twilio_auth_token`, and needs the plaintext value to do so. Never
     served to a JWT-authenticated (super)admin session — same trust boundary
-    as `_TwilioChannelInternalSerializer` (see realtime_serializers.py,
-    EST-3633: a masked/absent value here would silently break Twilio inbound
-    signature validation for every call).
+    as `_TwilioChannelInternalSerializer`.
 
     `VoiceSettings` itself has no owning organization (it is the one
     genuinely global, non-org-scoped singleton that references `Secret`),
