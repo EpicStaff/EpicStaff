@@ -80,14 +80,6 @@ export class RagTabComponent implements OnInit {
             name: 'Local',
             value: 'local',
         },
-        {
-            name: 'Global',
-            value: 'global',
-        },
-        {
-            name: 'DRIFT',
-            value: 'drift',
-        },
     ];
 
     textUnitProportionControl!: FormControl;
