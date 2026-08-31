@@ -1,4 +1,4 @@
-# INDIVIDUAL CONTRIBUTOR LICENSE AGREEMENT ("ICLA") - VERSION 1.0.0
+# INDIVIDUAL CONTRIBUTOR LICENSE AGREEMENT ("ICLA") - VERSION 1.0.0, 10 June 2026
 
 Effective as of the date of acceptance by the Contributor.
 

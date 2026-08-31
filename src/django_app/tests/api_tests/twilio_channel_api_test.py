@@ -599,9 +599,9 @@ class TestRealtimeChannelLookupByToken:
 class TestTwilioChannelPhoneNumbersAction:
     """GET /twilio-channels/{id}/phone-numbers/ resolves account_sid
     and the auth token server-side from the channel's stored Secret — unlike
-    TwilioPhoneNumbersView (header-based, superadmin-only), the frontend
-    supplies no raw credentials at all here, and the caller only needs normal
-    org membership on the channel's own org."""
+    the removed, header-based TwilioPhoneNumbersView (superadmin-only), the
+    frontend supplies no raw credentials at all here, and the caller only
+    needs normal org membership on the channel's own org."""
 
     def _fake_twilio_response(self, *args, **kwargs):
         return {
@@ -692,9 +692,10 @@ class TestTwilioChannelPhoneNumbersAction:
 @pytest.mark.django_db
 class TestTwilioChannelPhoneNumbersSidValidation:
     """`TwilioChannelViewSet.phone_numbers` reads `sid` straight
-    from a query param and passes it into `_twilio_phone_numbers_response`
-    (the same shared helper `TwilioPhoneNumbersView.get` calls) without any
-    format check — it needs the identical `_TWILIO_ACCOUNT_SID_RE` guard.
+    from a query param and passes it into `TwilioService.get_phone_numbers`
+    (the shared helper; the header-based `TwilioPhoneNumbersView.get` that
+    used to share it was removed on `main`) without any format check — it
+    needs the identical `_TWILIO_ACCOUNT_SID_RE` guard.
 
     NOTE: this action is registered `detail=False` (list-level), so its real
     URL is `/api/twilio-channels/phone-numbers/` with no `<pk>` segment —
@@ -843,22 +844,3 @@ class TestTwilioConfigureWebhookInputValidation:
         assert "ACxxxx" not in body_text
 
 
-@pytest.mark.django_db
-class TestTwilioPhoneNumbersHeaderValidation:
-    """superadmin-only endpoint, but the raw `X-Twilio-Account-Sid`
-    header still flows into the Twilio REST URL, so it must be validated too."""
-
-    def test_rejects_invalid_account_sid_header_format(
-        self, superadmin_client, db
-    ):
-        url = reverse("twilio-phone-numbers")
-        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
-            response = superadmin_client.get(
-                url,
-                HTTP_X_TWILIO_ACCOUNT_SID="not-a-valid-sid",
-                HTTP_X_TWILIO_AUTH_TOKEN="some-token",
-            )
-
-        assert response.status_code == 400, response.json()
-        assert response.json() == {"error": "Invalid account_sid"}
-        mocked.assert_not_called()

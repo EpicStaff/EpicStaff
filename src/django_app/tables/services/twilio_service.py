@@ -96,10 +96,11 @@ class TwilioService(metaclass=SingletonMeta):
     def get_phone_numbers(self, account_sid: str, auth_token: str) -> list[dict]:
         """Call Twilio's IncomingPhoneNumbers API and shape the response.
 
-        Shared by `TwilioPhoneNumbersView` (raw account_sid/auth_token via
-        headers, superadmin-only) and `TwilioChannelViewSet.phone_numbers`
-        (credentials resolved from a stored `Secret`) so both surfaces return
-        the exact same response shape and error handling.
+        Sole caller is `TwilioChannelViewSet.phone_numbers` (credentials
+        resolved from a stored `Secret`). The legacy header-based
+        `TwilioPhoneNumbersView` (raw account_sid/auth_token via headers,
+        superadmin-only) was removed on `main` — superseded by the
+        org-scoped `TwilioChannel` model.
         """
         self.validate_account_sid(account_sid)
         try:
