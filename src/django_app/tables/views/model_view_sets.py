@@ -2103,14 +2103,16 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
         """Return this channel's Twilio incoming phone numbers."""
-        
+
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
 
         # 2. Validate they were provided
         if not sid or not auth_token_secret_id:
             return Response(
-                {"error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"},
+                {
+                    "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2120,7 +2122,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             org_id=resolve_active_org_id(request),
             context="TwilioChannel.auth_token",
         )
-        
+
         return _twilio_phone_numbers_response(sid, auth_token)
 
 
@@ -2857,6 +2859,12 @@ class SecretViewSet(
     rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
     queryset = Secret.objects.all()
     serializer_class = SecretSerializer
+
+    def get_queryset(self):
+        # system=True rows (e.g. org-level MinIO credentials) are internal to
+        # storage_credentials and must never be visible through this API —
+        # not even their existence. A direct GET by id must 404, not 403.
+        return super().get_queryset().filter(system=False)
 
     @extend_schema(**SECRET_USAGE_GET)
     @action(detail=True, methods=["get"], url_path="usage")

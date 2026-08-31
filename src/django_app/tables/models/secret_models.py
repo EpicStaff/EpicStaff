@@ -16,6 +16,15 @@ class Secret(OrgScopedModel, TimestampMixin, MetadataMixin):
     name = models.CharField(max_length=128)
     value = models.CharField(max_length=12000, editable=False)
     tail = models.CharField(max_length=4, blank=True, default="", editable=False)
+    system = models.BooleanField(
+        default=False,
+        editable=False,
+        help_text=(
+            "Infrastructure secret (e.g. org-level MinIO credentials) managed "
+            "internally by storage_credentials. Never exposed through the "
+            "user-facing Secret API."
+        ),
+    )
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

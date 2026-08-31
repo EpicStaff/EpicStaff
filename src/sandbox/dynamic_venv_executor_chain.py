@@ -8,9 +8,12 @@ import pwd
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from secret_scrubber import masking_enabled, scrub
+from secret_scrubber import build_masking_values, masking_enabled, scrub
 from src.shared.models import CodeResultData
-from services.storage_credential_manager import StorageCredentialManager
+from services.storage_credential_client import (
+    StorageCredentialClient,
+    StorageCredentialRequestError,
+)
 from utils.environment import build_base_env
 from utils.logger import logger
 
@@ -370,9 +373,20 @@ except Exception:
 
         secrets = context.get("secrets") or {}
         mask_secrets = masking_enabled()
-        if mask_secrets:
-            stderr = scrub(text=stderr, secrets=secrets)
-            stdout = scrub(text=stdout, secrets=secrets)
+        # Temporary storage credentials are masked unconditionally -- they
+        # are never a "user secret" the developer might legitimately want to
+        # see, unlike what MASK_SECRET/masking_enabled() gates. User secrets
+        # are included in the masking set only when mask_secrets is True,
+        # preserving today's opt-out behavior for them exactly.
+        masking_values = build_masking_values(
+            secrets if mask_secrets else {},
+            {
+                "STORAGE_ACCESS_KEY": context.get("temp_storage_access_key"),
+                "STORAGE_SECRET_KEY": context.get("temp_storage_secret_key"),
+            },
+        )
+        stderr = scrub(text=stderr, secrets=masking_values)
+        stdout = scrub(text=stdout, secrets=masking_values)
 
         if stderr:
             logger.info("Error: {}", stderr)
@@ -387,11 +401,7 @@ except Exception:
             try:
                 with open(result_file_path, "r", encoding="utf-8") as file:
                     raw_result = file.read()
-                result_data = (
-                    scrub(text=raw_result, secrets=secrets)
-                    if mask_secrets
-                    else raw_result
-                )
+                result_data = scrub(text=raw_result, secrets=masking_values)
             except Exception:
                 logger.exception("Exception reading result file")
 
@@ -412,11 +422,11 @@ class DynamicVenvExecutorChain:
         self,
         output_path: str | Path,
         base_venv_path: str | Path,
-        storage_credential_manager: StorageCredentialManager,
+        storage_credential_client: StorageCredentialClient,
     ):
         self.output_path = output_path
         self.base_venv_path = base_venv_path
-        self.storage_credential_manager = storage_credential_manager
+        self.storage_credential_client = storage_credential_client
 
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
@@ -491,42 +501,29 @@ class DynamicVenvExecutorChain:
             "storage_org_prefix": storage_org_prefix,
             "secrets": secrets,
         }
-        temp_access_key: str | None = None
         if use_storage:
+            # sandbox never claims its own org_id/storage_org_prefix (finding
+            # #38): it asks the issuer in django_app for credentials by
+            # execution_id alone. The issuer resolves the trusted scope a
+            # publisher already wrote for this execution_id, mints a
+            # temporary MinIO service account scoped to it, and replies here.
+            # Any failure -- timeout, missing scope, issuer-reported error --
+            # is fail-closed: code never executes without storage access it
+            # asked for.
             try:
-                policy = self.storage_credential_manager.build_policy(
-                    allowed_bucket=os.environ["STORAGE_BUCKET_NAME"],
-                    allowed_folders=self._scoped_folders(
-                        storage_org_prefix, storage_allowed_paths
-                    ),
-                )
-                temp_access_key, temp_secret_key = (
-                    await self.storage_credential_manager.create(policy)
-                )
-            except Exception as e:
-                logger.error("Failed to provision scoped storage credentials: {}", e)
+                credentials = await self.storage_credential_client.request(execution_id)
+            except StorageCredentialRequestError as e:
+                logger.error("Failed to obtain scoped storage credentials: {}", e)
                 return CodeResultData(
                     execution_id=execution_id,
-                    stderr=f"Failed to provision scoped storage credentials: {e}",
+                    stderr=f"Failed to obtain scoped storage credentials: {e}",
                     stdout="",
                     returncode=1,
                 )
-            context["temp_storage_access_key"] = temp_access_key
-            context["temp_storage_secret_key"] = temp_secret_key
+            context["temp_storage_access_key"] = credentials["access_key"]
+            context["temp_storage_secret_key"] = credentials["secret_key"]
 
-        try:
-            result = await self.chain.handle(context)
-        finally:
-            if temp_access_key is not None:
-                await self.storage_credential_manager.revoke(temp_access_key)
+        result = await self.chain.handle(context)
 
         logger.info(result)
         return result
-
-    @staticmethod
-    def _scoped_folders(org_prefix: str | None, allowed_paths: list[str] | None) -> set[str]:
-        if not org_prefix:
-            raise ValueError("storage_org_prefix is required when use_storage is set")
-        if not allowed_paths:
-            return {f"{org_prefix}/"}  # whole org (folder)
-        return {f"{org_prefix}/{path.lstrip('/')}" for path in allowed_paths}

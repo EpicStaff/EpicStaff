@@ -35,6 +35,10 @@ python manage.py listen_redis &
 echo "Starting Redis caching..."
 python manage.py cache_redis &
 
+# Start the per-execution MinIO credential issuer/revoker in the background
+echo "Starting storage credential issuer..."
+python manage.py run_storage_credential_issuer &
+
 # Start Django application
 PORT="${DJANGO_PORT:-8000}"
 

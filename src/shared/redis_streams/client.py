@@ -133,3 +133,39 @@ class RedisStreamClient:
     async def pending(self, stream: str, group: str) -> object:
         assert self._client is not None, "call connect() first"
         return await self._client.xpending(stream, group)
+
+    async def autoclaim(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_ms: int,
+        start_id: str = "0-0",
+        count: int = 100,
+    ) -> list[StreamMessage]:
+        """Reassign pending messages idle for at least `min_idle_ms` to
+        `consumer`, so a replacement consumer can pick up work abandoned by a
+        crashed one. Returns the reclaimed messages (already reassigned, not
+        yet acked)."""
+        assert self._client is not None, "call connect() first"
+        _next_start_id, entries, _deleted_ids = await self._client.xautoclaim(
+            stream,
+            group,
+            consumer,
+            min_idle_time=min_idle_ms,
+            start_id=start_id,
+            count=count,
+        )
+        messages = [
+            StreamMessage(stream=stream, message_id=message_id, fields=fields)
+            for message_id, fields in entries
+        ]
+        if messages:
+            logger.info(
+                "autoclaimed {} pending message(s) on {}/{} for {}",
+                len(messages),
+                stream,
+                group,
+                consumer,
+            )
+        return messages

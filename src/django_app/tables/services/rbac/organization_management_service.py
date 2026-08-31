@@ -9,6 +9,10 @@ from tables.services.rbac.rbac_exceptions import (
     OrganizationNotFoundError,
 )
 
+from storage_credentials.services.org_provisioning_service import (
+    org_storage_provisioning_service,
+)
+
 
 class OrganizationManagementService:
     """All read + write operations on Organization for the superadmin
@@ -78,6 +82,12 @@ class OrganizationManagementService:
             org = Organization.objects.create(name=name)
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
+        # Explicit call, not a post_save signal: an organization without
+        # provisioned storage is not a valid intermediate state, so any
+        # OrgStorageProvisioningError here propagates and rolls back this
+        # entire transaction (fail-closed) rather than hiding the
+        # dependency inside an implicit side effect.
+        org_storage_provisioning_service.provision_for_organization(org)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -100,6 +110,7 @@ class OrganizationManagementService:
         self._assert_can_deactivate()
         org.is_active = False
         org.save(update_fields=["is_active", "updated_at"])
+        org_storage_provisioning_service.deprovision_for_organization(org)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -109,6 +120,9 @@ class OrganizationManagementService:
             return self._get_organization_with_member_count(org.pk)
         org.is_active = True
         org.save(update_fields=["is_active", "updated_at"])
+        # deactivate_organization() removed the old MinIO user entirely (it
+        # cannot be un-removed), so reactivation always provisions a fresh one.
+        org_storage_provisioning_service.provision_for_organization(org)
         return self._get_organization_with_member_count(org.pk)
 
     def _get_organization_with_member_count(self, org_id: int) -> Organization:

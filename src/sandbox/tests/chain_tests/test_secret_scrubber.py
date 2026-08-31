@@ -8,7 +8,13 @@ consumer, including this container's own log, can read them.
 import json
 
 import pytest
-from secret_scrubber import MASK, MASK_SECRET_ENV_VAR, masking_enabled, scrub
+from secret_scrubber import (
+    MASK,
+    MASK_SECRET_ENV_VAR,
+    build_masking_values,
+    masking_enabled,
+    scrub,
+)
 
 SECRET_NAME = "STRIPE KEY"
 SECRET_VALUE = "sk-live-must-not-escape-7a21"
@@ -250,6 +256,77 @@ class TestMaskingEnabledParsesTheValue:
 
         monkeypatch.setenv(MASK_SECRET_ENV_VAR, "true")
         assert masking_enabled() is True
+
+
+class TestBuildMaskingValuesMasksTemporaryStorageCredentialsUnconditionally:
+    """`ExecuteCodeHandler.handle` builds its masking set through
+    `build_masking_values(secrets if mask_secrets else {}, {temp storage
+    creds})` -- the temp-credential half is passed unconditionally,
+    regardless of `MASK_SECRET`. These tests reproduce that exact call
+    pattern rather than asserting on `build_masking_values` in isolation, so
+    a future refactor of the call site is what these actually pin."""
+
+    TEMP_ACCESS_KEY = "temp-ak-must-not-leak"
+    TEMP_SECRET_KEY = "temp-sk-must-not-leak"
+
+    def _masking_values(self, *, mask_secrets: bool, user_secrets: dict[str, str]):
+        return build_masking_values(
+            user_secrets if mask_secrets else {},
+            {
+                "STORAGE_ACCESS_KEY": self.TEMP_ACCESS_KEY,
+                "STORAGE_SECRET_KEY": self.TEMP_SECRET_KEY,
+            },
+        )
+
+    def test_temp_credentials_are_masked_when_mask_secret_is_true(self):
+        values = self._masking_values(
+            mask_secrets=True, user_secrets={"K": SECRET_VALUE}
+        )
+        scrubbed = scrub(
+            text=f"{self.TEMP_ACCESS_KEY} {self.TEMP_SECRET_KEY} {SECRET_VALUE}",
+            secrets=values,
+        )
+
+        assert self.TEMP_ACCESS_KEY not in scrubbed
+        assert self.TEMP_SECRET_KEY not in scrubbed
+        assert SECRET_VALUE not in scrubbed
+
+    def test_temp_credentials_are_masked_even_when_mask_secret_is_false(self):
+        """The most important case: MASK_SECRET=false is a documented opt-out
+        for the developer's *own* secrets, never for temp MinIO credentials
+        the code never legitimately needed to see in plaintext output."""
+        values = self._masking_values(
+            mask_secrets=False, user_secrets={"K": SECRET_VALUE}
+        )
+        scrubbed = scrub(
+            text=f"{self.TEMP_ACCESS_KEY} {self.TEMP_SECRET_KEY} {SECRET_VALUE}",
+            secrets=values,
+        )
+
+        assert self.TEMP_ACCESS_KEY not in scrubbed
+        assert self.TEMP_SECRET_KEY not in scrubbed
+        # The opt-out still applies to the user's own secret.
+        assert SECRET_VALUE in scrubbed
+
+    def test_temp_credentials_are_masked_with_no_user_secrets_at_all(self):
+        """Regression guard: scrub()'s early `if not secrets: return text`
+        must not short-circuit masking when `use_storage=True` but the
+        execution declared no user secrets -- `build_masking_values` must
+        make the combined dict non-empty by itself."""
+        values = self._masking_values(mask_secrets=True, user_secrets={})
+        scrubbed = scrub(
+            text=f"{self.TEMP_ACCESS_KEY} {self.TEMP_SECRET_KEY}", secrets=values
+        )
+
+        assert self.TEMP_ACCESS_KEY not in scrubbed
+        assert self.TEMP_SECRET_KEY not in scrubbed
+        assert scrubbed.count(MASK) == 2
+
+    def test_the_callers_original_secrets_dict_is_not_mutated(self):
+        user_secrets = {"K": SECRET_VALUE}
+        build_masking_values(user_secrets, {"STORAGE_ACCESS_KEY": self.TEMP_ACCESS_KEY})
+
+        assert user_secrets == {"K": SECRET_VALUE}
 
 
 class TestScrubIgnoresTheSwitch:

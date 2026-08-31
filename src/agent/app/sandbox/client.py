@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 from loguru import logger
 
 from shared.models.tools import CodeResultData, CodeTaskData
+from shared.storage_credentials import publish_credential_scope_async
 
 if TYPE_CHECKING:
     pass
@@ -92,6 +93,9 @@ class SandboxClient:
         self._pending[execution_id] = future
 
         try:
+            # Trusted scope for the storage-credential issuer, written before
+            # the task itself is published
+            await publish_credential_scope_async(self._redis, task)
             await self._redis.publish(self._request_channel, task.model_dump_json())
 
             if timeout is not None:
