@@ -1,5 +1,5 @@
 """
-EST-3702: `RealtimeAgentChatData.rt_base_url` lets a realtime session point at
+`RealtimeAgentChatData.rt_base_url` lets a realtime session point at
 a local/self-hosted or proxy OpenAI-compatible endpoint instead of the
 hardcoded `api.openai.com` host. It is populated from the active
 `OpenAIRealtimeConfig.base_url` at conversion time.

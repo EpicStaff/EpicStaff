@@ -90,7 +90,7 @@ async def test_request_response_sends_response_create_event(client):
 
 
 def test_base_url_defaults_to_hardcoded_openai_endpoint():
-    """EST-3702 regression: no override must reproduce today's exact literal."""
+    """No override must reproduce today's exact literal."""
     c = OpenaiRealtimeAgentClient(
         api_key="test_key",
         connection_key="conn_1",

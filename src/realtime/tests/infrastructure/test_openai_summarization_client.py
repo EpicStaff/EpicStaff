@@ -16,7 +16,7 @@ def _mock_openai_response(text: str = "summary"):
 @pytest.mark.asyncio
 @patch("infrastructure.summarization.openai_summarization_client.AsyncOpenAI")
 async def test_default_base_url_is_none_reproducing_sdk_default(MockAsyncOpenAI):
-    """EST-3702 regression: no override must not pass a constructed literal,
+    """No override must not pass a constructed literal,
     letting AsyncOpenAI apply its own current default base_url."""
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_openai_response())

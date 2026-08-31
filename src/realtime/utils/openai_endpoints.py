@@ -1,6 +1,6 @@
 """Derive OpenAI-compatible endpoint URLs from an optional per-org `base_url` override.
 
-EST-3702: lets a realtime session point at a local/self-hosted or proxy
+Lets a realtime session point at a local/self-hosted or proxy
 OpenAI-compatible endpoint instead of the hardcoded `api.openai.com` host.
 When `base_url` is unset, both derivations fall back to today's exact
 behavior (a byte-for-byte hardcoded literal for the WS URL, and `None` for

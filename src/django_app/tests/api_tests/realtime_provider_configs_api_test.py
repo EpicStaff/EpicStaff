@@ -361,7 +361,7 @@ def test_agent_create_nested_realtime_agent_accepts_same_org_config(
 
 
 # ---------------------------------------------------------------------------
-# EST-3702 — OpenAIRealtimeConfig.base_url override
+# OpenAIRealtimeConfig.base_url override
 # ---------------------------------------------------------------------------
 
 
