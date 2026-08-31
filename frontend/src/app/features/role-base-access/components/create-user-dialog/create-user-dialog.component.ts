@@ -16,7 +16,6 @@ import { FullMembership, Organization } from '@shared/models';
 import { catchError, concat, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
-import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { AggregatedUser } from '../../models/aggregated-user.model';
 import { AdminUserService } from '../../services/admin/admin-user.service';
@@ -41,7 +40,6 @@ export class CreateUserDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private dialogRef = inject(DialogRef);
     private dialogData = inject<UserDialogData>(DIALOG_DATA, { optional: true });
-    private profileService = inject(ProfileService);
     private adminUserService = inject(AdminUserService);
     private membershipsService = inject(MembershipsService);
     private organizationsStorage = inject(OrganizationsStorageService);
@@ -50,7 +48,6 @@ export class CreateUserDialogComponent implements OnInit {
     private userDetailsStep = viewChild(StepUserDetailsComponent);
     private assignToOrgStep = viewChild(StepAssignToOrgComponent);
 
-    isSuperAdmin = this.profileService.isMeSuperAdmin;
     editUser = signal<AggregatedUser | null>(this.dialogData?.user ?? null);
     availableOrganizations = signal<Organization[]>([]);
     isSubmitting = signal<boolean>(false);
@@ -58,11 +55,7 @@ export class CreateUserDialogComponent implements OnInit {
 
     editMode = computed(() => this.editUser() !== null);
     existingMemberships = computed<FullMembership[]>(() => this.editUser()?.memberships ?? []);
-    submitDisabled = computed(() => {
-        if (!(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting()) return true;
-        // Delegated admins can only submit if at least one org assignment exists (no cross-org create surface).
-        return !this.isSuperAdmin() && (this.assignToOrgStep()?.selectedOrganizations().length ?? 0) === 0;
-    });
+    submitDisabled = computed(() => !(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting());
 
     ngOnInit(): void {
         this.loadOrganizations();
@@ -105,13 +98,9 @@ export class CreateUserDialogComponent implements OnInit {
         if (this.editMode()) {
             return this.updateExistingUser(this.editUser()!, assignments, superadmin);
         }
-        if (this.isSuperAdmin()) {
-            return this.createUserAsSuperadmin(email, password, superadmin, assignments);
-        }
-        return this.linkExistingByEmail(email, assignments);
+        return this.createUserAsSuperadmin(email, password, superadmin, assignments);
     }
 
-    /** Superadmin create: account → optional grant-superadmin → per-assignment memberships. */
     private createUserAsSuperadmin(
         email: string,
         password: string,
@@ -123,19 +112,6 @@ export class CreateUserDialogComponent implements OnInit {
                 (superadmin ? this.adminUserService.grantSuperadmin(user.id) : of(void 0)).pipe(map(() => user.id))
             ),
             switchMap((userId) => this.createMembershipsForUser(userId, assignments)),
-            map(() => true)
-        );
-    }
-
-    /** Delegated admin flow: link an existing account per selected org.
-     *  Backend rejects with `user_not_found` if the email has no account (superadmin must create). */
-    private linkExistingByEmail(email: string, assignments: OrgAssignment[]): Observable<boolean> {
-        if (!assignments.length) return of(false);
-        const ops = assignments.map((a) =>
-            this.membershipsService.create({ org_id: a.orgId, email, role_id: a.roleId })
-        );
-        return concat(...ops).pipe(
-            toArray(),
             map(() => true)
         );
     }
@@ -164,7 +140,7 @@ export class CreateUserDialogComponent implements OnInit {
         const ops: Observable<unknown>[] = [];
 
         // Superadmin diff first (grant/revoke can affect visibility of subsequent ops).
-        if (this.isSuperAdmin() && wantsSuperadmin !== user.isSuperadmin) {
+        if (wantsSuperadmin !== user.isSuperadmin) {
             ops.push(
                 wantsSuperadmin
                     ? this.adminUserService.grantSuperadmin(user.id)
@@ -194,26 +170,13 @@ export class CreateUserDialogComponent implements OnInit {
     }
 
     private loadOrganizations(): void {
-        if (this.isSuperAdmin()) {
-            this.organizationsStorage
-                .getOrganizations()
-                .pipe(
-                    takeUntilDestroyed(this.destroyRef),
-                    finalize(() => this.loadingOrganizations.set(false)),
-                    catchError(() => of([] as Organization[]))
-                )
-                .subscribe((orgs) => this.availableOrganizations.set(orgs));
-            return;
-        }
-        // Delegated admin: their memberships expose the orgs they belong to.
-        const currentUser = this.profileService.currentUserSignal();
-        if (currentUser) {
-            const adminOrgs = currentUser.memberships.map((m) => ({
-                id: m.organization.id,
-                name: m.organization.name,
-            }));
-            this.availableOrganizations.set(adminOrgs);
-        }
-        this.loadingOrganizations.set(false);
+        this.organizationsStorage
+            .getOrganizations()
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.loadingOrganizations.set(false)),
+                catchError(() => of([] as Organization[]))
+            )
+            .subscribe((orgs) => this.availableOrganizations.set(orgs));
     }
 }

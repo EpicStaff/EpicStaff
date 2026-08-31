@@ -10,9 +10,10 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { FullMembership, GetRoleResponse, Organization, UserRole } from '@shared/models';
+import { ActionCode, FullMembership, GetRoleResponse, Organization, ResourceCode, UserRole } from '@shared/models';
 import { catchError, EMPTY } from 'rxjs';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { RolesService } from '../../../../services/admin/roles.service';
 import { OrgAvatarComponent } from '../../../org-avatar/org-avatar.component';
 
@@ -37,21 +38,22 @@ export interface OrgAssignment {
 })
 export class StepAssignToOrgComponent implements OnInit {
     private rolesService = inject(RolesService);
+    private permissionsService = inject(PermissionsService);
     private destroyRef = inject(DestroyRef);
 
     organizations = input.required<Organization[]>();
     existingMemberships = input<FullMembership[]>([]);
+    isEditMode = input.required<boolean>();
 
     organizationsTableData = signal<TableRow[]>([]);
     searchTerm = signal('');
     isOrgsLoading = signal<boolean>(false);
     selectedOrganizations = signal<TableRow[]>([]);
-    selectedOrgIds = computed(() => new Set(this.selectedOrganizations().map((r) => r['id'] as number)));
+    selectionIds = signal<number[]>([]);
+    private roleItemsByOrg = signal<Map<number, SelectItem[]>>(new Map());
 
-    /** Built-in role items — always applicable in every org. */
-    private builtInRoleItems = signal<SelectItem[]>([]);
-    /** Per-org custom role items (results grouped by `org_id`). */
-    private customRoleItemsByOrg = signal<Map<number, SelectItem[]>>(new Map());
+    selectedOrgIds = computed(() => new Set(this.selectedOrganizations().map((r) => r['id'] as number)));
+    readonly hasInvalidRow = computed(() => this.selectedOrganizations().some((r) => r['role'] == null));
 
     filteredOrganizations = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -64,53 +66,65 @@ export class StepAssignToOrgComponent implements OnInit {
         { key: 'role', label: 'Role', width: '1fr' },
     ];
 
-    selectionIds = signal<number[]>([]);
-
     ngOnInit(): void {
         const memberships = this.existingMemberships();
         const membershipMap = new Map(memberships.map((m) => [m.organization.id, m.role.id]));
 
-        const rows: TableRow[] = this.organizations().map((org) => ({
+        const assignableOrgs = this.organizations().filter((org) =>
+            this.permissionsService.canInOrg(
+                org.id,
+                ResourceCode.Memberships,
+                this.isEditMode() ? ActionCode.Update : ActionCode.Create
+            )
+        );
+
+        const defaultOrgRole = (orgId: number) =>
+            this.permissionsService.canInOrg(orgId, ResourceCode.Roles, ActionCode.Read) ? UserRole.MEMBER : null;
+
+        const rows: TableRow[] = assignableOrgs.map((org) => ({
             id: org.id,
             name: org.name,
-            role: membershipMap.get(org.id) ?? UserRole.MEMBER,
+            role: membershipMap.get(org.id) || defaultOrgRole(org.id),
         }));
 
+        const assignableOrgIds = new Set(assignableOrgs.map((o) => o.id));
         this.organizationsTableData.set(rows);
-        this.selectionIds.set(memberships.map((m) => m.organization.id));
+        this.selectionIds.set(
+            memberships.filter((m) => assignableOrgIds.has(m.organization.id)).map((m) => m.organization.id)
+        );
 
-        this.loadRolesForOrgs();
+        const roleReadableOrgIds = assignableOrgs
+            .map((o) => o.id)
+            .filter((id) => this.permissionsService.canInOrg(id, ResourceCode.Roles, ActionCode.Read));
+        this.loadRolesForOrgs(roleReadableOrgIds);
     }
 
-    /** Fetches built-ins and custom roles for all orgs presented on this step in a single request.
-     *  Groups custom roles by `org_id` so each row can show `built-ins ∪ custom(row.orgId)`. */
-    private loadRolesForOrgs(): void {
-        const orgIds = this.organizations().map((o) => o.id);
+    /** Fetches built-ins and custom roles for orgs where the actor can read roles,
+     *  then materializes `built-ins ∪ custom(orgId)` per allowed org. */
+    private loadRolesForOrgs(allowedOrgIds: number[]): void {
+        if (!allowedOrgIds.length) return;
+
         this.rolesService
-            .loadRoles(orgIds.length ? { orgIds } : {})
+            .loadRoles({ orgIds: allowedOrgIds })
             .pipe(
                 catchError(() => EMPTY),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((res) => {
                 // Superadmin is a platform-level grant, not an assignable membership role
-                const assignableBuiltIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN);
-                this.builtInRoleItems.set(assignableBuiltIns.map(roleToSelectItem));
-                const grouped = new Map<number, SelectItem[]>();
+                const builtIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN).map(roleToSelectItem);
+                const byOrg = new Map<number, SelectItem[]>(allowedOrgIds.map((id) => [id, [...builtIns]]));
                 for (const role of res.results) {
                     if (role.org_id === null) continue;
-                    const list = grouped.get(role.org_id) ?? [];
-                    list.push(roleToSelectItem(role));
-                    grouped.set(role.org_id, list);
+                    byOrg.get(role.org_id)?.push(roleToSelectItem(role));
                 }
-                this.customRoleItemsByOrg.set(grouped);
+                this.roleItemsByOrg.set(byOrg);
             });
     }
 
-    /** Role options for a specific org row: built-ins + that org's custom roles. */
+    /** Role options for a specific org row. Empty if actor cannot read roles in that org. */
     rolesForOrg(orgId: number): SelectItem[] {
-        const custom = this.customRoleItemsByOrg().get(orgId) ?? [];
-        return [...this.builtInRoleItems(), ...custom];
+        return this.roleItemsByOrg().get(orgId) ?? [];
     }
 
     onSelection(items: TableRow[]): void {
@@ -118,11 +132,14 @@ export class StepAssignToOrgComponent implements OnInit {
     }
 
     onRoleSelected(row: TableRow, value: unknown): void {
-        row['role'] = value;
         const rowId = row['id'] as number;
-        const currentIds = this.selectedOrganizations().map((r) => r['id'] as number);
-        if (!currentIds.includes(rowId)) {
-            this.selectionIds.set([...currentIds, rowId]);
+        const patch = (r: TableRow): TableRow => (r['id'] === rowId ? { ...r, role: value } : r);
+        this.organizationsTableData.update((rows) => rows.map(patch));
+
+        if (this.selectedOrgIds().has(rowId)) {
+            this.selectedOrganizations.update((rows) => rows.map(patch));
+        } else {
+            this.selectionIds.set([...this.selectionIds(), rowId]);
         }
     }
 

@@ -39,12 +39,7 @@ export class UserMenuComponent {
     isUserMenuOpen = model<boolean>(false);
 
     organizations = computed<FullMembership[]>(() => this.user().memberships);
-    canVisitWorkspace = computed(
-        () =>
-            this.permissionService.can(ResourceCode.Organizations, ActionCode.Read) ||
-            this.permissionService.can(ResourceCode.Users, ActionCode.Read) ||
-            this.permissionService.can(ResourceCode.Roles, ActionCode.Read)
-    );
+    canVisitWorkspace = computed(() => this.permissionService.canAccessWorkspace());
 
     onOrgClick(orgId: number): void {
         if (orgId === this.activeOrgService.activeOrgId() || this.switching()) return;

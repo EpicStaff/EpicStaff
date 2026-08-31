@@ -15,13 +15,15 @@
 <div class="section">
     <div class="header">
         <h2 class="title">Organizations</h2>
-        <app-button
-            type="outline-primary"
-            mod="small"
-            leftIcon="plus"
-            (click)="onCreateOrganization()"
-            >Create Organization
-        </app-button>
+        @if (isSuperadmin) {
+            <app-button
+                type="outline-primary"
+                mod="small"
+                leftIcon="plus"
+                (click)="onCreateOrganization()"
+                >Create Organization
+            </app-button>
+        }
     </div>
 
     @if (isOrgsLoading()) {
@@ -34,18 +36,19 @@
             @for (org of organizations(); track org.id) {
                 <app-org-card [organization]="org" />
             }
-            <!-- Create New Team -->
-            <div
-                class="org-card-create"
-                (click)="onCreateOrganization()"
-            >
-                <app-svg-icon
-                    class="plus"
-                    icon="plus"
-                    size="30px"
-                />
-                <span class="label">Create New Organization</span>
-            </div>
+            @if (isSuperadmin) {
+                <div
+                    class="org-card-create"
+                    (click)="onCreateOrganization()"
+                >
+                    <app-svg-icon
+                        class="plus"
+                        icon="plus"
+                        size="30px"
+                    />
+                    <span class="label">Create New Organization</span>
+                </div>
+            }
         </div>
     }
 </div>

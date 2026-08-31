@@ -1,0 +1,47 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">{{ editMode() ? 'Edit Membership' : 'Add Membership' }}</span>
+
+        <div class="actions">
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+            >
+                Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                [disabled]="submitDisabled()"
+                (click)="onSubmit()"
+            >
+                {{ editMode() ? 'Save' : 'Add' }}
+            </app-button>
+        </div>
+    </div>
+
+    <div class="body">
+        <div class="details">
+            <label class="label">
+                Email <span class="required">*</span>
+                <app-help-tooltip
+                    [text]="'The email address of an existing account to grant organization membership.'"
+                    position="right"
+                ></app-help-tooltip>
+            </label>
+            <div class="input-wrap">
+                <app-custom-input
+                    (blur)="trimEmail()"
+                    placeholder="Enter user email..."
+                    [formControl]="emailControl"
+                />
+                <app-validation-errors [control]="emailControl" />
+            </div>
+        </div>
+
+        <app-step-assign-to-org
+            [isEditMode]="editMode()"
+            [organizations]="availableOrganizations()"
+            [existingMemberships]="existingMemberships()"
+        />
+    </div>
+</div>

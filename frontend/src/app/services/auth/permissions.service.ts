@@ -60,11 +60,20 @@ export class PermissionsService implements StorageService {
 
     /** Multi-org gate: can the current user do `action` on `resource` in org `orgId`?
      *  Backed by `/me/orgs/` capabilities. Superadmin short-circuits to true. */
-    canIn(orgId: number, resource: ResourceCode, action: ActionCode): boolean {
+    canInOrg(orgId: number, resource: ResourceCode, action: ActionCode): boolean {
         if (this._isSuperadmin()) return true;
         const caps = this._orgCaps();
         const org = caps?.orgs?.find((o) => o.org.id === orgId);
         return !!org && (org.permissions[resource]?.includes(action) ?? false);
+    }
+
+    /** Cross-org gate: does the caller have `action` on `resource` in AT LEAST ONE org?
+     *  Backed by `/me/orgs/` — independent of the active-org selector.
+     *  Use this for cross-org pages like the workspace admin panel. */
+    canInAnyOrg(resource: ResourceCode, action: ActionCode): boolean {
+        if (this._isSuperadmin()) return true;
+        const caps = this._orgCaps();
+        return !!caps?.orgs?.some((o) => o.permissions[resource]?.includes(action) ?? false);
     }
 
     /** Orgs where the current user can perform `action` on `resource`.
@@ -77,13 +86,6 @@ export class PermissionsService implements StorageService {
                 ?.filter((o: OrgCapability) => o.permissions[resource]?.includes(action) ?? false)
                 .map((o) => o.org) ?? []
         );
-    }
-
-    /** Any org where the current user can read/create/update/delete roles.
-     *  Used to gate the "Roles" nav item. */
-    hasRolesAccess(action: ActionCode = ActionCode.Read): boolean {
-        if (this._isSuperadmin()) return true;
-        return this.orgsWith(ResourceCode.Roles, action).length > 0;
     }
 
     isPlatformAction(resource: ResourceCode, action: ActionCode): boolean {
@@ -130,6 +132,23 @@ export class PermissionsService implements StorageService {
                 this.setSuperadmin(res.is_superadmin);
             })
         );
+    }
+
+    /** Whether the caller can access the workspace admin panel at all.
+     *  True iff superadmin, or has read on Organizations/Users/Roles/Secrets in any org. */
+    canAccessWorkspace(): boolean {
+        return this.resolveDefaultWorkspaceTab() !== null;
+    }
+
+    /** First workspace tab route the caller can access, or `null` if none.
+     *  Superadmin → `/workspace/main`. Ordered: organizations → users → roles → api-keys. */
+    resolveDefaultWorkspaceTab(): string | null {
+        if (this._isSuperadmin()) return '/workspace/main';
+        if (this.canInAnyOrg(ResourceCode.Organizations, ActionCode.Read)) return '/workspace/organizations';
+        if (this.canInAnyOrg(ResourceCode.Memberships, ActionCode.Read)) return '/workspace/users';
+        if (this.canInAnyOrg(ResourceCode.Roles, ActionCode.Read)) return '/workspace/roles';
+        if (this.can(ResourceCode.Secrets, ActionCode.Read)) return '/workspace/api-keys';
+        return null;
     }
 
     resolveDefaultRoute(): string {

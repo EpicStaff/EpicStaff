@@ -141,6 +141,7 @@
         display: block;
         overflow-y: auto;
         scrollbar-gutter: stable;
+        flex-shrink: 0;
     }
 
     &__search {
@@ -209,6 +210,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        flex-shrink: 0;
 
         &--default {
             padding: 0.5rem 0.75rem;

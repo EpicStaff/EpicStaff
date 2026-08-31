@@ -15,7 +15,7 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionInAnyOrgDirective } from '@shared/directives';
 import { ActionCode, FullMembership, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 import { concat, Observable, of } from 'rxjs';
@@ -29,6 +29,10 @@ import {
     OverflowItemDirective,
     OverflowItemsDirective,
 } from '../../../../../shared/directives/overflow-items.directive';
+import {
+    CreateMembershipDialogComponent,
+    MembershipDialogData,
+} from '../../../components/create-membership-dialog/create-membership-dialog.component';
 import {
     CreateUserDialogComponent,
     UserDialogData,
@@ -65,7 +69,7 @@ const STATUS_ITEMS: SelectItem[] = [
         OverflowItemDirective,
         OverflowBadgeDirective,
         MatTooltipModule,
-        HasPermissionDirective,
+        HasPermissionInAnyOrgDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -109,6 +113,7 @@ export class UsersTabComponent implements OnInit {
             icon: 'edit',
             tooltip: 'Edit user',
             onClick: (row) => this.onEditUser(row['id'] as number),
+            hidden: (row) => this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0,
         };
         if (isSA) {
             const deactivateAction: AppTableRowAction = {
@@ -130,7 +135,7 @@ export class UsersTabComponent implements OnInit {
             icon: 'trash',
             tooltip: 'Remove from your organizations',
             variant: 'danger',
-            hidden: (row) => this.removableMembershipsFor(row['id'] as number).length === 0,
+            hidden: (row) => this.membershipsIManage(row['id'] as number, ActionCode.Delete).length === 0,
             onClick: (row) => this.onRemoveFromMyOrgs(row),
         };
         return [editAction, removeAction];
@@ -237,7 +242,7 @@ export class UsersTabComponent implements OnInit {
     /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */
     private onRemoveFromMyOrgs(row: TableRow): void {
         const userId = row['id'] as number;
-        const memberships = this.removableMembershipsFor(userId);
+        const memberships = this.membershipsIManage(userId, ActionCode.Delete);
         if (memberships.length === 0) return;
 
         const label = (row['name'] as string) || (row['email'] as string) || 'this user';
@@ -279,15 +284,13 @@ export class UsersTabComponent implements OnInit {
             });
     }
 
-    /** Memberships the caller can remove: rows where `users:delete` is granted in that org.
-     *  Returns [] for the caller's own row (backend rejects with `cannot_modify_self_membership`). */
-    private removableMembershipsFor(userId: number): FullMembership[] {
+    /** Memberships of `userId` where the caller holds the given `Users:*` action.
+     *  Returns [] for the caller's own row (backend rejects self-membership mutation). */
+    private membershipsIManage(userId: number, action: ActionCode): FullMembership[] {
         const user = this.aggregatedUsers().find((u) => u.id === userId);
-        if (!user) return [];
-        const selfId = this.profileService.currentUserSignal()?.id;
-        if (user.id === selfId) return [];
+        if (!user || user.id === this.profileService.currentUserSignal()?.id) return [];
         return user.memberships.filter((m) =>
-            this.permissionsService.canIn(m.organization.id, ResourceCode.Users, ActionCode.Delete)
+            this.permissionsService.canInOrg(m.organization.id, ResourceCode.Memberships, action)
         );
     }
 
@@ -299,13 +302,21 @@ export class UsersTabComponent implements OnInit {
     }
 
     private openUserDialog(user?: AggregatedUser): void {
-        const data: UserDialogData = { user };
-        const ref = this.dialog.open(CreateUserDialogComponent, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            disableClose: true,
-            data,
-        });
+        // SA → Create User (email/password/superadmin + memberships).
+        // Delegated → Create Membership (link existing account to org).
+        const ref = this.permissionsService.isSuperadmin
+            ? this.dialog.open(CreateUserDialogComponent, {
+                  width: 'calc(100vw - 2rem)',
+                  height: 'calc(100vh - 2rem)',
+                  disableClose: true,
+                  data: { user } as UserDialogData,
+              })
+            : this.dialog.open(CreateMembershipDialogComponent, {
+                  width: 'calc(100vw - 2rem)',
+                  height: 'calc(100vh - 2rem)',
+                  disableClose: true,
+                  data: { user } as MembershipDialogData,
+              });
 
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
@@ -388,4 +399,5 @@ export class UsersTabComponent implements OnInit {
     protected readonly getRelativeTime = getRelativeTime;
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly isSuperadmin = this.permissionsService.isSuperadmin;
 }

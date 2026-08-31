@@ -1,0 +1,65 @@
+@if (canManageMembers()) {
+    <div class="content">
+        <div class="engage-bar">
+            <span class="label">
+                Assign users to the Organization:
+                <span class="count">({{ selectedUsers().length }})</span>
+            </span>
+            <app-search
+                placeholder="Search by name, email..."
+                [(searchTerm)]="searchTerm"
+            />
+        </div>
+
+        @if (isUsersLoading()) {
+            <app-loading-spinner
+                size="md"
+                message="Loading Users..."
+            />
+        } @else {
+            <app-table
+                [columns]="columns"
+                [data]="filteredUsers()"
+                [selectable]="true"
+                [initialSelectedIds]="selectionIds()"
+                rowId="id"
+                (selectionChange)="onSelection($event)"
+            >
+                <ng-template
+                    appTableCell="user"
+                    let-row
+                >
+                    <div class="user-cell">
+                        <app-user-avatar
+                            [name]="row['name'] || row['email']"
+                            [avatarUrl]="row['avatar']"
+                        />
+                        <div class="user-info">
+                            <span class="user-name">{{ row['name'] }}</span>
+                            <span class="user-email">{{ row['email'] }}</span>
+                        </div>
+                    </div>
+                </ng-template>
+
+                <ng-template
+                    appTableCell="role"
+                    let-row
+                >
+                    <app-select
+                        [items]="roleItems()"
+                        [selectedValue]="row['role']"
+                        (selectedValueChange)="onRoleSelected(row, $event)"
+                        placeholder="Select role"
+                        [class.row-unselected]="!selectedUserIds().has(row['id'])"
+                        (click)="$event.stopPropagation()"
+                    />
+                </ng-template>
+
+                <div tableEmpty>
+                    <h4 class="empty-title">No users yet</h4>
+                    <p class="empty-subtitle">Create a user account first to grant access to this organization.</p>
+                </div>
+            </app-table>
+        }
+    </div>
+}

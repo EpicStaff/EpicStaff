@@ -10,6 +10,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
 import { rolePermissionsToSet, setToRolePermissions } from '@shared/utils';
 import { finalize } from 'rxjs';
@@ -85,7 +86,12 @@ export class CreateRoleDialogComponent implements OnInit {
     readonly form = new FormGroup({
         name: new FormControl(this.initialName(), {
             nonNullable: true,
-            validators: [Validators.required, Validators.minLength(3), Validators.maxLength(50)],
+            validators: [
+                notWhitespaceValidator(),
+                Validators.required,
+                Validators.minLength(3),
+                Validators.maxLength(50),
+            ],
         }),
         description: new FormControl<string | null>(
             this.dialogData?.role?.description ?? this.dialogData?.duplicateSource?.description ?? ''
@@ -125,7 +131,7 @@ export class CreateRoleDialogComponent implements OnInit {
         const disabled = new Set<string>();
         for (const rt of catalog.resource_types) {
             for (const action of rt.applicable_actions) {
-                if (!this.permissionsService.canIn(orgId, rt.code as ResourceCode, action)) {
+                if (!this.permissionsService.canInOrg(orgId, rt.code as ResourceCode, action)) {
                     disabled.add(`${rt.code}:${action}`);
                 }
             }

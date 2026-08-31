@@ -1,16 +1,19 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import {
+    ActionCode,
     CreateRoleRequest,
     DeleteRolePreviewResponse,
     DeleteRoleResponse,
     GetRoleResponse,
+    ResourceCode,
     RolesListResponse,
     UpdateRoleRequest,
 } from '@shared/models';
 import { StorageService } from '@shared/services';
 import { Observable, tap } from 'rxjs';
 
+import { withCrossOrgPermission } from '../../../../core/http/permission-context';
 import { ConfigService } from '../../../../services/config';
 
 export interface LoadRolesParams {
@@ -52,13 +55,24 @@ export class RolesService implements StorageService {
         if (params.pageSize !== undefined) {
             httpParams = httpParams.set('page_size', String(params.pageSize));
         }
-        return this.http.get<RolesListResponse>(this.apiUrl, { params: httpParams }).pipe(
-            tap((res) => {
-                this._builtIn.set(res.built_in_roles ?? []);
-                this._custom.set(res.results ?? []);
-                this._count.set(res.count ?? 0);
+        return this.http
+            .get<RolesListResponse>(this.apiUrl, {
+                params: httpParams,
+                context: withCrossOrgPermission<RolesListResponse>(ResourceCode.Roles, ActionCode.Read, {
+                    built_in_roles: [],
+                    results: [],
+                    count: 0,
+                    next: null,
+                    previous: null,
+                }),
             })
-        );
+            .pipe(
+                tap((res) => {
+                    this._builtIn.set(res.built_in_roles ?? []);
+                    this._custom.set(res.results ?? []);
+                    this._count.set(res.count ?? 0);
+                })
+            );
     }
 
     /** GET /api/admin/roles/{id}/ */

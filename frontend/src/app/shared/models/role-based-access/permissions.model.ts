@@ -10,7 +10,7 @@ export enum ActionCode {
 
 export enum ResourceCode {
     Organizations = 'organizations',
-    Users = 'users',
+    Memberships = 'memberships',
     Roles = 'roles',
     Flows = 'flows',
     Agents = 'agents',

@@ -170,14 +170,14 @@ export class RolesTabComponent implements OnInit {
         if (row['isBuiltIn']) return false;
         const orgId = row['orgId'] as number | null;
         if (orgId === null) return false;
-        return this.permissionsService.canIn(orgId, ResourceCode.Roles, ActionCode.Update);
+        return this.permissionsService.canInOrg(orgId, ResourceCode.Roles, ActionCode.Update);
     }
 
     private canDeleteRow(row: TableRow): boolean {
         if (row['isBuiltIn']) return false;
         const orgId = row['orgId'] as number | null;
         if (orgId === null) return false;
-        return this.permissionsService.canIn(orgId, ResourceCode.Roles, ActionCode.Delete);
+        return this.permissionsService.canInOrg(orgId, ResourceCode.Roles, ActionCode.Delete);
     }
 
     onFilterChange(evt: { key: string; values: unknown[] }): void {

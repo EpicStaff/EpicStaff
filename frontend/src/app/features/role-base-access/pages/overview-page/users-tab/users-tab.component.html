@@ -7,11 +7,11 @@
     <span class="count-label">{{ filteredUsers().length }} of {{ usersData().length }} users</span>
     <div class="toolbar-actions">
         <app-button
-            *appHasPermission="[ResourceCode.Users, ActionCode.Create]"
+            *appHasPermissionInAnyOrg="[ResourceCode.Memberships, ActionCode.Create]"
             type="primary"
             leftIcon="plus"
             (click)="onCreateUser()"
-            >Create User</app-button
+            >{{ isSuperadmin ? 'Create User' : 'Add Membership' }}</app-button
         >
         <!--        <button-->
         <!--            class="settings-btn"-->
