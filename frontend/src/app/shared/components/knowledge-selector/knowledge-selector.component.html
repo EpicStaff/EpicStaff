@@ -1,63 +1,90 @@
-<div
-    class="knowledge-selector"
-    appClickOutside
-    (appClickOutside)="closeDropdown()"
->
-    <!-- <label *ngIf="label">{{ label }}</label> -->
-    <div
-        class="selector"
-        [class.disabled]="disabled"
-        [class.loading]="loading"
-        [class.placeholder]="selectedCollectionId === null && isPlaceholder"
-        (click)="toggleDropdown()"
-    >
-        <div class="selected-collection">{{ getSelectedCollectionName() }}</div>
-        <div
-            class="selector-arrow"
-            [class.open]="isOpen"
-        >
-            <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-            >
-                <path
-                    d="M6 9L12 15L18 9"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                />
-            </svg>
-        </div>
-    </div>
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+    />
+}
 
-    <div
-        class="dropdown-menu"
-        *ngIf="isOpen"
+<div class="selector">
+    <button
+        #triggerBtn
+        type="button"
+        class="selector__btn"
+        [class.selector__btn--invalid]="invalid()"
+        [class.selector__btn--open]="open()"
+        [class.selector__btn--placeholder]="!selectedCollection()"
+        [disabled]="disabled()"
+        (click)="toggle()"
     >
-        <div
-            class="dropdown-item"
-            [class.selected]="selectedCollectionId === null && !isPlaceholder"
-            (click)="selectCollection(null, false)"
+        @if (loading()) {
+            <div class="selector__spinner"></div>
+            <span class="selector__text">Loading...</span>
+        } @else {
+            <span
+                class="selector__text"
+                [class.selector__text--placeholder]="!selectedCollection()"
+            >
+                {{ selectedCollection()?.collection_name ?? placeholder() }}
+            </span>
+        }
+
+        <svg
+            class="selector__chevron"
+            [class.selector__chevron--open]="open()"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
         >
-            No knowledge source
-        </div>
-        <div
-            *ngFor="let collection of collections"
-            class="dropdown-item"
-            [class.selected]="collection.collection_id === selectedCollectionId"
-            (click)="selectCollection(collection.collection_id)"
-        >
-            {{ collection.collection_name }}
-        </div>
-        <div
-            *ngIf="collections.length === 0"
-            class="no-results"
-        >
-            No knowledge sources available
-        </div>
-    </div>
+            <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+            />
+        </svg>
+    </button>
 </div>
+
+<ng-template #dropdownTemplate>
+    <div class="dropdown">
+        <button
+            type="button"
+            class="dropdown__option"
+            [class.dropdown__option--selected]="value() === null"
+            (click)="select(null)"
+        >
+            <span class="dropdown__name dropdown__name--accent">No collection</span>
+        </button>
+
+        @for (collection of collections(); track collection.collection_id) {
+            <button
+                type="button"
+                class="dropdown__option"
+                [class.dropdown__option--selected]="collection.collection_id === value()"
+                (click)="select(collection.collection_id)"
+            >
+                <span class="dropdown__name">{{ collection.collection_name }}</span>
+
+                @if (collection.rag_configurations.length) {
+                    <span class="dropdown__meta">
+                        {{ formatRagConfigurations(collection.rag_configurations) }}
+                    </span>
+                } @else {
+                    <span class="dropdown__meta dropdown__meta--muted">
+                        <app-svg-icon
+                            icon="not-allowed"
+                            size="12px"
+                        />
+                        {{ collection.document_count ? 'No RAG initialized' : 'Empty' }}
+                    </span>
+                }
+            </button>
+        }
+
+        @if (!collections().length) {
+            <div class="dropdown__empty">No knowledge sources available</div>
+        }
+    </div>
+</ng-template>

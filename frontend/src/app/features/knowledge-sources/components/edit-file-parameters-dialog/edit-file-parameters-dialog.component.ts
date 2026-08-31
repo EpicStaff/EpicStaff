@@ -1,12 +1,19 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
+import {
+    AfterViewInit,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    signal,
+    ViewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ButtonComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
-import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
 import { TableDocument } from '../naive-rag-configuration/configuration-table/configuration-table.interface';
@@ -25,10 +32,9 @@ import { DocumentConfigComponent } from './document-config/document-config.compo
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class EditFileParametersDialogComponent {
-    private toastService = inject(ToastService);
-    private destroyRef = inject(DestroyRef);
+export class EditFileParametersDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef);
+    private destroyRef = inject(DestroyRef);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     readonly data: { ragId: number; collectionId: number; ragDocumentId: number; allDocumentIds: number[] } =
         inject(DIALOG_DATA);
@@ -48,65 +54,72 @@ export class EditFileParametersDialogComponent {
         () => this.currentIndex() === -1 || this.currentIndex() >= this.data.allDocumentIds.length - 1
     );
 
+    ngAfterViewInit(): void {
+        this.formSection.form.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.captureFormAsPending(this.selectedDocumentId()));
+    }
+
     nextDocument() {
         const index = this.currentIndex();
-        if (index === -1 || index >= this.data.allDocumentIds.length - 1) {
-            return;
-        }
+        if (index === -1 || index >= this.data.allDocumentIds.length - 1) return;
 
+        this.captureFormAsPending(this.selectedDocumentId());
         this.selectedDocumentId.set(this.data.allDocumentIds[index + 1]);
     }
 
     prevDocument() {
         const index = this.currentIndex();
-        if (index <= 0) {
-            return;
-        }
+        if (index <= 0) return;
 
+        this.captureFormAsPending(this.selectedDocumentId());
         this.selectedDocumentId.set(this.data.allDocumentIds[index - 1]);
     }
 
     onShowChunks() {
         const documentId = this.selectedDocumentId();
-        const strategy = this.formSection.selectedStrategy() as string;
-        const form = this.formSection.form;
-
-        const mainParams = form.get('strategyParams')?.get('mainParams')!;
-        const additionalParams = form.get('strategyParams')?.get('additionalParams')!;
-
-        if (mainParams.invalid || additionalParams.invalid || !documentId || !strategy) return;
-
-        const body = {
-            chunk_strategy: strategy,
-            ...mainParams.value,
-            additional_params: {
-                [strategy]: {
-                    ...additionalParams.value,
-                },
-            },
-        };
-
-        this.documentsStorageService
-            .updateDocumentFields(this.data.ragId, documentId, body)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => {
-                    this.toastService.success(`Document updated`);
-                    this.chunksSection.runChunking();
-                },
-                error: (err: HttpErrorResponse) => {
-                    err.error.errors.forEach((e: { field: string; reason: string }) => {
-                        this.toastService.error(`Update failed: ${e.reason}`);
-
-                        const control = mainParams.get(e.field);
-                        control?.markAsTouched();
-                        control?.setErrors({ other: e.reason });
-                    });
-                },
-            });
+        if (!this.captureFormAsPending(documentId)) return;
+        this.chunksSection.runChunking();
     }
 
     onClose() {
+        this.captureFormAsPending(this.selectedDocumentId());
         this.dialogRef.close();
+    }
+
+    private captureFormAsPending(documentId: number): boolean {
+        const strategy = this.formSection.selectedStrategy();
+        const form = this.formSection.form;
+        const mainParams = form.get('strategyParams')?.get('mainParams');
+        const additionalParams = form.get('strategyParams')?.get('additionalParams');
+
+        if (!mainParams || !additionalParams || !strategy || additionalParams.invalid || mainParams.invalid)
+            return false;
+
+        const strategyChanged = strategy !== this.document().chunk_strategy;
+        const userEdited = mainParams.dirty || additionalParams.dirty || strategyChanged;
+        if (!userEdited) return true;
+
+        const baseline = this.document();
+        const baselineAdditional = baseline.additional_params;
+
+        const patch: UpdateNaiveRagDocumentDtoRequest = {
+            chunk_strategy: strategy,
+            ...mainParams.value,
+        };
+
+        if (additionalParams.dirty || strategyChanged) {
+            const baselineStrategyBlock = baselineAdditional?.[strategy] ?? {};
+            patch.additional_params = {
+                ...baselineAdditional,
+                [strategy]: {
+                    ...baselineStrategyBlock,
+                    ...additionalParams.value,
+                },
+            };
+        }
+
+        this.documentsStorageService.setPendingFields(documentId, patch);
+        return true;
     }
 }

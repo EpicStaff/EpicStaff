@@ -1,21 +1,45 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    input,
+    OnInit,
+    signal,
+    WritableSignal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { AppSvgIconComponent, ButtonComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
-import { EMPTY, groupBy, mergeMap, of, Subject } from 'rxjs';
-import { catchError, debounceTime, switchMap } from 'rxjs/operators';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    SearchComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
+import { EMPTY, Observable, of } from 'rxjs';
+import { catchError, defaultIfEmpty, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
+import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
+import {
+    BulkUpdateNaiveRagDocumentsResponse,
+    UpdateNaiveRagDocumentDtoRequest,
+} from '../../models/naive-rag-document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
+import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { NaiveRagService } from '../../services/naive-rag.service';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
 import { EditFileParametersDialogComponent } from '../edit-file-parameters-dialog/edit-file-parameters-dialog.component';
 import { ConfigurationTableComponent } from './configuration-table/configuration-table.component';
-import { DocFieldChange } from './configuration-table/configuration-table.interface';
+import { DocumentStatusFilter } from './configuration-table/configuration-table.interface';
 
 @Component({
     selector: 'app-naive-rag-configuration',
@@ -28,6 +52,7 @@ import { DocFieldChange } from './configuration-table/configuration-table.interf
         ButtonComponent,
         DocumentChunksSectionComponent,
         AppSvgIconComponent,
+        SelectComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -38,12 +63,22 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
     private toastService = inject(ToastService);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private deepLinkService = inject(ChunkDeepLinkService);
+    private pollingService = inject(KnowledgeSourcesPollingService);
     private dialog = inject(Dialog);
 
     naiveRagId = input.required<number>();
     collectionId = input.required<number>();
+    canIndexChange = input<WritableSignal<boolean>>();
+
+    statusFilterItems: SelectItem<DocumentStatusFilter>[] = [
+        { name: 'Show All', value: 'all' },
+        { name: 'Issues', value: 'issues' },
+        { name: 'Not indexed', value: 'not_indexed' },
+        { name: 'Indexed', value: 'indexed' },
+    ];
 
     searchTerm = signal<string>('');
+    statusFilter = signal<DocumentStatusFilter>('all');
     bulkBtnActive = signal<boolean>(false);
     selectedRagDocId = signal<number | null>(null);
     filteredAndCheckedDocIds = signal<number[]>([]);
@@ -51,10 +86,15 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     showBulkRow = computed(() => this.bulkBtnActive() && !!this.filteredAndCheckedDocIds().length);
 
-    private docFieldChange$ = new Subject<DocFieldChange>();
+    constructor() {
+        effect(() => {
+            this.canIndexChange()?.set(this.filteredAndCheckedDocIds().length > 0);
+        });
+    }
 
     ngOnInit() {
         const id = this.naiveRagId();
+        this.documentsStorageService.clear();
         this.documentsStorageService
             .fetchDocumentConfigs(id)
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -66,35 +106,14 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
                 },
             });
 
-        this.docFieldChange$
-            .pipe(
-                groupBy((change) => change.documentId),
-                mergeMap((group$) =>
-                    group$.pipe(
-                        debounceTime(300),
-                        switchMap((change) =>
-                            this.documentsStorageService.updateDocumentField(id, change).pipe(
-                                catchError((err) => {
-                                    const [error] = err.error?.errors;
-
-                                    this.toastService.error(`Update failed: ${error.reason}`);
-                                    return EMPTY;
-                                })
-                            )
-                        )
-                    )
-                ),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe(() => this.toastService.success('Document updated'));
-    }
-
-    onDocFieldChange(change: DocFieldChange) {
-        this.docFieldChange$.next(change);
+        this.pollingService.startDocumentConfigsPolling(id);
+        this.destroyRef.onDestroy(() => this.pollingService.stopDocumentConfigsPolling());
     }
 
     initDocuments() {
         const id = this.naiveRagId();
+
+        this.documentsStorageService.clearPendingDeletes();
 
         this.naiveRagService
             .initializeDocuments(id)
@@ -117,18 +136,16 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
             });
     }
 
-    applyBulkEdit(dto: UpdateNaiveRagDocumentDtoRequest) {
+    /**
+     * Bulk-row apply to pending only. Save happens via Save & Run Indexing.
+     */
+    applyPendingBulkEdit(patch: UpdateNaiveRagDocumentDtoRequest) {
         const config_ids = this.filteredAndCheckedDocIds();
         if (!config_ids.length) return;
-        const id = this.naiveRagId();
 
-        this.documentsStorageService
-            .bulkEditDocConfigs(id, config_ids, dto)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (res) => this.toastService.success(res.message),
-                error: (e) => console.error(e),
-            });
+        for (const id of config_ids) {
+            this.documentsStorageService.setPendingFields(id, patch);
+        }
     }
 
     applyBulkDelete() {
@@ -145,27 +162,10 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
-                if (result === true) {
-                    this.deleteDocConfigs(config_ids);
+                if (result !== true) return;
+                for (const id of config_ids) {
+                    this.documentsStorageService.markPendingDelete(id);
                 }
-            });
-    }
-
-    private deleteDocConfigs(config_ids: number[]) {
-        const id = this.naiveRagId();
-
-        this.documentsStorageService
-            .bulkDeleteDocConfigs(id, config_ids)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                catchError(() => {
-                    this.toastService.error('Documents delete failed');
-                    return of();
-                })
-            )
-            .subscribe({
-                next: (res) => this.toastService.success(res.message),
-                error: (e) => console.error(e),
             });
     }
 
@@ -188,6 +188,55 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     getConfigurationData(): unknown {
         return true;
+    }
+
+    hasUnsavedChanges(): boolean {
+        return (
+            this.documentsStorageService.pending().size > 0 || this.documentsStorageService.pendingDeleteIds().size > 0
+        );
+    }
+
+    bulkDeletePending(): Observable<unknown> {
+        return this.documentsStorageService.bulkDeletePending(this.naiveRagId());
+    }
+
+    getPendingDeleteDocumentIds(): number[] {
+        return Array.from(this.documentsStorageService.pendingDeleteIds());
+    }
+
+    getIndexingDocuments(): IndexingDocumentInfo[] {
+        const checkedIds = new Set(this.filteredAndCheckedDocIds());
+        return this.documentsStorageService
+            .documents()
+            .filter((d) => checkedIds.has(d.naive_rag_document_id))
+            .map((d) => ({
+                configId: d.naive_rag_document_id,
+                fileName: d.file_name,
+                wasIndexed: d.status === 'completed' || d.status === 'outdated',
+            }));
+    }
+
+    uploadPendingForChecked(): Observable<BulkUpdateNaiveRagDocumentsResponse | null> {
+        const id = this.naiveRagId();
+        const checkedIds = this.filteredAndCheckedDocIds();
+        if (!checkedIds.length) return of(null);
+
+        return this.documentsStorageService.bulkPartialUpdate(id, checkedIds).pipe(
+            defaultIfEmpty(null),
+            catchError((err: HttpErrorResponse) => {
+                const first = err.error?.errors?.[0];
+                this.toastService.error(first?.reason ? `Save failed: ${first.reason}` : 'Save failed');
+                return of(null);
+            })
+        );
+    }
+
+    hasFailedSavesForChecked(): boolean {
+        const checkedIds = new Set(this.filteredAndCheckedDocIds());
+        return this.documentsStorageService.documents().some((d) => {
+            if (!checkedIds.has(d.naive_rag_document_id)) return false;
+            return !!d.errors && Object.keys(d.errors).length > 0;
+        });
     }
 
     private handleDeepLink(): void {

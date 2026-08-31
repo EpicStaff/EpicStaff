@@ -1,3 +1,4 @@
+from django.utils import choices
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     GraphRag,
@@ -89,6 +90,7 @@ class GraphRagSerializer(serializers.ModelSerializer):
             "llm",
             "llm_name",
             "rag_status",
+            "outdated_reasons",
             "collection_id",
             "error_message",
             "created_at",
@@ -136,11 +138,13 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
         source="base_rag_type.source_collection.collection_name", read_only=True
     )
     index_config = GraphRagIndexConfigSerializer(read_only=True)
-    documents = GraphRagDocumentSerializer(
-        source="graph_rag_documents", many=True, read_only=True
-    )
     total_documents_in_collection = serializers.SerializerMethodField()
     documents_in_graph_rag = serializers.SerializerMethodField()
+    processing_document_ids = serializers.ListSerializer(
+        source='indexing_document_config_ids',
+        child=serializers.IntegerField(),
+        allow_empty=True,
+    )
 
     class Meta:
         model = GraphRag
@@ -152,12 +156,13 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
             "llm",
             "llm_name",
             "rag_status",
+            "outdated_reasons",
             "collection_id",
             "collection_name",
+            "processing_document_ids",
             "index_config",
             "total_documents_in_collection",
             "documents_in_graph_rag",
-            "documents",
             "error_message",
             "created_at",
             "updated_at",
@@ -235,6 +240,14 @@ class GraphRagIndexConfigUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "At least one field must be provided for update"
             )
+
+        chunk_size = attrs.get('chunk_size')
+        chunk_overlap = attrs.get('chunk_overlap')
+        if chunk_size and chunk_overlap and chunk_overlap >= chunk_size:
+            raise serializers.ValidationError(
+                {'chunk_overlap': ['Must be less than "chunk_size".']}
+            )
+
         return attrs
 
 
@@ -364,3 +377,12 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
         required=False,
         help_text="Local search configuration",
     )
+
+
+class GraphRagDocumentListSerializer(serializers.Serializer):
+    graph_rag_document_id = serializers.IntegerField()
+    document_id = serializers.IntegerField()
+    file_name = serializers.CharField(source='document.file_name')
+    file_size = serializers.IntegerField(source='document.file_size')
+    status = serializers.CharField()
+    created_at = serializers.DateTimeField()

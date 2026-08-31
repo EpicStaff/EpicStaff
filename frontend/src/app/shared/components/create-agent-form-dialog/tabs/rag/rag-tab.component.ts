@@ -1,11 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     DualSliderComponent,
     InputNumberComponent,
+    KnowledgeSelectorComponent,
     RadioButtonComponent,
-    SelectComponent,
+    RagSelectorComponent,
     SelectItem,
     SliderWithStepperComponent,
     TextareaComponent,
@@ -16,7 +17,6 @@ import {
     GetCollectionRagsResponse,
     GetCollectionRequest,
 } from '../../../../../features/knowledge-sources/models/collection.model';
-import { AgentRag } from '../../../../../features/staff/models/agent.model';
 import { AgentSearchConfigs, GraphBasicSearchConfig, GraphLocalSearchConfig } from '../../../../models';
 
 @Component({
@@ -25,7 +25,8 @@ import { AgentSearchConfigs, GraphBasicSearchConfig, GraphLocalSearchConfig } fr
     styleUrls: ['../tab.component.scss'],
     imports: [
         ReactiveFormsModule,
-        SelectComponent,
+        KnowledgeSelectorComponent,
+        RagSelectorComponent,
         SliderWithStepperComponent,
         RadioButtonComponent,
         InputNumberComponent,
@@ -47,28 +48,6 @@ export class RagTabComponent implements OnInit {
     loadingRags = input<boolean>(false);
 
     selectedRagType = signal<'naive' | 'graph' | null>(null);
-
-    knowledgeSelectItems = computed<SelectItem[]>(() => {
-        return [
-            {
-                name: 'No collection',
-                value: null,
-            },
-            ...this.allKnowledgeSources().map((item) => ({
-                name: item.collection_name,
-                value: item.collection_id,
-            })),
-        ];
-    });
-    agentRagSelectItems = computed<SelectItem<AgentRag>[]>(() => {
-        return this.agentRags().map((item) => ({
-            name: item.rag_type,
-            value: {
-                rag_id: item.rag_id,
-                rag_type: item.rag_type,
-            },
-        }));
-    });
 
     searchConfigsFormGroup: FormGroup | null = null;
     searchTypes: SelectItem[] = [

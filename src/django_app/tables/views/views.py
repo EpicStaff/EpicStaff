@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 from collections import defaultdict
 import uuid
@@ -9,6 +8,8 @@ from tables.models.graph_models import TelegramTriggerNode
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.serializers.model_serializers import TelegramTriggerNodeDataFieldsSerializer
 
+
+from tables.services.secrets import SecretResolver
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -26,7 +27,6 @@ from tables.swagger_schemas.python_node_test_mode_schema import (
 from utils.logger import logger
 
 from drf_spectacular.utils import (
-    extend_schema,
     extend_schema_view,
     OpenApiParameter,
     OpenApiResponse,
@@ -34,16 +34,12 @@ from drf_spectacular.utils import (
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django.conf import settings
+from src.shared.enums.knowledge_new import RAGStrategy
+from tables.clients import KnowledgeClient
+from tables.clients.errors import ClientError
 
-
-from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
-from rest_framework.viewsets import GenericViewSet
-
-from rest_framework.decorators import api_view, action
-from rest_framework.views import APIView
+from rest_framework.decorators import action
 from rest_framework import viewsets, mixins
-from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework import filters
 
@@ -90,7 +86,6 @@ from tables.serializers.quickstart_serializers import (
     QuickstartConfigSerializer,
     QuickstartStatusSerializer,
 )
-from tables.serializers.default_config_serializers import DefaultModelsSerializer
 from tables.filters import SessionFilter  # CollectionFilter,
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.import_export.enums import EntityType
@@ -104,7 +99,6 @@ from tables.models.rbac_models import ApiKey
 from tables.services.rbac.permissions import (
     HasOrgPermission,
     IsSuperadmin,
-    IsSuperadminOrReadOnly,
 )
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.session_access import assert_session_org_access
@@ -126,6 +120,7 @@ from tables.swagger_schemas.default_config_schemas import (
 )
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     PROCESS_RAG_INDEXING_POST,
+    CANCEL_RAG_INDEXING_DELETE,
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
@@ -1019,11 +1014,71 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         serializer = ProcessRagIndexingSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
+        document_config_ids = serializer.validated_data["document_config_ids"]
 
-        # The rag must live in the active org (404), and indexing mutates it.
+        org_id = self.get_active_org_id()
+        model = self._RAG_MODELS.get(rag_type)
+        if model is None:
+            return Response(
+                {"error": f"Unknown rag_type '{rag_type}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            org_id,
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
+
+        indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        secret_resolver = SecretResolver()
+
+        embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]
+        embedding_api_key = secret_resolver.resolve(
+            secret_id=embedding_api_key_secret_id,
+            org_id=org_id,
+        )
+
+        llm_api_key_secret_id = indexing_data.get("llm_api_key_secret_id")
+        if llm_api_key_secret_id is not None:
+            llm_api_key = secret_resolver.resolve(
+                secret_id=llm_api_key_secret_id,
+                org_id=org_id,
+            )
+        else:
+            llm_api_key = None
+
+        try:
+            with KnowledgeClient() as client:
+                client.index(
+                    strategy=RAGStrategy(rag_type),
+                    rag_id=rag_id,
+                    document_ids=frozenset(document_config_ids),
+                    embedding_api_key=embedding_api_key,
+                    llm_api_key=llm_api_key,
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
+
+        return Response(
+            {
+                "detail": "Indexing process accepted",
+                "rag_id": rag_id,
+                "rag_type": rag_type,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
+    @extend_schema(**CANCEL_RAG_INDEXING_DELETE)
+    def delete(self, request, rag_type: str, rag_id: int):
         model = self._RAG_MODELS.get(rag_type)
         if model is None:
             return Response(
@@ -1037,34 +1092,12 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.UPDATE,
         )
-
         try:
-            indexing_data = IndexingService.validate_and_prepare_indexing(
-                rag_id=rag_id, rag_type=rag_type
-            )
-
-            redis_service.publish_rag_indexing(
-                rag_id=indexing_data["rag_id"],
-                rag_type=indexing_data["rag_type"],
-                collection_id=indexing_data["collection_id"],
-                org_id=self.get_active_org_id(),
-                embedder_api_key_secret_id=indexing_data["embedder_api_key_secret_id"],
-                llm_api_key_secret_id=indexing_data["llm_api_key_secret_id"],
-            )
-
-            return Response(
-                data={
-                    "detail": "Indexing process accepted",
-                    "rag_id": indexing_data["rag_id"],
-                    "rag_type": indexing_data["rag_type"],
-                    "collection_id": indexing_data["collection_id"],
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-
-        except Exception:
-            # DRF handle
-            raise
+            with KnowledgeClient() as client:
+                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+        except ClientError:
+            pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # class ProcessCollectionEmbeddingView(APIView):

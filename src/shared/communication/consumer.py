@@ -1,9 +1,9 @@
 import json
-from typing import Iterable, AsyncIterable
+from typing import Iterator, AsyncIterator, Any
 
-from communication.message import Message
-from communication.brokers import AbstractBroker
-from communication.storages import AbstractStorage
+from .message import Message
+from .brokers import AbstractBroker
+from .storages import AbstractStorage
 
 
 class Consumer:
@@ -19,38 +19,92 @@ class Consumer:
         self.broker = broker
         self.storage = storage
 
-    def receive(self, channel: str) -> Iterable[Message]:
-        """Receive messages from a channel synchronously.
+    def receive(self, channel: str, timeout: float = 5.0) -> Message | None:
+        """Receive the next message from `channel`, or `None` if none arrives.
+
+        Restores an offloaded payload from storage and deletes it before returning.
 
         Args:
             channel: Channel to receive from.
+            timeout: Seconds to wait for a message. Defaults to `5.0`.
+
+        Returns:
+            The next message, or `None` if the timeout elapses with no message.
         """
-        for data in self.broker.receive(channel):
-            msg_id = data["id"]
-            is_used_storage = data.pop("is_used_storage", False)
-            if is_used_storage:
-                payload = self.storage.get(msg_id)
-                data["payload"] = json.loads(payload) if payload else {}
+        data = self.broker.receive(channel, timeout=timeout)
+        if data is None:
+            return None
+        data = self._update_data_by_payload_from_storage_if_exists(data)
+        return Message(**data)
 
-            yield Message(**data)
+    async def areceive(self, channel: str, timeout: float = 5.0) -> Message | None:
+        """Receive the next message from `channel` asynchronously, or `None` if none arrives.
 
-            if is_used_storage:
-                self.storage.remove(msg_id)
-
-    async def areceive(self, channel: str) -> AsyncIterable[Message]:
-        """Receive messages from a channel asynchronously.
+        Restores an offloaded payload from storage and deletes it before returning.
 
         Args:
             channel: Channel to receive from.
-        """
-        async for data in self.broker.areceive(channel):
-            msg_id = data["id"]
-            is_used_storage = data.pop("is_used_storage", False)
-            if is_used_storage:
-                payload = await self.storage.aget(msg_id)
-                data["payload"] = json.loads(payload) if payload else {}
+            timeout: Seconds to wait for a message. Defaults to `5.0`.
 
+        Returns:
+            The next message, or `None` if the timeout elapses with no message.
+        """
+        data = await self.broker.areceive(channel, timeout=timeout)
+        if data is None:
+            return None
+        data = await self._aupdate_data_by_payload_from_storage_if_exists(data)
+        return Message(**data)
+
+    def stream(self, channel: str) -> Iterator[Message]:
+        """Yield messages from `channel` as they arrive.
+
+        Restores each offloaded payload from storage and deletes it before the
+        message is yielded.
+
+        Args:
+            channel: Channel to stream from.
+
+        Yields:
+            Each message as it arrives.
+        """
+        for data in self.broker.stream(channel):
+            data = self._update_data_by_payload_from_storage_if_exists(data)
             yield Message(**data)
 
-            if is_used_storage:
-                await self.storage.aremove(msg_id)
+    async def astream(self, channel: str) -> AsyncIterator[Message]:
+        """Yield messages from `channel` asynchronously as they arrive.
+
+        Restores each offloaded payload from storage and deletes it before the
+        message is yielded.
+
+        Args:
+            channel: Channel to stream from.
+
+        Yields:
+            Each message as it arrives.
+        """
+        async for data in self.broker.astream(channel):
+            data = await self._aupdate_data_by_payload_from_storage_if_exists(data)
+            yield Message(**data)
+
+    def _update_data_by_payload_from_storage_if_exists(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        msg_id = data["id"]
+        if data.pop("is_used_storage", False):
+            payload = self.storage.get(msg_id)
+            data["payload"] = json.loads(payload) if payload else {}
+            self.storage.remove(msg_id)
+        return data
+
+    async def _aupdate_data_by_payload_from_storage_if_exists(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        msg_id = data["id"]
+        if data.pop("is_used_storage", False):
+            payload = await self.storage.aget(msg_id)
+            data["payload"] = json.loads(payload) if payload else {}
+            await self.storage.aremove(msg_id)
+        return data

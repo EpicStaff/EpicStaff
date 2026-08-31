@@ -117,8 +117,7 @@ class SourceCollection(OrgScopedModel, models.Model):
         if not self.documents.exists():
             self.status = self.SourceCollectionStatus.EMPTY
         else:
-            # TODO: implement status aggregation logic
-            pass
+            self.status = self.SourceCollectionStatus.COMPLETED
         self.save(update_fields=["status", "updated_at"])
 
 

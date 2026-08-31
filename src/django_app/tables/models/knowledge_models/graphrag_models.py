@@ -1,6 +1,6 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from ..crew_models import Task
-
+from django.db.models import PositiveIntegerField
 
 from ..embedding_models import EmbeddingConfig
 from ..llm_models import LLMConfig
@@ -9,16 +9,26 @@ from ..crew_models import Agent
 
 
 class GraphRag(models.Model):
+    class Slot(models.TextChoices):
+        A = "a"
+        B = "b"
+
     class GraphRagStatus(models.TextChoices):
         """
-        Status of GraphRag
+        - NEW - new rag
+        - PROCESSING - rag is in indexing
+        - COMPLETED - rag is indexed
+        - FAILED - rag failed at indexing
+        - OUTDATED - rag completed, but outdated by changes of indexing config, embedding config
+        or document content.
         """
 
         NEW = "new"
         PROCESSING = "processing"
         COMPLETED = "completed"
-        WARNING = "warning"
         FAILED = "failed"
+        CANCELLED = "cancelled"
+        OUTDATED = "outdated"
 
     graph_rag_id = models.AutoField(primary_key=True)
     base_rag_type = models.ForeignKey(
@@ -60,7 +70,15 @@ class GraphRag(models.Model):
         choices=GraphRagStatus.choices,
         default=GraphRagStatus.NEW,
     )
+    outdated_reasons = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(null=True, blank=True)
+
+    indexing_document_config_ids = ArrayField(
+        base_field=PositiveIntegerField(),
+        default=list,
+        blank=True,
+    )
+    slot = models.CharField(max_length=1, choices=Slot.choices, default=Slot.A)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -69,9 +87,31 @@ class GraphRag(models.Model):
     class Meta:
         db_table = "graph_rag"
 
+    def add_outdated_reason(self, code: str, detail: str):
+        self.outdated_reasons.setdefault(code, detail)
+
+    def clear_outdated_reason(self):
+        self.outdated_reasons.clear()
+
     def update_rag_status(self: "GraphRag"):
         """Update status based on document states."""
-        pass
+        document_statuses = set(self.graph_rag_documents.values_list("status", flat=True).distinct())
+
+        if GraphRagDocument.Status.OUTDATED in document_statuses or self.outdated_reasons:
+            new_status = self.GraphRagStatus.OUTDATED
+        elif self.indexing_document_config_ids:
+            new_status = self.GraphRagStatus.PROCESSING
+        elif GraphRagDocument.Status.COMPLETED in document_statuses:
+            new_status = self.GraphRagStatus.COMPLETED
+        elif GraphRagDocument.Status.FAILED in document_statuses:
+            new_status = self.GraphRagStatus.FAILED
+        else:
+            new_status = self.GraphRagStatus.NEW
+
+        if self.rag_status != new_status:
+            self.rag_status = new_status
+            return True
+        return False
 
 
 class AgentGraphRag(models.Model):
@@ -134,6 +174,19 @@ class GraphRagDocument(models.Model):
     - Allows adding/removing documents from GraphRag independently
     """
 
+    class Status(models.TextChoices):
+        """
+        - NEW - new document link
+        - COMPLETED - document is indexed
+        - FAILED - document failed at indexing
+        - OUTDATED - document is outdated, but outdated by changes of indexing config, embedding
+        config or document content.
+        """
+        NEW = "new"
+        COMPLETED = "completed"
+        FAILED = "failed"
+        OUTDATED = "outdated"
+
     graph_rag_document_id = models.AutoField(primary_key=True)
     graph_rag = models.ForeignKey(
         GraphRag,
@@ -144,6 +197,11 @@ class GraphRagDocument(models.Model):
         DocumentMetadata,
         on_delete=models.CASCADE,
         related_name="graph_rag_links",
+    )
+    status = models.CharField(
+        default=Status.NEW,
+        choices=Status.choices,
+        max_length=20,
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

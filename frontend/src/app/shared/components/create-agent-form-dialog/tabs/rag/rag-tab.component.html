@@ -2,24 +2,24 @@
     <div class="form-section">
         <h3 class="section-title">RETRIEVAL SETTINGS</h3>
         <div class="form-group">
-            <app-select
+            <app-knowledge-selector
                 formControlName="knowledge_collection"
                 label="Select Knowledge Source"
                 tooltipText="Choose a knowledge source to provide additional context and information for this agent."
                 placeholder="Select Knowledge Source"
-                [items]="knowledgeSelectItems()"
+                [collections]="allKnowledgeSources()"
                 [loading]="loadingKnowledgeSources()"
             />
         </div>
 
         <div class="form-group">
-            <app-select
+            <app-rag-selector
                 formControlName="rag"
                 label="Select Agent Rags"
                 placeholder="Select Rag"
                 tooltipText="Choose a agent rag to provide additional context and information for this agent."
                 [invalid]="isKnowledgeControlInvalid() && isRagControlInvalid()"
-                [items]="agentRagSelectItems()"
+                [rags]="agentRags()"
                 [loading]="loadingRags()"
             />
             <app-validation-errors [control]="form().get('rag')!" />

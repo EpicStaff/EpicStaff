@@ -17,6 +17,19 @@ x-common-env: &common_env
   DJANGO_API_KEY: ${DJANGO_API_KEY}
 
 
+x-communication-env: &communication_env
+  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
+  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
+  COMMUNICATION_BROKER_HOST: ${COMMUNICATION_BROKER_HOST}
+  COMMUNICATION_BROKER_PORT: ${COMMUNICATION_BROKER_PORT}
+  COMMUNICATION_BROKER_NAME: ${COMMUNICATION_BROKER_NAME}
+
+  COMMUNICATION_STORAGE_USER: ${COMMUNICATION_STORAGE_USER}
+  COMMUNICATION_STORAGE_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
+  COMMUNICATION_STORAGE_HOST: ${COMMUNICATION_STORAGE_HOST}
+  COMMUNICATION_STORAGE_PORT: ${COMMUNICATION_STORAGE_PORT}
+  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
+
 services:
   django_app:
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:-latest}
@@ -26,7 +39,7 @@ services:
     container_name: django_app
     command: ./entrypoint.sh
     environment:
-      <<: *common_env
+      <<: [*common_env, *communication_env]
       DEBUG: ${DEBUG:-False}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
@@ -76,6 +89,11 @@ services:
       AVATAR_ALLOWED_FORMATS: ${AVATAR_ALLOWED_FORMATS:-JPEG,PNG}
       MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
+
+      KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL}
+      KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
+      KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
+      KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
     volumes:
       - media_data:/app/media
     networks:
@@ -162,8 +180,8 @@ services:
       PGDATA: ${PGDATA:-/var/lib/postgresql/data/pgdata}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
-      DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      DB_KNOWLEDGE_USER: ${KNOWLEDGE_DATABASE_USER}
+      DB_KNOWLEDGE_PASSWORD: ${KNOWLEDGE_DATABASE_PASSWORD}
       DB_REALTIME_USER: ${DB_REALTIME_USER}
       DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
       DB_CREW_USER: ${DB_CREW_USER}
@@ -217,7 +235,9 @@ services:
       dockerfile: ./crew/Dockerfile.crew
     container_name: crew
     environment:
-      <<: *common_env
+      <<: [*common_env, *communication_env]
+      MANAGER_HOST: ${MANAGER_HOST}
+      MANAGER_PORT: ${MANAGER_PORT:-8001}
       HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
       ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
       EC_TELEMETRY: ${EC_TELEMETRY:-False}
@@ -229,6 +249,8 @@ services:
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
+      KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL}
+      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL}
       LLM_HEADERS: ${LLM_HEADERS:-}
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
@@ -320,7 +342,7 @@ services:
         condition: service_healthy
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: minio/minio:latest
     container_name: minio
     command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
     environment:
@@ -340,7 +362,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: minio/mc:latest
     container_name: minio-init
     networks:
       - backend-network
@@ -370,7 +392,7 @@ services:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:-latest}
     container_name: webhook
     build:
       context: .
@@ -435,7 +457,7 @@ services:
       - "8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
-  
+
   agent:
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:-latest}
     container_name: agent
@@ -460,6 +482,92 @@ services:
       - backend-network
 
 
+  knowledge_new:
+    container_name: knowledge_new
+#    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./knowledge_new/Dockerfile
+    networks:
+      - backend-network
+    ports:
+      - "8100:8100"
+    depends_on:
+      communication_redis_broker:
+        condition: service_healthy
+      communication_redis_storage:
+        condition: service_healthy
+    environment:
+      <<: *communication_env
+      KNOWLEDGE_DATABASE_USER: ${KNOWLEDGE_DATABASE_USER}
+      KNOWLEDGE_DATABASE_PASSWORD: ${KNOWLEDGE_DATABASE_PASSWORD}
+      KNOWLEDGE_DATABASE_HOST: ${DB_HOST_NAME}
+      KNOWLEDGE_DATABASE_PORT: ${DB_PORT}
+      KNOWLEDGE_DATABASE_NAME: ${DB_NAME}
+
+      KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL}
+      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL}
+      KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL}
+      KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
+      KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
+      KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
+
+      KNOWLEDGE_MINIO_HOST: ${STORAGE_ENDPOINT:-http://minio:9000}
+      KNOWLEDGE_MINIO_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      KNOWLEDGE_MINIO_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
+
+
+  communication_redis_broker:
+    container_name: communication_redis_broker
+    image: redis
+    networks:
+      - backend-network
+    volumes:
+      - ./broker_redis.conf:/usr/local/etc/redis/redis.conf
+      - broker_redis_data:/data
+    restart: unless-stopped
+    command: >
+      sh -c "redis-server --port $${REDIS_PORT}
+      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
+    healthcheck:
+      test: >
+        sh -c "redis-cli -p $${REDIS_PORT}
+        $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
+      interval: 5s
+      timeout: 2s
+      retries: 50
+      start_period: 5s
+    environment:
+      REDIS_USER: ${COMMUNICATION_BROKER_USER}
+      REDIS_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
+      REDIS_PORT: ${COMMUNICATION_BROKER_PORT}
+
+  communication_redis_storage:
+    container_name: communication_redis_storage
+    image: redis
+    networks:
+      - backend-network
+    volumes:
+      - ./storage_redis.conf:/usr/local/etc/redis/redis.conf
+      - storage_redis_data:/data
+    restart: unless-stopped
+    command: >
+      sh -c "redis-server --port $${REDIS_PORT}
+      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
+    healthcheck:
+      test: >
+        sh -c "redis-cli -p $${REDIS_PORT}
+        $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
+      interval: 5s
+      timeout: 2s
+      retries: 50
+      start_period: 5s
+    environment:
+      REDIS_USER: ${COMMUNICATION_STORAGE_USER}
+      REDIS_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
+      REDIS_PORT: ${COMMUNICATION_STORAGE_PORT}
+
+
 volumes:
   sandbox_venvs:
     external: true
@@ -468,6 +576,9 @@ volumes:
   media_data:
     external: true
   redis_data: {}
+  broker_redis_data:
+  storage_redis_data:
+  code_instances: {}
   minio_data: {}
 
   graph_data:

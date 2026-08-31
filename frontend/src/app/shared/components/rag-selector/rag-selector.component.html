@@ -1,0 +1,89 @@
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+    />
+}
+
+<div class="selector">
+    <button
+        #triggerBtn
+        type="button"
+        class="selector__btn"
+        [class.selector__btn--invalid]="invalid()"
+        [class.selector__btn--open]="open()"
+        [class.selector__btn--placeholder]="!selectedRag()"
+        [disabled]="disabled()"
+        (click)="toggle()"
+    >
+        @if (loading()) {
+            <div class="selector__spinner"></div>
+            <span class="selector__text">Loading...</span>
+        } @else {
+            <span
+                class="selector__text"
+                [class.selector__text--placeholder]="!selectedRag()"
+            >
+                {{ selectedRag() ? getRagTypeName(selectedRag()!.rag_type) : placeholder() }}
+            </span>
+        }
+
+        <svg
+            class="selector__chevron"
+            [class.selector__chevron--open]="open()"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+        >
+            <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+            />
+        </svg>
+    </button>
+</div>
+
+<ng-template #dropdownTemplate>
+    <div class="dropdown">
+        <button
+            type="button"
+            class="dropdown__option"
+            [class.dropdown__option--selected]="value() === null"
+            (click)="select(null)"
+        >
+            <span class="dropdown__name dropdown__name--accent">No RAG</span>
+        </button>
+
+        @for (rag of rags(); track rag.rag_id) {
+            <button
+                type="button"
+                class="dropdown__option"
+                [class.dropdown__option--selected]="rag.rag_id === value()?.rag_id"
+                (click)="select(rag)"
+            >
+                <span class="dropdown__name">{{ getRagTypeName(rag.rag_type) }}</span>
+
+                @if (getStatusDisplay(rag.rag_status); as status) {
+                    <span
+                        class="dropdown__status"
+                        [style.color]="status.color"
+                    >
+                        <app-svg-icon
+                            [icon]="status.icon"
+                            size="12px"
+                        />
+                        <span>{{ status.text }}</span>
+                    </span>
+                }
+            </button>
+        }
+
+        @if (!rags().length) {
+            <div class="dropdown__empty">No RAGs available</div>
+        }
+    </div>
+</ng-template>

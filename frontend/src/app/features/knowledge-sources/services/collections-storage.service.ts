@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
+import { catchError, delay, Observable, of, Subject, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import {
@@ -8,6 +8,8 @@ import {
     DeleteCollectionResponse,
     GetCollectionRequest,
 } from '../models/collection.model';
+import { CollectionDetailsGraphRag } from '../models/graph-rag.model';
+import { CollectionDetailsNaiveRag } from '../models/naive-rag.model';
 import { CollectionsApiService } from './collections-api.service';
 
 @Injectable({
@@ -25,6 +27,55 @@ export class CollectionsStorageService implements StorageService {
     private fullCollectionsLoaded = signal<boolean>(false);
     public readonly fullCollections = this.fullCollectionsSignal.asReadonly();
     // public readonly isFullCollectionsLoaded = this.fullCollectionsLoaded.asReadonly();
+
+    // Config ids currently indexing/queued: rebuilt from polled collection data,
+    // set immediately on run indexing for instant spinners.
+    private processingConfigIdsSignal = signal<Set<number>>(new Set());
+    public readonly processingConfigIds = this.processingConfigIdsSignal.asReadonly();
+
+    private selectedCollectionIdSignal = signal<number | null>(null);
+    public readonly selectedCollectionId = this.selectedCollectionIdSignal.asReadonly();
+
+    setSelectedCollectionId(id: number | null): void {
+        this.selectedCollectionIdSignal.set(id);
+    }
+
+    readonly collectionDeleted$ = new Subject<number>();
+
+    markConfigsAsProcessing(configIds: number[]): void {
+        this.processingConfigIdsSignal.update((ids) => new Set([...ids, ...configIds]));
+    }
+
+    // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.
+    // Polling will overwrite on next tick.
+    markRagAsProcessing(ragId: number): void {
+        this.fullCollectionsSignal.update((collections) =>
+            collections.map((c) => ({
+                ...c,
+                rag_configurations: c.rag_configurations.map((r) =>
+                    r.rag_id === ragId ? { ...r, status: 'processing' } : r
+                ),
+            }))
+        );
+    }
+
+    private rebuildProcessingConfigIds(): void {
+        this.processingConfigIdsSignal.set(
+            new Set(
+                this.fullCollectionsSignal().flatMap((c) =>
+                    c.rag_configurations.flatMap((r) => {
+                        if (r.rag_type === 'naive') {
+                            return (r as CollectionDetailsNaiveRag).indexing_document_config_ids;
+                        }
+                        if (r.rag_type === 'graph') {
+                            return (r as CollectionDetailsGraphRag).processing_document_ids ?? [];
+                        }
+                        return [];
+                    })
+                )
+            )
+        );
+    }
 
     private readonly collectionsApiService = inject(CollectionsApiService);
 
@@ -96,16 +147,37 @@ export class CollectionsStorageService implements StorageService {
         );
     }
 
-    private updateOrCreateCollectionInCache(updated: CreateCollectionDtoResponse): void {
-        const rest = { ...updated };
-        delete (rest as Record<string, unknown>)['rag_configurations'];
+    updateDocumentCount(collectionId: number, newCount: number): void {
+        this.collectionsSignal.update((collections) => {
+            const index = collections.findIndex((c) => c.collection_id === collectionId);
+            if (index < 0) return collections;
+            const updated = [...collections];
+            updated[index] = { ...updated[index], document_count: newCount };
+            return updated;
+        });
+
+        this.fullCollectionsSignal.update((collections) => {
+            const index = collections.findIndex((c) => c.collection_id === collectionId);
+            if (index < 0) return collections;
+            const updated = [...collections];
+            updated[index] = { ...updated[index], document_count: newCount };
+            return updated;
+        });
+    }
+
+    updateOrCreateCollectionInCache(updated: CreateCollectionDtoResponse): void {
+        const { rag_configurations, ...rest } = updated;
 
         this.collectionsSignal.update((collections) => {
             const index = collections.findIndex((c) => c.collection_id === rest.collection_id);
             if (index >= 0) {
-                collections[index] = rest;
+                collections[index] = {
+                    ...collections[index],
+                    ...rest,
+                    rag_configurations: rag_configurations ?? collections[index].rag_configurations,
+                };
             } else {
-                collections.push(rest);
+                collections.push({ ...rest, rag_configurations: rag_configurations ?? [] });
             }
             return [...collections];
         });
@@ -119,6 +191,8 @@ export class CollectionsStorageService implements StorageService {
             }
             return [...collections];
         });
+
+        this.rebuildProcessingConfigIds();
     }
 
     clear(): void {
@@ -126,9 +200,13 @@ export class CollectionsStorageService implements StorageService {
         this.collectionsLoaded.set(false);
         this.fullCollectionsSignal.set([]);
         this.fullCollectionsLoaded.set(false);
+        this.processingConfigIdsSignal.set(new Set());
+        this.selectedCollectionIdSignal.set(null);
     }
 
     private deleteCollectionFromCache(id: number) {
+        this.collectionDeleted$.next(id);
+
         const currentCollections = this.collectionsSignal();
         const updatedCollections = currentCollections.filter((p) => p.collection_id !== id);
         this.collectionsSignal.set(updatedCollections);

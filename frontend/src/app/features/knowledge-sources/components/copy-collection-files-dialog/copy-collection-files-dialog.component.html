@@ -1,0 +1,83 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">Copy Files</span>
+        <app-svg-icon
+            icon="x"
+            class="close"
+            size="1.5rem"
+            (click)="onClose()"
+        />
+    </div>
+
+    <div class="body">
+        <div class="field">
+            <label class="label">Files to Copy</label>
+            <app-multi-select
+                #msf
+                searchPlaceholder="Search documents..."
+                checkboxPosition="left"
+                [items]="fileItems()"
+                [(selectedValues)]="selectedDocumentIds"
+            >
+                <button
+                    [appMultiSelectTrigger]="msf"
+                    class="ms-trigger"
+                    [class.placeholder]="!selectedDocumentIds().length"
+                >
+                    <span class="text">
+                        {{
+                            selectedDocumentIds().length
+                                ? selectedDocumentIds().length + ' file(s) selected'
+                                : 'Select files...'
+                        }}
+                    </span>
+                    <app-svg-icon
+                        icon="chevron"
+                        size="16px"
+                    />
+                </button>
+            </app-multi-select>
+        </div>
+
+        <div class="field">
+            <label class="label">Destination Collection(s)</label>
+            <app-multi-select
+                #msd
+                searchPlaceholder="Search collections..."
+                checkboxPosition="left"
+                [items]="collectionItems()"
+                [(selectedValues)]="selectedCollectionIds"
+            >
+                <button
+                    [appMultiSelectTrigger]="msd"
+                    class="ms-trigger"
+                    [class.placeholder]="!selectedCollectionIds().length"
+                >
+                    <span class="text">
+                        {{
+                            selectedCollectionIds().length
+                                ? selectedCollectionIds().length + ' collection(s) selected'
+                                : 'Select collections...'
+                        }}
+                    </span>
+                </button>
+            </app-multi-select>
+        </div>
+    </div>
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            (click)="onClose()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="!canCopy()"
+            (click)="onCopy()"
+        >
+            Copy
+        </app-button>
+    </div>
+</div>

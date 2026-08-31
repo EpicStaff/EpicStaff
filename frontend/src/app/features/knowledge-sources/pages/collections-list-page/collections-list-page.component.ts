@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, switchMap } from 'rxjs/operators';
 
@@ -9,6 +9,7 @@ import { CreateCollectionDialogComponent } from '../../components/create-collect
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { CollectionDetailsComponent } from './components/collection-details/collection-details.component';
 import { CollectionsListItemSidebarComponent } from './components/collections-list-sidebar/collections-list-sidebar.component';
 
@@ -19,27 +20,32 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, SpinnerComponent],
 })
-export class CollectionsListPageComponent implements OnInit {
+export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
     private collectionsStorageService = inject(CollectionsStorageService);
+    private pollingService = inject(KnowledgeSourcesPollingService);
     private deepLinkService = inject(ChunkDeepLinkService);
     private toastService = inject(ToastService);
 
     isLoading = signal<boolean>(true);
     collections = this.collectionsStorageService.collections;
-    selectedCollectionId = signal<number | null>(null);
 
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
         this.getCollections();
+        this.pollingService.startPagePolling();
+    }
+
+    ngOnDestroy(): void {
+        this.pollingService.stopPagePolling();
     }
 
     getCollections(): void {
         this.isLoading.set(true);
 
         this.collectionsStorageService
-            .getCollections()
+            .getCollections(true)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => {
@@ -64,7 +70,7 @@ export class CollectionsListPageComponent implements OnInit {
             return;
         }
 
-        this.selectedCollectionId.set(params.collectionId);
+        this.collectionsStorageService.setSelectedCollectionId(params.collectionId);
 
         this.collectionsStorageService
             .getFullCollection(params.collectionId, true)
@@ -112,6 +118,7 @@ export class CollectionsListPageComponent implements OnInit {
             .subscribe({
                 next: ({ collection_id }) => {
                     if (!collection_id) return;
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                     this.openCreateModal(collection_id);
                 },
                 error: () => this.toastService.error('Failed to create collection'),
@@ -136,7 +143,7 @@ export class CollectionsListPageComponent implements OnInit {
             )
             .subscribe({
                 next: () => {
-                    this.selectedCollectionId.set(collection_id);
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                 },
                 error: () => {
                     this.toastService.error('Failed to get collection data');

@@ -1,6 +1,7 @@
 from typing import Optional
 from typing import Any, Type
 import copy
+from functools import partial
 
 from loguru import logger
 
@@ -88,6 +89,7 @@ class CrewParserService(metaclass=SingletonMeta):
             execution_order=execution_order,
             stream_writer=stream_writer,
             rag_embedder_api_key=agent_data.rag_embedder_api_key,
+            rag_llm_api_key=agent_data.rag_llm_api_key,
         )
         agent_config = {
             "role": agent_data.role,
@@ -109,7 +111,9 @@ class CrewParserService(metaclass=SingletonMeta):
             "knowledge_collection_id": agent_data.knowledge_collection_id,
             "rag_type_id": agent_data.rag_type_id,
             "rag_search_config": rag_search_config,
-            "search_knowledges": knowledge_search_service.search_knowledges,
+            "search_knowledges": partial(
+                knowledge_search_service.search_knowledges, stop_event=stop_event
+            ),
             "stop_event": stop_event,
         }
 
@@ -243,6 +247,7 @@ class CrewParserService(metaclass=SingletonMeta):
                     rag_type_id=agent_data.rag_type_id,
                     rag_search_config=rag_search_config,
                     rag_embedder_api_key=agent_data.rag_embedder_api_key,
+                    rag_llm_api_key=agent_data.rag_llm_api_key,
                     stop_event=stop_event,
                 ),
                 inputs=inputs,

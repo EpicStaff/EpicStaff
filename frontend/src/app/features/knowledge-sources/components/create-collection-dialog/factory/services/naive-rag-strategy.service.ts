@@ -1,9 +1,14 @@
-import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { computed, Injectable, Signal, signal, WritableSignal } from '@angular/core';
+import { Observable, of } from 'rxjs';
+import { map, switchMap, tap } from 'rxjs/operators';
 
+import { ToastService } from '../../../../../../services/notifications';
 import { CreateNaiveRag } from '../../../../models/naive-rag.model';
+import { CollectionsStorageService } from '../../../../services/collections-storage.service';
+import { KnowledgeSourcesPollingService } from '../../../../services/knowledge-sources-polling.service';
 import { NaiveRagService } from '../../../../services/naive-rag.service';
+import { NaiveRagDocumentsStorageService } from '../../../../services/naive-rag-documents-storage.service';
+import { RagIndexingService } from '../../../../services/rag-indexing.service';
 import { NaiveRagConfigurationComponent } from '../../../naive-rag-configuration/naive-rag-configuration.component';
 import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interface';
 
@@ -11,26 +16,84 @@ import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interfa
     providedIn: 'root',
 })
 export class NaiveRagStrategy implements RagCreationStrategy {
-    private naiveRag!: CreateNaiveRag;
+    private naiveRagSignal = signal<CreateNaiveRag | null>(null);
+    private _canIndex: WritableSignal<boolean> = signal(false);
+    readonly canIndex: Signal<boolean> = this._canIndex.asReadonly();
 
-    constructor(private naiveRagService: NaiveRagService) {}
+    readonly isIndexing: Signal<boolean> = computed(() => {
+        const processing = this.collectionsStorage.processingConfigIds();
+        return this.documentsStorageService.documents().some((d) => processing.has(d.naive_rag_document_id));
+    });
+
+    constructor(
+        private naiveRagService: NaiveRagService,
+        private ragIndexingService: RagIndexingService,
+        private documentsStorageService: NaiveRagDocumentsStorageService,
+        private pollingService: KnowledgeSourcesPollingService,
+        private collectionsStorage: CollectionsStorageService,
+        private toastService: ToastService
+    ) {}
 
     create(collectionId: number, embedderId: number): Observable<boolean> {
         return this.naiveRagService.createRagForCollection(collectionId, embedderId).pipe(
-            tap((res) => (this.naiveRag = res.naive_rag)),
+            tap((res) => this.naiveRagSignal.set(res.naive_rag)),
             map(() => true)
         );
     }
 
-    startIndexing(): Observable<boolean> {
-        const naiveRagId = this.naiveRag.naive_rag_id;
+    startIndexing(data?: { configIds: number[]; pendingDeleteIds?: number[] }): Observable<boolean> {
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId) return of(false);
+        const configIds =
+            data?.configIds ?? this.documentsStorageService.documents().map((d) => d.naive_rag_document_id);
 
-        return this.naiveRagService
-            .startIndexing({
+        // Flush the soft-delete set (if any) before indexing runs, mirroring
+        // the update-flow order in `NaiveRagConfigurationDialog.runIndexing`.
+        const delete$: Observable<unknown> = data?.pendingDeleteIds?.length
+            ? this.documentsStorageService.bulkDeletePending(naiveRagId)
+            : of(null);
+
+        return delete$.pipe(
+            switchMap(() =>
+                this.ragIndexingService.startIndexing({
+                    rag_id: naiveRagId,
+                    rag_type: 'naive',
+                    document_config_ids: configIds,
+                })
+            ),
+            tap(() => {
+                this.toastService.success('Indexing started');
+                this.collectionsStorage.markConfigsAsProcessing(configIds);
+            }),
+            map(() => true)
+        );
+    }
+
+    stopIndexing() {
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId) return of(false);
+        const processing = this.collectionsStorage.processingConfigIds();
+        const configIds = this.documentsStorageService
+            .documents()
+            .map((d) => d.naive_rag_document_id)
+            .filter((id) => processing.has(id));
+
+        return this.ragIndexingService
+            .stopIndexing({
                 rag_id: naiveRagId,
                 rag_type: 'naive',
             })
-            .pipe(map(() => true));
+            .pipe(
+                tap(() => {
+                    this.toastService.success('Indexing stop requested');
+                    this.pollingService.discardTrackedProcessingIds(configIds);
+                }),
+                map(() => true)
+            );
+    }
+
+    dispose(): void {
+        this.pollingService.stopDocumentConfigsPolling();
     }
 
     getConfigurationComponent() {
@@ -38,8 +101,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     }
 
     getConfigurationInputs(): Record<string, unknown> {
-        const { naive_rag_id, collection_id } = this.naiveRag;
-
-        return { naiveRagId: naive_rag_id, collectionId: collection_id };
+        const rag = this.naiveRagSignal();
+        if (!rag) return {};
+        return { naiveRagId: rag.naive_rag_id, collectionId: rag.collection_id, canIndexChange: this._canIndex };
     }
 }

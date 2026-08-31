@@ -67,6 +67,7 @@ from tables.views.views import (
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
+    CancelRagIndexingView,
     RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
@@ -95,6 +96,7 @@ from tables.views.knowledge_views.naive_rag_views import (
     NaiveRagViewSet,
     NaiveRagDocumentConfigViewSet,
     ProcessNaiveRagDocumentChunkingView,
+    CancelNaiveRagDocumentChunkingView,
     NaiveRagChunkViewSet,
     NaiveRagChunkPreviewView,
     NaiveRagChunkSearchView,
@@ -293,6 +295,11 @@ urlpatterns = [
         name="process-document-chunking",
     ),
     path(
+        "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/process-chunking/cancel/",
+        CancelNaiveRagDocumentChunkingView.as_view(),
+        name="cancel-document-chunking",
+    ),
+    path(
         "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/chunks/search/",
         NaiveRagChunkSearchView.as_view(),
         name="naive-rag-chunks-search",
@@ -311,6 +318,11 @@ urlpatterns = [
         "process-rag-indexing/",
         ProcessRagIndexingView.as_view(),
         name="process-rag-indexing",
+    ),
+    path(
+        "process-rag-indexing/<str:rag_type>/<int:rag_id>/cancel/",
+        CancelRagIndexingView.as_view(),
+        name="cancel-rag-indexing",
     ),
     path(
         "documents/source-collection/<str:collection_id>/upload/",

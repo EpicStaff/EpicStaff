@@ -1,9 +1,12 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
+
+from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
-    ChunkingResponseSerializer,
+    ChunkingResponseSerializer, ChunkingConfigSerializer, DocumentConfigBulkUpdateSerializer,
 )
+from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 NAIVE_RAG_DOCUMENT_CONFIGS_GET = dict(
@@ -316,6 +319,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = dict(
         "- Returns errors for configs that fail validation\n"
         "- Configs retain their current DB values when validation fails"
     ),
+    request=DocumentConfigBulkUpdateSerializer(many=True),
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -750,11 +754,14 @@ NAIVE_RAG_DELETE = dict(
     },
 )
 
+# 
 NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     summary="Trigger document chunking and wait for completion",
     description=(
         "Trigger document chunking and wait for completion.\n\n"
-        "URL: GET /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chinking/\n\n"
+        "The chunking config (chunk_strategy, chunk_size, chunk_overlap, additional_params) "
+        "must be provided in the request body.\n\n"
+        "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/\n\n"
         "Flow:\n"
         "1. Validate document config exists and belongs to naive_rag\n"
         "2. Generate chunking_job_id (UUID)\n"
@@ -762,6 +769,26 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
         "4. Publish message to Redis and wait for response (50s timeout)\n"
         "5. Return result (completed, failed, cancelled, or timeout)"
     ),
+    request=ChunkingConfigSerializer,
+    parameters=[
+        OpenApiParameter(
+            name="naive_rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the NaiveRag whose document should be chunked.",
+        ),
+        OpenApiParameter(
+            name="document_config_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description=(
+                "ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id) "
+                "to chunk."
+            ),
+        ),
+    ],
     responses={
         200: ChunkingResponseSerializer,
         202: OpenApiResponse(
@@ -819,6 +846,38 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
         ),
     },
 )
+
+NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE = dict(
+    summary="Cancel a running document chunking (prechunk)",
+    description=(
+        "Cancel an in-flight document prechunk for the given NaiveRag.\n\n"
+        "Forwards a cancel request to the knowledge service over HTTP, which stops "
+        "the running prechunk task for the RAG. Idempotent and best-effort: "
+        "always returns 204 whether or not a prechunk was actually running.\n\n"
+        "URL: DELETE /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="naive_rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the NaiveRag whose prechunk is being cancelled.",
+        ),
+        OpenApiParameter(
+            name="document_config_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id).",
+        ),
+    ],
+    responses={
+        204: OpenApiResponse(description="Cancellation accepted (no content)."),
+        401: UNAUTHORIZED_401_RESPONSE,
+    },
+)
+
 
 NAIVE_RAG_COLLECTIONS_POST = dict(
     summary="Create new NaiveRag or update existing one for a collection",
@@ -960,8 +1019,25 @@ PROCESS_RAG_INDEXING_POST = dict(
     description=(
         "Trigger RAG indexing (chunking + embedding).\n"
         "All business logic is handled by IndexingService.\n\n"
+        "Request body identifies the RAG to index:\n"
+        "- `rag_id` (int, required): ID of the specific RAG implementation "
+        "(NaiveRag.naive_rag_id or GraphRag.graph_rag_id).\n"
+        "- `rag_type` (str, required): RAG strategy — one of `naive`, `graph`.\n\n"
         "URL: POST /process-rag-indexing/"
     ),
+    request=ProcessRagIndexingSerializer,
+    examples=[
+        OpenApiExample(
+            name="Index naive RAG",
+            value={"rag_id": 1, "rag_type": "naive"},
+            request_only=True,
+        ),
+        OpenApiExample(
+            name="Index graph RAG",
+            value={"rag_id": 3, "rag_type": "graph"},
+            request_only=True,
+        ),
+    ],
     responses={
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -1019,5 +1095,38 @@ PROCESS_RAG_INDEXING_POST = dict(
                 )
             ],
         ),
+    },
+)
+
+
+CANCEL_RAG_INDEXING_DELETE = dict(
+    summary="Cancel a running RAG indexing",
+    description=(
+        "Cancel an in-flight RAG indexing.\n\n"
+        "Forwards a cancel request to the knowledge service over HTTP, which stops "
+        "the running task and marks the RAG as CANCELLED. Idempotent and best-effort: "
+        "always returns 204 whether or not indexing was actually in progress.\n\n"
+        "URL: DELETE /process-rag-indexing/{rag_type}/{rag_id}/cancel/"
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="rag_type",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.PATH,
+            required=True,
+            enum=["naive", "graph"],
+            description="RAG strategy — one of `naive`, `graph`.",
+        ),
+        OpenApiParameter(
+            name="rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the RAG implementation (NaiveRag.naive_rag_id or GraphRag.graph_rag_id).",
+        ),
+    ],
+    responses={
+        204: OpenApiResponse(description="Cancellation accepted (no content)."),
+        401: UNAUTHORIZED_401_RESPONSE,
     },
 )

@@ -328,6 +328,7 @@ class ConverterService(metaclass=SingletonMeta):
 
             rag_type_id = agent.get_rag_type_and_id()
             rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
+            rag_llm_api_key_secret_id = agent.get_rag_llm_secret_id()
             all_search_configs = SearchConfigService.get_search_configs(agent)
             rag_search_config = self.build_rag_search_config(
                 rag_type_id, all_search_configs
@@ -357,6 +358,7 @@ class ConverterService(metaclass=SingletonMeta):
                     rag_type_id=rag_type_id,
                     rag_search_config=rag_search_config,
                     rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
+                    rag_llm_api_key_secret_id=rag_llm_api_key_secret_id,
                 )
             )
 
@@ -478,6 +480,7 @@ class ConverterService(metaclass=SingletonMeta):
         # Build RAG search config using factory method
         rag_type_id = agent.get_rag_type_and_id()
         rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
+        rag_llm_api_key_secret_id = agent.get_rag_llm_secret_id()
         all_search_configs = SearchConfigService.get_search_configs(agent)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs
@@ -504,6 +507,7 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
             rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id=rag_llm_api_key_secret_id,
         )
 
     def convert_rt_agent_chat_to_pydantic(
@@ -518,6 +522,7 @@ class ConverterService(metaclass=SingletonMeta):
         # Build RAG search config using factory method
         rag_type_id = agent.get_rag_type_and_id()
         rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
+        rag_llm_api_key_secret_id = agent.get_rag_llm_secret_id()
         all_search_configs = SearchConfigService.get_search_configs(agent)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs
@@ -572,6 +577,7 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
             rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id=rag_llm_api_key_secret_id,
             llm=self.convert_llm_config_to_pydantic(agent.llm_config),
             memory=agent.memory,
             tools=self._get_agent_base_tools(agent=agent),

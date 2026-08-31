@@ -1,20 +1,24 @@
 .collection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     border-radius: 10px;
     background-color: var(--color-ks-card-background);
     padding: 0.75rem 1rem;
+    user-select: none;
 
-    &--selected {
+    &.selected {
         border: 1px solid var(--color-ks-button-activated);
     }
 
-    &__header {
+    .header {
         display: flex;
         justify-content: space-between;
         min-width: 0;
         gap: 0.5rem;
     }
 
-    &__name {
+    .name {
         min-width: 0;
         flex: 1 1 auto;
         overflow: hidden;
@@ -24,52 +28,55 @@
         color: var(--color-ks-text);
     }
 
-    &__rag-type {
-        min-width: 0;
-        max-width: 45%;
-        flex: 0 1 auto;
+    .files-count {
+        flex-shrink: 0;
+        font-size: 12px;
+        color: var(--text-secondary-60);
+
+        &.empty {
+            color: var(--color-ks-transparent-text-20);
+        }
+    }
+
+    .rag-configs {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .rag-badge {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background-color: var(--color-ks-card-tag-background, rgba(255, 255, 255, 0.06));
+        font-size: 12px;
+        white-space: nowrap;
+
+        &__name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    .no-rag {
+        display: flex;
+        gap: 4px;
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        font-size: 1rem;
-        color: var(--color-ks-transparent-text-80);
+        font-size: 12px;
+        color: var(--text-secondary-60);
     }
 
-    &__status {
-        margin-top: 0.75rem;
-        font-size: 0.75rem;
-        display: flex;
-        align-items: center;
-        column-gap: 0.5rem;
-        min-width: 0;
-        &--completed {
-            color: var(--color-ks-status-completed);
-        }
-
-        &--empty {
-            color: var(--color-ks-status-new);
-        }
-
-        &--warning {
-            color: var(--color-ks-status-warning);
-        }
-
-        &--uploading {
-            color: var(--color-ks-status-processing);
-        }
-
-        &--failed {
-            color: var(--color-ks-status-failed);
-        }
-    }
-
-    &__status-icon {
+    .status-icon {
         display: flex;
         align-items: center;
         flex-shrink: 0;
     }
 
-    &__status-text {
+    .status-text {
         min-width: 0;
         overflow: hidden;
         white-space: nowrap;

@@ -1,7 +1,10 @@
 from typing import List, Dict, Any, Optional
 from django.db import transaction
+from django.db.models import Q
 from loguru import logger
 
+from src.shared.enums.knowledge_new import RAGStrategy
+from tables.clients import KnowledgeClient
 from tables.models.knowledge_models import (
     SourceCollection,
     BaseRagType,
@@ -9,8 +12,6 @@ from tables.models.knowledge_models import (
     GraphRag,
     GraphRagDocument,
     GraphRagIndexConfig,
-    GraphRagInputFileType,
-    GraphRagChunkStrategyType,
 )
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
@@ -21,6 +22,7 @@ from tables.exceptions import (
     CollectionNotFoundException,
     InvalidGraphRagParametersException,
     GraphRagDocumentNotFoundException,
+    InvalidChunkParametersException,
 )
 from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_INPUT_FILE_TYPE,
@@ -30,14 +32,6 @@ from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_ENTITY_TYPES,
     GRAPHRAG_DEFAULT_MAX_GLEANINGS,
     GRAPHRAG_DEFAULT_MAX_CLUSTER_SIZE,
-    GRAPHRAG_MIN_CHUNK_SIZE,
-    GRAPHRAG_MAX_CHUNK_SIZE,
-    GRAPHRAG_MIN_CHUNK_OVERLAP,
-    GRAPHRAG_MAX_CHUNK_OVERLAP,
-    GRAPHRAG_MIN_MAX_GLEANINGS,
-    GRAPHRAG_MAX_MAX_GLEANINGS,
-    GRAPHRAG_MIN_MAX_CLUSTER_SIZE,
-    GRAPHRAG_MAX_MAX_CLUSTER_SIZE,
 )
 
 
@@ -108,6 +102,14 @@ class GraphRagService:
             return None
 
     @staticmethod
+    def _mark_completed_documents_outdated(graph_rag: GraphRag) -> int:
+        return (
+            graph_rag.graph_rag_documents
+            .filter(status=GraphRagDocument.Status.COMPLETED)
+            .update(status=GraphRagDocument.Status.OUTDATED)
+        )
+
+    @staticmethod
     def _create_default_index_config() -> GraphRagIndexConfig:
         """Create default index configuration."""
         index_config = GraphRagIndexConfig.objects.create(
@@ -126,9 +128,88 @@ class GraphRagService:
 
         return index_config
 
-    @staticmethod
+    @classmethod
+    def _create_rag(
+        cls,
+        collection: SourceCollection,
+        embedding_config: EmbeddingConfig,
+        llm_config: LLMConfig,
+    ) -> GraphRag:
+        index_config = cls._create_default_index_config()
+        base_rag_type = BaseRagType.objects.create(
+            source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
+        )
+        rag = GraphRag.objects.create(
+            base_rag_type=base_rag_type,
+            embedder=embedding_config,
+            llm=llm_config,
+            index_config=index_config,
+        )
+
+        all_documents = collection.documents.iterator(chunk_size=100)
+        graph_rag_documents = [
+            GraphRagDocument(graph_rag=rag, document=d)
+            for d in all_documents
+        ] # fmt: off
+        GraphRagDocument.objects.bulk_create(graph_rag_documents, batch_size=100)
+
+        logger.info(
+            f"Created GraphRag {rag.graph_rag_id} "
+            f"for collection {collection.collection_id} with {len(graph_rag_documents)} documents."
+        )
+
+        return rag
+
+
+    @classmethod
+    def _update_rag(
+        cls,
+        rag: GraphRag,
+        collection: SourceCollection,
+        embedding_config: EmbeddingConfig,
+        llm_config: LLMConfig,
+    ) -> GraphRag:
+        updated_fields = set()
+        embedding_provider_changed = (
+            rag.embedder is None
+            or rag.embedder.model.embedding_provider != embedding_config.model.embedding_provider
+        )
+
+        if rag.embedder is None or rag.embedder.pk != embedding_config.pk:
+            if embedding_provider_changed:
+                rag.rag_status = rag.GraphRagStatus.OUTDATED
+                rag.add_outdated_reason(
+                    'changed_embedding_config',
+                    'Embedding config was changed.',
+                )
+                updated_fields.update(['rag_status', 'outdated_reasons'])
+            rag.embedder = embedding_config
+            updated_fields.add('embedder')
+
+        if rag.llm is None or rag.llm.pk != llm_config.pk:
+            rag.llm = llm_config
+            updated_fields.add('llm')
+
+        rag.save(update_fields=updated_fields)
+
+        if embedding_provider_changed:
+            (
+                rag.graph_rag_documents
+                .filter(
+                    ~Q(graph_rag_document_id__in=rag.indexing_document_config_ids),
+                    status=GraphRagDocument.Status.COMPLETED,
+                )
+                .update(status=GraphRagDocument.Status.OUTDATED)
+            )
+
+        logger.info(f"Updated GraphRag {rag.graph_rag_id} for collection {collection.collection_id}")
+
+        return rag
+
+    @classmethod
     @transaction.atomic
     def create_or_update_graph_rag(
+        cls,
         collection_id: int,
         embedder_id: int,
         llm_id: int,
@@ -151,169 +232,30 @@ class GraphRagService:
             EmbedderNotFoundException: If embedder not found
             LLMConfigNotFoundException: If LLM config not found
         """
-        # Validate collection exists
-        collection = GraphRagService._get_collection(collection_id)
+        collection = cls._get_collection(collection_id)
+        embedding_config = cls._get_embedder(embedder_id)
+        llm_config = cls._get_llm_config(llm_id)
 
-        # Validate embedder exists
-        embedder = GraphRagService._get_embedder(embedder_id)
+        rag = cls.get_or_none_graph_rag_by_collection(collection_id)
+        if rag:
+            rag = cls._update_rag(rag, collection, embedding_config, llm_config)
+        else:
+            rag = cls._create_rag(collection, embedding_config, llm_config)
 
-        # Validate LLM config exists
-        llm_config = GraphRagService._get_llm_config(llm_id)
+        return rag
 
-        # Check if GraphRag already exists for this collection
-        existing_graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(
-            collection_id
-        )
-
-        if existing_graph_rag:
-            # Update existing GraphRag
-            existing_graph_rag.embedder = embedder
-            existing_graph_rag.llm = llm_config
-            existing_graph_rag.save(update_fields=["embedder", "llm"])
-
-            logger.info(
-                f"Updated GraphRag {existing_graph_rag.graph_rag_id} "
-                f"for collection {collection_id}"
-            )
-
-            return existing_graph_rag
-
-        # Create default index config
-        index_config = GraphRagService._create_default_index_config()
-
-        # Create BaseRagType
-        base_rag_type = BaseRagType.objects.create(
-            source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
-        )
-
-        # Create GraphRag
-        graph_rag = GraphRag.objects.create(
-            base_rag_type=base_rag_type,
-            embedder=embedder,
-            llm=llm_config,
-            index_config=index_config,
-            rag_status=GraphRag.GraphRagStatus.NEW,
-        )
-
-        # Auto-add ALL documents from collection
-        all_documents = DocumentMetadata.objects.filter(
-            source_collection_id=collection_id
-        )
-        for document in all_documents:
-            GraphRagDocument.objects.create(graph_rag=graph_rag, document=document)
-
-        doc_count = all_documents.count()
-
-        logger.info(
-            f"Created GraphRag {graph_rag.graph_rag_id} "
-            f"for collection {collection_id} with {doc_count} documents"
-        )
-
-        return graph_rag
-
-    @staticmethod
-    def _validate_index_config_params(
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
-        chunk_strategy: Optional[str] = None,
-        entity_types: Optional[List[str]] = None,
-        max_gleanings: Optional[int] = None,
-        max_cluster_size: Optional[int] = None,
-    ) -> None:
-        """
-        Validate index config parameters.
-
-        Raises:
-            InvalidGraphRagParametersException: If parameters are invalid
-        """
-        errors = []
-
-        if chunk_size is not None:
-            if (
-                chunk_size < GRAPHRAG_MIN_CHUNK_SIZE
-                or chunk_size > GRAPHRAG_MAX_CHUNK_SIZE
-            ):
-                errors.append(
-                    f"chunk_size must be between {GRAPHRAG_MIN_CHUNK_SIZE} and {GRAPHRAG_MAX_CHUNK_SIZE}"
-                )
-
-        if chunk_overlap is not None:
-            if (
-                chunk_overlap < GRAPHRAG_MIN_CHUNK_OVERLAP
-                or chunk_overlap > GRAPHRAG_MAX_CHUNK_OVERLAP
-            ):
-                errors.append(
-                    f"chunk_overlap must be between {GRAPHRAG_MIN_CHUNK_OVERLAP} and {GRAPHRAG_MAX_CHUNK_OVERLAP}"
-                )
-
-        if chunk_size is not None and chunk_overlap is not None:
-            if chunk_overlap >= chunk_size:
-                errors.append("chunk_overlap must be less than chunk_size")
-
-        if chunk_strategy is not None:
-            valid_strategies = [
-                choice[0] for choice in GraphRagChunkStrategyType.choices
-            ]
-            if chunk_strategy not in valid_strategies:
-                errors.append(
-                    f"chunk_strategy must be one of: {', '.join(valid_strategies)}"
-                )
-
-        if entity_types is not None:
-            if not isinstance(entity_types, list):
-                errors.append("entity_types must be a list")
-            elif len(entity_types) == 0:
-                errors.append("entity_types cannot be empty")
-
-        if max_gleanings is not None:
-            if (
-                max_gleanings < GRAPHRAG_MIN_MAX_GLEANINGS
-                or max_gleanings > GRAPHRAG_MAX_MAX_GLEANINGS
-            ):
-                errors.append(
-                    f"max_gleanings must be between {GRAPHRAG_MIN_MAX_GLEANINGS} and {GRAPHRAG_MAX_MAX_GLEANINGS}"
-                )
-
-        if max_cluster_size is not None:
-            if (
-                max_cluster_size < GRAPHRAG_MIN_MAX_CLUSTER_SIZE
-                or max_cluster_size > GRAPHRAG_MAX_MAX_CLUSTER_SIZE
-            ):
-                errors.append(
-                    f"max_cluster_size must be between {GRAPHRAG_MIN_MAX_CLUSTER_SIZE} and {GRAPHRAG_MAX_MAX_CLUSTER_SIZE}"
-                )
-
-        if errors:
-            raise InvalidGraphRagParametersException("; ".join(errors))
-
-    @staticmethod
+    @classmethod
     @transaction.atomic
     def update_index_config(
+        cls,
         graph_rag_id: int,
-        # Input config
-        file_type: Optional[str] = None,
-        # Chunking config
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
-        chunk_strategy: Optional[str] = None,
-        # Extract graph config
-        entity_types: Optional[List[str]] = None,
-        max_gleanings: Optional[int] = None,
-        # Cluster graph config
-        max_cluster_size: Optional[int] = None,
+        data: dict[str, Any],
     ) -> GraphRag:
         """
         Update index configuration for GraphRag.
 
         Args:
             graph_rag_id: ID of GraphRag
-            file_type: Input file type (csv, text, json)
-            chunk_size: Chunk size
-            chunk_overlap: Chunk overlap
-            chunk_strategy: Chunking strategy (tokens, sentence)
-            entity_types: List of entity types to extract
-            max_gleanings: Maximum gleanings for entity extraction
-            max_cluster_size: Maximum cluster size
 
         Returns:
             Updated GraphRag instance
@@ -322,66 +264,52 @@ class GraphRagService:
             GraphRagNotFoundException: If GraphRag not found
             InvalidGraphRagParametersException: If parameters are invalid
         """
-        graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
+        logger.info("start update index config for data: {}", data)
 
-        if not graph_rag.index_config:
+        # TODO: it is unprotected from system changing index config at indexing.
+
+        rag = cls.get_graph_rag(graph_rag_id)
+        if not rag.index_config:
             raise InvalidGraphRagParametersException(
                 "GraphRag has no index configuration"
             )
+        index_config = rag.index_config
 
-        index_config = graph_rag.index_config
+        chunk_size = data.get("chunk_size") or index_config.chunk_size
+        chunk_overlap = data.get("chunk_overlap") or index_config.chunk_overlap
+        if chunk_overlap >= chunk_size:
+            reason = "'chunk_overlap' must be less than 'chunk_size'"
+            raise InvalidChunkParametersException(
+                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
+            )
+        
+        updated_fields = set()
+        for field, value in data.items():
+            old_value = getattr(index_config, field)
+            if value is not None and old_value != value:
+                setattr(index_config, field, value)
+                updated_fields.add(field)
 
-        # Get current values for validation
-        final_chunk_size = (
-            chunk_size if chunk_size is not None else index_config.chunk_size
-        )
-        final_chunk_overlap = (
-            chunk_overlap if chunk_overlap is not None else index_config.chunk_overlap
-        )
+        if updated_fields:
+            index_config.save(update_fields=updated_fields)
 
-        # Validate parameters
-        GraphRagService._validate_index_config_params(
-            chunk_size=final_chunk_size,
-            chunk_overlap=final_chunk_overlap,
-            chunk_strategy=chunk_strategy,
-            entity_types=entity_types,
-            max_gleanings=max_gleanings,
-            max_cluster_size=max_cluster_size,
-        )
-
-        # Validate file_type if provided
-        if file_type is not None:
-            valid_file_types = [choice[0] for choice in GraphRagInputFileType.choices]
-            if file_type not in valid_file_types:
-                raise InvalidGraphRagParametersException(
-                    f"file_type must be one of: {', '.join(valid_file_types)}"
+            completed_documents = (
+                rag.graph_rag_documents
+                .filter(
+                    ~Q(graph_rag_document_id__in=rag.indexing_document_config_ids),
+                    status=GraphRagDocument.Status.COMPLETED,
                 )
+            )
+            if completed_documents:
+                rag.add_outdated_reason(
+                    code="index_config_changed",
+                    detail="Index config was changed.",
+                )
+                rag.rag_status = GraphRag.GraphRagStatus.OUTDATED
+                rag.save(update_fields={"outdated_reasons", "rag_status"})
+                completed_documents.update(status=GraphRagDocument.Status.OUTDATED)
 
-        # Build update dict
-        updates = {}
-        if file_type is not None:
-            updates["file_type"] = file_type
-        if chunk_size is not None:
-            updates["chunk_size"] = chunk_size
-        if chunk_overlap is not None:
-            updates["chunk_overlap"] = chunk_overlap
-        if chunk_strategy is not None:
-            updates["chunk_strategy"] = chunk_strategy
-        if entity_types is not None:
-            updates["entity_types"] = entity_types
-        if max_gleanings is not None:
-            updates["max_gleanings"] = max_gleanings
-        if max_cluster_size is not None:
-            updates["max_cluster_size"] = max_cluster_size
-
-        # Apply updates
-        for field, value in updates.items():
-            setattr(index_config, field, value)
-
-        if updates:
-            index_config.save(update_fields=list(updates.keys()))
-
-        logger.info(f"Updated index config for GraphRag {graph_rag_id}")
+        logger.info("Updated index config for GraphRag(id={})", graph_rag_id)
 
         return GraphRagService.get_graph_rag(graph_rag_id)
 
@@ -400,24 +328,30 @@ class GraphRagService:
         Returns:
             dict with removal info
         """
-        graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
+        rag = GraphRagService.get_graph_rag(graph_rag_id)
+        documents = rag.graph_rag_documents.filter(document_id__in=document_ids)
 
-        # Get links to delete
-        links = GraphRagDocument.objects.filter(
-            graph_rag=graph_rag, document_id__in=document_ids
+        found_ids = {d.document_id for d in documents}
+        missing_ids = set(document_ids) - found_ids
+        if missing_ids:
+            raise GraphRagDocumentNotFoundException(
+                f"Documents not found or don't belong to"
+                f" GraphRag {rag.graph_rag_id}: {sorted(missing_ids)}"
+            )
+
+        completed_document_deleted = documents.filter(status=GraphRagDocument.Status.COMPLETED).exists()
+        deleted_document_ids = list(documents.values_list("document_id", flat=True))
+        documents.delete()
+
+        GraphRagService.sync_status_after_document_removal(rag, completed_document_deleted)
+
+        logger.info(
+            "Removed {} documents from GraphRag(id={})",
+            len(deleted_document_ids),
+            graph_rag_id
         )
 
-        deleted_ids = list(links.values_list("document_id", flat=True))
-        deleted_count = links.count()
-
-        links.delete()
-
-        logger.info(f"Removed {deleted_count} documents from GraphRag {graph_rag_id}")
-
-        return {
-            "removed_count": deleted_count,
-            "removed_document_ids": deleted_ids,
-        }
+        return {"removed_count": len(deleted_document_ids), "removed_document_ids": deleted_document_ids}
 
     @staticmethod
     @transaction.atomic
@@ -432,23 +366,47 @@ class GraphRagService:
         Returns:
             dict with removal info
         """
-        graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
-
-        try:
-            link = GraphRagDocument.objects.get(
-                graph_rag=graph_rag, document_id=document_id
+        rag = GraphRagService.get_graph_rag(graph_rag_id)
+        document = rag.graph_rag_documents.filter(document_id=document_id).first()
+        if document is None:
+            raise GraphRagDocumentNotFoundException(
+                f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
             )
-        except GraphRagDocument.DoesNotExist:
-            raise GraphRagDocumentNotFoundException(document_id, graph_rag_id)
 
-        link.delete()
+        was_completed = document.status == GraphRagDocument.Status.COMPLETED
+        document.delete()
 
-        logger.info(f"Removed document {document_id} from GraphRag {graph_rag_id}")
+        GraphRagService.sync_status_after_document_removal(rag, was_completed)
 
-        return {
-            "graph_rag_id": graph_rag_id,
-            "document_id": document_id,
-        }
+        logger.info(
+            "Removed document(id={}) from GraphRag(id={})",
+            document_id,
+            graph_rag_id,
+        )
+
+        return {"graph_rag_id": graph_rag_id, "document_id": document_id}
+
+    @staticmethod
+    def sync_status_after_document_removal(rag: GraphRag, indexed_document_deleted: bool) -> None:
+        updated_fields = set()
+        S = GraphRagDocument.Status
+        if indexed_document_deleted:
+            # Graph can't excise a single file from the index — treat any indexed
+            # deletion as outdating the whole graph.
+            rag.graph_rag_documents.filter(status=S.COMPLETED).update(status=S.OUTDATED)
+            rag.add_outdated_reason(
+                code="indexed_document_deleted",
+                detail="Indexed document was deleted.",
+            )
+            updated_fields.add("outdated_reasons")
+        has_outdated = rag.graph_rag_documents.filter(status=S.OUTDATED).exists()
+        if not has_outdated and rag.outdated_reasons:
+            rag.clear_outdated_reason()
+            updated_fields.add("outdated_reasons")
+        if rag.update_rag_status():
+            updated_fields.add("rag_status")
+        if updated_fields:
+            rag.save(update_fields=updated_fields)
 
     @staticmethod
     def get_documents_for_graph_rag(graph_rag_id: int) -> List[DocumentMetadata]:
@@ -462,16 +420,8 @@ class GraphRagService:
             List of DocumentMetadata
         """
         graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
-
-        document_ids = GraphRagDocument.objects.filter(graph_rag=graph_rag).values_list(
-            "document_id", flat=True
-        )
-
-        return list(
-            DocumentMetadata.objects.filter(document_id__in=document_ids).order_by(
-                "file_name"
-            )
-        )
+        documents = graph_rag.graph_rag_documents.select_related("document").all()
+        return list(documents)
 
     @staticmethod
     @transaction.atomic
@@ -566,6 +516,9 @@ class GraphRagService:
 
         # Delete base_rag_type (cascades to GraphRag and GraphRagDocument)
         base_rag_type.delete()
+
+        with KnowledgeClient() as client:
+            client.delete(strategy=RAGStrategy.GRAPH, rag_id=int(graph_rag_id))
 
         logger.info(
             f"Deleted GraphRag {graph_rag_id} for collection {collection_id} "

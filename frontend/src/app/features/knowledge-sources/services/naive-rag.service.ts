@@ -3,8 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
-import { StartIndexingDtoRequest, StartIndexingDtoResponse } from '../models/base-rag.model';
-import { CreateNaiveRagForCollectionResponse } from '../models/naive-rag.model';
+import { CreateNaiveRagForCollectionResponse, DeleteNaiveRagResponse } from '../models/naive-rag.model';
 import {
     ChunkSearchResponse,
     GetChunksByIdsResponse,
@@ -14,12 +13,11 @@ import {
 import {
     BulkDeleteNaiveRagDocumentDtoRequest,
     BulkDeleteNaiveRagDocumentDtoResponse,
-    BulkUpdateNaiveRagDocumentDtoRequest,
     BulkUpdateNaiveRagDocumentDtoResponse,
+    BulkUpdateNaiveRagDocumentsRequest,
     GetNaiveRagDocumentConfigsResponse,
     InitNaiveRagDocumentsResponse,
-    UpdateNaiveRagDocumentDtoRequest,
-    UpdateNaiveRagDocumentResponse,
+    RunNaiveRagDocumentChunkingRequest,
 } from '../models/naive-rag-document.model';
 
 @Injectable({
@@ -46,24 +44,17 @@ export class NaiveRagService {
         );
     }
 
+    deleteNaiveRag(ragId: number): Observable<DeleteNaiveRagResponse> {
+        return this.http.delete<DeleteNaiveRagResponse>(`${this.apiUrl}${ragId}/`);
+    }
+
     getDocumentConfigs(naiveRagId: number): Observable<GetNaiveRagDocumentConfigsResponse> {
         return this.http.get<GetNaiveRagDocumentConfigsResponse>(`${this.apiUrl}${naiveRagId}/document-configs/`);
     }
 
-    updateDocumentConfigById(
-        ragId: number,
-        documentId: number,
-        dto: UpdateNaiveRagDocumentDtoRequest
-    ): Observable<UpdateNaiveRagDocumentResponse> {
-        return this.http.put<UpdateNaiveRagDocumentResponse>(
-            `${this.apiUrl}${ragId}/document-configs/${documentId}/`,
-            dto
-        );
-    }
-
     bulkUpdateDocumentConfigs(
         ragId: number,
-        dto: BulkUpdateNaiveRagDocumentDtoRequest
+        dto: BulkUpdateNaiveRagDocumentsRequest[]
     ): Observable<BulkUpdateNaiveRagDocumentDtoResponse> {
         return this.http.put<BulkUpdateNaiveRagDocumentDtoResponse>(
             `${this.apiUrl}${ragId}/document-configs/bulk-update/`,
@@ -81,19 +72,23 @@ export class NaiveRagService {
         );
     }
 
-    startIndexing(dto: StartIndexingDtoRequest): Observable<StartIndexingDtoResponse> {
-        return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
-    }
-
     initializeDocuments(ragId: number): Observable<InitNaiveRagDocumentsResponse> {
         return this.http.post<InitNaiveRagDocumentsResponse>(`${this.apiUrl}${ragId}/document-configs/initialize/`, {});
     }
 
-    runChunkingProcess(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {
+    runChunkingProcess(
+        ragId: number,
+        documentId: number,
+        body: RunNaiveRagDocumentChunkingRequest
+    ): Observable<NaiveRagChunkingResponse> {
         return this.http.post<NaiveRagChunkingResponse>(
             `${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/`,
-            {}
+            body
         );
+    }
+
+    stopChunkingByDocumentId(ragId: number, documentId: number): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/cancel/`);
     }
 
     getChunkPreview(

@@ -23,10 +23,12 @@
     }
 
     &__header-name {
-        width: calc(60% - 2.5rem);
+        width: calc(60% - 2rem);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        overflow: auto;
+        scrollbar-gutter: stable;
     }
 
     &__header-label {
@@ -95,7 +97,7 @@
         flex: 1;
         min-height: 0;
         overflow: hidden;
-        margin: 1.5rem 3rem;
+        margin: 1.5rem 2.5rem 1.5rem 3rem;
         row-gap: 1.875rem;
     }
 
@@ -115,10 +117,17 @@
         overflow: hidden;
     }
 
+    &__files-wrap {
+        flex: 1;
+        min-height: 0;
+    }
+
     &__section-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        overflow: auto;
+        scrollbar-gutter: stable;
     }
 
     &__section-title {

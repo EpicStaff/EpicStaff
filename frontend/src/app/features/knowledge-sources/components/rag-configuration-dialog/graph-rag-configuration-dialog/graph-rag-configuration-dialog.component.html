@@ -10,12 +10,22 @@
                 Close
             </app-button>
 
-            <app-button
-                type="primary"
-                (click)="runIndexing()"
-            >
-                Run indexing
-            </app-button>
+            @if (isIndexing()) {
+                <app-button
+                    type="primary"
+                    (click)="stopIndexing(docConfigIds())"
+                >
+                    Stop indexing
+                </app-button>
+            } @else {
+                <app-button
+                    type="primary"
+                    [disabled]="indexingDisabled()"
+                    (click)="runIndexing()"
+                >
+                    {{ runButtonLabel() }}
+                </app-button>
+            }
         </div>
     </div>
 

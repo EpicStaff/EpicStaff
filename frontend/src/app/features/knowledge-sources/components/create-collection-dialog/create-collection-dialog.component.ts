@@ -1,24 +1,33 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgComponentOutlet } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ButtonComponent, StepConfig } from '@shared/components';
-import { StepperComponent } from '@shared/components';
-import { Observable, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { ButtonComponent, ConfirmationDialogService, StepConfig } from '@shared/components';
+import { AppSvgIconComponent, StepperComponent } from '@shared/components';
+import { EMPTY, filter, Observable, of } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { RAG_TYPE_CONFIG } from '../../constants/constants';
+import { getIndexingConfirmationData, IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { RagDeleteRegistryService } from '../../services/rag-delete-registry.service';
 import { StepSelectRagComponent } from './components/steps/step-select-rag/step-select-rag.component';
 import { StepUploadFilesComponent } from './components/steps/step-upload-files/step-upload-files.component';
 import { RagCreationStrategy } from './factory/interfaces/rag-creation-strategy.interface';
 import { RagStrategyFactory } from './factory/rag-creation.factory';
+
+export interface CreateCollectionDialogData {
+    collection_id: number;
+    isUpdate?: boolean;
+    initialDocumentId?: number;
+}
 
 @Component({
     selector: 'app-create-collection-dialog',
@@ -36,13 +45,15 @@ import { RagStrategyFactory } from './factory/rag-creation.factory';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CreateCollectionDialogComponent {
-    data: { collection_id: number; forceType: RagType | undefined } = inject(DIALOG_DATA);
+    data: CreateCollectionDialogData = inject(DIALOG_DATA);
 
     private destroyRef = inject(DestroyRef);
     private dialogRef = inject(DialogRef);
     private factory = inject(RagStrategyFactory);
     private collectionsStorageService = inject(CollectionsStorageService);
     private toastService = inject(ToastService);
+    private confirmation = inject(ConfirmationDialogService);
+    private ragDeleteRegistry = inject(RagDeleteRegistryService);
 
     currentStepIndex = signal(0);
     selectedRagType = signal<RagType | null>(null);
@@ -55,6 +66,8 @@ export class CreateCollectionDialogComponent {
     collection = computed(
         () => this.collectionsStorageService.fullCollections().find((c) => c.collection_id === this.data.collection_id)!
     );
+
+    isIndexing = computed(() => this.strategy()?.isIndexing() ?? false);
 
     canProceedSelectRag = computed(() => {
         const type = this.selectedRagType();
@@ -83,9 +96,9 @@ export class CreateCollectionDialogComponent {
         {
             id: CreateCollectionStep.CONFIGURE,
             label: 'Configure',
-            proceedLabel: 'Finish Creation',
-            onProceed: () => this.handleFinish(),
-            canProceed: () => true,
+            proceedLabel: 'Save & Run Indexing',
+            onProceed: () => this.handleIndexing(),
+            canProceed: () => this.strategy()?.canIndex() ?? false,
         },
     ]);
 
@@ -118,7 +131,6 @@ export class CreateCollectionDialogComponent {
 
                 this.currentStepIndex.update((i) => {
                     if (i >= last) {
-                        this.onClose();
                         return i;
                     }
                     return i + 1;
@@ -132,37 +144,121 @@ export class CreateCollectionDialogComponent {
         const collectionId = this.data.collection_id;
         if (!type || !embedderId) return of(false);
 
-        const strategy = this.factory.create(type);
-        this.strategy.set(strategy);
+        const existingRag = this.collection().rag_configurations.find((r) => r.rag_type === type);
 
-        return strategy.create(collectionId, embedderId, this.selectedLLM() ?? undefined).pipe(
-            catchError(() => {
-                this.toastService.error('Failed to create RAG');
-                return of(false);
-            })
-        );
+        const createRag$ = () => {
+            const strategy = this.factory.create(type);
+            this.strategy.set(strategy);
+            return strategy.create(collectionId, embedderId, this.selectedLLM() ?? undefined).pipe(
+                catchError(() => {
+                    this.toastService.error('Failed to create RAG');
+                    return of(false);
+                })
+            );
+        };
+
+        // delete old rag before creating new
+        if (existingRag) {
+            const ragName = RAG_TYPE_CONFIG[type].name;
+            return this.confirmation
+                .confirm({
+                    title: `Replace ${ragName}`,
+                    message: `Existing <strong>${ragName}</strong> and its indexed documents will be permanently deleted before creating a new one.`,
+                    type: 'warning',
+                    cancelText: 'Cancel',
+                    confirmText: 'Replace',
+                })
+                .pipe(
+                    filter((result) => result === true),
+                    switchMap(() => this.ragDeleteRegistry.deleteRag(type, existingRag.rag_id)),
+                    switchMap(() => createRag$()),
+                    catchError(() => {
+                        this.toastService.error('Failed to replace RAG');
+                        return of(false);
+                    })
+                );
+        }
+
+        return createRag$();
     }
 
-    private handleFinish(): Observable<boolean> {
+    private handleIndexing(): Observable<boolean> {
         const strategy = this.strategy();
         if (!strategy || !this.strategyComponent) return of(false);
 
         const componentInstance: RagConfiguration = this.strategyComponent['_componentRef'].instance;
         const componentData = componentInstance.getConfigurationData();
+        const shouldSave = componentInstance.shouldSaveConfig?.() ?? false;
+        const pendingDeleteIds = componentInstance.getPendingDeleteDocumentIds?.() ?? [];
 
         if (!componentData) {
             return of(false);
         }
 
-        return strategy.startIndexing(componentData).pipe(
-            catchError(() => {
-                this.toastService.error('Indexing failed');
-                return of(false);
+        const realIndexingDocs = componentInstance.getIndexingDocuments();
+        const configIds = realIndexingDocs.map((d) => d.configId);
+        const indexingDocs: IndexingDocumentInfo[] = realIndexingDocs.length
+            ? realIndexingDocs
+            : this.selectedDocuments().map((d) => ({
+                  configId: d.document_id!,
+                  fileName: d.file_name,
+                  wasIndexed: false,
+              }));
+
+        const savePending$: Observable<unknown> = componentInstance.uploadPendingForChecked?.() ?? of(null);
+
+        return this.confirmation.confirm(getIndexingConfirmationData(indexingDocs)).pipe(
+            takeUntilDestroyed(this.destroyRef),
+            filter((result) => result === true),
+            switchMap(() => savePending$),
+            switchMap(() => {
+                if (componentInstance.hasFailedSavesForChecked?.()) {
+                    this.toastService.error('Some documents failed to save. Fix the errors and retry.');
+                    return EMPTY;
+                }
+                return strategy.startIndexing({ ...componentData, configIds, shouldSave, pendingDeleteIds }).pipe(
+                    catchError((err: HttpErrorResponse) => {
+                        if (err?.validationErrors?.length) {
+                            componentInstance.setServerValidationErrors?.(err.validationErrors);
+                            return of(false);
+                        }
+                        this.toastService.error('Indexing failed');
+                        return of(false);
+                    })
+                );
             })
         );
     }
 
+    stopIndexing() {
+        const strategy = this.strategy();
+        if (!strategy || !this.strategyComponent) return of(false);
+
+        return this.confirmation
+            .confirm({
+                title: 'Stop indexing',
+                message: `Do you want to stop indexing?`,
+                type: 'warning',
+                cancelText: 'Cancel',
+                confirmText: 'Stop indexing',
+            })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                filter((result) => result === true),
+                switchMap(() =>
+                    strategy.stopIndexing().pipe(
+                        catchError(() => {
+                            this.toastService.error('Indexing stop failed');
+                            return of(false);
+                        })
+                    )
+                )
+            )
+            .subscribe();
+    }
+
     onClose() {
+        this.strategy()?.dispose?.();
         this.dialogRef.close();
     }
 
