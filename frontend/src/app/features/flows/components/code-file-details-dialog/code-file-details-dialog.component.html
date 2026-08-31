@@ -1,0 +1,56 @@
+<div class="code-file-details-dialog">
+    <div class="code-file-details-dialog__header">
+        <h2 class="code-file-details-dialog__title">File Details</h2>
+        <button
+            class="code-file-details-dialog__close"
+            type="button"
+            aria-label="Close dialog"
+            matTooltip="Close"
+            matTooltipPosition="above"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+
+    <div class="code-file-details-dialog__content">
+        <div class="code-file-details-dialog__section">
+            <div class="code-file-details-dialog__section-title">Entrypoint</div>
+            <div class="code-file-details-dialog__path-box">
+                <span class="code-file-details-dialog__path-value">{{ entrypointSignature }}</span>
+                <button
+                    class="code-file-details-dialog__copy-btn"
+                    type="button"
+                    aria-label="Copy entrypoint"
+                    matTooltip="Copy entrypoint"
+                    matTooltipPosition="above"
+                    (click)="copyEntrypoint()"
+                >
+                    <app-svg-icon
+                        icon="copy"
+                        size="0.875rem"
+                    ></app-svg-icon>
+                    {{ copied() ? 'Copied' : 'Copy' }}
+                </button>
+            </div>
+        </div>
+
+        <div class="code-file-details-dialog__section">
+            <div class="code-file-details-dialog__section-title">
+                Libraries <span class="code-file-details-dialog__section-count">{{ data.libraries.length }}</span>
+            </div>
+            @if (data.libraries.length) {
+                <div class="code-file-details-dialog__chips">
+                    @for (library of data.libraries; track library) {
+                        <span class="code-file-details-dialog__chip">{{ library }}</span>
+                    }
+                </div>
+            } @else {
+                <div class="code-file-details-dialog__empty">No libraries used</div>
+            }
+        </div>
+    </div>
+</div>

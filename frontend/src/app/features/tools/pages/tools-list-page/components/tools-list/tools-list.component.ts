@@ -21,10 +21,13 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
+import { buildPreviewImportResult, ImportFileData } from '@shared/utils';
 import { map, tap } from 'rxjs/operators';
 
+import { hasReviewableCode, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
 import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
+import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -321,23 +324,68 @@ export class ToolsListComponent implements OnInit {
         input.onchange = (event: Event) => {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
-            this.port
-                .importFile(file)
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                    next: () => {
-                        this.toastService.success(`${capitalise(this.port.entityLabelPlural)} imported successfully.`);
-                        this.loadTools();
-                        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-                    },
-                    error: (err: HttpErrorResponse) => {
-                        this.toastService.error(
-                            err.error?.message || `Failed to import ${this.port.entityLabelPlural}.`
-                        );
-                    },
-                });
+
+            file.text().then((text: string) => {
+                let fileData: ImportFileData = {};
+                try {
+                    fileData = JSON.parse(text) as ImportFileData;
+                } catch {}
+
+                this.port
+                    .inspectFile(file)
+                    .pipe(takeUntilDestroyed(this.destroyRef))
+                    .subscribe({
+                        next: (inspection) => {
+                            if (!hasReviewableCode(inspection.review_items)) {
+                                this.port
+                                    .importFile(file)
+                                    .pipe(takeUntilDestroyed(this.destroyRef))
+                                    .subscribe({
+                                        next: () => this._finishToolImport(),
+                                        error: (err: HttpErrorResponse) => {
+                                            this.toastService.error(
+                                                err.error?.message || `Failed to import ${this.port.entityLabelPlural}.`
+                                            );
+                                        },
+                                    });
+                                return;
+                            }
+
+                            const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(
+                                ImportReviewDialogComponent,
+                                {
+                                    width: '1400px',
+                                    height: '988px',
+                                    maxWidth: '95vw',
+                                    maxHeight: '95vh',
+                                    data: {
+                                        importResult: buildPreviewImportResult(fileData),
+                                        reviewItems: inspection.review_items,
+                                        importFn: () => this.port.importFile(file),
+                                    },
+                                }
+                            );
+
+                            dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((closeResult) => {
+                                if (!closeResult || closeResult.action !== 'imported') return;
+                                this._finishToolImport();
+                            });
+                        },
+                        error: (err: HttpErrorResponse) => {
+                            this.toastService.error(
+                                err.error?.message || `Failed to read the ${this.port.entityLabel} file.`
+                            );
+                        },
+                    });
+            });
         };
         input.click();
+    }
+
+    private _finishToolImport(): void {
+        this.toastService.success(`${capitalise(this.port.entityLabelPlural)} imported successfully.`);
+        this.loadTools();
+        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public handleBulkExport(ids: number[]): void {

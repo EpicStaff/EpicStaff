@@ -4,6 +4,7 @@ import { forkJoin, Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import { CreateMcpToolRequest, GetMcpToolRequest, UpdateMcpToolRequest } from '../../models/mcp-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
@@ -121,6 +122,12 @@ export class McpToolsService {
         form.append('file', file);
         form.append('import_labels', String(importLabels));
         return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
+    }
+
+    inspectMcpTool(file: File): Observable<InspectResult> {
+        const form = new FormData();
+        form.append('file', file);
+        return this.http.post<InspectResult>(`${this.baseUrl}import/inspect/`, form);
     }
 
     getUsageDetailById(toolId: number): Observable<GetToolUsage> {

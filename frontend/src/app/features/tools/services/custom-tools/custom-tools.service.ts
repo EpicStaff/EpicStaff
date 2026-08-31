@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { forkJoin, map, Observable, of } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import {
     CreatePythonCodeToolPayload,
@@ -120,6 +121,12 @@ export class CustomToolsService {
         form.append('file', file);
         form.append('import_labels', String(importLabels));
         return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
+    }
+
+    inspectPythonCodeTool(file: File): Observable<InspectResult> {
+        const form = new FormData();
+        form.append('file', file);
+        return this.http.post<InspectResult>(`${this.baseUrl}import/inspect/`, form);
     }
 
     getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {
