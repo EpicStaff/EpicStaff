@@ -154,8 +154,8 @@ def test_resolver_org_admin_membership(resolver, org_admin_user, org_acme):
     effective = resolver.resolve(user=org_admin_user, org_id=org_acme.id)
     assert effective.is_superadmin is False
     assert effective.role.name == "Org Admin"
-    # Org Admin has CRUD on users per the seed (users bitmask = 15).
-    assert effective.can("users", Permission.UPDATE) is True
+    # Org Admin has CRUD on memberships per the seed (memberships bitmask = 15).
+    assert effective.can("memberships", Permission.UPDATE) is True
     # Org Admin has no permissions on organizations resource per seed.
     assert effective.can("organizations", Permission.DELETE) is False
 
