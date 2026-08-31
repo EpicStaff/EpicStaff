@@ -14,10 +14,23 @@ from django.http import HttpResponse
 from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
-from rest_framework import generics, serializers
-from rest_framework.exceptions import ValidationError as DRFValidationError
+from django_filters.rest_framework import (
+    DjangoFilterBackend,
+    FilterSet,
+    CharFilter,
+    NumberFilter,
+)
+from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
+from rest_framework.decorators import action
+from rest_framework.exceptions import (
+    ValidationError as DRFValidationError,
+    PermissionDenied,
+    NotFound,
+)
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -52,7 +65,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     ConditionalEdge,
     Crew,
     CrewNode,
@@ -130,17 +142,6 @@ from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
     get_python_code_tool_usage_detail,
 )
-from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.exceptions import PermissionDenied, NotFound
-from django_filters.rest_framework import (
-    DjangoFilterBackend,
-    FilterSet,
-    CharFilter,
-    NumberFilter,
-)
-from rest_framework import viewsets, mixins, status, filters as drf_filters
-from rest_framework.response import Response
-from rest_framework.decorators import action
 from django.db import transaction
 from django.db.models import Prefetch
 from tables.models.graph_models import (
@@ -188,7 +189,6 @@ from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
-    VoiceSettings,
     WebhookTrigger,
     RealtimeChannel,
     TwilioChannel,
@@ -230,7 +230,6 @@ from tables.serializers.model_serializers import (
     ClassificationDecisionTableNodeSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     GraphNoteSerializer,
     ConditionGroupSerializer,
@@ -276,8 +275,6 @@ from tables.serializers.model_serializers import (
     TaskNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
-    VoiceSettingsSerializer,
-    VoiceSettingsInternalSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
@@ -306,7 +303,6 @@ from tables.services.classification_decision_table_node_service import (
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
-    TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
     TWILIO_CHANNEL_PHONE_NUMBERS_GET,
     REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET,
@@ -1050,10 +1046,6 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
                     ).prefetch_related("subgraph__tags"),
                 ),
                 Prefetch(
-                    "code_agent_node_list",
-                    queryset=CodeAgentNode.objects.select_related("llm_config"),
-                ),
-                Prefetch(
                     "task_node_list",
                     queryset=TaskNode.objects.select_related(
                         "inline_surface"
@@ -1533,22 +1525,6 @@ class AudioTranscriptionNodeViewSet(
     serializer_class = AudioTranscriptionNodeSerializer
 
 
-class CodeAgentNodeViewSet(
-    OrgScopedChildViewSetMixin, IdempotentNodeCreateMixin, viewsets.ModelViewSet
-):
-    """
-    DEPRECATED: CodeAgentNodeViewSet is deprecated. Use AgentNodeViewSet or
-    TaskNodeViewSet instead. Exists only for backward compatibility with
-    existing CodeAgentNode rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = CodeAgentNode.objects.all()
-    serializer_class = CodeAgentNodeSerializer
-
-
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
     IdempotentNodeCreateMixin,
@@ -1845,13 +1821,10 @@ class RealtimeTranscriptionConfigModelViewSet(
     filterset_class = RealtimeTranscriptionConfigFilter
 
 
-class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
+class RealtimeSessionItemViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     # Realtime session items hold conversation payloads (incl. base64 audio).
-    # `org` is now populated at write time (realtime service resolves it from
-    # RealtimeAgentChatData.org_id), but this stays superadmin-only as
-    # defense-in-depth: raw audio/transcript payloads are sensitive and the
-    # write path is a separate microservice, not a viewset-enforced org scope.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.VOICE
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
 
@@ -1927,7 +1900,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     rt_agent is NULL (orphaned) are not visible — acceptable for chat history.
     """
 
-    rbac_resource_type = ResourceType.AGENTS
+    rbac_resource_type = ResourceType.VOICE
     org_filter_path = "rt_agent__agent__org_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
@@ -2093,14 +2066,16 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
         """Return this channel's Twilio incoming phone numbers."""
-        
+
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
 
         # 2. Validate they were provided
         if not sid or not auth_token_secret_id:
             return Response(
-                {"error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"},
+                {
+                    "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2110,7 +2085,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             org_id=resolve_active_org_id(request),
             context="TwilioChannel.auth_token",
         )
-        
+
         return _twilio_phone_numbers_response(sid, auth_token)
 
 
@@ -2140,7 +2115,7 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_chat", "recording_type"]
-    rbac_resource_type = ResourceType.AGENTS
+    rbac_resource_type = ResourceType.VOICE
     org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
     permission_classes = [IsAuthenticatedOrApiKey]
 
@@ -2202,6 +2177,12 @@ _REALTIME_VOICES = _load_realtime_voices()
 
 class RealtimeVoicesView(generics.GenericAPIView):
     """Return static list of available voices per realtime provider."""
+
+    # Response body is a static constant (loaded from realtime_voices.json
+    # at import time) — no DB access, no queryset to scope.
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.VOICE
+    action = "retrieve"
 
     def get(self, request, *args, **kwargs):
         return Response(_REALTIME_VOICES)
@@ -2861,38 +2842,6 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret))
 
 
-class VoiceSettingsView(generics.RetrieveUpdateAPIView):
-    # Global singleton holding the platform Twilio credentials (secret auth
-    # token) — superadmin only, both read and write.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    serializer_class = VoiceSettingsSerializer
-
-    def get_serializer_class(self):
-        # SystemServicePrincipal (a `key_type=SYSTEM` ApiKey — see
-        # `IsSystemApiKeyAuthenticated`) already satisfies IsSuperadmin, so
-        # the `realtime` service's legacy `GET /voice-settings/` call (used
-        # to validate `X-Twilio-Signature` on the deprecated `POST /voice`
-        # webhook) reaches this same view. Only that trusted, system-key
-        # caller gets the resolved plaintext Twilio credentials; a regular
-        # superadmin JWT session only ever sees the `*_secret_id` fields.
-        # Same trust boundary as `RealtimeChannelViewSet.lookup_by_token`'s
-        # `RealtimeChannelInternalSerializer` (EST-3633).
-        if (
-            isinstance(self.request.auth, ApiKey)
-            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
-        ):
-            return VoiceSettingsInternalSerializer
-        return VoiceSettingsSerializer
-
-    def get_object(self):
-        return VoiceSettings.load()
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        redis_service.redis_client.publish("voice_settings:invalidate", "{}")
-        return response
-
-
 def _twilio_request(
     account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict = None
 ):
@@ -2912,10 +2861,9 @@ def _twilio_request(
 def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Response:
     """Call Twilio's IncomingPhoneNumbers API and shape the response.
 
-    Shared by `TwilioPhoneNumbersView` (raw account_sid/auth_token via
-    headers, superadmin-only) and `TwilioChannelViewSet.phone_numbers`
-    (credentials resolved from a stored `Secret`) so both surfaces return
-    the exact same response shape and error handling.
+    Used by `TwilioChannelViewSet.phone_numbers` (credentials resolved from
+    a stored `Secret`) to return the list of incoming phone numbers in a
+    consistent response shape with consistent error handling.
     """
     try:
         url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json?PageSize=100"
@@ -2936,38 +2884,30 @@ def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Respons
         return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
-class TwilioPhoneNumbersView(generics.GenericAPIView):
-    """Return the list of incoming phone numbers from Twilio."""
-
-    # Manages the platform Twilio account (uses the secret token) — superadmin only.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-
-    @extend_schema(**TWILIO_PHONE_NUMBERS_GET)
-    def get(self, request):
-        account_sid = request.headers.get("X-Twilio-Account-Sid", "").strip()
-        auth_token = request.headers.get("X-Twilio-Auth-Token", "").strip()
-        if not account_sid or not auth_token:
-            return Response(
-                {
-                    "error": "X-Twilio-Account-Sid and X-Twilio-Auth-Token headers are required"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return _twilio_phone_numbers_response(account_sid, auth_token)
-
-
 class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is the boundary here,
-    not a superadmin gate: any authenticated member of the channel's own org
-    may configure their own org's Twilio number. A channel belonging to
-    another org (or none at all) is rejected exactly like a missing token,
-    so existence never leaks.
+    OrgScopedModel; EST-3491 follow-up) — org isolation is enforced in two
+    layers here: `HasOrgPermission` checks that the caller's role has
+    VOICE:UPDATE permission in their active org (a generic role-bit check,
+    with no knowledge of this specific channel), and the manual
+    `channel.org_id != active_org_id` check below verifies that the
+    *specific* channel resolved by `channel_token` actually belongs to the
+    caller's active org. The manual check is not a superadmin gate and must
+    stay: a channel belonging to another org (or no channel at all) is
+    rejected exactly like a missing token, via the same 404 "Channel not
+    found" response, so existence never leaks.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.VOICE
+    # Plain GenericAPIView (not router-registered), so DRF never populates
+    # view.action — HasOrgPermission needs it declared explicitly. This is a
+    # POST-only endpoint that mutates the Twilio webhook config of an
+    # existing channel, so it maps to "update" (Permission.UPDATE) in
+    # DEFAULT_ACTION_MAP, not "create" (no new resource is created).
+    action = "update"
 
     @extend_schema(**TWILIO_CONFIGURE_WEBHOOK_POST)
     def post(self, request):

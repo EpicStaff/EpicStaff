@@ -58,7 +58,7 @@ async def test_voice_webhook_prefers_ngrok_domain_over_live_url(monkeypatch):
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -80,7 +80,7 @@ async def test_voice_webhook_falls_back_to_ngrok_domain_when_no_live_url(monkeyp
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -101,7 +101,7 @@ async def test_voice_webhook_falls_back_to_settings_voice_stream_url(monkeypatch
     channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
     monkeypatch.setattr(settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream")
@@ -124,7 +124,7 @@ async def test_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
     channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
     monkeypatch.setattr(settings, "VOICE_STREAM_URL", "")
@@ -150,7 +150,7 @@ async def test_voice_webhook_embeds_stream_token_bound_to_channel(monkeypatch):
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -186,7 +186,7 @@ async def test_voice_webhook_embeds_stream_token_as_twiml_parameter(monkeypatch)
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -220,7 +220,7 @@ async def test_voice_webhook_xml_escapes_url_and_token(monkeypatch):
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel
+        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 

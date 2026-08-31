@@ -1,25 +1,17 @@
-# TODO: REMOVE
-import warnings
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-import json
+import asyncio
 import os
-from fastapi import FastAPI
+import signal
+
 from db.config import AsyncSessionLocal
 from sqlalchemy import text
-import uvicorn
 
 from repositories.session_repository import SessionRepository
 
 from services.redis_service import RedisService
 from services.session_timeout_service import SessionTimeoutService
 from services.schedule_service import ScheduleService
-from helpers.yaml_parser import load_env_from_yaml_config
 from helpers.logger import logger
 
-
-app = FastAPI()
 
 redis_service = RedisService()
 
@@ -64,11 +56,16 @@ async def test_database_connection():
         return False
 
 
-@app.on_event("startup")
-async def start_up():
+async def main():
     """
     Starts redis subscribtion, starts SessionTimeoutService, connects to DB
     """
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop_event.set)
+
     db_connected = await test_database_connection()
     if not db_connected:
         logger.error("Failed to connect to database during startup")
@@ -83,28 +80,25 @@ async def start_up():
         await session_timeout_service.initial_check_all_sessions_for_timeout()
         logger.info("Start SessionTimeoutService initial timeout check.")
 
-        # TODO: ? remove listen_redis() because it newer use
-        # asyncio.create_task(redis_service.listen_redis())
-
         await schedule_service.start()
         logger.info("ScheduleService started successfully.")
 
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
+    await stop_event.wait()
+    await shutdown()
 
-@app.on_event("shutdown")
-async def shutdown_event():
+
+async def shutdown():
     if session_timeout_service:
         await session_timeout_service.stop()
 
     if schedule_service.scheduler.running:
         schedule_service.scheduler.shutdown(wait=False)
-    await redis_service.aioredis_client.close()
+    if redis_service.aioredis_client:
+        await redis_service.aioredis_client.close()
 
 
 if __name__ == "__main__":
-    load_env_from_yaml_config("./manager_config.yaml")
-    # port = 8001 for local launch
-    port = int(os.environ.get("MANAGER_PORT", "8001"))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True, workers=1)
+    asyncio.run(main())

@@ -266,7 +266,6 @@ During execution, the widget displays streaming messages in a **"Thinking..." ex
 
 | `message_type` | Source | Displayed in Thinking |
 |---|---|---|
-| `code_agent_stream` | Code Agent node | ✅ |
 | `crewai_output` | Crew node (wrapper) | ✅ |
 | `python_stream` | Python node | ✅ |
 
