@@ -12,52 +12,45 @@ Secret redaction: any config key whose name contains 'api_key', 'secret', or
 'token' (case-insensitive) is replaced with "***".
 """
 
+import json
 import re
+from collections import Counter
 
-from django.db.models import Count, Prefetch
+from django.db.models import Count, F
 from django.utils.dateparse import parse_datetime
+
+from agents.services.node_surface_service import NodeSurfaceService
+from src.shared.models import CombinedSurfaceData
 
 from tables.services.llm_clients import ToolSpec
 
+from tables.models.base_models import BaseGlobalNode
+from tables.models.mcp_models import McpTool
 from tables.models.session_models import Session
-from tables.models.python_models import PythonCode
+from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.graph_models import (
-    AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
     ConditionGroup,
     DecisionTableNode,
     Edge,
-    EndNode,
-    FileExtractorNode,
-    PythonNode,
-    StartNode,
+    GraphSessionMessage,
     SubGraphNode,
-    TelegramTriggerNode,
-    WebhookTriggerNode,
+)
+
+from .node_registry import (
+    FLOW_ASSISTANT_NODE_TYPES,
+    NODE_TYPE_SPEC_BY_MODEL,
+    NodeTypeSpec,
 )
 
 _SECRET_PATTERN = re.compile(r"api_key|secret|token", re.IGNORECASE)
 
-# ── node tables in evaluation order ──────────────────────────────────────────
-
-# Each entry: (type_label, model_class, has_db_node_name).
-# has_db_node_name=False means node_name is a @property returning a fixed
-# string (StartNode → "__start__", EndNode → "__end_node__"); we must NOT
-# pass "node_name" to .only() for those models or Django will raise
-# FieldDoesNotExist.
-_NODE_TABLES: list[tuple[str, type, bool]] = [
-    ("python", PythonNode, True),
-    ("file_extractor", FileExtractorNode, True),
-    ("audio_transcription", AudioTranscriptionNode, True),
-    ("subgraph", SubGraphNode, True),
-    ("start", StartNode, False),
-    ("end", EndNode, False),
-    ("decision_table", DecisionTableNode, True),
-    ("classification_decision_table", ClassificationDecisionTableNode, True),
-    ("webhook_trigger", WebhookTriggerNode, True),
-    ("telegram_trigger", TelegramTriggerNode, True),
-]
+# Per-field cap for content/extras truncation in get_session_messages, and the
+# overall per-response character budget. See _truncate_leaves /
+# _apply_response_budget below.
+_MAX_FIELD_CHARS = 4000
+_MAX_RESPONSE_CHARS = 60_000
 
 
 def _redact(value: object, key: str = "") -> object:
@@ -71,17 +64,20 @@ def _redact(value: object, key: str = "") -> object:
     return value
 
 
-def _node_to_dict(node_type: str, node) -> dict:
+def _node_to_dict(spec: NodeTypeSpec, node) -> dict:
     """Convert a node ORM object to a sanitised dict.
 
     Relations (FK / OneToOne) are skipped generically — surface them
     explicitly via the post-loop resolver blocks in `get_node` when needed.
+    `name` always comes from `spec.display_name()` so types without a real
+    `node_name` (e.g. ConditionalEdge) still get a usable display name
+    instead of being silently omitted.
     """
-    result: dict = {"type": node_type, "id": node.pk}
-    if hasattr(node, "node_name"):
-        result["name"] = node.node_name
+    result: dict = {"type": spec.label, "id": node.pk, "name": spec.display_name(node)}
 
-    skip = {"id", "metadata", "content_hash"}
+    # "node_name" is skipped here because it's already surfaced as result["name"]
+    # via spec.display_name() above — including it in config too would duplicate it.
+    skip = {"id", "metadata", "content_hash", "node_name"}
     config: dict = {}
     for field in node._meta.fields:
         if field.is_relation:
@@ -193,50 +189,36 @@ def get_flow_overview(graph_id: int) -> dict:
     """Return a high-level summary of the flow."""
     from tables.models.graph_models import Graph
 
-    graph = Graph.objects.prefetch_related(
-        "python_node_list",
-        "file_extractor_node_list",
-        "audio_transcription_node_list",
-        "start_node_list",
-        "end_node",
-        "decision_table_node_list",
-        "classification_decision_table_node_list",
-        "webhook_trigger_node_list",
-        "telegram_trigger_node_list",
-        "edge_list",
-        Prefetch(
-            "subgraph_node_list",
-            queryset=SubGraphNode.objects.select_related("subgraph"),
-        ),
-    ).get(pk=graph_id)
+    graph = Graph.objects.get(pk=graph_id)
 
+    node_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if not spec.is_edge]
+    edge_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if spec.is_edge]
+
+    # One query per node-table type. node_count_by_type is derived from these
+    # same rows below instead of re-reading every table a second time.
+    raw_nodes: list[tuple[str, int, str]] = []
+    for spec in node_specs:
+        for node in spec.model.objects.filter(graph_id=graph_id).only(
+            *spec.only_fields()
+        ):
+            raw_nodes.append((spec.label, node.pk, spec.display_name(node)))
+    raw_nodes.sort(key=lambda t: (t[0], t[1]))
+
+    counts_by_label = Counter(node_type for node_type, _, _ in raw_nodes)
     node_count_by_type = {
-        "python": graph.python_node_list.count(),
-        "file_extractor": graph.file_extractor_node_list.count(),
-        "audio_transcription": graph.audio_transcription_node_list.count(),
-        "subgraph": graph.subgraph_node_list.count(),
-        "start": graph.start_node_list.count(),
-        "end": graph.end_node.count(),
-        "decision_table": graph.decision_table_node_list.count(),
-        "classification_decision_table": graph.classification_decision_table_node_list.count(),
-        "webhook_trigger": graph.webhook_trigger_node_list.count(),
-        "telegram_trigger": graph.telegram_trigger_node_list.count(),
+        spec.label: counts_by_label[spec.label] for spec in node_specs
     }
 
-    # Build flat node list sorted by (type, id).
-    # For has_db_node_name=True tables the prefetch already loaded the rows;
-    # we do a small per-table .only() pass here to keep things simple and
-    # avoid pulling unneeded columns out of the prefetch cache.
-    raw_nodes: list[tuple[str, int, str]] = []
-    for node_type, model_cls, has_db_node_name in _NODE_TABLES:
-        fields = ["id", "node_name"] if has_db_node_name else ["id"]
-        for node in model_cls.objects.filter(graph_id=graph_id).only(*fields):
-            raw_nodes.append((node_type, node.pk, getattr(node, "node_name", "")))
-    raw_nodes.sort(key=lambda t: (t[0], t[1]))
     nodes: list[dict] = [
         {"id": node_id, "type": node_type, "name": name}
         for node_type, node_id, name in raw_nodes
     ]
+
+    # ConditionalEdge is an edge, not a node (see NodeTypeSpec.is_edge) — fold
+    # its count into edge_count instead of node_count_by_type/nodes.
+    edge_count = Edge.objects.filter(graph_id=graph_id).count()
+    for spec in edge_specs:
+        edge_count += spec.model.objects.filter(graph_id=graph_id).count()
 
     subflows = [
         {
@@ -244,7 +226,9 @@ def get_flow_overview(graph_id: int) -> dict:
             "name": sn.subgraph.name,
             "description": sn.subgraph.description,
         }
-        for sn in graph.subgraph_node_list.all()
+        for sn in SubGraphNode.objects.filter(graph_id=graph_id).select_related(
+            "subgraph"
+        )
         if sn.subgraph
     ]
 
@@ -254,38 +238,38 @@ def get_flow_overview(graph_id: int) -> dict:
         "description": graph.description,
         "node_count_by_type": node_count_by_type,
         "nodes": nodes,
-        "edge_count": graph.edge_list.count(),
+        "edge_count": edge_count,
         "subflows": subflows,
     }
 
 
 def get_node(graph_id: int, node_id: str) -> dict:
-    """Resolve a node by PK across all node tables and return its config.
+    """Resolve a node by PK and return its config.
 
     node_id is expected to be an integer string (e.g. "42").  Secrets are
     redacted from config output.
 
-    Uses the node index to find the correct table first (1 query), then
-    fetches the full object from that table (1 query) — 2 queries total
-    instead of up to 13 try/except probes.
+    Uses BaseGlobalNode.find_globally — a single UNION ALL query across every
+    node table to locate the row, plus the query that loads it — 2 queries
+    total, regardless of how many node types exist.
     """
     try:
         pk = int(node_id)
     except (ValueError, TypeError):
         return {"error": f"Invalid node_id '{node_id}': must be an integer string."}
 
-    # One query per table maximum, covering the whole graph.  For a single
-    # node lookup this still pays the full index-build cost, but it replaces
-    # up to 13 sequential try/get probes with a fixed 13-query batch.
-    node_index = build_node_index(graph_id)
-    identity = node_index.get(pk)
-    if identity is None:
+    node = BaseGlobalNode.find_globally(pk)
+    if node is None:
         return {"error": f"Node with id={node_id} not found in graph {graph_id}."}
 
-    node_type = identity["type"]
-    model_cls = next(model for label, model, _ in _NODE_TABLES if label == node_type)
-    node = model_cls.objects.get(pk=pk, graph_id=graph_id)
-    result = _node_to_dict(node_type, node)
+    # Reject models the Flow Assistant doesn't treat as node types (e.g.
+    # GraphNote, a canvas sticky note) and nodes belonging to a different graph.
+    spec = NODE_TYPE_SPEC_BY_MODEL.get(type(node))
+    if spec is None or node.graph_id != graph_id:
+        return {"error": f"Node with id={node_id} not found in graph {graph_id}."}
+
+    node_type = spec.label
+    result = _node_to_dict(spec, node)
 
     # Attach decision rules for the two decision-table node types so the LLM
     # can reason about branching logic without requiring separate tool calls.
@@ -298,6 +282,12 @@ def get_node(graph_id: int, node_id: str) -> dict:
         )
         result["post_python_code_summary"] = _resolve_python_code_summary(
             getattr(node, "post_python_code_id", None)
+        )
+    elif node_type in ("agent", "task"):
+        result.update(_resolve_agent_or_task_enrichment(node_type, node))
+    elif node_type == "conditional_edge":
+        result["python_code_summary"] = _resolve_python_code_summary(
+            getattr(node, "python_code_id", None)
         )
 
     # Phase F (Fix 16): attach python_code summary for nodes that wrap user-authored Python.
@@ -389,7 +379,7 @@ def get_edges_from(graph_id: int, node_id: str) -> list[dict]:
     if not edges:
         return []
 
-    # Build the index once for the whole graph — O(13) queries regardless of
+    # Build the index once for the whole graph — O(15) queries regardless of
     # how many edges are returned.  Each _resolve_node_identity call is then
     # an O(1) dict lookup.
     node_index = build_node_index(graph_id)
@@ -418,7 +408,7 @@ def get_edges_to(graph_id: int, node_id: str) -> list[dict]:
     if not edges:
         return []
 
-    # Build the index once for the whole graph — O(13) queries regardless of
+    # Build the index once for the whole graph — O(15) queries regardless of
     # how many edges are returned.  Each _resolve_node_identity call is then
     # an O(1) dict lookup.
     node_index = build_node_index(graph_id)
@@ -604,118 +594,166 @@ def get_recent_sessions(
     return {"sessions": result}
 
 
+# message_type → the message_data field that holds this entry's headline
+# content. This must track the message types actually written by the crew
+# service (custom_message_writer.py, python_node.py/webhook_trigger_node.py,
+# subgraph_node.py, agent_stream_events.py, knowledge_search_service.py) —
+# NOT the CrewAI-era dataclasses in crew/models/graph_models.py
+# (LLMMessageData, AgentMessageData, AgentFinishMessageData, TaskMessageData,
+# UserMessageData) that are declared but constructed nowhere. Types not
+# listed here (e.g. "condition_group", "condition_group_manipulation",
+# "graph_end") have no single natural "content" field — everything about
+# them lives in `extras`.
+_PRIMARY_CONTENT_FIELD_BY_MESSAGE_TYPE: dict[str, str] = {
+    "start": "input",
+    "finish": "output",
+    "error": "details",
+    "subgraph_start": "input",
+    "subgraph_finish": "output",
+    "classification_prompt": "raw_response",
+    "python": "python_code_execution_data",
+    "python_stream": "text",
+    "agent_node_stream": "data",
+    "task_node_stream": "data",
+    "extracted_chunks": "knowledge_query",
+}
+
+
+def _truncate_leaves(value: object, cap: int) -> object:
+    """Recursively truncate every string leaf in `value` to `cap` characters.
+
+    Dicts and lists are walked structurally; non-string scalars (int, float,
+    bool, None) pass through unchanged. A truncated string gets a visible
+    "…[truncated N chars]" suffix (N = characters removed) so cuts are never
+    silent — same spirit as extras["state_truncated"].
+    """
+    if isinstance(value, str):
+        if len(value) <= cap:
+            return value
+        omitted = len(value) - cap
+        return f"{value[:cap]}…[truncated {omitted} chars]"
+    if isinstance(value, dict):
+        return {key: _truncate_leaves(item, cap) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_truncate_leaves(item, cap) for item in value]
+    return value
+
+
+def _apply_response_budget(entries: list[dict], budget: int) -> list[dict]:
+    """Bound the whole trace's serialized size, on top of the per-field cap.
+
+    Per-field truncation alone doesn't bound the total — e.g. 200 rows each
+    near the per-field cap can still add up to megabytes. Once the running
+    serialized size crosses `budget`, subsequent entries keep their
+    structural fields (kind/node_name/execution_order/created_at) but have
+    content/extras replaced with an explicit marker.
+    """
+    running_total = 0
+    budgeted: list[dict] = []
+    for entry in entries:
+        if running_total > budget:
+            entry = {
+                **entry,
+                "content": None,
+                "extras": {"body_dropped_for_response_budget": True},
+            }
+        budgeted.append(entry)
+        running_total += len(json.dumps(entry, default=str))
+    return budgeted
+
+
+def _graph_session_message_to_entry(row: dict) -> dict:
+    """Map one GraphSessionMessage row to the get_session_messages entry shape.
+
+    `state` (the entire session variable namespace) is stripped out before
+    returning — it appears on "finish" and "condition_group_manipulation"
+    messages and can be arbitrarily large. Its removal is flagged via
+    extras["state_truncated"] rather than silently dropped.
+
+    Every remaining field in `content`/`extras` is then recursively truncated
+    to _MAX_FIELD_CHARS per string leaf (_truncate_leaves) — this is what
+    bounds e.g. extracted_chunks' RAG document text and python's stdout/
+    stderr instead of returning them verbatim.
+    """
+    message_data = dict(row["message_data"] or {})
+    message_type = message_data.pop("message_type", "unknown")
+    state_present = message_data.pop("state", None) is not None
+
+    content_field = _PRIMARY_CONTENT_FIELD_BY_MESSAGE_TYPE.get(message_type)
+    content = message_data.pop(content_field, None) if content_field else None
+
+    extras = message_data
+    if state_present:
+        extras["state_truncated"] = True
+
+    return {
+        "kind": message_type,
+        "node_name": row["name"],
+        "execution_order": row["execution_order"],
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "content": _truncate_leaves(content, _MAX_FIELD_CHARS),
+        "extras": _truncate_leaves(extras, _MAX_FIELD_CHARS),
+    }
+
+
 def get_session_messages(
     graph_id: int,
     session_id: int,
     limit: int = 50,
 ) -> dict:
-    """Return the per-step execution trace for a session, including agent thoughts
-    and task outputs.
+    """Return the per-step execution trace for a session, oldest to newest:
+    node start/finish, subgraph start/finish, python execution, agent/task
+    tool-call and tool-result stream events, knowledge retrieval, decision-
+    table branch results, classification prompts, and errors.
 
     Use after get_recent_sessions identifies the target session_id.
-    Useful for explaining HOW a specific run reached its output — agent reasoning,
-    tool calls, and task completions are all surfaced here.
+    Useful for explaining HOW a specific run reached its output, or why it
+    failed.
 
-    Bodies may be large — set a targeted limit (1–200, default 50).
+    Returns the MOST RECENT `limit` entries (1–200, default 50) — not the
+    first `limit` — so a failure at the end of a long run is never truncated
+    away.
 
-    Cross-graph guard: returns an error if session_id belongs to a different flow.
+    Bodies are size-bounded: individual string fields are truncated to a few
+    KB each (marked "…[truncated N chars]" when cut), and the whole response
+    is capped by an overall character budget — entries beyond the budget
+    keep their identity but have extras["body_dropped_for_response_budget"]
+    set to True. The full variable-namespace snapshot ("state") carried by
+    some message types is always stripped outright; extras["state_truncated"]
+    is set to True when that happened for a given entry.
+
+    Cross-graph guard: returns an error if session_id belongs to a different
+    flow. Messages from nested subflow executions are excluded — only this
+    flow's own trace is returned.
     """
-    from tables.models.session_models import AgentSessionMessage, TaskSessionMessage
-
     session = Session.objects.filter(graph_id=graph_id, pk=session_id).first()
     if session is None:
         return {"error": "Session not found or belongs to a different flow."}
 
     limit = max(1, min(200, int(limit)))
 
-    agent_rows = list(
-        AgentSessionMessage.objects.filter(session_id=session_id)
-        .order_by("execution_order", "created_at")
-        .values(
-            "node_name",
-            "execution_order",
-            "created_at",
-            "thought",
-            "text",
-            "result",
-            "tool",
-            "tool_input",
-        )[:limit]
-    )
-    task_rows = list(
-        TaskSessionMessage.objects.filter(session_id=session_id)
-        .order_by("execution_order", "created_at")
-        .values(
-            "node_name",
-            "execution_order",
-            "created_at",
-            "name",
-            "description",
-            "expected_output",
-            "raw",
-            "agent",
-        )[:limit]
-    )
-
-    trace = []
-    for row in agent_rows:
-        extras: dict = {}
-        if row["text"]:
-            extras["text"] = row["text"]
-        if row["tool"]:
-            extras["tool"] = row["tool"]
-        if row["tool_input"]:
-            extras["tool_input"] = row["tool_input"]
-        if row["result"]:
-            extras["result"] = row["result"]
-
-        trace.append(
-            {
-                "kind": "agent",
-                "node_name": row["node_name"],
-                "execution_order": row["execution_order"],
-                "created_at": row["created_at"].isoformat()
-                if row["created_at"]
-                else None,
-                "content": row["thought"],
-                "extras": extras,
-            }
+    # Most recent `limit` rows first (so a trailing error always survives the
+    # cap), then reversed back to oldest→newest for the returned trace.
+    rows = list(
+        GraphSessionMessage.objects.filter(
+            session_id=session_id, parent_subgraph_execution_id__isnull=True
         )
+        .order_by("-execution_order", "-id")
+        .values("name", "execution_order", "created_at", "message_data")[:limit]
+    )
+    rows.reverse()
 
-    for row in task_rows:
-        extras = {}
-        if row["description"]:
-            extras["description"] = row["description"]
-        if row["expected_output"]:
-            extras["expected_output"] = row["expected_output"]
-        if row["agent"]:
-            extras["agent"] = row["agent"]
-
-        trace.append(
-            {
-                "kind": "task",
-                "node_name": row["node_name"],
-                "execution_order": row["execution_order"],
-                "created_at": row["created_at"].isoformat()
-                if row["created_at"]
-                else None,
-                "content": row["raw"],
-                "name": row["name"],
-                "extras": extras,
-            }
-        )
-
-    trace.sort(key=lambda e: (e["execution_order"], e["created_at"] or ""))
-
-    # Clamp to limit after merge (each per-kind query already limits, but the
-    # merged list could be up to 2×limit before this final clamp).
-    trace = trace[:limit]
+    trace = [_graph_session_message_to_entry(row) for row in rows]
+    trace = _apply_response_budget(trace, _MAX_RESPONSE_CHARS)
 
     return {
         "session_id": session_id,
         "messages": trace,
         "count": len(trace),
     }
+
+
+_MAX_NODE_TRACE_ENTRIES = 200
 
 
 def get_session_detail(graph_id: int, session_id: int) -> dict:
@@ -727,12 +765,15 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
     Cross-graph guard: if session_id belongs to a different graph, returns an
     error rather than leaking another flow's data.
 
-    node_trace is derived from AgentSessionMessage and TaskSessionMessage rows
-    (created_at, node_name, execution_order only — no body text).  If no
+    node_trace is derived from GraphSessionMessage rows (node_name,
+    execution_order, created_at, message_type only — no message_data body
+    fields). Capped to the most recent _MAX_NODE_TRACE_ENTRIES (200) entries
+    — a tool-heavy run writes one row per tool call, so a long run keeps the
+    most recent entries rather than being truncated from the start (a
+    trailing error would otherwise be cut off). Messages from nested subflow
+    executions are excluded — only this flow's own trace is returned. If no
     session-message rows exist, node_trace is an empty list.
     """
-    from tables.models.session_models import AgentSessionMessage, TaskSessionMessage
-
     session = Session.objects.filter(pk=session_id).first()
     if session is None:
         return {"error": "Session not found."}
@@ -749,42 +790,30 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
         duration_seconds = None
 
     # Build node trace from message rows — timestamps and structural metadata only.
-    # We deliberately do NOT read any text/content fields.
-    agent_entries = list(
-        AgentSessionMessage.objects.filter(session_id=session_id)
-        .order_by("execution_order", "created_at")
-        .values("node_name", "execution_order", "created_at")
-    )
-    task_entries = list(
-        TaskSessionMessage.objects.filter(session_id=session_id)
-        .order_by("execution_order", "created_at")
-        .values("node_name", "execution_order", "created_at")
-    )
-
-    node_trace = []
-    for entry in agent_entries:
-        node_trace.append(
-            {
-                "kind": "agent",
-                "node_name": entry["node_name"],
-                "execution_order": entry["execution_order"],
-                "timestamp": entry["created_at"].isoformat()
-                if entry["created_at"]
-                else None,
-            }
+    # We deliberately do NOT read any message_data body fields (content, thought,
+    # tool_input, state, ...) — only the message_type discriminator.
+    rows = list(
+        GraphSessionMessage.objects.filter(
+            session_id=session_id, parent_subgraph_execution_id__isnull=True
         )
-    for entry in task_entries:
-        node_trace.append(
-            {
-                "kind": "task",
-                "node_name": entry["node_name"],
-                "execution_order": entry["execution_order"],
-                "timestamp": entry["created_at"].isoformat()
-                if entry["created_at"]
-                else None,
-            }
-        )
-    node_trace.sort(key=lambda e: (e["execution_order"], e["timestamp"] or ""))
+        .order_by("-execution_order", "-id")
+        .values(
+            "name",
+            "execution_order",
+            "created_at",
+            message_type=F("message_data__message_type"),
+        )[:_MAX_NODE_TRACE_ENTRIES]
+    )
+    rows.reverse()
+    node_trace = [
+        {
+            "node_name": row["name"],
+            "execution_order": row["execution_order"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "message_type": row["message_type"],
+        }
+        for row in rows
+    ]
 
     _error_statuses = {
         Session.SessionStatus.ERROR,
@@ -813,41 +842,17 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
 
 
 def list_node_types(graph_id: int) -> list[str]:
-    """Return the distinct node types present in the flow."""
-    from tables.models.graph_models import Graph
+    """Return the distinct node types present in the flow (edges excluded).
 
-    graph = Graph.objects.prefetch_related(
-        "python_node_list",
-        "file_extractor_node_list",
-        "audio_transcription_node_list",
-        "subgraph_node_list",
-        "start_node_list",
-        "end_node",
-        "decision_table_node_list",
-        "classification_decision_table_node_list",
-        "webhook_trigger_node_list",
-        "telegram_trigger_node_list",
-    ).get(pk=graph_id)
-
+    One .exists() query per type — no prefetch, since only a boolean answer
+    is needed and prefetching would materialise every row for nothing.
+    """
     present = []
-    checks = [
-        ("python", graph.python_node_list),
-        ("file_extractor", graph.file_extractor_node_list),
-        ("audio_transcription", graph.audio_transcription_node_list),
-        ("subgraph", graph.subgraph_node_list),
-        ("start", graph.start_node_list),
-        ("end", graph.end_node),
-        ("decision_table", graph.decision_table_node_list),
-        (
-            "classification_decision_table",
-            graph.classification_decision_table_node_list,
-        ),
-        ("webhook_trigger", graph.webhook_trigger_node_list),
-        ("telegram_trigger", graph.telegram_trigger_node_list),
-    ]
-    for label, qs in checks:
-        if qs.exists():
-            present.append(label)
+    for spec in FLOW_ASSISTANT_NODE_TYPES:
+        if spec.is_edge:
+            continue
+        if spec.model.objects.filter(graph_id=graph_id).exists():
+            present.append(spec.label)
     return present
 
 
@@ -873,30 +878,185 @@ def load_skill(name: str) -> dict:
 # ── private enrichment helpers ───────────────────────────────────────────────
 
 
-def _resolve_knowledge_metadata(knowledge_collection_id: int | None) -> list[dict]:
-    """Return name and document count for a SourceCollection FK value.
+def _resolve_knowledge_metadata(
+    knowledge_collection_ids: int | list[int] | None,
+) -> list[dict]:
+    """Return name and document count for one or more SourceCollection ids.
 
-    Returns an empty list when knowledge_collection_id is None.
-    NEVER returns document content.
+    Accepts either a single id (int) or an iterable of ids, so a caller
+    resolving several collections at once pays for one query total instead
+    of one .get() + one .count() per id. Ids that don't resolve to a
+    SourceCollection are skipped. NEVER returns document content.
     """
-    if knowledge_collection_id is None:
+    if knowledge_collection_ids is None:
+        return []
+    if isinstance(knowledge_collection_ids, int):
+        ids = [knowledge_collection_ids]
+    else:
+        ids = [cid for cid in knowledge_collection_ids if cid is not None]
+    if not ids:
         return []
 
     from tables.models.knowledge_models.collection_models import SourceCollection
 
-    try:
-        collection = SourceCollection.objects.get(pk=knowledge_collection_id)
-    except SourceCollection.DoesNotExist:
-        return []
-
+    collections = SourceCollection.objects.filter(pk__in=ids).annotate(
+        document_count=Count("documents")
+    )
     return [
         {
             "id": collection.pk,
             "name": collection.collection_name,
             "description": None,  # SourceCollection has no description field
-            "document_count": collection.documents.count(),
+            "document_count": collection.document_count,
         }
+        for collection in collections
     ]
+
+
+def _resolve_llm_config_summary(llm_config) -> dict | None:
+    """Return {provider, model, temperature} for an LLMConfig instance, or None."""
+    if llm_config is None:
+        return None
+
+    model_name = llm_config.model.name if llm_config.model else None
+    provider_name = None
+    if llm_config.model and llm_config.model.llm_provider:
+        provider_name = llm_config.model.llm_provider.name
+
+    return {
+        "provider": provider_name,
+        "model": model_name,
+        "temperature": llm_config.temperature,
+    }
+
+
+def _resolve_agent_definition(agent_definition_id: int | None):
+    """Return the AgentDefinition for an FK value, or None if absent/missing."""
+    if agent_definition_id is None:
+        return None
+
+    from agents.models.agent_models import AgentDefinition
+
+    return (
+        AgentDefinition.objects.select_related("llm_config__model__llm_provider")
+        .filter(pk=agent_definition_id)
+        .first()
+    )
+
+
+def _serialize_agent_definition(agent_definition) -> dict | None:
+    """Return a summary of an AgentDefinition, or None if absent.
+
+    No field here carries credential data: llm_config_summary
+    (_resolve_llm_config_summary) deliberately excludes the API key at the
+    source, so there is nothing left in this shape to redact.
+    """
+    if agent_definition is None:
+        return None
+
+    return {
+        "id": agent_definition.pk,
+        "name": agent_definition.name,
+        "description": agent_definition.description,
+        "instructions": agent_definition.instructions,
+        "llm_config_summary": _resolve_llm_config_summary(agent_definition.llm_config),
+    }
+
+
+def _resolve_surfaces_tools_and_knowledge(node) -> tuple[list[dict], list[dict]]:
+    """Resolve a node's available tools and knowledge sources as the runtime would.
+
+    Delegates to NodeSurfaceService.build_combined_surface — the same
+    allow/deny-precedence resolution the crew's node payload services use to
+    build the actual tool pool for flow execution, sourced from
+    node.surface_list + node.inline_surface only. This intentionally does
+    NOT fall back to AgentDefinition default surfaces: flow execution never
+    consults those (they apply to chat/realtime places, not flow), so
+    including them would report tools the node cannot actually call.
+
+    Deny-mode tool entries are excluded from the result, matching how the
+    runtime builds its tool pool (BaseNodePayloadService._build_tool_pool
+    only includes mode == "allow") — a denied tool is not callable by this
+    node, so listing it would misrepresent what the LLM can do.
+    """
+    combined_surface = CombinedSurfaceData(
+        **NodeSurfaceService.build_combined_surface(node)
+    )
+
+    allowed_python_tool_ids = [
+        entry.python_tool
+        for entry in combined_surface.python_tools
+        if entry.mode == "allow"
+    ]
+    allowed_mcp_tool_ids = [
+        entry.mcp_tool for entry in combined_surface.mcp_tools if entry.mode == "allow"
+    ]
+
+    tools: list[dict] = [
+        {"name": name, "type": "python"}
+        for name in PythonCodeTool.objects.filter(
+            pk__in=allowed_python_tool_ids
+        ).values_list("name", flat=True)
+    ]
+    tools.extend(
+        {"name": name, "type": "mcp"}
+        for name in McpTool.objects.filter(pk__in=allowed_mcp_tool_ids).values_list(
+            "name", flat=True
+        )
+    )
+
+    knowledge_sources = _resolve_knowledge_metadata(
+        [entry.collection for entry in combined_surface.knowledge]
+    )
+
+    return tools, knowledge_sources
+
+
+def _resolve_agent_node_tasks(agent_node_id: int) -> list[dict]:
+    """Return the ordered sub-tasks (AgentNodeTask) executed by an AgentNode."""
+    from tables.models.graph_models import AgentNodeTask
+
+    tasks = (
+        AgentNodeTask.objects.filter(agent_node_id=agent_node_id)
+        .order_by("order")
+        .prefetch_related("context_tasks")
+    )
+    return [
+        {
+            "id": task.pk,
+            "name": task.name,
+            "order": task.order,
+            "instructions": task.instructions,
+            "output_schema": task.output_schema,
+            "context_task_ids": [ct.pk for ct in task.context_tasks.all()],
+        }
+        for task in tasks
+    ]
+
+
+def _resolve_agent_or_task_enrichment(node_type: str, node) -> dict:
+    """Build the agent_definition / tools / knowledge_sources (/ tasks) block
+    shared by AgentNode and TaskNode get_node responses.
+
+    Tools and knowledge come from _resolve_surfaces_tools_and_knowledge,
+    which mirrors the runtime's own resolution
+    (node.surface_list + node.inline_surface, allow/deny precedence applied)
+    instead of approximating it.
+    """
+    agent_definition = _resolve_agent_definition(
+        getattr(node, "agent_definition_id", None)
+    )
+
+    tools, knowledge_sources = _resolve_surfaces_tools_and_knowledge(node)
+
+    enrichment: dict = {
+        "agent_definition": _serialize_agent_definition(agent_definition),
+        "tools": tools,
+        "knowledge_sources": knowledge_sources,
+    }
+    if node_type == "agent":
+        enrichment["tasks"] = _resolve_agent_node_tasks(node.pk)
+    return enrichment
 
 
 def _resolve_python_code_summary(python_code_id: int | None) -> dict | None:
@@ -922,21 +1082,27 @@ def _resolve_python_code_summary(python_code_id: int | None) -> dict | None:
 def build_node_index(graph_id: int) -> dict[int, dict]:
     """Build a {node_pk: {type, name}} mapping for every node in the graph.
 
-    Issues exactly one query per node table (up to 13), fetching only the
-    columns needed.  This replaces the previous per-edge try/except loop
-    across all 13 tables, which produced O(edges × tables) queries.
+    Issues exactly one query per node table (15), fetching only the columns
+    needed.  This replaces the previous per-edge try/except loop across all
+    node tables, which produced O(edges × tables) queries.
+
+    ConditionalEdge is deliberately included here even though it's an edge,
+    not a node (NodeTypeSpec.is_edge) — the index is also used to resolve
+    edge endpoints, and a ConditionalEdge can be the source/target of a plain
+    Edge, so leaving it out would break that lookup.
 
     For models where node_name is a @property (StartNode, EndNode) we fetch
     only "id" and call the property after instantiation; Django reconstructs
     a minimal instance without touching the DB again.
     """
     index: dict[int, dict] = {}
-    for node_type, model_cls, has_db_node_name in _NODE_TABLES:
-        fields = ["id", "node_name"] if has_db_node_name else ["id"]
-        for node in model_cls.objects.filter(graph_id=graph_id).only(*fields):
+    for spec in FLOW_ASSISTANT_NODE_TYPES:
+        for node in spec.model.objects.filter(graph_id=graph_id).only(
+            *spec.only_fields()
+        ):
             index[node.pk] = {
-                "type": node_type,
-                "name": getattr(node, "node_name", ""),
+                "type": spec.label,
+                "name": spec.display_name(node),
             }
     return index
 
@@ -962,7 +1128,7 @@ def resolve_node_display_name(
 
     Pass node_index when resolving multiple nodes in a single graph context to
     avoid rebuilding the index each call.  If node_index is None, one is built
-    internally (up to 13 ORM queries).
+    internally (15 ORM queries — see build_node_index).
     """
     try:
         index = node_index if node_index is not None else build_node_index(graph_id)
@@ -992,14 +1158,38 @@ def resolve_subgraph_display_name(graph_id: int, subgraph_node_id: int) -> str |
 
 # ── Tool specs ───────────────────────────────────────────────────────────────
 
+
+def _flow_assistant_node_type_labels() -> str:
+    """Comma-joined node type labels for the get_flow_overview ToolSpec description.
+
+    Derived from FLOW_ASSISTANT_NODE_TYPES so this description can't drift
+    from the registry the way a hand-maintained literal list would.
+    ConditionalEdge is excluded — get_flow_overview folds it into edge_count,
+    not the node list (see NodeTypeSpec.is_edge).
+    """
+    labels = []
+    for spec in FLOW_ASSISTANT_NODE_TYPES:
+        if spec.is_edge:
+            continue
+        label = spec.label
+        if spec.deprecated:
+            label += " (deprecated, legacy graphs only)"
+        labels.append(label)
+    return ", ".join(labels)
+
+
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="get_flow_overview",
         description=(
             "Returns a high-level overview of the current flow: its name, description, "
             "node count by type, the full list of nodes (id + type + name only), "
-            "total edge count, and a list of direct subflows (name + description only, "
-            "no internal details). Use this when asked to enumerate or look up nodes."
+            "total edge count (includes conditional_edge routing nodes, which route "
+            "flow but are not themselves listed as nodes), and a list of direct "
+            "subflows (name + description only, no internal details). Node types "
+            f"include {_flow_assistant_node_type_labels()}. Canvas sticky notes are "
+            "not nodes and are not included. Use this when asked to enumerate or "
+            "look up nodes."
         ),
         parameters={
             "type": "object",
@@ -1014,8 +1204,15 @@ TOOL_SPECS: list[ToolSpec] = [
             "Sensitive fields (api_key, secret, token) are redacted. "
             "For decision_table and classification_decision_table nodes, the response "
             "includes `decision_rules` with the full branching logic. "
-            "For llm nodes, the response includes `llm_config_summary` "
-            "with provider, model, and temperature. "
+            "For agent and task nodes, the response includes `agent_definition` "
+            "(role/instructions/llm_config_summary of the assigned agent), `tools` "
+            "(python/mcp tools the node can actually call at runtime, resolved with "
+            "the same allow/deny precedence flow execution uses — denied tools are "
+            "omitted), and `knowledge_sources` (attached knowledge collections — "
+            "metadata only, never document content). Agent nodes additionally include "
+            "`tasks`, the ordered sub-tasks the node executes. "
+            "For conditional_edge nodes, the response includes `python_code_summary` "
+            "for the routing logic. "
             "For python and webhook_trigger nodes, the response includes "
             "`python_code_summary` with the actual code body, entrypoint, and library "
             "list — use it to answer questions about what the node does, which APIs it "
@@ -1234,10 +1431,13 @@ TOOL_SPECS: list[ToolSpec] = [
         description=(
             "Returns per-node execution trace metadata (timings and status) for one "
             "EXECUTION session of this flow. Use this to investigate a specific failure "
-            "after calling get_recent_sessions. Returns node_name, execution order, "
-            "and timestamps per node — NO message bodies or content text. "
+            "after calling get_recent_sessions. Each node_trace entry has node_name, "
+            "execution_order, created_at, and message_type (e.g. start, finish, error, "
+            "python, subgraph_start, agent_node_stream, task_node_stream, "
+            "extracted_chunks) — NO message bodies or content text. Capped to the most "
+            "recent 200 entries; nested subflow messages are excluded. "
             "Provide the numeric session ID (from get_recent_sessions output). "
-            "To see agent reasoning and task outputs, use get_session_messages instead."
+            "To see node/tool/task outputs, use get_session_messages instead."
         ),
         parameters={
             "type": "object",
@@ -1253,11 +1453,18 @@ TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="get_session_messages",
         description=(
-            "Returns the per-step execution trace for a session, including agent thoughts, "
-            "tool calls, and task outputs. Use after get_recent_sessions identifies the "
-            "target session_id, when the user asks how a specific run arrived at its answer "
-            "or wants to see the agent reasoning chain. "
-            "Bodies may be large — set a targeted limit (1–200, default 50)."
+            "Returns the per-step execution trace for a session, oldest to newest: "
+            "node start/finish, subgraph start/finish, python execution, agent/task "
+            "tool-call and tool-result stream events, knowledge retrieval, decision-"
+            "table branch results, classification prompts, and errors. Use after "
+            "get_recent_sessions identifies the target session_id, when the user asks "
+            "how a specific run arrived at its answer or why it failed. "
+            "Returns the MOST RECENT entries up to limit (1–200, default 50) so a "
+            "trailing error is never truncated away. Bodies are size-bounded: string "
+            "fields are truncated per-field and the whole response is capped by an "
+            "overall budget (see extras.body_dropped_for_response_budget). The full "
+            "variable-namespace snapshot some entries carry internally is always "
+            "stripped; entries where that happened have extras.state_truncated=true."
         ),
         parameters={
             "type": "object",
