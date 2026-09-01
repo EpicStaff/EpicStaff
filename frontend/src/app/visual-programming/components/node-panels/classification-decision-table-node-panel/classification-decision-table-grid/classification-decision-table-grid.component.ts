@@ -182,7 +182,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     // Working copy of the named/coloured sections, seeded from the `sections` input.
     public sectionsState = signal<CdtSection[]>([]);
-    public placeCollapseAtBottom = signal<boolean>(false);
     public hoveredSectionId = signal<string | null>(null);
 
     public groupOverlayItems = signal<
@@ -339,17 +338,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
         const rowHeight = CDT_OVERLAY_ROW_HEIGHT;
         const chevronHeight = 22;
-        const atBottom = this.placeCollapseAtBottom();
 
         const computeChevronBracket = (
             firstRowMid: number,
             lastRowMid: number
         ): { chevronTop: number; bracketTop: number; bracketHeight: number } => {
-            if (atBottom) {
-                const chevronTop = lastRowMid - chevronHeight / 2;
-                const bracketTop = firstRowMid;
-                return { chevronTop, bracketTop, bracketHeight: Math.max(0, chevronTop - firstRowMid) };
-            }
             const chevronTop = firstRowMid - chevronHeight / 2;
             const bracketTop = firstRowMid + chevronHeight / 2;
             return { chevronTop, bracketTop, bracketHeight: Math.max(0, lastRowMid - bracketTop) };
@@ -651,7 +644,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 freezeAnchor: this.freezeAnchorColId(),
                 collapsedGroups: [...this.collapsedGroups()],
                 enableFilterMode: this.enableFilterMode(),
-                placeCollapseAtBottom: this.placeCollapseAtBottom(),
             };
             try {
                 localStorage.setItem(this.storageKey, JSON.stringify(state));
@@ -681,9 +673,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
             if (Array.isArray(state.collapsedGroups)) {
                 this.collapsedGroups.set(new Set(state.collapsedGroups as string[]));
-            }
-            if (typeof state.placeCollapseAtBottom === 'boolean') {
-                this.placeCollapseAtBottom.set(state.placeCollapseAtBottom);
             }
             if (
                 state.enableFilterMode === 'all' ||
@@ -2346,13 +2335,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (row.section) allSections.add(row.section);
         }
         this.collapsedGroups.set(allSections);
-        queueMicrotask(() => this.recomputeGroupOverlays());
-    }
-
-    public handleGroupMenuToggleBottomPlacement(): void {
-        this.placeCollapseAtBottom.update((value) => !value);
-        this.saveGridState();
-        this.closeGroupMenu();
         queueMicrotask(() => this.recomputeGroupOverlays());
     }
 

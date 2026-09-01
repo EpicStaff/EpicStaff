@@ -149,7 +149,6 @@
                                 <div
                                     class="group-overlay-bracket"
                                     [class.active]="groupMenuSectionId() === item.sectionId"
-                                    [class.at-bottom]="placeCollapseAtBottom()"
                                     [style.top.px]="item.bracketTop"
                                     [style.height.px]="item.bracketHeight"
                                     [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
@@ -292,18 +291,6 @@
             (click)="handleGroupMenuCollapseAll()"
         >
             Collapse All Groups
-        </div>
-        <div
-            class="group-menu-item group-menu-item--toggle"
-            (click)="handleGroupMenuToggleBottomPlacement()"
-        >
-            <span>Place Collapse at Bottom</span>
-            @if (placeCollapseAtBottom()) {
-                <app-svg-icon
-                    icon="check"
-                    size="12px"
-                ></app-svg-icon>
-            }
         </div>
     </div>
 </ng-template>

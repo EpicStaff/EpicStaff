@@ -128,10 +128,6 @@
     color: var(--color-ks-transparent-text-60);
 }
 
-.group-menu-item--toggle app-svg-icon {
-    color: var(--accent-color);
-}
-
 .grid-header-right {
     display: flex;
     align-items: center;
@@ -442,13 +438,6 @@ $group-gutter-width: 28px;
     border-bottom-left-radius: 8px;
     box-sizing: border-box;
     pointer-events: none;
-
-    &.at-bottom {
-        border-bottom: none;
-        border-top: 1px solid var(--color-text-primary);
-        border-bottom-left-radius: 0;
-        border-top-left-radius: 8px;
-    }
 }
 
 .group-overlay-bracket.active {
