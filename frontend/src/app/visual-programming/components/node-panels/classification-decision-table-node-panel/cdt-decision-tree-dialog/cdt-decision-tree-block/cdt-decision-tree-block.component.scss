@@ -46,7 +46,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.15rem;
+    gap: 2px;
     width: 100%;
     height: 100%;
     padding: 0.75rem 1rem;
@@ -57,6 +57,23 @@
         outline-offset: 2px;
         border-radius: 6px;
     }
+}
+
+// The body is the block's full rectangle, but the drawn silhouette is not: the
+// text column has to follow the shape or centred text lands outside it.
+//
+//  - decision: the diamond runs w/2,0 -> w,h/2 -> w/2,h -> 0,h/2, so at the rows the
+//    subtitle occupies — the quarter and three-quarter heights — only half the
+//    width is inside the outline. 25% each side is exactly that half.
+//  - data: the parallelogram insets its slanted edges by its skew (18px at the
+//    268px width), which is more than the 16px the body already pads.
+//  - predefined-process draws its two bands 14px in, which 16px already clears.
+:host([data-shape='decision']) .cdt-tree-block__body {
+    padding-inline: 25%;
+}
+
+:host([data-shape='data']) .cdt-tree-block__body {
+    padding-inline: 22px;
 }
 
 .cdt-tree-block__heading {
@@ -112,13 +129,17 @@
     -webkit-line-clamp: var(--cdt-tree-subtitle-lines);
 }
 
-.cdt-tree-block__expand {
+// Beyond the top-right corner, and only by 5px: the corridor the exit edges drop
+// through starts 24px right of the chain blocks, and a node paints above the
+// connection layer, so a wider marker would cover an edge.
+.cdt-tree-block__outdated {
     position: absolute;
-    top: 0.4rem;
-    right: 0.5rem;
-    color: var(--color-text-secondary);
-    opacity: 0;
-    transition: opacity 0.12s ease;
+    top: -5px;
+    right: -5px;
+    z-index: 1;
+    color: var(--cdt-tree-outdated);
+    // Hoverable for its tooltip; the connectors around it stay inert.
+    pointer-events: auto;
 }
 
 // Set from `CLICKABLE_BY_KIND` — a block can hold content the search finds and
@@ -127,12 +148,38 @@
     cursor: pointer;
 }
 
+// The states the design specifies, in the only form an SVG silhouette can take
+// them: elevation as a pair of drop-shadows on the shape, the accent border as a
+// stroke, the selected surface as a fill.
+//
+// `drop-shadow()` has no spread parameter, so each spread is folded into the
+// blur — 6px + 4 spread is drawn as a 10px blur. That is the standard
+// approximation and the only one available while the shapes are polygons.
 :host(.cdt-tree-block--clickable) app-cdt-decision-tree-shape {
     filter: drop-shadow(0 2px 3px rgb(0 0 0 / 30%)) drop-shadow(0 6px 10px rgb(0 0 0 / 15%));
 }
 
-:host(.cdt-tree-block--clickable):hover .cdt-tree-block__expand {
-    opacity: 1;
+:host(.cdt-tree-block--clickable):hover app-cdt-decision-tree-shape {
+    filter: drop-shadow(0 4px 4px rgb(0 0 0 / 30%)) drop-shadow(0 8px 18px rgb(0 0 0 / 15%));
+}
+
+// Pressed keeps the resting elevation and adds the accent border — the press
+// reads as the outline arriving, not as the block lifting further.
+:host(.cdt-tree-block--clickable):active {
+    --cdt-shape-stroke: var(--accent-color);
+}
+
+// Selected is pressed's border over a surface tinted 8% with the accent. The
+// surface is the design's own `--color-flow-card-bg` (#2b2d30), which is declared
+// only in the dark palette — hence the fallback chain, so the light theme lands on
+// its own node surface instead of a dark card.
+:host(.cdt-tree-block--selected) {
+    --cdt-shape-stroke: var(--accent-color);
+    --cdt-shape-fill: color-mix(
+        in srgb,
+        var(--accent-color) 8%,
+        var(--color-flow-card-bg, var(--cdt-tree-raised, var(--color-nodes-background)))
+    );
 }
 
 :host(.cdt-tree-block--dimmed) {
@@ -145,4 +192,11 @@
     .cdt-tree-block__title {
         color: var(--accent-color);
     }
+}
+
+// Decoration only: it carries the Error edge's anchor, and its connectors are
+// inert here anyway. Left interactive it covers every rule it surrounds — see the
+// host binding for why the outline, not the rules, wins that hit test.
+:host(.cdt-tree-block--region) {
+    pointer-events: none;
 }

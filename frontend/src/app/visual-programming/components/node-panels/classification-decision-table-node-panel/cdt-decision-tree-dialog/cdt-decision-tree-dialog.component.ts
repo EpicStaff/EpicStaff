@@ -1,6 +1,7 @@
 import { animate, style, transition, trigger } from '@angular/animations';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -17,31 +18,59 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EFMarkerType, FCanvasChangeEvent, FCanvasComponent, FFlowModule, FZoomDirective } from '@foblex/flow';
+import { CheckboxComponent } from '@shared/components';
+import { concatMap, from, map, Subject, takeUntil } from 'rxjs';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CdtExplainService } from '../../../../services/cdt-explain.service';
+import { CdtExplanationCacheService } from '../../../../services/cdt-explanation-cache.service';
 import { filterByQuery } from '../cdt-search-filter.util';
 import { OverlayMenuController } from '../classification-decision-table-grid/shared/overlay-menu.util';
 import { buildCdtDecisionTree } from './cdt-decision-tree.builder';
 import {
+    CDT_TREE_COPY,
+    CDT_TREE_EDGE_LABEL_OFFSET,
     CDT_TREE_EDGE_OFFSET,
     CDT_TREE_FIT_PADDING,
     CDT_TREE_LEGEND,
     ICON_BY_SHAPE,
 } from './cdt-decision-tree.constants';
 import { layoutCdtDecisionTree } from './cdt-decision-tree.layout';
-import { CdtDecisionTreeInput, CdtTreeEdge, CdtTreePositionedBlock } from './cdt-decision-tree.model';
+import { CdtDecisionTreeInput, CdtTreeEdge, CdtTreeLlmOption, CdtTreePositionedBlock } from './cdt-decision-tree.model';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDetailComponent } from './cdt-decision-tree-detail/cdt-decision-tree-detail.component';
 import { resolveTreeKeyAction } from './cdt-decision-tree-keyboard.util';
 import { CdtDecisionTreeSearchComponent } from './cdt-decision-tree-search/cdt-decision-tree-search.component';
 import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-decision-tree-shape.component';
+import { buildExplainStepKeys, explainStepFingerprint } from './cdt-explain.identity';
+import { CdtExplainBlock, CdtExplainResponse, CdtExplanationState } from './cdt-explain.model';
+import {
+    buildCdtExplainBlocks,
+    buildCdtExplainTable,
+    chunkExplainBlocks,
+    resolveExplainLlmConfig,
+} from './cdt-explain.payload';
+
+/**
+ * Keyed on the backend's error codes, not the status. Neither is handled by an
+ * interceptor: `forbidden` covers 403 and `validation-errors` only annotates 4xx.
+ */
+function explainErrorMessage(error: HttpErrorResponse): string {
+    const code: unknown = (error.error as { code?: unknown } | null)?.code;
+
+    if (code === 'cdt_explain_llm_config_not_found') return CDT_TREE_COPY.explainModelGone;
+    if (code === 'cdt_explain_upstream_failed') return CDT_TREE_COPY.explainUpstreamFailed;
+    return CDT_TREE_COPY.explainFailed;
+}
 
 /**
  * Read-only flowchart of a Classification Decision Table node.
  *
  * The read-only guarantee is structural: nodes are drag- and selection-disabled,
  * no mutating Foblex output is bound, and nothing that could write to the canvas
- * is injected — no `FlowService`, no `SidePanelService`, no `HttpClient`.
+ * is injected — no `FlowService`, no `SidePanelService`, no `HttpClient`. The one
+ * service it does inject, `CdtExplainService`, reaches a single endpoint that
+ * stores nothing and returns text.
  */
 @Component({
     selector: 'app-cdt-decision-tree-dialog',
@@ -50,6 +79,7 @@ import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-dec
         FFlowModule,
         FZoomDirective,
         AppSvgIconComponent,
+        CheckboxComponent,
         CdtDecisionTreeBlockComponent,
         CdtDecisionTreeShapeComponent,
         CdtDecisionTreeSearchComponent,
@@ -75,10 +105,18 @@ export class CdtDecisionTreeDialogComponent {
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly data = inject<CdtDecisionTreeInput>(DIALOG_DATA);
 
-    /** The search panel's overlay; the detail window is docked, not overlaid. */
+    /**
+     * The search panel's overlay. Mutually exclusive with the model picker only
+     * because `openSearch` and `openExplainMenu` stand each other down — both
+     * hang off the toolbar, so nothing structural separates them.
+     */
     private readonly searchCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
+    /** The model picker's overlay. One controller holds one pane, hence two. */
+    private readonly explainMenuCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
     private readonly destroyRef = inject(DestroyRef);
     private readonly injector = inject(Injector);
+    private readonly explainService = inject(CdtExplainService);
+    private readonly explanationCache = inject(CdtExplanationCacheService);
 
     private readonly fCanvas = viewChild(FCanvasComponent);
     private readonly fZoom = viewChild(FZoomDirective);
@@ -87,11 +125,31 @@ export class CdtDecisionTreeDialogComponent {
     /** The box, so the dropdown under it lines up with its edges. */
     private readonly searchBox = viewChild<ElementRef<HTMLElement>>('searchBox');
     private readonly searchTpl = viewChild.required<TemplateRef<unknown>>('searchTpl');
+    private readonly explainMenuTpl = viewChild.required<TemplateRef<unknown>>('explainMenuTpl');
 
     /** Built once: the dialog holds a snapshot and never re-layouts. */
     protected readonly layout = layoutCdtDecisionTree(buildCdtDecisionTree(this.data));
 
+    /**
+     * Every explainable step, keyed by block id. Built once from the same snapshot
+     * as `layout`. Not every clickable block is here — a prompt block whose config
+     * is missing has nothing to explain.
+     */
+    private readonly explainBlocks = buildCdtExplainBlocks(this.data);
+    private readonly explainTable = buildCdtExplainTable(this.data);
+
+    /**
+     * Block id → the identity its explanation is filed under, and → what the step
+     * currently looks like. Fixed for a sitting: the snapshot cannot change.
+     */
+    private readonly explainStepKeys = buildExplainStepKeys(this.data);
+
+    private readonly explainFingerprints = new Map<string, string>(
+        [...this.explainBlocks].map(([id, block]) => [id, explainStepFingerprint(block)])
+    );
+
     protected readonly legend = CDT_TREE_LEGEND;
+    protected readonly copy = CDT_TREE_COPY;
 
     /** The same icons the canvas blocks carry, so a legend entry is its block. */
     protected readonly iconByShape = ICON_BY_SHAPE;
@@ -105,6 +163,9 @@ export class CdtDecisionTreeDialogComponent {
      * them is one straight line rather than a step.
      */
     protected readonly edgeOffset = CDT_TREE_EDGE_OFFSET;
+
+    /** Perpendicular shift that lifts an edge label off its own line. */
+    protected readonly edgeLabelOffset = CDT_TREE_EDGE_LABEL_OFFSET;
 
     /** `fDraggable` is present only so the canvas can be panned. */
     protected readonly canvasMoveTrigger = (): boolean => true;
@@ -143,6 +204,73 @@ export class CdtDecisionTreeDialogComponent {
     protected readonly activeMatch = signal(0);
 
     /**
+     * Every explanation this dialog knows about, keyed by step identity. Seeded
+     * from the cache on open and the source of truth from then on — the canvas
+     * reads it for every block's marker, so it has to be a signal.
+     *
+     * Not in the detail window: that instance survives a switch between blocks —
+     * the `@if` stays true and only its input changes — so state kept there would
+     * show block A's text under block B's heading.
+     */
+    private readonly explanations = signal<ReadonlyMap<string, CdtExplanationState>>(this.seedFromCache());
+
+    /**
+     * The model is not part of the key: a step has one explanation, and which model
+     * wrote it is reported by `Generated by:`. Keying by model would also make the
+     * canvas marker ambiguous — current for one model, stale for another.
+     */
+    private seedFromCache(): ReadonlyMap<string, CdtExplanationState> {
+        const seeded = new Map<string, CdtExplanationState>();
+
+        for (const stepKey of new Set(this.explainStepKeys.values())) {
+            const remembered = this.explanationCache.get(this.storageKey(stepKey));
+            if (remembered) {
+                seeded.set(stepKey, {
+                    status: 'ready',
+                    text: remembered.text,
+                    generatedBy: remembered.generatedBy,
+                    fingerprint: remembered.fingerprint,
+                });
+            }
+        }
+
+        return seeded;
+    }
+
+    /**
+     * Which LLM writes the explanations this sitting. Seeded from what is already
+     * on record for the table, so the picker overrides rather than gates. Not
+     * persisted — nothing on the node stores it.
+     */
+    protected readonly explainLlmConfig = signal<number | null>(resolveExplainLlmConfig(this.data));
+
+    protected readonly explainLlmOptions = this.data.llmConfigOptions;
+
+    /** Which button opened the picker: its footer checkbox is Explain All's only. */
+    protected readonly explainMenuScope = signal<'step' | 'all'>('step');
+
+    /**
+     * Tracked because both chevrons share one controller: `open` no-ops while a pane
+     * is attached, so without it the second chevron would only close the menu.
+     */
+    private explainMenuAnchor: HTMLElement | null = null;
+
+    /** Restricts an Explain All pass to steps whose text has gone stale. */
+    protected readonly explainOutdatedOnly = signal(false);
+
+    protected readonly explainAllTotal = signal(0);
+    protected readonly explainAllDone = signal(0);
+    /** Set when a pass ends with steps the model would not explain. */
+    protected readonly explainAllFailed = signal(0);
+    /** Says why a press did nothing, rather than leaving the press unanswered. */
+    protected readonly explainAllNotice = signal<string | null>(null);
+
+    protected readonly explainAllRunning = computed(() => this.explainAllTotal() > 0);
+
+    /** Cancels an in-flight pass without tearing the dialog down. */
+    private readonly explainAllStopped = new Subject<void>();
+
+    /**
      * Which block the detail window is showing. An id rather than the block, so a
      * second pick re-renders the window instead of replaying the slide-in.
      */
@@ -174,6 +302,42 @@ export class CdtDecisionTreeDialogComponent {
 
     protected readonly hasQuery = computed(() => this.query().trim().length > 0);
 
+    protected readonly selectedExplanation = computed<CdtExplanationState | null>(() =>
+        this.explanationOf(this.selectedBlockId())
+    );
+
+    /** Whether the open block's explanation was written for an older version of it. */
+    protected readonly selectedOutdated = computed(() => this.isOutdated(this.selectedBlockId()));
+
+    private explanationOf(blockId: string | null): CdtExplanationState | null {
+        const stepKey = blockId ? this.explainStepKeys.get(blockId) : undefined;
+        return stepKey ? (this.explanations().get(stepKey) ?? null) : null;
+    }
+
+    /** Outdated = has an explanation whose fingerprint no longer matches the step. */
+    protected isOutdated(blockId: string | null): boolean {
+        if (!blockId) return false;
+
+        const state = this.explanationOf(blockId);
+        if (state?.status !== 'ready') return false;
+
+        return state.fingerprint !== this.explainFingerprints.get(blockId);
+    }
+
+    /**
+     * The step's identity, scoped to its node. `nodeId` stands in for an unsaved
+     * node — a null `backendId` would put every unsaved node in one key space.
+     */
+    private storageKey(stepKey: string): string {
+        return `${this.data.backendId ?? this.data.nodeId}|${stepKey}`;
+    }
+
+    /** Whether the open block is one the endpoint can be asked about at all. */
+    protected readonly canExplainSelected = computed(() => {
+        const id = this.selectedBlockId();
+        return !!id && this.explainBlocks.has(id);
+    });
+
     constructor() {
         // The dialog is opened with `disableClose`, so CDK closes it for neither
         // the backdrop nor Escape — both are ours to handle.
@@ -190,7 +354,10 @@ export class CdtDecisionTreeDialogComponent {
         // The search panel lives in its own overlay, outside this component's view,
         // so it has to be torn down explicitly. The detail window does not — it is
         // in this template and goes with it.
-        this.destroyRef.onDestroy(() => this.searchCtrl.dispose());
+        this.destroyRef.onDestroy(() => {
+            this.searchCtrl.dispose();
+            this.explainMenuCtrl.dispose();
+        });
     }
 
     // -- canvas --------------------------------------------------------------
@@ -315,6 +482,10 @@ export class CdtDecisionTreeDialogComponent {
         const anchor = this.searchBox()?.nativeElement ?? this.searchInput()?.nativeElement;
         if (!anchor) return;
 
+        // Idempotent, which matters: typing calls this on every key.
+        this.explainMenuCtrl.close();
+        this.explainMenuAnchor = null;
+
         const toggle = this.searchToggle()?.nativeElement;
 
         this.searchCtrl.open(anchor, this.searchTpl(), {
@@ -392,6 +563,10 @@ export class CdtDecisionTreeDialogComponent {
         return this.hasQuery() && this.matchSet().has(blockId);
     }
 
+    protected isSelected(blockId: string): boolean {
+        return this.selectedBlockId() === blockId;
+    }
+
     private revealActiveMatch(): void {
         const id = this.matchIds()[this.activeMatch()];
         if (id) this.fCanvas()?.centerGroupOrNode(id, true);
@@ -403,6 +578,292 @@ export class CdtDecisionTreeDialogComponent {
     protected openDetail(block: CdtTreePositionedBlock): void {
         if (!block.clickable || !block.detail) return;
         this.selectedBlockId.set(block.id);
+    }
+
+    /**
+     * The anchor comes up from the child because the button lives there while the
+     * options and the overlay live here.
+     */
+    protected openExplainMenu(anchor: HTMLElement, scope: 'step' | 'all'): void {
+        if (this.explainMenuCtrl.isOpen()) {
+            const wasSameAnchor = this.explainMenuAnchor === anchor;
+            this.explainMenuCtrl.close();
+            this.explainMenuAnchor = null;
+            // A press on the chevron that opened it means "close"; a press on the
+            // other one means "move here".
+            if (wasSameAnchor) return;
+        }
+
+        // Neither takes a backdrop, so one has to stand the other down.
+        this.searchCtrl.close();
+
+        this.explainMenuAnchor = anchor;
+        this.explainMenuScope.set(scope);
+
+        this.explainMenuCtrl.open(anchor, this.explainMenuTpl(), {
+            offsetY: 6,
+            // Both anchors sit at the right edge of their row.
+            alignX: 'end',
+            viewportMargin: 12,
+            // Keeps the window and canvas behind it clickable.
+            hasBackdrop: false,
+            ignoreOutsideFor: [anchor],
+        });
+    }
+
+    protected isExplainMenuOpen(): boolean {
+        return this.explainMenuCtrl.isOpen();
+    }
+
+    protected selectExplainLlm(option: CdtTreeLlmOption): void {
+        // Rendered so the reason is visible, but not a choice.
+        if (!option.hasApiKey) return;
+
+        this.explainLlmConfig.set(option.id);
+        this.explainMenuCtrl.close();
+    }
+
+    /**
+     * Ask the endpoint to explain the block the window is showing.
+     *
+     * Both refusals are answered in the section rather than by a toast: the button
+     * is inside a modal, and the sentence belongs where the user just clicked.
+     */
+    protected explainSelectedBlock(): void {
+        const blockId = this.selectedBlockId();
+        if (!blockId) return;
+
+        const block = this.explainBlocks.get(blockId);
+        if (!block) return;
+
+        const backendId = this.data.backendId;
+        if (backendId == null) {
+            this.refuseExplain(blockId, CDT_TREE_COPY.explainUnsaved);
+            return;
+        }
+
+        // Null only when neither the table nor any of its prompts names a model.
+        const llmConfig = this.explainLlmConfig();
+        if (llmConfig == null) {
+            this.refuseExplain(blockId, CDT_TREE_COPY.explainNoModel);
+            return;
+        }
+
+        const stepKey = this.explainStepKeys.get(blockId);
+        if (!stepKey) return;
+
+        // Always regenerates: the remembered answer showed without being asked,
+        // so a press can only mean "give me another".
+        this.setExplanation(stepKey, { status: 'loading' });
+
+        this.explainService
+            .explain(backendId, { llm_config: llmConfig, table: this.explainTable, blocks: [block] })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (response) => this.applyExplanations(response, [blockId]),
+                error: (error: HttpErrorResponse) =>
+                    this.setExplanation(stepKey, { status: 'error', message: explainErrorMessage(error) }),
+            });
+    }
+
+    /**
+     * Without the checkbox: steps with no explanation at all. With it: the ones
+     * whose explanation went stale. Two disjoint sets, so neither ever pays for
+     * text that is already current.
+     */
+    protected explainAll(): void {
+        if (this.explainAllRunning()) return;
+
+        this.explainAllNotice.set(null);
+        this.explainAllFailed.set(0);
+
+        const backendId = this.data.backendId;
+        if (backendId == null) {
+            this.explainAllNotice.set(CDT_TREE_COPY.explainUnsaved);
+            return;
+        }
+
+        const llmConfig = this.explainLlmConfig();
+        if (llmConfig == null) {
+            this.explainAllNotice.set(CDT_TREE_COPY.explainNoModel);
+            return;
+        }
+
+        const outdatedOnly = this.explainOutdatedOnly();
+        const blocks = this.blocksNeedingExplanation(outdatedOnly);
+        if (blocks.length === 0) {
+            this.explainAllNotice.set(
+                outdatedOnly ? CDT_TREE_COPY.explainAllNothingOutdated : CDT_TREE_COPY.explainAllNothing
+            );
+            return;
+        }
+
+        // All at once, so a block opened mid-pass shows a spinner.
+        this.explanations.update((current) => {
+            const next = new Map(current);
+            for (const block of blocks) {
+                const stepKey = this.explainStepKeys.get(block.id);
+                if (stepKey) next.set(stepKey, { status: 'loading' });
+            }
+            return next;
+        });
+
+        const chunks = chunkExplainBlocks(blocks);
+        this.explainAllTotal.set(blocks.length);
+        this.explainAllDone.set(0);
+
+        // Sequential: the server already runs five batches per request, and more
+        // on top of that is a rate limit waiting to happen.
+        from(chunks)
+            .pipe(
+                concatMap((chunk) =>
+                    this.explainService
+                        .explain(backendId, {
+                            llm_config: llmConfig,
+                            table: this.explainTable,
+                            blocks: chunk,
+                        })
+                        .pipe(map((response) => ({ response, ids: chunk.map((block) => block.id) })))
+                ),
+                takeUntil(this.explainAllStopped),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                // Per chunk, so a pass that dies halfway keeps its work.
+                next: ({ response, ids }) => {
+                    this.applyExplanations(response, ids);
+                    this.explainAllDone.update((done) => done + response.explanations.length);
+                    this.explainAllFailed.update((failed) => failed + response.failures.length);
+                },
+                error: () => {
+                    this.explainAllNotice.set(CDT_TREE_COPY.explainFailed);
+                    this.finishExplainAll();
+                },
+                complete: () => this.finishExplainAll(),
+            });
+    }
+
+    protected toggleExplainOutdatedOnly(): void {
+        this.explainOutdatedOnly.update((only) => !only);
+    }
+
+    protected stopExplainAll(): void {
+        this.explainAllStopped.next();
+        this.finishExplainAll();
+    }
+
+    private finishExplainAll(): void {
+        // Anything still loading was in a chunk that never ran — a stop, or a failed
+        // request. Put back rather than dropped: an outdated step went to loading
+        // over text it already had, so dropping would mean Stop wiped explanations
+        // the user still had, markers included. The remembered copy is untouched.
+        this.explanations.update((current) => {
+            const next = new Map(current);
+            for (const [stepKey, state] of next) {
+                if (state.status !== 'loading') continue;
+
+                const remembered = this.explanationCache.get(this.storageKey(stepKey));
+                if (remembered) {
+                    next.set(stepKey, {
+                        status: 'ready',
+                        text: remembered.text,
+                        generatedBy: remembered.generatedBy,
+                        fingerprint: remembered.fingerprint,
+                    });
+                } else {
+                    next.delete(stepKey);
+                }
+            }
+            return next;
+        });
+
+        if (this.explainAllFailed() > 0) {
+            this.explainAllNotice.set(CDT_TREE_COPY.explainAllFailed(this.explainAllFailed()));
+        }
+
+        this.explainAllTotal.set(0);
+        this.explainAllDone.set(0);
+    }
+
+    /** One block per step, so the twice-drawn post step is explained once. */
+    private blocksNeedingExplanation(outdatedOnly: boolean): CdtExplainBlock[] {
+        const seen = new Set<string>();
+        const blocks: CdtExplainBlock[] = [];
+
+        for (const [blockId, block] of this.explainBlocks) {
+            const stepKey = this.explainStepKeys.get(blockId);
+            if (!stepKey || seen.has(stepKey)) continue;
+
+            const state = this.explanations().get(stepKey);
+            const wanted = outdatedOnly ? this.isOutdated(blockId) : state?.status !== 'ready';
+            if (!wanted) continue;
+
+            seen.add(stepKey);
+            blocks.push(block);
+        }
+
+        return blocks;
+    }
+
+    /**
+     * Filed under the id the response carries, never under the open block: the user
+     * can switch blocks mid-flight. The fingerprint stored beside the text is the
+     * step's current one, which is what puts the marker out on arrival.
+     */
+    private applyExplanations(response: CdtExplainResponse, requestedIds: readonly string[]): void {
+        this.explanations.update((current) => {
+            const next = new Map(current);
+
+            for (const item of response.explanations) {
+                const stepKey = this.explainStepKeys.get(item.id);
+                const fingerprint = this.explainFingerprints.get(item.id);
+                if (!stepKey || !fingerprint) continue;
+
+                next.set(stepKey, {
+                    status: 'ready',
+                    text: item.text,
+                    generatedBy: item.generated_by,
+                    fingerprint,
+                });
+                this.explanationCache.set(this.storageKey(stepKey), {
+                    text: item.text,
+                    generatedBy: item.generated_by,
+                    fingerprint,
+                });
+            }
+
+            // A refusal answers the press directly, so the reason shows even over
+            // text that was there. The remembered copy survives a reopen.
+            for (const failure of response.failures) {
+                const stepKey = this.explainStepKeys.get(failure.id);
+                if (stepKey) next.set(stepKey, { status: 'error', message: failure.detail });
+            }
+
+            // Asked about but mentioned in neither array. Scoped to this request —
+            // during a pass the chunks behind it are legitimately still loading.
+            for (const id of requestedIds) {
+                const stepKey = this.explainStepKeys.get(id);
+                if (stepKey && next.get(stepKey)?.status === 'loading') {
+                    next.set(stepKey, { status: 'error', message: CDT_TREE_COPY.explainFailed });
+                }
+            }
+
+            return next;
+        });
+    }
+
+    /**
+     * Why nothing was sent, in the section just clicked. Filed under the step key
+     * like any other state — writing these under the raw block id is what made
+     * both refusals unreachable before.
+     */
+    private refuseExplain(blockId: string, message: string): void {
+        const stepKey = this.explainStepKeys.get(blockId);
+        if (stepKey) this.setExplanation(stepKey, { status: 'error', message });
+    }
+
+    private setExplanation(stepKey: string, state: CdtExplanationState): void {
+        this.explanations.update((current) => new Map(current).set(stepKey, state));
     }
 
     protected closeDetail(): void {
@@ -428,6 +889,7 @@ export class CdtDecisionTreeDialogComponent {
     private onKeydown(event: KeyboardEvent): void {
         const result = resolveTreeKeyAction(event, {
             detailOpen: this.selectedBlockId() !== null,
+            explainMenuOpen: this.explainMenuCtrl.isOpen(),
             searchExpanded: this.searchExpanded(),
             searchOpen: this.searchCtrl.isOpen(),
             // The draft, not the applied filter: that is what the box shows and
@@ -443,6 +905,9 @@ export class CdtDecisionTreeDialogComponent {
         switch (result.action) {
             case 'close-detail':
                 this.closeDetail();
+                break;
+            case 'close-explain-menu':
+                this.explainMenuCtrl.close();
                 break;
             case 'close-search':
                 this.cancelSearch();

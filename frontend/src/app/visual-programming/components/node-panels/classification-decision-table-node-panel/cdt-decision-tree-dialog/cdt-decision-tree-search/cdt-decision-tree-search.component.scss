@@ -6,12 +6,13 @@
     flex-direction: column;
     gap: 16px;
     width: 364px;
-    // `max-*` rather than fixed, and shrinkable: CDK gives the pane a height
-    // capped at the space between the anchor and the viewport edge, and a fixed
-    // 465px panel overflows it bottom-first — taking the footer, and with it Save,
-    // off screen on a short viewport. The list scrolls instead.
+    // The design's 529, written as a cap rather than a fixed height, and
+    // shrinkable: CDK gives the pane a height capped at the space between the
+    // anchor and the viewport edge, and a fixed panel overflows it bottom-first —
+    // taking the footer, and with it Save, off screen on a short viewport. The
+    // list scrolls instead.
     max-width: 100%;
-    max-height: 465px;
+    max-height: 529px;
     min-height: 0;
     padding-top: 20px;
     padding-bottom: 20px;
@@ -59,10 +60,11 @@
     color: inherit;
     text-align: left;
     cursor: pointer;
-    // A step above the panel so an entry reads as a card. `--color-nodes-background`
-    // rather than the design's literal `--color-flow-card-bg`, which is defined only
-    // in the dark theme and would leave dark text on a dark card in the light one.
-    background: var(--color-nodes-background);
+    // A step above the panel so an entry reads as a card. The design's own
+    // `--color-flow-card-bg` (#2b2d30), which is declared only in the dark palette —
+    // hence the fallback, which keeps the light theme from putting dark text on a
+    // dark card.
+    background: var(--color-flow-card-bg, var(--color-nodes-background));
     border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
 

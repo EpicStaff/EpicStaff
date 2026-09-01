@@ -72,8 +72,20 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
                 overflow: visible;
             }
 
+            // Fill and stroke are the block's to set: a diamond and a parallelogram
+            // cannot carry a CSS background or border, so the states the design
+            // specifies reach the silhouette through these two properties.
+            // The design's card surface (#2b2d30) for every block. Its token is
+            // declared only in the dark palette, so the chain falls back to the
+            // dialog's raised alias and then to the app's node surface rather than
+            // leaving a light theme with a dark block.
             .cdt-shape__outline {
-                fill: var(--cdt-tree-raised, var(--color-nodes-background));
+                fill: var(
+                    --cdt-shape-fill,
+                    var(--color-flow-card-bg, var(--cdt-tree-raised, var(--color-nodes-background)))
+                );
+                stroke: var(--cdt-shape-stroke, transparent);
+                stroke-width: 1;
             }
 
             // The region is a boundary, not a block: an outline with nothing
@@ -82,7 +94,7 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
             // anything inside it that throws goes there.
             .cdt-shape__outline--region {
                 fill: none;
-                stroke: var(--cdt-tree-region-border, var(--color-error));
+                stroke: var(--cdt-tree-error, var(--color-error));
                 stroke-width: 1;
                 stroke-dasharray: 6 5;
             }

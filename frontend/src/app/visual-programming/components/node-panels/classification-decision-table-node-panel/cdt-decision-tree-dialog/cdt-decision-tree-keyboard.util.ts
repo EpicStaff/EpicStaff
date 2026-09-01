@@ -23,6 +23,7 @@ export type CdtTreeKeyAction =
     | 'clear-search'
     | 'collapse-search'
     | 'close-detail'
+    | 'close-explain-menu'
     | 'close-search'
     | 'close-dialog'
     | 'none';
@@ -30,6 +31,8 @@ export type CdtTreeKeyAction =
 export interface CdtTreeKeyState {
     /** Whether the docked detail window is showing a block. */
     readonly detailOpen: boolean;
+    /** Whether the model picker over that window is showing. */
+    readonly explainMenuOpen: boolean;
     /** Whether the dropdown under the search box is showing. */
     readonly searchOpen: boolean;
     /** Whether the search box itself is showing, beside its icon button. */
@@ -103,15 +106,23 @@ export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeySt
 }
 
 /**
- * Innermost first: the dropdown, then the text in the focused box, then the box
- * itself, then the docked window, then the dialog — otherwise the whole dialog
- * closes underneath whatever the user meant to dismiss.
+ * Innermost first: the model picker, then the search dropdown, then the text in
+ * the focused box, then the box itself, then the docked window, then the dialog —
+ * otherwise the whole dialog closes underneath whatever the user meant to dismiss.
  *
  * The search dropdown leads because it is the only real overlay left. The detail
  * window used to lead, back when it was an anchored popover that could not coexist
  * with the search panel; docked, it outranks only the dialog.
  */
 function resolveEscapeAction(state: CdtTreeKeyState): CdtTreeKeyAction {
+    // First: of everything Escape can mean, a menu is the innermost. It cannot be
+    // open alongside the search dropdown, but only because the dialog stands one
+    // down when the other opens — both hang off the toolbar, so nothing structural
+    // separates them. See `openSearch` and `openExplainMenu`.
+    if (state.explainMenuOpen) {
+        return 'close-explain-menu';
+    }
+
     if (state.searchOpen) {
         return 'close-search';
     }

@@ -26,6 +26,21 @@
     ></div>
 }
 
+<!--
+    A sibling of the body, not a child: the body is the click target and a status
+    must not be part of what you press. On the host, whose box Foblex sizes to the
+    block, so negative offsets reach outside it — nothing in the chain clips.
+-->
+@if (outdated()) {
+    <app-svg-icon
+        class="cdt-tree-block__outdated"
+        icon="clock"
+        size="10px"
+        [ariaLabel]="copy.outdatedBadge"
+        [matTooltip]="copy.outdatedTooltip"
+    />
+}
+
 @if (block().shape !== 'region') {
     <div
         class="cdt-tree-block__body"
@@ -63,15 +78,6 @@
 
         @if (block().subtitle) {
             <span class="cdt-tree-block__subtitle">{{ block().subtitle }}</span>
-        }
-
-        @if (block().clickable) {
-            <app-svg-icon
-                class="cdt-tree-block__expand"
-                icon="zoom-scan"
-                size="0.85rem"
-                ariaLabel="Show full content"
-            />
         }
     </div>
 }

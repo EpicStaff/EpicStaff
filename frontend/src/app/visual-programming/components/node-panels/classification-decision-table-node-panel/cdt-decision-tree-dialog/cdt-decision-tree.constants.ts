@@ -57,8 +57,42 @@ export const MIN_SIZE_BY_SHAPE: Readonly<Record<CdtTreeShape, CdtTreeSize>> = {
     region: { width: 0, height: 0 },
 };
 
-/** How far the rules region's outline stands off the blocks it encloses. */
-export const CDT_TREE_REGION_PADDING = 28;
+/**
+ * The design's measurements, per kind rather than per shape.
+ *
+ * Two kinds can share a silhouette and still be drawn at different sizes — the
+ * parallelogram is both `Read variables` and a rule's prompt, and the design gives
+ * them 187x42 and 286x60. Where a kind appears here its box is taken verbatim,
+ * including the height: these are the drawn boxes, not minimums to grow from.
+ * Anything absent falls back to `MIN_SIZE_BY_SHAPE` and the derived height.
+ *
+ * Fractions in the mockup (233.64, 187.29, 133.94) are rounded to whole pixels —
+ * a half-pixel box puts the outline's 1px stroke across two device rows and
+ * renders it soft.
+ */
+export const MIN_SIZE_BY_KIND: Readonly<Partial<Record<CdtTreeBlockKind, CdtTreeSize>>> = {
+    'table-entered': { width: 196, height: 42 },
+    'exit-terminator': { width: 196, height: 42 },
+    // The mockup's 114x18 for these is a text layer, not a box — 18px is one title
+    // line with nothing left for the padding around it. They take the decision's
+    // width and the base row height instead, which also lines them up with the
+    // rule column they sit above.
+    'pre-computation': { width: 234, height: 42 },
+    'post-computation': { width: 234, height: 42 },
+    'read-variables': { width: 187, height: 42 },
+    'row-decision': { width: 234, height: 134 },
+    'row-prompt': { width: 286, height: 60 },
+    'row-manipulation': { width: 164, height: 60 },
+};
+
+/**
+ * How far the rules region's outline stands off the blocks it encloses.
+ *
+ * It has to clear `CDT_TREE_EDGE_OFFSET` by a visible margin, not merely exceed
+ * it: the exit edges all drop through a corridor that far past the chains, so at
+ * 28 the outline ran four pixels from a column of arrows and read as one of them.
+ */
+export const CDT_TREE_REGION_PADDING = 48;
 
 export interface CdtTreeIcon {
     /** Sprite id without the `icon-` prefix, as `app-svg-icon` expects it. */
@@ -100,20 +134,35 @@ export const CDT_TREE_ASIDE_GAP = 96;
  */
 export const CDT_TREE_EDGE_OFFSET = 24;
 
+/** Perpendicular shift of an edge label, so the chip clears its own line. */
+export const CDT_TREE_EDGE_LABEL_OFFSET = -12;
+
 /** Padding passed to `fitToScreen` so blocks never touch the viewport edge. */
 export const CDT_TREE_FIT_PADDING = { x: 80, y: 60 } as const;
 
 /**
  * Lines a block subtitle is allowed before the detail window takes over.
  *
- * The single source for three consumers: the builder cuts a code preview to this
- * many lines, the layout reserves height for this many, and the block's CSS
- * clamps to it through `--cdt-tree-subtitle-lines`.
+ * The single source for two consumers: the layout reserves height for this many
+ * lines where it derives a box, and the block's CSS clamps to it. Anything past
+ * them is read in the detail window.
+ *
+ * One, because the design's measured boxes decide it: a 60px prompt spends 24 on
+ * padding and 20 on its title line and the gap, which leaves 16 — exactly one
+ * 12px line at a 1.3 line-height. A second line would overflow the silhouette by
+ * about 15px, and the body centres its content, so it would spill from both ends.
  */
-export const CDT_TREE_SUBTITLE_CODE_LINES = 2;
+export const CDT_TREE_SUBTITLE_CODE_LINES = 1;
 
-/** Max characters of a subtitle before it is clipped with an ellipsis. */
-export const CDT_TREE_SUBTITLE_MAX_CHARS = 120;
+/**
+ * Max characters of a subtitle before it is clipped with an ellipsis.
+ *
+ * Two clamped lines inside the narrowest text column a shape allows — the
+ * diamond's, which is half the block's width — hold roughly this many at 12px.
+ * The clamp is what stops the overflow; this only keeps the ellipsis honest, so
+ * a subtitle ends in "…" rather than being cut mid-word by the line clamp.
+ */
+export const CDT_TREE_SUBTITLE_MAX_CHARS = 72;
 
 /**
  * Every phrase the builder chooses between, and every one it fills with data.
@@ -140,6 +189,11 @@ export const CDT_TREE_COPY = {
      * what made this badge noise before.
      */
     unsavedTargetWarning: 'This rule has a target but no route code, so the target is never saved.',
+    /**
+     * Only when the route actually resolves: the engine breaks on `next_node`, so
+     * a route that points nowhere still lets `continue` through.
+     */
+    routedContinueWarning: 'This rule routes, so Continue is ignored — an explicit route ends evaluation.',
     ruleFallback: (oneBased: number): string => `Rule ${oneBased}`,
     /**
      * Headings of the search dropdown. The number counts drawn rules, not grid
@@ -170,7 +224,41 @@ export const CDT_TREE_COPY = {
     /** The detail window's own chrome. */
     explanationHeading: 'Explanation',
     explainStep: 'Explain Step',
-    generatedBy: (model: string): string => `Generated by: ${model}`,
+    generatedByLabel: 'Generated by:',
+
+    /**
+     * The Explanation section's states. The backend stores nothing, so an
+     * explanation is remembered in the browser instead — see CdtExplanationCacheService.
+     */
+    explanationEmpty: 'No explanation yet.',
+    explanationLoading: 'Generating an explanation…',
+
+    /** Explaining the whole table from the toolbar. */
+    explainAll: 'Explain All Steps',
+    explainAllOutdatedOnly: 'Regenerate outdated steps only',
+    explainAllBusy: (done: number, total: number): string => `Explaining ${done} / ${total}…`,
+    explainAllStop: 'Stop',
+    explainAllNothing: 'Every step already has an up-to-date explanation.',
+    explainAllNothingOutdated: 'No step is outdated.',
+    explainAllFailed: (count: number): string => `${count} step${count === 1 ? '' : 's'} could not be explained.`,
+
+    /** The model picker behind the button's chevron. */
+    explainMenuLabel: 'Choose the model that writes explanations',
+    explainNoKey: 'no API key',
+    explainNoConfigs: 'No LLMs are configured.',
+
+    /** The stale-explanation marker, on the canvas and in the window. */
+    outdatedTooltip: 'This step changed after its explanation was generated.',
+    outdatedBadge: 'Outdated',
+
+    /** Refusals, decided before any request is made. */
+    explainUnsaved: 'Save the flow before explaining a step.',
+    explainNoModel: 'Set a default LLM for this table, or on one of its prompts, before explaining a step.',
+
+    /** Failures, mapped from the endpoint's own error codes. */
+    explainModelGone: 'The LLM chosen for this table no longer exists. Pick another in the panel.',
+    explainUpstreamFailed: 'The model did not return an explanation. Try again.',
+    explainFailed: 'The explanation could not be generated.',
 } as const;
 
 export interface CdtTreeLegendItem {

@@ -16,6 +16,32 @@ import { ConditionGroup } from '../../../../core/models/decision-table.model';
 // ---------------------------------------------------------------------------
 
 /**
+ * One LLM config, as the dialog needs it: enough to label it and to know whether
+ * asking it anything can possibly work.
+ */
+export interface CdtTreeLlmOption {
+    readonly id: number;
+    /** The config's own name — the design shows it beside the model's, muted. */
+    readonly label: string;
+    /** The model the config runs, or null when the join found none. */
+    readonly modelName: string | null;
+    /**
+     * Sprite id of the provider's logo, already resolved through
+     * `getProviderIconPath` so the dialog needs no provider lookup of its own. Falls
+     * back to the app logo for a provider with no artwork.
+     */
+    readonly providerIcon: string;
+    /**
+     * Whether a secret is attached. False means a request would reach the provider
+     * with no credential and come back as an upstream failure, so the picker
+     * refuses it up front rather than spending the round trip.
+     *
+     * True is not a promise the key *works* — only that one is configured.
+     */
+    readonly hasApiKey: boolean;
+}
+
+/**
  * Minimal shape of a canvas node needed to resolve a routing target's label.
  * `NodeModel` satisfies this structurally.
  */
@@ -45,10 +71,23 @@ export interface CdtTreeConnectionRef {
  */
 export interface CdtDecisionTreeInput {
     readonly nodeId: string;
+    /**
+     * The Django pk, or null while the node has never been saved.
+     *
+     * The diagram does not need it — it is here for the explain request, whose
+     * URL is keyed by pk. A snapshot taken before the first save keeps `null`
+     * for its whole life, which is what the "save first" message is for.
+     */
+    readonly backendId: number | null;
     readonly nodeName: string;
     readonly preCode: string;
     readonly postCode: string;
     readonly preInputMap: Readonly<Record<string, string>>;
+    readonly postInputMap: Readonly<Record<string, string>>;
+    readonly preLibraries: readonly string[];
+    readonly postLibraries: readonly string[];
+    readonly preOutputVariablePath: string | null;
+    readonly postOutputVariablePath: string | null;
     readonly prompts: Readonly<Record<string, PromptConfig>>;
     readonly rows: readonly ConditionGroup[];
     readonly canvasRows: readonly ConditionGroup[];
@@ -58,6 +97,13 @@ export interface CdtDecisionTreeInput {
     readonly errorNextNode: string | null;
     readonly connections: readonly CdtTreeConnectionRef[];
     readonly nodes: readonly CdtTreeNodeRef[];
+    /** The table's default LLM, and the model the explain request runs on. */
+    readonly defaultLlmConfig: number | null;
+    /**
+     * Passed in rather than looked up, so the dialog stays a snapshot: it needs
+     * these only to turn config ids into the labels the prompt reads.
+     */
+    readonly llmConfigOptions: readonly CdtTreeLlmOption[];
 }
 
 // ---------------------------------------------------------------------------

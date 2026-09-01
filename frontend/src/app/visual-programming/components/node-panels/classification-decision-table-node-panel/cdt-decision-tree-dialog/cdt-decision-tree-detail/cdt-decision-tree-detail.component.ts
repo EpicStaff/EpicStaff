@@ -1,12 +1,13 @@
 import { animate, style, transition, trigger } from '@angular/animations';
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { CDT_TREE_COPY } from '../cdt-decision-tree.constants';
 import { CdtTreeBlock } from '../cdt-decision-tree.model';
 import { CdtDecisionTreeCodeComponent } from '../cdt-decision-tree-code/cdt-decision-tree-code.component';
-import { EXPLANATION_STUB_MODEL, EXPLANATION_STUB_TEXT } from './explanation-stub';
+import { CdtExplanationState } from '../cdt-explain.model';
 
 /**
  * The read-only detail window for one block of the decision tree.
@@ -21,7 +22,7 @@ import { EXPLANATION_STUB_MODEL, EXPLANATION_STUB_TEXT } from './explanation-stu
 @Component({
     selector: 'app-cdt-decision-tree-detail',
     standalone: true,
-    imports: [AppSvgIconComponent, CopyButtonComponent, CdtDecisionTreeCodeComponent],
+    imports: [AppSvgIconComponent, CopyButtonComponent, MatTooltipModule, CdtDecisionTreeCodeComponent],
     templateUrl: './cdt-decision-tree-detail.component.html',
     styleUrls: ['./cdt-decision-tree-detail.component.scss'],
     animations: [
@@ -47,7 +48,36 @@ export class CdtDecisionTreeDetailComponent {
     /** Only openable blocks reach this component, so `detail` is always present. */
     public readonly block = input.required<CdtTreeBlock>();
 
+    /**
+     * The explanation of the block being shown, or null when none was asked for.
+     *
+     * Owned by the dialog: this component's instance outlives a switch between
+     * blocks, so anything kept here would survive into the next block's window.
+     */
+    public readonly explanation = input<CdtExplanationState | null>(null);
+
+    /**
+     * Whether this block can be explained at all. False for the one clickable
+     * block that has nothing to send — a prompt step whose config went missing.
+     */
+    public readonly explainAvailable = input<boolean>(true);
+
+    /** Whether the model picker is showing, so the chevron can say so. */
+    public readonly explainMenuOpen = input<boolean>(false);
+
+    /**
+     * Said here as well as on the canvas marker: this is where the text is read,
+     * and a reader who opened the block from the search panel never saw the marker.
+     */
+    public readonly outdated = input<boolean>(false);
+
     public readonly closed = output<void>();
+    public readonly explainRequested = output<void>();
+    /**
+     * The chevron element, so the dialog can anchor the picker to it. The button
+     * lives here; the options and the overlay do not.
+     */
+    public readonly explainMenuRequested = output<HTMLElement>();
 
     protected readonly copy = CDT_TREE_COPY;
 
@@ -55,9 +85,22 @@ export class CdtDecisionTreeDetailComponent {
     protected readonly explanationOpen = signal(true);
     protected readonly dataOpen = signal(true);
 
-    // Stubs until the explanation endpoints exist — see `explanation-stub.ts`.
-    protected readonly explanationText = EXPLANATION_STUB_TEXT;
-    protected readonly explanationModel = EXPLANATION_STUB_MODEL;
+    /** Unpacked into three narrow reads, so the narrowing stays in TypeScript. */
+    protected readonly explanationLoading = computed(() => this.explanation()?.status === 'loading');
+
+    protected readonly explanationReady = computed(() => {
+        const state = this.explanation();
+        return state?.status === 'ready' ? state : null;
+    });
+
+    protected readonly explanationError = computed(() => {
+        const state = this.explanation();
+        return state?.status === 'error' ? state.message : null;
+    });
+
+    protected onMenuClick(event: MouseEvent): void {
+        this.explainMenuRequested.emit(event.currentTarget as HTMLElement);
+    }
 
     protected toggleExplanation(): void {
         this.explanationOpen.update((open) => !open);

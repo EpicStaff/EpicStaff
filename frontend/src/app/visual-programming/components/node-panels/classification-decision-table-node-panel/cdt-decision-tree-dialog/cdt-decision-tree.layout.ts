@@ -18,6 +18,7 @@ import {
     CDT_TREE_SUBTITLE_CODE_LINES,
     CDT_TREE_SUBTITLE_LINE_HEIGHT,
     CDT_TREE_V_GAP,
+    MIN_SIZE_BY_KIND,
     MIN_SIZE_BY_SHAPE,
     SHAPE_BY_KIND,
 } from './cdt-decision-tree.constants';
@@ -36,15 +37,18 @@ import {
 } from './cdt-decision-tree.model';
 
 /**
- * A block's box: the shape's width, and its minimum height unless a subtitle
- * needs more.
+ * A block's box.
  *
- * The subtitle clamps to a fixed number of lines in CSS, so the room it needs is
- * known without measuring anything — reserve exactly that, whether or not the
- * text fills it. A decision diamond's minimum already exceeds any content, so it
- * is always the minimum.
+ * A kind the design measured is drawn at exactly that box — the mockup already
+ * accounts for the text it holds, so growing it here would only contradict it.
+ * Every other kind keeps the derived box: the shape's width, and its minimum
+ * height unless a subtitle needs more. The subtitle clamps to a fixed number of
+ * lines in CSS, so that room is known without measuring anything.
  */
 function blockSize(block: CdtTreeBlock): CdtTreeSize {
+    const measured = MIN_SIZE_BY_KIND[block.kind];
+    if (measured) return measured;
+
     const { width, height: min } = MIN_SIZE_BY_SHAPE[SHAPE_BY_KIND[block.kind]];
     const subtitleBand = block.subtitle ? CDT_TREE_SUBTITLE_CODE_LINES * CDT_TREE_SUBTITLE_LINE_HEIGHT : 0;
 

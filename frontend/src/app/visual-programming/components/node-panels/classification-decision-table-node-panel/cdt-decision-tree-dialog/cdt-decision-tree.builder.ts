@@ -16,12 +16,7 @@ import {
     parseManipulation,
     toDisplayExpression,
 } from '../../../../utils/condition-expression.helper';
-import {
-    CDT_TREE_COPY,
-    CDT_TREE_SUBTITLE_CODE_LINES,
-    CDT_TREE_SUBTITLE_MAX_CHARS,
-    CLICKABLE_BY_KIND,
-} from './cdt-decision-tree.constants';
+import { CDT_TREE_COPY, CDT_TREE_SUBTITLE_MAX_CHARS, CLICKABLE_BY_KIND } from './cdt-decision-tree.constants';
 import {
     CdtDecisionTreeInput,
     CdtTree,
@@ -41,10 +36,9 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
     const blocks: CdtTreeBlock[] = [];
     const edges: CdtTreeEdge[] = [];
 
-    const enabledRows = sortRows(input.rows.filter((row) => row.dock_visible !== false));
+    const enabledRows = enabledRowsInOrder(input.rows);
     const hiddenRowCount = input.rows.length - enabledRows.length;
     const routeCodeCounts = countRouteCodes(enabledRows);
-    const canvasRowsByRoute = indexCanvasRowsByRoute(input.canvasRows);
 
     // -- head of the spine ---------------------------------------------------
 
@@ -63,7 +57,10 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                 id: 'spine:pre-computation',
                 kind: 'pre-computation',
                 title: 'Pre-computation',
-                subtitle: codePreview(preCode),
+                // No preview: the two banded edges leave the shape narrower than it looks,
+                // and the whole script is one click away in the detail window. Search
+                // still reaches it through `detail.body`.
+                subtitle: null,
                 detail: { heading: CDT_TREE_COPY.detailPythonCode, language: 'python', body: preCode },
             })
         );
@@ -76,7 +73,10 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                 id: 'spine:read-variables',
                 kind: 'read-variables',
                 title: 'Read variables',
-                subtitle: clamp(inputMapPairs.map(([key, value]) => `${key} → ${value}`).join(', ')),
+                // Title only, as with the computation steps: the pairs are a list, and
+                // a list reads in the detail window, not squeezed onto one clipped
+                // line. Search still reaches them through `detail.body`.
+                subtitle: null,
                 detail: {
                     heading: 'Variables bound before evaluation',
                     language: 'text',
@@ -106,7 +106,8 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                   id,
                   kind: 'post-computation',
                   title: 'Post-computation',
-                  subtitle: codePreview(postCode),
+                  // Same as pre-computation above: title only.
+                  subtitle: null,
                   detail: { heading: CDT_TREE_COPY.detailPythonCode, language: 'python', body: postCode },
               })
             : null;
@@ -132,7 +133,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
     // Built unconditionally it left a "Related node" — and, with a post-code, a
     // second copy of the post-computation — standing on the canvas with nothing
     // leading to them, on every table that routes nowhere.
-    const rowTargets = enabledRows.map((row) => resolveRowTarget(row, input, canvasRowsByRoute));
+    const rowTargets = resolveRowTargets(input);
     const anyRouted = rowTargets.some((target) => target.state === 'node');
 
     const routePost = anyRouted ? postComputation('exit:route:post') : null;
@@ -150,9 +151,10 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
 
     // -- the rules region ----------------------------------------------------
     //
-    // Created before the rules so it is emitted first and therefore renders behind
-    // them. It exists as a block because the `Error` edge leaves the whole region
-    // and Foblex needs a real element to carry that connector.
+    // It exists as a block because the `Error` edge leaves the whole region and
+    // Foblex needs a real element to carry that connector. It is emitted after the
+    // rules, so it also paints over them — harmless for the stroke, not harmless for
+    // hit testing, which is why its host is `pointer-events: none` in the block.
 
     const region = enabledRows.length > 0 ? block(blocks, { id: 'rules:region', kind: 'rules-region' }) : null;
 
@@ -184,7 +186,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
             subtitle: rowExpressionSubtitle(row),
             detail: rowExpressionDetail(row),
             chip: chipForSharedRoute(row, routeCodeCounts),
-            warning: unsavedTargetWarning(row),
+            warning: rowWarning(row, target),
             target,
         });
 
@@ -457,13 +459,27 @@ function terminatorContent(
 }
 
 /**
- * A rule with a target but no route code loses that target on save — `payload.ts`
+ * What is off about a rule, if anything — one line, because a block shows one
+ * badge, ordered by how much misreading it costs.
+ *
+ * A rule with a target but no route code loses that target on save: `payload.ts`
  * only persists one when a route code is present. A rule with neither is an
  * enrichment step that falls through by design and gets no badge.
+ *
+ * A rule that both routes and continues is the one that reads as broken tooling.
+ * The engine checks `next_node` first and breaks, so `continue_flag` is never
+ * read — the tick does nothing, and without a badge the diagram simply ignores
+ * it in silence.
  */
-function unsavedTargetWarning(row: ConditionGroup): string | null {
+function rowWarning(row: ConditionGroup, target: CdtTreeTarget): string | null {
     const routed = !!row.route_code?.trim();
-    return !routed && !!row.next_node ? CDT_TREE_COPY.unsavedTargetWarning : null;
+    if (!routed && !!row.next_node) return CDT_TREE_COPY.unsavedTargetWarning;
+
+    const continues = row.continue_flag ?? row.continue ?? false;
+    // `target.state === 'node'` rather than the mere presence of a route code:
+    // the engine breaks on a resolved target, and a route that resolves to
+    // nothing does let `continue` through.
+    return target.state === 'node' && continues ? CDT_TREE_COPY.routedContinueWarning : null;
 }
 
 function compact(ids: readonly (string | null)[]): string[] {
@@ -474,7 +490,24 @@ function compact(ids: readonly (string | null)[]): string[] {
 // Small helpers
 // ---------------------------------------------------------------------------
 
-function sortRows(rows: readonly ConditionGroup[]): ConditionGroup[] {
+/**
+ * The rows the diagram draws, in evaluation order.
+ *
+ * Exported because `row-<i>:*` block ids index into this list: anything that maps
+ * an id back to its rule — the explain payload does — has to apply the same filter
+ * and the same sort, and one shared function is the only way to be sure it does.
+ */
+export function enabledRowsInOrder(rows: readonly ConditionGroup[]): ConditionGroup[] {
+    return sortRowsByOrder(rows.filter((row) => row.dock_visible !== false));
+}
+
+/** Each drawn row's routing target, aligned index-for-index with `enabledRowsInOrder`. */
+export function resolveRowTargets(input: CdtDecisionTreeInput): CdtTreeTarget[] {
+    const canvasRowsByRoute = indexCanvasRowsByRoute(input.canvasRows);
+    return enabledRowsInOrder(input.rows).map((row) => resolveRowTarget(row, input, canvasRowsByRoute));
+}
+
+export function sortRowsByOrder(rows: readonly ConditionGroup[]): ConditionGroup[] {
     // Same comparator as `payload.ts`, so diagram order equals persisted order.
     // Array.prototype.sort is stable, so rows without an `order` keep grid order.
     return [...rows].sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
@@ -503,15 +536,6 @@ function chipForSharedRoute(row: ConditionGroup, counts: Map<string, number>): s
     const code = row.route_code?.trim();
     if (!code) return null;
     return (counts.get(code) ?? 0) > 1 ? CDT_TREE_COPY.sharedRouteChip(code) : null;
-}
-
-function codePreview(code: string): string {
-    const lines = code
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => !!line)
-        .slice(0, CDT_TREE_SUBTITLE_CODE_LINES);
-    return clamp(lines.join(' '));
 }
 
 function clamp(text: string): string {

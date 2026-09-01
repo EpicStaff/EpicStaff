@@ -8,7 +8,10 @@
             aria-label="Close"
             (click)="close()"
         >
-            <app-svg-icon icon="x" />
+            <app-svg-icon
+                icon="close"
+                size="1.25rem"
+            />
         </button>
     </header>
 
@@ -118,11 +121,81 @@
                     </div>
                 }
 
-                @if (layout.hiddenRowCount > 0) {
-                    <span class="cdt-tree__hidden-chip">
-                        {{ layout.hiddenRowCount }} disabled {{ layout.hiddenRowCount === 1 ? 'rule' : 'rules' }} hidden
-                    </span>
-                }
+                <!-- One group for the right edge: the chip used to claim it alone. -->
+                <div class="cdt-tree__toolbar-actions">
+                    <!-- Why a press did nothing. The dialog shows no toasts. -->
+                    @if (explainAllNotice(); as notice) {
+                        <span
+                            class="cdt-tree__explain-all-notice"
+                            role="status"
+                            [title]="notice"
+                            >{{ notice }}</span
+                        >
+                    }
+
+                    @if (layout.hiddenRowCount > 0) {
+                        <span class="cdt-tree__hidden-chip">
+                            {{ layout.hiddenRowCount }} {{ layout.hiddenRowCount === 1 ? 'rule' : 'rules' }} hidden
+                        </span>
+                    }
+
+                    <!--
+                        The same split control as the detail window's. The label is
+                        dropped while that window is docked: the one state where the
+                        toolbar has no room for it.
+                    -->
+                    <div class="cdt-tree__explain-all">
+                        <button
+                            class="cdt-tree__explain-all-run"
+                            type="button"
+                            [attr.aria-label]="copy.explainAll"
+                            [disabled]="explainAllRunning()"
+                            [attr.aria-busy]="explainAllRunning()"
+                            (click)="explainAll()"
+                        >
+                            <app-svg-icon
+                                icon="sparkles"
+                                size="12px"
+                            />
+                            @if (!selectedBlock()) {
+                                <span class="cdt-tree__explain-all-label">
+                                    @if (explainAllRunning()) {
+                                        {{ copy.explainAllBusy(explainAllDone(), explainAllTotal()) }}
+                                    } @else {
+                                        {{ copy.explainAll }}
+                                    }
+                                </span>
+                            }
+                        </button>
+
+                        <span class="cdt-tree__explain-all-divider"></span>
+
+                        <button
+                            #explainAllChevron
+                            class="cdt-tree__explain-all-menu"
+                            type="button"
+                            aria-haspopup="menu"
+                            [attr.aria-label]="copy.explainMenuLabel"
+                            [attr.aria-expanded]="isExplainMenuOpen() && explainMenuScope() === 'all'"
+                            (click)="openExplainMenu(explainAllChevron, 'all')"
+                        >
+                            <app-svg-icon
+                                icon="chevron-down"
+                                size="0.75rem"
+                            />
+                        </button>
+                    </div>
+
+                    @if (explainAllRunning()) {
+                        <button
+                            class="cdt-tree__explain-all-stop"
+                            type="button"
+                            (click)="stopExplainAll()"
+                        >
+                            {{ copy.explainAllStop }}
+                        </button>
+                    }
+                </div>
             </div>
 
             <div class="cdt-tree__canvas">
@@ -168,10 +241,17 @@
                                 </svg>
 
                                 @if (edge.label) {
+                                    <!--
+                                        `offset` is perpendicular to the path, so a
+                                        negative value clears the line rather than
+                                        sitting on it — the chip is opaque and was
+                                        cutting a gap out of its own edge.
+                                    -->
                                     <div
                                         fConnectionContent
                                         class="cdt-tree-edge__label"
                                         [position]="0.5"
+                                        [offset]="edgeLabelOffset"
                                     >
                                         {{ edge.label }}
                                     </div>
@@ -190,6 +270,8 @@
                                 [block]="block"
                                 [dimmed]="isDimmed(block.id)"
                                 [matched]="isMatched(block.id)"
+                                [selected]="isSelected(block.id)"
+                                [outdated]="isOutdated(block.id)"
                                 (detailRequested)="openDetail(block)"
                             />
                         }
@@ -226,12 +308,78 @@
                 class="cdt-tree__detail"
                 [@panelSlide]
                 [block]="block"
+                [explanation]="selectedExplanation()"
+                [explainAvailable]="canExplainSelected()"
+                [explainMenuOpen]="isExplainMenuOpen()"
+                [outdated]="selectedOutdated()"
                 (@panelSlide.done)="onDetailSettled()"
                 (closed)="closeDetail()"
+                (explainRequested)="explainSelectedBlock()"
+                (explainMenuRequested)="openExplainMenu($event, 'step')"
             />
         }
     </div>
 </div>
+
+<!--
+    The model picker. Declared here because the options and the overlay belong to
+    the dialog; only the anchor comes from a button. CDK moves the pane out to
+    `.cdk-overlay-container`, so its rules use global tokens, never a `:host` alias.
+-->
+<ng-template #explainMenuTpl>
+    <div
+        class="cdt-tree-explain-menu"
+        role="menu"
+        [attr.aria-label]="copy.explainMenuLabel"
+    >
+        @for (option of explainLlmOptions; track option.id) {
+            <button
+                class="cdt-tree-explain-menu__item"
+                type="button"
+                role="menuitemradio"
+                [disabled]="!option.hasApiKey"
+                [attr.aria-checked]="option.id === explainLlmConfig()"
+                (click)="selectExplainLlm(option)"
+            >
+                <app-svg-icon
+                    class="cdt-tree-explain-menu__logo"
+                    size="18px"
+                    [icon]="option.providerIcon"
+                />
+
+                <!-- The model leads: two configs can run the same one. -->
+                <span class="cdt-tree-explain-menu__name">{{ option.modelName ?? option.label }}</span>
+
+                @if (option.modelName) {
+                    <span class="cdt-tree-explain-menu__config">({{ option.label }})</span>
+                }
+
+                @if (!option.hasApiKey) {
+                    <span class="cdt-tree-explain-menu__note">{{ copy.explainNoKey }}</span>
+                } @else if (option.id === explainLlmConfig()) {
+                    <app-svg-icon
+                        class="cdt-tree-explain-menu__check"
+                        icon="check"
+                        size="14px"
+                    />
+                }
+            </button>
+        } @empty {
+            <p class="cdt-tree-explain-menu__empty">{{ copy.explainNoConfigs }}</p>
+        }
+
+        <!-- Only Explain All has something to scope, and it stays set. -->
+        @if (explainMenuScope() === 'all') {
+            <label class="cdt-tree-explain-menu__toggle">
+                <app-checkbox
+                    [checked]="explainOutdatedOnly()"
+                    (changed)="toggleExplainOutdatedOnly()"
+                />
+                {{ copy.explainAllOutdatedOnly }}
+            </label>
+        }
+    </div>
+</ng-template>
 
 <ng-template #searchTpl>
     <app-cdt-decision-tree-search

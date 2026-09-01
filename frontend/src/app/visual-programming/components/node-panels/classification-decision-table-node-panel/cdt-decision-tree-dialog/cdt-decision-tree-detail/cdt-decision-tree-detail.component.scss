@@ -40,12 +40,23 @@
     flex-shrink: 0;
     gap: 0.6rem;
     align-items: center;
-    padding: 0.65rem 0.75rem 0.65rem 1rem;
+    padding: 11px 30px;
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
-.cdt-tree-detail__title {
+// The pair takes the header's slack, so the controls stay at the right edge while
+// the marker stays 16px from the end of the name. The title itself must not grow —
+// growing is what used to push the marker all the way across.
+.cdt-tree-detail__heading-group {
+    display: flex;
     flex: 1 1 auto;
+    gap: 16px;
+    align-items: center;
+    min-width: 0;
+}
+
+.cdt-tree-detail__title {
+    flex: 0 1 auto;
     min-width: 0;
     margin: 0;
     overflow: hidden;
@@ -58,12 +69,28 @@
     white-space: nowrap;
 }
 
-.cdt-tree-detail__explain {
+// The frame belongs to the pair, not to either half: one border around both is
+// what makes them read as one control, and it keeps the divider a hairline
+// between them rather than two borders meeting.
+.cdt-tree-detail__explain-group {
     display: inline-flex;
     flex-shrink: 0;
-    gap: 0.5rem;
+    align-items: stretch;
+    overflow: hidden;
+    background: var(--cdt-detail-raised);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
+
+    &:hover:has(button:not(:disabled)) {
+        border-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent);
+    }
+}
+
+.cdt-tree-detail__explain,
+.cdt-tree-detail__explain-menu {
+    display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
-    padding: 0.4rem 0.6rem;
     font-family: inherit;
     // 12px / 500 / 100%
     font-size: 0.75rem;
@@ -71,23 +98,53 @@
     line-height: 1;
     color: var(--color-text-primary);
     cursor: pointer;
-    background: var(--cdt-detail-raised);
-    border: 1px solid var(--color-divider-regular);
-    border-radius: 6px;
+    background: transparent;
+    border: none;
 
-    &:hover {
+    &:hover:not(:disabled) {
+        background: var(--color-secondary-btn-background-hover);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.5;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+.cdt-tree-detail__explain {
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+
+    &:hover:not(:disabled) {
         // `--color-divider-strong` does not exist in this project — it fell back to
         // `--color-divider-regular`, which is the resting border, so this hover did
         // nothing at all. Mixed from a real token instead; the divider tokens are
         // low-alpha hairlines with no stronger sibling to reach for.
-        border-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent);
+        // Kept as a no-op override of the shared rule above: the frame draws the
+        // hover, and a background on the label half would only make the pair look
+        // like two controls again.
+        background: transparent;
+    }
+}
+
+.cdt-tree-detail__explain-menu {
+    padding: 0.4rem 0.45rem;
+    color: var(--color-text-secondary);
+
+    &:hover:not(:disabled) {
+        color: var(--color-text-primary);
     }
 }
 
 .cdt-tree-detail__explain-divider {
+    flex-shrink: 0;
     align-self: stretch;
     width: 1px;
-    margin-left: 0.1rem;
     background: var(--color-divider-regular);
 }
 
@@ -124,9 +181,9 @@
     overflow-y: auto;
 }
 
-// One block of the window: 24/60/24/30 padding and 16px gap per the design, here
-// rather than on the header and body — `height: 0` does not collapse padding, so a
-// padded body would leave a band behind when shut.
+// One block of the window: 24px top and bottom, the window's 30px sides, 16px gap.
+// The padding sits here rather than on the header and body — `height: 0` does not
+// collapse padding, so a padded body would leave a band behind when shut.
 //
 // The design gives every block a top *and* bottom rule, so adjacent blocks would
 // draw a 2px seam; each one after the first is pulled up a pixel to overlap.
@@ -134,7 +191,7 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    padding: 1.5rem 3.75rem 1.5rem 1.875rem;
+    padding: 24px 30px;
     border-top: 1px solid var(--color-divider-subtle);
     border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -213,8 +270,41 @@
     word-break: break-word;
 }
 
+// Inside the section header, after the title, so it reads as part of the heading.
+// 28px with 4px/8px/4px/4px padding per the design: the left inset is smaller
+// because the icon carries its own optical margin.
+.cdt-tree-detail__outdated {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 9px;
+    align-items: center;
+    min-height: 28px;
+    padding: 8px;
+    font-size: 12px;
+    // The same value the canvas marker uses, aliased on the dialog's `:host`.
+    color: var(--cdt-tree-outdated);
+    white-space: nowrap;
+    // The design's #EFD6160F: the marker's colour at 6%.
+    background: color-mix(in srgb, var(--cdt-tree-outdated) 6%, transparent);
+    border-radius: 4px;
+}
+
+.cdt-tree-detail__explanation--muted {
+    color: var(--color-text-secondary);
+}
+
+.cdt-tree-detail__explanation--error {
+    color: var(--color-error);
+}
+
 .cdt-tree-detail__generated {
     margin: 1rem 0 0;
-    font-size: 0.75rem;
+    font-size: 12px;
     color: var(--color-text-secondary);
+}
+
+// The model name after the colon is the design's #D9D9DE — the primary text token,
+// so the label stays secondary and only the value reads as the answer.
+.cdt-tree-detail__generated-model {
+    color: var(--color-text-primary);
 }
