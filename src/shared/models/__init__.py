@@ -28,6 +28,7 @@ from .ai_providers import (
 )
 from .graph_nodes import (
     PythonNodeData,
+    KnowledgeNodeData,
     FileExtractorNodeData,
     AudioTranscriptionNodeData,
     ConditionData,
@@ -68,6 +69,7 @@ from .surfaces import (
     CombinedSurfaceData,
 )
 from .knowledge import (
+    KnowledgeStatus,
     BaseRagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
@@ -154,6 +156,7 @@ __all__ = [
     "WebhookConfigData",
     # graph_nodes
     "PythonNodeData",
+    "KnowledgeNodeData",
     "FileExtractorNodeData",
     "AudioTranscriptionNodeData",
     "ConditionData",
@@ -192,6 +195,7 @@ __all__ = [
     "CombinedSurfaceKnowledgeData",
     "CombinedSurfaceData",
     # knowledge
+    "KnowledgeStatus",
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
     "GraphRagSearchConfig",

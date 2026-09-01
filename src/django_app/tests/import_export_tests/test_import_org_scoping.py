@@ -148,9 +148,7 @@ class TestMcpAndLabelCrossOrg:
             org_id=default_org.id,
         )
 
-        new_graph = Graph.objects.get(
-            id=id_mapper.get_created_ids(EntityType.GRAPH)[0]
-        )
+        new_graph = Graph.objects.get(id=id_mapper.get_created_ids(EntityType.GRAPH)[0])
         new_graph_label_names = set(new_graph.labels.values_list("name", flat=True))
         assert "flow-label" in new_graph_label_names
         assert "tool-label" not in new_graph_label_names
@@ -182,7 +180,7 @@ class TestHybridCrossOrg:
 
 @pytest.mark.django_db
 class TestProviderRealtimeConfigCrossOrg:
-    """EST-3629/3630 follow-up: OpenAIRealtimeConfig (and its Eleven/Gemini
+    """OpenAIRealtimeConfig (and its Eleven/Gemini
     siblings, same base strategy) now own `org` NOT NULL — create_entity must
     stamp it, and find_existing/uniqueness must not leak across orgs."""
 
@@ -212,9 +210,7 @@ class TestProviderRealtimeConfigCrossOrg:
         strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
         export_data = {
             "main_entity": EntityType.OPENAI_REALTIME_CONFIG,
-            EntityType.OPENAI_REALTIME_CONFIG: [
-                strategy.export_entity(existing)
-            ],
+            EntityType.OPENAI_REALTIME_CONFIG: [strategy.export_entity(existing)],
         }
 
         id_mapper, _ = _import(export_data, org_b.id)

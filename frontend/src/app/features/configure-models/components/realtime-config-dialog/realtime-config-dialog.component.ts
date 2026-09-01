@@ -88,6 +88,9 @@ export class RealtimeConfigDialogComponent implements OnInit {
                 'gpt-realtime-1.5',
             Validators.required,
         ],
+        base_url: [
+            (this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.base_url : null) ?? '',
+        ],
         transcription_model_name: [
             (this.data.provider === 'openai'
                 ? (this.data.config as OpenAIRealtimeConfig)?.transcription_model_name

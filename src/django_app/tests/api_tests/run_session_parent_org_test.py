@@ -1,6 +1,6 @@
 """
 Tests for the org-ownership validation of `parent_session_id` on
-POST /api/run-session/ (EST-3285 item 5.2 fix).
+POST /api/run-session/.
 
 A `parent_session_id` must only be accepted when the parent Session's graph
 belongs to the SAME organization as the graph/session being created. This
@@ -9,7 +9,7 @@ later read back, via the recursion-guard walk over GET /api/sessions/<id>/ --
 a session belonging to a different organization by simply passing its id as
 parent_session_id.
 
-NOTE: rewritten for EST-2423 RBAC org-scoping (main). Graph.org is now a
+NOTE: rewritten for RBAC org-scoping (main). Graph.org is now a
 required FK (see migrations 0185/0186) and is the sole org boundary enforced
 by `RunSession.post` -- the older `GraphOrganization` model is unrelated to
 org ownership post-RBAC (it only carries persistent "user_variables" for a

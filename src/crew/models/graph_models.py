@@ -132,6 +132,18 @@ class ConditonGroupManipulationMessageData:
 
 
 @dataclass
+class NodeExtractedChunksMessageData:
+    knowledge_query: str
+    collection_id: int
+    retrieved_chunks: int
+    rag_search_config: dict
+    chunks: list[dict]
+    token_usage: dict
+    input: object
+    message_type: str = "extracted_chunks"
+
+
+@dataclass
 class ClassificationPromptMessageData:
     prompt_id: str
     prompt_text: str

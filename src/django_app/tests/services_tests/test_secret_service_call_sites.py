@@ -160,7 +160,7 @@ class TestTelegramRegistrationReadsSecret:
             session_manager_service=SimpleNamespace(),
             webhook_trigger_service=SimpleNamespace(
                 wait_for_tunnel_url_for_trigger=lambda trigger: "https://tunnel.test",
-                # EST-3862: register_telegram_trigger now unconditionally
+                # register_telegram_trigger now unconditionally
                 # pushes the WebhookNodeAuth credential before calling
                 # Telegram -- needs this on the stub too.
                 register_webhooks=lambda: True,

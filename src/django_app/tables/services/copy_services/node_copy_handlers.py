@@ -7,6 +7,7 @@ from agents.services.surface_content_service import (
 )
 from tables.import_export.enums import NodeType
 from tables.models import Graph
+from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
@@ -19,6 +20,7 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -122,6 +124,31 @@ def copy_telegram_trigger_node(
             field_name=field.field_name,
             variable_path=field.variable_path,
         )
+    return new_node
+
+
+def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
+    new_node = KnowledgeNode.objects.create(
+        graph=graph,
+        source_collection=node.source_collection,
+        rag_type=node.rag_type,
+        rag_id=node.rag_id,
+        query=node.query,
+        search_method=node.search_method,
+        **get_base_node_fields(node),
+    )
+    for relation in KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS:
+        # Reverse OneToOne raises RelatedObjectDoesNotExist (a subclass of
+        # AttributeError) when absent, so getattr default returns None.
+        config = getattr(node, relation, None)
+        if config is None:
+            continue
+        field_values = {
+            f.name: getattr(config, f.name)
+            for f in config._meta.fields
+            if f.name not in ("id", "knowledge_node")
+        }
+        type(config).objects.create(knowledge_node=new_node, **field_values)
     return new_node
 
 
@@ -308,4 +335,8 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     ),
     NodeType.TASK_NODE: ("task_node_list", copy_task_node),
     NodeType.AGENT_NODE: ("agent_node_list", copy_agent_node),
+    NodeType.KNOWLEDGE_NODE: (
+        "knowledge_node_list",
+        copy_knowledge_node,
+    ),
 }

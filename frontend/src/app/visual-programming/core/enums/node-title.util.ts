@@ -29,6 +29,7 @@ export function getNodeTitle(node: NodeModel): string {
         case NodeType.AUDIO_TO_TEXT:
         case NodeType.WEBHOOK_TRIGGER:
         case NodeType.TELEGRAM_TRIGGER:
+        case NodeType.KNOWLEDGE_RETRIEVER:
         case NodeType.SCHEDULE_TRIGGER:
         case NodeType.TASK:
         case NodeType.AGENT:

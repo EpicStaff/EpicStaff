@@ -20,6 +20,7 @@ LIST_KEY_TO_ENTITY_TYPE: dict[str, EntityType] = {
     "subgraph_node_list": EntityType.SUBGRAPH_NODE,
     "graph_note_list": EntityType.NOTE_NODE,
     "schedule_trigger_node_list": EntityType.SCHEDULE_TRIGGER_NODE,
+    "knowledge_node_list": EntityType.KNOWLEDGE_NODE,
     "agent_node_list": EntityType.AGENT_NODE,
     "task_node_list": EntityType.TASK_NODE,
 }

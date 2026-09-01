@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     DJANGO_HOST: str = "django_app"
     DJANGO_PORT: int = 8000
 
+    # --- CORS ---
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.CORS_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
+
     @property
     def DJANGO_API_BASE_URL(self) -> str:
         return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api"

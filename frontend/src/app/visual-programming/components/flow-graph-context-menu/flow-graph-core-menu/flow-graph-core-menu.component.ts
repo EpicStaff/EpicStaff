@@ -173,6 +173,12 @@ export class FlowGraphCoreMenuComponent {
             icon: NODE_ICONS[NodeType.AGENT],
             color: NODE_COLORS[NodeType.AGENT],
         },
+        {
+            label: 'Knowledge Retriever',
+            type: NodeType.KNOWLEDGE_RETRIEVER,
+            icon: NODE_ICONS[NodeType.KNOWLEDGE_RETRIEVER],
+            color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
+        },
     ];
 
     public onBlockClicked(type: NodeType): void {
@@ -243,6 +249,8 @@ export class FlowGraphCoreMenuComponent {
                 fields: [],
             };
         } else if (type === NodeType.SCHEDULE_TRIGGER) {
+            data = null;
+        } else if (type === NodeType.KNOWLEDGE_RETRIEVER) {
             data = null;
         } else if (type === NodeType.END) {
             data = null;

@@ -1,5 +1,5 @@
 """
-EST-1869 security fix: `RealtimeAgentChatData.org_id` binds a realtime session
+Security fix: `RealtimeAgentChatData.org_id` binds a realtime session
 to the org that owns it, so the `realtime` service can reject a WS connect
 attempt made with a valid user token that does not belong to that org (see
 `src/realtime/api/main.py`'s `root()` handler). Before this fix, the payload
