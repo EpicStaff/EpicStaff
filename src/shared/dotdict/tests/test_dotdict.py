@@ -234,7 +234,7 @@ def test_dotlist_model_dump_mixed_types():
 def test_pydantic_serialize_none_dotdict_field_does_not_raise():
     """Regression test: bare Optional DotDict field with value None must
     serialize to None instead of crashing with AttributeError on
-    `None.deep_dump()` (EST-3285 smoke test bug)."""
+    `None.deep_dump()` (smoke test bug)."""
     from pydantic import BaseModel
 
     class Model(BaseModel):

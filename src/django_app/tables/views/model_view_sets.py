@@ -163,6 +163,7 @@ from tables.models.graph_models import (
     ConditionGroup,
     DecisionTableNode,
     EndNode,
+    KnowledgeNode,
     GraphOrganization,
     GraphOrganizationUser,
     GraphNote,
@@ -261,6 +262,9 @@ from tables.serializers.model_serializers import (
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
+    KnowledgeNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    KnowledgeNodeWriteSerializer,
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
@@ -317,6 +321,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.classification_decision_table_node_service import (
     ClassificationDecisionTableNodeService,
 )
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
@@ -1100,6 +1105,15 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                 ),
                 "start_node_list",
                 Prefetch("graph_note_list", queryset=GraphNote.objects.all()),
+                Prefetch(
+                    "knowledge_node_list",
+                    queryset=KnowledgeNode.objects.select_related(
+                        "source_collection",
+                        "naive_search_config",
+                        "graph_basic_search_config",
+                        "graph_local_search_config",
+                    ),
+                ),
             )
             .all()
         )
@@ -1524,6 +1538,36 @@ class FileExtractorNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = FileExtractorNode.objects.all()
     serializer_class = FileExtractorNodeSerializer
+
+
+class KnowledgeNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = KnowledgeNode.objects.select_related(
+        "naive_search_config",
+        "graph_basic_search_config",
+        "graph_local_search_config",
+    )
+    serializer_class = KnowledgeNodeWriteSerializer
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return KnowledgeNodeReadSerializer
+        return KnowledgeNodeWriteSerializer
+
+    def perform_create(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_update(serializer)
 
 
 class AudioTranscriptionNodeViewSet(
@@ -2858,7 +2902,7 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is enforced in two
+    OrgScopedModel) — org isolation is enforced in two
     layers here: `HasOrgPermission` checks that the caller's role has
     VOICE:UPDATE permission in their active org (a generic role-bit check,
     with no knowledge of this specific channel), and the manual

@@ -1,4 +1,3 @@
-import posixpath
 import tarfile
 import zipfile
 from abc import ABC, abstractmethod
@@ -15,6 +14,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 
 
 class AbstractStorageBackend(ABC):
@@ -68,23 +68,7 @@ class AbstractStorageBackend(ABC):
 
     def _sanitize_archive_member_name(self, name: str) -> str:
         """Raise ValueError if an archive member name can escape the extraction folder."""
-        if not name:
-            raise ValueError("Archive member has an empty name")
-
-        if "\x00" in name:
-            raise ValueError(f"Archive member name contains a null byte: {name!r}")
-
-        normalized = posixpath.normpath(name.replace("\\", "/"))
-
-        if (
-            posixpath.isabs(normalized)
-            or normalized.startswith("/")
-            or normalized == ".."
-            or normalized.startswith("../")
-        ):
-            raise ValueError(f"Archive member name escapes the target folder: {name!r}")
-
-        return normalized
+        return sanitize_storage_path(name, allow_empty=False)
 
     def _iter_archive_entries(
         self, archive_file, guard: ArchiveExtractionGuard | None = None

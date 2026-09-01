@@ -1,4 +1,4 @@
-"""Tests for EST-3285 4.2c: run-level token budget hard stop.
+"""run-level token budget hard stop.
 
 These tests exercise GraphSessionManagerService.run_session() directly,
 stubbing out SessionGraphBuilder.compile_from_schema() so we can control
