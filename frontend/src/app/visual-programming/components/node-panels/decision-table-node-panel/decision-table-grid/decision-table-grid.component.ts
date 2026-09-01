@@ -9,7 +9,6 @@ import {
     output,
     signal,
 } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -23,8 +22,8 @@ import {
     themeQuartz,
 } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
+import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { NodeType } from '../../../../core/enums/node-type';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
@@ -38,7 +37,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 @Component({
     selector: 'app-decision-table-grid',
     standalone: true,
-    imports: [AgGridModule, ButtonComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [AgGridModule, ButtonComponent, HelpTooltipComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
