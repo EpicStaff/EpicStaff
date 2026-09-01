@@ -283,6 +283,30 @@
             &.Note:not(.f-selected) {
                 fill: #ffffd1;
             }
+            &.File-Extractor:not(.f-selected) {
+                fill: #2196f3;
+            }
+            &.End:not(.f-selected) {
+                fill: #d3d3d3;
+            }
+            &.Classification-Decision-Table:not(.f-selected) {
+                fill: #2a5bd7;
+            }
+            &.Audio-to-text:not(.f-selected) {
+                fill: #ff7be9;
+            }
+            &.Webhook-Trigger:not(.f-selected) {
+                fill: #21f367;
+            }
+            &.Telegram-Trigger:not(.f-selected) {
+                fill: #229ed9;
+            }
+            &.Flow-Node:not(.f-selected) {
+                fill: #00bfa5;
+            }
+            &.Schedule-Trigger:not(.f-selected) {
+                fill: #ff5c00;
+            }
         }
     }
     .f-connections-dragging {
