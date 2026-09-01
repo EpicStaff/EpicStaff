@@ -8,24 +8,13 @@ GROUNDING_PROMPT_PATCH = """
 
 ---Data Grounding Rules---
 
-Base your response only on the information found in the provided data tables.
-Do not supplement answers with general knowledge or training data.
-If the data tables do not contain information that directly answers the question,
-but contain something related or partially matching, highlight what is available
-and clarify how it differs from what was asked.
-If the data tables contain no relevant information at all, let the user know
-that the available documents do not cover this topic.
+Base your response strictly and only on the information found in the provided data tables.
+Do not use general knowledge or training data. Do not suggest, recommend, or reference any
+external source (websites, social networks, documentation, etc.). Do not add any statement,
+elaboration, or framing that is not directly present in the data tables. If the data tables
+contain something only partially related, report solely what is present, without speculation.
 
 ---End of Data Grounding Rules---"""
-
-DRIFT_RESPONSE_LENGTH_PROMPT_PATCH = """
-
----Response Length Override---
-
-Disregard any fixed character-count requirement stated above for the intermediate_answer.
-Make it as complete as the available data allows; do not truncate or pad to a fixed length.
-
----End of Response Length Override---"""
 
 _is_patched = False
 
@@ -40,9 +29,7 @@ def patch_graphrag_prompts() -> None:
     _local.LOCAL_SEARCH_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
     _global.MAP_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
     _global.REDUCE_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
-    _drift.DRIFT_LOCAL_SYSTEM_PROMPT += (
-        GROUNDING_PROMPT_PATCH + DRIFT_RESPONSE_LENGTH_PROMPT_PATCH
-    )
+    _drift.DRIFT_LOCAL_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
     _drift.DRIFT_REDUCE_PROMPT += GROUNDING_PROMPT_PATCH
 
     def _load_search_prompt(prompt_config: str | None) -> str | None:

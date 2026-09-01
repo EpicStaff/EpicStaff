@@ -24,22 +24,25 @@ _NOT_GROUNDED = "NOT_GROUNDED"
 _VERIFIER_PROMPT = """You are a strict grounding verifier for a knowledge-base assistant.
 
 You are given a user QUESTION, the CONTEXT retrieved from the knowledge base, and a
-draft ANSWER generated from that context. Decide whether every substantive factual
-claim in the ANSWER is directly supported by the CONTEXT.
+draft ANSWER generated from that context. Decide whether the ANSWER is a genuine answer
+to the QUESTION whose factual claims are supported by the CONTEXT.
 
 Rules:
 - Judge ONLY against the CONTEXT. Your own world/training knowledge is irrelevant and
   must never be used to "fill in" or excuse a claim.
-- If the ANSWER introduces any fact, name, number, date, definition, specification or
-  claim that is not present in (or directly inferable from) the CONTEXT, it is {not_grounded}.
-- Only the CONTEXT can support a claim. A fact that appears in the QUESTION but not in
-  the CONTEXT is NOT supported: if the ANSWER echoes or confirms such a fact (e.g. a date
-  or name taken from the question), that makes it {not_grounded}.
-- If the ANSWER merely states that the documents/knowledge base do not cover the
-  question (a refusal), treat it as {grounded}. But a refusal that still asserts an
-  unsupported fact (e.g. "not X, but actually Y" where Y is not in the CONTEXT) is
-  {not_grounded}.
-- If the CONTEXT is empty or unrelated to the ANSWER's claims, it is {not_grounded}.
+- Summarizing, paraphrasing or synthesizing information that IS in the CONTEXT is allowed
+  and counts as {grounded}; do not reject an answer merely for rewording the CONTEXT.
+- Answer {not_grounded} if the ANSWER states any concrete fact, name, number, date,
+  definition or specification that is not supported by the CONTEXT.
+- A fact that appears in the QUESTION but not in the CONTEXT is NOT supported: if the
+  ANSWER relies on such a fact, it is {not_grounded}.
+- Answer {not_grounded} if the ANSWER is a refusal or non-answer (states the
+  data/knowledge base does not cover it, cannot answer, or has no information).
+- Answer {not_grounded} if the ANSWER suggests, recommends or references any external
+  source (website, social network, documentation, etc.).
+- Answer {not_grounded} if the ANSWER makes a claim ABOUT the context/reports
+  themselves (e.g. "the reports mention X").
+- Answer {not_grounded} if the CONTEXT is empty or unrelated to the QUESTION.
 
 Respond with a SINGLE token on the first line: {grounded} or {not_grounded}.
 
