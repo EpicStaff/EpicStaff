@@ -41,7 +41,7 @@
         flex-shrink: 0;
 
         .label {
-            width: 110px;
+            width: 72px;
             flex-shrink: 0;
             display: flex;
             justify-content: flex-end;
@@ -59,6 +59,23 @@
 
         .required {
             color: var(--accent-color);
+        }
+
+        .edit-user {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding-top: 8px;
+
+            &__name {
+                font-size: 14px;
+                color: var(--color-text-primary);
+            }
+
+            &__email {
+                font-size: 12px;
+                color: var(--text-secondary-60);
+            }
         }
     }
 }

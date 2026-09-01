@@ -10,17 +10,11 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-    ButtonComponent,
-    CustomInputComponent,
-    HelpTooltipComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
-import { FullMembership, Organization } from '@shared/models';
-import { concat, forkJoin, map, Observable, of, toArray } from 'rxjs';
-import { finalize } from 'rxjs/operators';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ButtonComponent, HelpTooltipComponent, SelectComponent, SelectItem } from '@shared/components';
+import { AssignableUsersResponse, FullMembership, Organization } from '@shared/models';
+import { forkJoin, map, Observable, of } from 'rxjs';
+import { catchError, finalize } from 'rxjs/operators';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
@@ -41,14 +35,7 @@ export interface MembershipDialogData {
     templateUrl: './create-membership-dialog.component.html',
     styleUrls: ['./create-membership-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [
-        ButtonComponent,
-        StepAssignToOrgComponent,
-        ReactiveFormsModule,
-        CustomInputComponent,
-        HelpTooltipComponent,
-        ValidationErrorsComponent,
-    ],
+    imports: [ButtonComponent, StepAssignToOrgComponent, HelpTooltipComponent, SelectComponent],
 })
 export class CreateMembershipDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
@@ -62,34 +49,29 @@ export class CreateMembershipDialogComponent implements OnInit {
 
     editUser = signal<AggregatedUser | null>(this.dialogData?.user ?? null);
     availableOrganizations = signal<Organization[]>([]);
+    assignableUsers = signal<AssignableUsersResponse[]>([]);
+    selectedUserId = signal<number | null>(null);
     isSubmitting = signal<boolean>(false);
+    isLoadingUsers = signal<boolean>(false);
 
     editMode = computed(() => this.editUser() !== null);
     existingMemberships = computed<FullMembership[]>(() => this.editUser()?.memberships ?? []);
 
-    emailControl = new FormControl<string>('', {
-        nonNullable: true,
-        validators: [Validators.required, Validators.email],
-    });
-
-    private isEmailValid = toSignal(this.emailControl.statusChanges.pipe(map(() => !this.emailControl.invalid)), {
-        initialValue: !this.emailControl.invalid,
-    });
+    userSelectItems = computed<SelectItem<number>[]>(() =>
+        this.assignableUsers().map((u) => ({
+            name: u.display_name || u.email,
+            subtitle: u.display_name ? u.email : undefined,
+            value: u.id,
+        }))
+    );
 
     submitDisabled = computed(() => {
-        if (!this.isEmailValid() || this.isSubmitting()) return true;
+        if (this.isSubmitting()) return true;
+        if (!this.editMode() && this.selectedUserId() == null) return true;
         const step = this.assignToOrgStep();
         if (!step || step.selectedOrganizations().length === 0) return true;
         return step.hasInvalidRow();
     });
-
-    constructor() {
-        const user = this.editUser();
-        if (user) {
-            this.emailControl.setValue(user.email);
-            this.emailControl.disable();
-        }
-    }
 
     ngOnInit(): void {
         const currentUser = this.profileService.currentUserSignal();
@@ -98,6 +80,27 @@ export class CreateMembershipDialogComponent implements OnInit {
                 currentUser.memberships.map((m) => ({ id: m.organization.id, name: m.organization.name }))
             );
         }
+        if (!this.editMode()) {
+            this.loadAssignableUsers();
+        }
+    }
+
+    private loadAssignableUsers(): void {
+        this.isLoadingUsers.set(true);
+        this.membershipsService
+            .getAssignableUsers()
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.isLoadingUsers.set(false))
+            )
+            .subscribe({
+                next: (users) => this.assignableUsers.set(users),
+                error: () => this.toast.error('Failed to load users.'),
+            });
+    }
+
+    onUserSelected(value: unknown): void {
+        this.selectedUserId.set(typeof value === 'number' ? value : null);
     }
 
     onClose(): void {
@@ -105,13 +108,14 @@ export class CreateMembershipDialogComponent implements OnInit {
     }
 
     onSubmit(): void {
-        if (this.emailControl.invalid) return;
+        const editing = this.editUser();
+        const userId = editing?.id ?? this.selectedUserId();
+        if (userId == null) return;
 
         this.isSubmitting.set(true);
-        const email = this.emailControl.getRawValue();
         const assignments = this.assignToOrgStep()?.getAssignments() ?? [];
 
-        this.performSubmit(email, assignments)
+        this.performSubmit(userId, assignments)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isSubmitting.set(false))
@@ -119,36 +123,49 @@ export class CreateMembershipDialogComponent implements OnInit {
             .subscribe({
                 next: (success) => {
                     if (!success) return;
-                    this.toast.success(
-                        this.editMode() ? 'Membership updated successfully.' : 'Membership created successfully.'
-                    );
+                    if (this.editMode()) {
+                        this.toast.success('Membership updated successfully.');
+                    }
                     this.dialogRef.close(true);
                 },
                 error: (err: HttpErrorResponse) => this.toast.error(rbacErrorMessage(err, 'Operation failed.')),
             });
     }
 
-    trimEmail(): void {
-        if (this.emailControl.value) {
-            this.emailControl.setValue(this.emailControl.value.trim());
-        }
-    }
-
-    private performSubmit(email: string, assignments: OrgAssignment[]): Observable<boolean> {
+    private performSubmit(userId: number, assignments: OrgAssignment[]): Observable<boolean> {
         const user = this.editUser();
         if (user) return this.updateMemberships(user, assignments);
-        return this.linkExistingByEmail(email, assignments);
+        return this.linkExistingByUserId(userId, assignments);
     }
 
-    /** Create mode: link existing account by email per selected org. */
-    private linkExistingByEmail(email: string, assignments: OrgAssignment[]): Observable<boolean> {
+    /** Create mode: link existing account by user_id per selected org.
+     *  Each org is attempted independently; per-org outcomes are toasted. */
+    private linkExistingByUserId(userId: number, assignments: OrgAssignment[]): Observable<boolean> {
         if (!assignments.length) return of(false);
-        const ops = assignments.map((a) =>
-            this.membershipsService.create({ org_id: a.orgId, email, role_id: a.roleId })
-        );
-        return concat(...ops).pipe(
-            toArray(),
-            map(() => true)
+        const orgNameById = new Map(this.availableOrganizations().map((o) => [o.id, o.name]));
+        const ops = assignments.map((a) => {
+            const orgName = orgNameById.get(a.orgId) ?? `org ${a.orgId}`;
+            return this.membershipsService.create({ org_id: a.orgId, user_id: userId, role_id: a.roleId }).pipe(
+                map(() => ({ ok: true as const, org: orgName })),
+                catchError((err: HttpErrorResponse) => of({ ok: false as const, org: orgName, err }))
+            );
+        });
+        return forkJoin(ops).pipe(
+            map((results) => {
+                const succeeded = results.filter((r) => r.ok);
+                const failed = results.filter((r) => !r.ok);
+                if (failed.length === 0) {
+                    this.toast.success(`Added to ${succeeded.map((r) => r.org).join(', ')}.`);
+                } else if (succeeded.length === 0) {
+                    this.toast.error(rbacErrorMessage(failed[0].err, 'Failed to add membership.'));
+                } else {
+                    this.toast.success(`Added to ${succeeded.map((r) => r.org).join(', ')}.`);
+                    for (const f of failed) {
+                        this.toast.error(`${f.org}: ${rbacErrorMessage(f.err, 'Failed to add.')}`);
+                    }
+                }
+                return succeeded.length > 0;
+            })
         );
     }
 

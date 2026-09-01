@@ -22,19 +22,32 @@
     <div class="body">
         <div class="details">
             <label class="label">
-                Email <span class="required">*</span>
+                User <span class="required">*</span>
                 <app-help-tooltip
-                    [text]="'The email address of an existing account to grant organization membership.'"
+                    [text]="'Pick an existing account to grant organization membership.'"
                     position="right"
                 ></app-help-tooltip>
             </label>
             <div class="input-wrap">
-                <app-custom-input
-                    (blur)="trimEmail()"
-                    placeholder="Enter user email..."
-                    [formControl]="emailControl"
-                />
-                <app-validation-errors [control]="emailControl" />
+                @if (editMode()) {
+                    <div class="edit-user">
+                        <span class="edit-user__name">{{ editUser()?.displayName || editUser()?.email }}</span>
+                        @if (editUser()?.displayName) {
+                            <span class="edit-user__email">{{ editUser()?.email }}</span>
+                        }
+                    </div>
+                } @else {
+                    <app-select
+                        variant="boxed"
+                        [items]="userSelectItems()"
+                        [selectedValue]="selectedUserId()"
+                        [showSearch]="true"
+                        [loading]="isLoadingUsers()"
+                        placeholder="Select a user..."
+                        searchPlaceholder="Search by name or email..."
+                        (changed)="onUserSelected($event)"
+                    />
+                }
             </div>
         </div>
 

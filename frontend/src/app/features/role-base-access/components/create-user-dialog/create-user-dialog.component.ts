@@ -11,7 +11,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
 import { FullMembership, Organization } from '@shared/models';
 import { catchError, concat, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
 import { finalize } from 'rxjs/operators';
@@ -44,6 +44,7 @@ export class CreateUserDialogComponent implements OnInit {
     private membershipsService = inject(MembershipsService);
     private organizationsStorage = inject(OrganizationsStorageService);
     private toast = inject(ToastService);
+    private confirmation = inject(ConfirmationDialogService);
 
     private userDetailsStep = viewChild(StepUserDetailsComponent);
     private assignToOrgStep = viewChild(StepAssignToOrgComponent);
@@ -96,9 +97,34 @@ export class CreateUserDialogComponent implements OnInit {
         assignments: OrgAssignment[]
     ): Observable<boolean> {
         if (this.editMode()) {
-            return this.updateExistingUser(this.editUser()!, assignments, superadmin);
+            const user = this.editUser()!;
+            const grantingSuperadmin = superadmin && !user.isSuperadmin && user.memberships.length > 0;
+            if (grantingSuperadmin) {
+                return this.confirmGrantSuperadmin(user).pipe(
+                    switchMap((confirmed) =>
+                        confirmed ? this.updateExistingUser(user, assignments, superadmin) : of(false)
+                    )
+                );
+            }
+            return this.updateExistingUser(user, assignments, superadmin);
         }
         return this.createUserAsSuperadmin(email, password, superadmin, assignments);
+    }
+
+    private confirmGrantSuperadmin(user: AggregatedUser): Observable<boolean> {
+        const label = user.displayName || user.email;
+        const rolesList = user.memberships
+            .map((m) => `<strong>${m.role.name}</strong> in <strong>${m.organization.name}</strong>`)
+            .join(', ');
+        return this.confirmation
+            .confirm({
+                title: `Make ${label} a superadmin?`,
+                message: `${label} will lose ${rolesList}. Revoking superadmin later will not restore them. Superadmins reach every organization already.`,
+                confirmText: 'Grant superadmin',
+                cancelText: 'Cancel',
+                type: 'danger',
+            })
+            .pipe(map((result) => result === true));
     }
 
     private createUserAsSuperadmin(

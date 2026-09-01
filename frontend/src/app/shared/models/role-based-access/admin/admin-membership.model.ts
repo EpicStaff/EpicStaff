@@ -1,6 +1,5 @@
 import { Organization, Role } from '../membership.model';
 
-/** Row from GET /api/admin/memberships/ — one row per user-in-org. */
 export interface AdminMembershipRow {
     id: number;
     user: AdminMembershipUser;
@@ -30,7 +29,14 @@ export interface ListMembershipsParams {
     page_size?: number;
 }
 
-/** POST /api/admin/memberships/ — link an existing account to an org. Send exactly one of email | user_id. */
+export interface AssignableUsersResponse {
+    id: number;
+    email: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    org_ids: number[];
+}
+
 export interface CreateMembershipRequest {
     org_id: number;
     role_id: number;

@@ -113,7 +113,7 @@ export class UsersTabComponent implements OnInit {
             icon: 'edit',
             tooltip: 'Edit user',
             onClick: (row) => this.onEditUser(row['id'] as number),
-            hidden: (row) => this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0,
+            hidden: (row) => !isSA && this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0,
         };
         if (isSA) {
             const deactivateAction: AppTableRowAction = {

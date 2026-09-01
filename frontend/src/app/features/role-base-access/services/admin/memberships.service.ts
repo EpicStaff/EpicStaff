@@ -3,12 +3,14 @@ import { inject, Injectable } from '@angular/core';
 import {
     ActionCode,
     AdminMembershipRow,
+    AssignableUsersResponse,
     CreateMembershipRequest,
     ListMembershipsParams,
     ResourceCode,
     UpdateMembershipRequest,
 } from '@shared/models';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 import { withCrossOrgPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
@@ -48,6 +50,15 @@ export class MembershipsService {
                 }
             ),
         });
+    }
+
+    getAssignableUsers(params: ListMembershipsParams = {}): Observable<AssignableUsersResponse[]> {
+        let httpParams = new HttpParams();
+        if (params.search) httpParams = httpParams.set('search', params.search);
+
+        return this.http
+            .get<ApiGetRequest<AssignableUsersResponse>>(`${this.apiUrl}assignable-users/`, { params: httpParams })
+            .pipe(map((response) => response.results));
     }
 
     /** POST /api/admin/memberships/ — link an existing account to an org. */

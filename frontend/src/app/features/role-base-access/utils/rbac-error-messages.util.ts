@@ -12,6 +12,8 @@ const CODE_TO_MESSAGE: Record<string, string> = {
     organization_not_found: 'Organization not found.',
     organization_name_conflict: 'An organization with that name already exists.',
     last_superadmin: 'At least one active superadmin must remain.',
+    superadmin_not_assignable: 'Superadmins already have access to every organization and cannot be added as members.',
+    user_not_active: 'This account is deactivated and cannot be added to an organization.',
 };
 
 /** Best-effort resolver: prefer the mapped message for a known `code`,
