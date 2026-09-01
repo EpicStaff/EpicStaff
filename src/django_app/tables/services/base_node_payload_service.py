@@ -325,6 +325,7 @@ class BaseNodePayloadService:
         embedder = self.converter_service.convert_embedding_config_to_pydantic(
             graph_rag.embedder
         )
+        llm = self.converter_service.convert_llm_config_to_pydantic(graph_rag.llm)
         entries: list[SearchConfigEntry] = []
 
         basic_config = knowledge.graph_basic_search_config
@@ -341,6 +342,7 @@ class BaseNodePayloadService:
                         )
                     ),
                     embedder=embedder,
+                    llm=llm,
                 )
             )
 
@@ -362,6 +364,7 @@ class BaseNodePayloadService:
                         )
                     ),
                     embedder=embedder,
+                    llm=llm,
                 )
             )
 
@@ -377,6 +380,7 @@ class BaseNodePayloadService:
                         )
                     ),
                     embedder=embedder,
+                    llm=llm,
                 )
             )
 
@@ -392,6 +396,7 @@ class BaseNodePayloadService:
                         )
                     ),
                     embedder=embedder,
+                    llm=llm,
                 )
             )
 

@@ -7,7 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from src.shared.models import ScheduleTriggerNodePayload
+from ..models import ScheduleTriggerNodePayload
 
 
 def _ensure_aware(dt: datetime | None) -> datetime | None:

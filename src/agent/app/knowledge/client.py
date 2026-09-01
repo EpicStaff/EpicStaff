@@ -1,155 +1,76 @@
 from __future__ import annotations
 
-import asyncio
-from uuid import uuid4
-
-import redis.asyncio as aioredis
+import httpx
 from loguru import logger
+from pydantic import TypeAdapter
+
+from shared.models.knowledge import (
+    GraphRagSearchConfig,
+    NaiveRagSearchConfig,
+    RagSearchConfig,
+)
+from shared.models.knowledge_new import FoundChunk, SearchConfig
 
 from app.knowledge.target import KnowledgeSearchTarget
-from shared.models.knowledge import (
-    BaseKnowledgeSearchMessage,
-    BaseKnowledgeSearchMessageResponse,
-)
+
+_SEARCH_CONFIG = TypeAdapter(SearchConfig)
+_RESULT = TypeAdapter(list[FoundChunk] | str)
+
+
+def _to_search_config(config: RagSearchConfig) -> dict:
+    """Convert the agent-side (old) search config to the knowledge_new wire dict.
+
+    Field names line up 1-to-1; validating against ``SearchConfig`` fails loudly
+    here if that ever drifts, instead of surfacing as a 4xx from knowledge_new.
+    """
+    if isinstance(config, NaiveRagSearchConfig):
+        raw = {"rag_strategy": "naive", **config.model_dump(exclude={"rag_type"})}
+    else:
+        assert isinstance(config, GraphRagSearchConfig)
+        params = config.search_params
+        raw = {
+            "rag_strategy": "graph",
+            "method": params.search_method,
+            **params.model_dump(exclude={"search_method"}),
+        }
+    return _SEARCH_CONFIG.validate_python(raw).model_dump(mode="json")
 
 
 class KnowledgeClient:
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        password: str | None,
-        request_channel: str,
-        response_channel: str,
-    ) -> None:
-        self._host = host
-        self._port = port
-        self._password = password
-        self._request_channel = request_channel
-        self._response_channel = response_channel
-        self._redis: aioredis.Redis | None = None
-        self._pubsub: aioredis.client.PubSub | None = None
-        self._reader_task: asyncio.Task | None = None
-        self._pending: dict[
-            str, asyncio.Future[BaseKnowledgeSearchMessageResponse]
-        ] = {}
-        self._started = False
+    def __init__(self, base_url: str, timeout: float = 10.0) -> None:
+        self._base_url = base_url
+        self._default_timeout = timeout
+        self._client: httpx.AsyncClient | None = None
 
     async def start(self) -> None:
-        if self._started:
-            return
-
-        redis_conn = aioredis.Redis(
-            host=self._host,
-            port=self._port,
-            password=self._password,
-        )
-        self._redis = redis_conn
-        pubsub = redis_conn.pubsub()
-        self._pubsub = pubsub
-        await pubsub.subscribe(self._response_channel)
-        self._reader_task = asyncio.create_task(self._reader_loop())
-        self._started = True
-        logger.info("KnowledgeClient started, subscribed to {}", self._response_channel)
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                base_url=self._base_url, timeout=self._default_timeout
+            )
+            logger.info("KnowledgeClient started, base_url={}", self._base_url)
 
     async def stop(self) -> None:
-        if not self._started:
-            return
-
-        if self._reader_task is not None:
-            self._reader_task.cancel()
-            try:
-                await self._reader_task
-            except asyncio.CancelledError:
-                pass
-
-        error = ConnectionError("KnowledgeClient stopped")
-
-        for future in self._pending.values():
-            if not future.done():
-                future.set_exception(error)
-
-        self._pending.clear()
-
-        if self._pubsub is not None:
-            await self._pubsub.close()
-
-        if self._redis is not None:
-            await self._redis.aclose()
-
-        self._started = False
-        logger.info("KnowledgeClient stopped")
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+            logger.info("KnowledgeClient stopped")
 
     async def search(
         self, target: KnowledgeSearchTarget, query: str, *, timeout: float
-    ) -> BaseKnowledgeSearchMessageResponse:
+    ) -> list[FoundChunk] | str:
         assert (
-            self._redis is not None
+            self._client is not None
         ), "KnowledgeClient.start() must be called before search()"
 
-        search_uuid = str(uuid4())
-        msg = BaseKnowledgeSearchMessage(
-            collection_id=target.collection_id,
-            rag_id=target.rag_id,
-            rag_type=target.rag_type,
-            uuid=search_uuid,
-            query=query,
-            rag_search_config=target.search_config,
-            embedder_api_key=target.embedder_api_key,
+        response = await self._client.post(
+            f"rags/{target.rag_type}/{target.rag_id}/search/",
+            json={
+                "query": query,
+                "search_config": _to_search_config(target.search_config),
+                "embedding_api_key": target.embedder_api_key,
+                "llm_api_key": target.llm_api_key,
+            },
+            timeout=timeout,
         )
-
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[BaseKnowledgeSearchMessageResponse] = (
-            loop.create_future()
-        )
-        self._pending[search_uuid] = future
-
-        try:
-            await self._redis.publish(self._request_channel, msg.model_dump_json())
-            return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
-
-        finally:
-            self._pending.pop(search_uuid, None)
-
-    async def _reader_loop(self) -> None:
-        assert (
-            self._pubsub is not None
-        ), "KnowledgeClient.start() must be called before _reader_loop"
-        try:
-            async for message in self._pubsub.listen():
-                if message["type"] != "message":
-                    continue
-
-                data = message["data"]
-
-                if isinstance(data, bytes):
-                    data = data.decode()
-
-                try:
-                    resp = BaseKnowledgeSearchMessageResponse.model_validate_json(data)
-                except Exception as parse_error:
-                    logger.warning(
-                        "KnowledgeClient: failed to parse pubsub message: {}",
-                        parse_error,
-                    )
-                    continue
-
-                future = self._pending.get(resp.uuid)
-
-                if future is not None and not future.done():
-                    future.set_result(resp)
-
-        except asyncio.CancelledError:
-            raise
-
-        except Exception as error:
-            logger.error("KnowledgeClient reader loop failed: {}", error)
-            connection_error = ConnectionError(
-                f"KnowledgeClient reader loop failed: {error}"
-            )
-
-            for future in self._pending.values():
-                if not future.done():
-                    future.set_exception(connection_error)
-
-            self._pending.clear()
+        response.raise_for_status()
+        return _RESULT.validate_python(response.json()["result"])

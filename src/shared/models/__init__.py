@@ -102,7 +102,7 @@ from .knowledge_new import (
     SearchResponse,
     CancelRequest,
 )
-from src.shared.models.base import ValueObject
+from .base import ValueObject
 from .sessions import (
     SessionData,
     GraphSessionMessageData,

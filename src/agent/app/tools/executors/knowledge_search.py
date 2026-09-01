@@ -33,7 +33,7 @@ async def _execute_search(
     )
 
     try:
-        resp = await client.search(target, query, timeout=timeout)
+        result = await client.search(target, query, timeout=timeout)
 
     except Exception as error:
         return ToolResult(
@@ -44,7 +44,7 @@ async def _execute_search(
 
     if sink is not None:
         try:
-            await sink.on_knowledge_search(resp)
+            await sink.on_knowledge_search(target, query, result)
 
         except Exception as sink_error:
             logger.warning(
@@ -53,7 +53,15 @@ async def _execute_search(
                 sink_error,
             )
 
-    if not resp.chunks:
+    # Graph search returns a synthesised answer string; naive returns chunks.
+    if isinstance(result, str):
+        return ToolResult(
+            tool_call_id="",
+            content=result.strip() or "No relevant results found.",
+            is_error=False,
+        )
+
+    if not result:
         return ToolResult(
             tool_call_id="",
             content="No relevant results found.",
@@ -61,8 +69,8 @@ async def _execute_search(
         )
 
     lines = [
-        f"{chunk.chunk_text} (source={chunk.chunk_source}, score={chunk.chunk_similarity})"
-        for chunk in resp.chunks
+        f"{chunk.text} (source={chunk.source}, score={chunk.similarity})"
+        for chunk in result
     ]
     return ToolResult(
         tool_call_id="",

@@ -16,15 +16,13 @@ from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
     KnowledgeSearchExecutor,
 )
-from shared.models.agent_service import ToolResult
 from shared.models.knowledge import (
-    BaseKnowledgeSearchMessageResponse,
     GraphRagBasicSearchParams,
     GraphRagLocalSearchParams,
     GraphRagSearchConfig,
-    KnowledgeChunkResponse,
     NaiveRagSearchConfig,
 )
+from shared.models.knowledge_new import FoundChunk
 
 
 def _make_target(rag_type: str = "naive") -> KnowledgeSearchTarget:
@@ -58,22 +56,13 @@ def _make_graph_targets() -> dict[str, KnowledgeSearchTarget]:
 
 
 def _make_response(
-    chunks: list[KnowledgeChunkResponse],
-) -> BaseKnowledgeSearchMessageResponse:
-    return BaseKnowledgeSearchMessageResponse(
-        rag_id=1,
-        rag_type="naive",
-        collection_id=10,
-        uuid="test-uuid",
-        retrieved_chunks=len(chunks),
-        query="test query",
-        chunks=chunks,
-        rag_search_config=NaiveRagSearchConfig(),
-    )
+    result: list[FoundChunk] | str,
+) -> list[FoundChunk] | str:
+    return result
 
 
 def _fake_client(
-    response: BaseKnowledgeSearchMessageResponse | None = None,
+    response: list[FoundChunk] | str | None = None,
     raises: Exception | None = None,
 ) -> MagicMock:
     client = MagicMock()
@@ -88,17 +77,17 @@ def _fake_client(
 
 async def test_chunks_formatted_correctly():
     chunks = [
-        KnowledgeChunkResponse(
-            chunk_order=0,
-            chunk_similarity=0.95,
-            chunk_text="Python is a programming language.",
-            chunk_source="intro.pdf",
+        FoundChunk(
+            order=0,
+            similarity=0.95,
+            text="Python is a programming language.",
+            source="intro.pdf",
         ),
-        KnowledgeChunkResponse(
-            chunk_order=1,
-            chunk_similarity=0.80,
-            chunk_text="It was created by Guido van Rossum.",
-            chunk_source="history.pdf",
+        FoundChunk(
+            order=1,
+            similarity=0.80,
+            text="It was created by Guido van Rossum.",
+            source="history.pdf",
         ),
     ]
     client = _fake_client(_make_response(chunks))
@@ -112,6 +101,26 @@ async def test_chunks_formatted_correctly():
     assert "score=0.95" in result.content
     assert "It was created by Guido van Rossum." in result.content
     assert "source=history.pdf" in result.content
+
+
+async def test_graph_answer_string_returned_as_content():
+    client = _fake_client(_make_response("The synthesised answer."))
+    executor = KnowledgeSearchExecutor(client, _make_target(rag_type="graph"))
+
+    result = await executor({"query": "why"})
+
+    assert result.is_error is False
+    assert result.content == "The synthesised answer."
+
+
+async def test_empty_answer_string_returns_no_results_message():
+    client = _fake_client(_make_response("   "))
+    executor = KnowledgeSearchExecutor(client, _make_target(rag_type="graph"))
+
+    result = await executor({"query": "why"})
+
+    assert result.is_error is False
+    assert result.content == "No relevant results found."
 
 
 async def test_empty_chunks_returns_no_results_message():
@@ -305,35 +314,29 @@ def _fake_sink() -> MagicMock:
     return sink
 
 
-async def test_sink_receives_response_object_on_success():
-    response = _make_response(
-        [
-            KnowledgeChunkResponse(
-                chunk_order=0,
-                chunk_similarity=0.9,
-                chunk_text="chunk",
-                chunk_source="doc.pdf",
-            )
-        ]
-    )
+async def test_sink_receives_target_query_result_on_success():
+    chunks = [FoundChunk(order=0, similarity=0.9, text="chunk", source="doc.pdf")]
+    response = _make_response(chunks)
     client = _fake_client(response)
     sink = _fake_sink()
-    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+    target = _make_target()
+    executor = KnowledgeSearchExecutor(client, target, sink=sink)
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(response)
+    sink.on_knowledge_search.assert_awaited_once_with(target, "test", chunks)
 
 
-async def test_sink_receives_response_even_with_no_chunks():
+async def test_sink_receives_result_even_with_no_chunks():
     response = _make_response([])
     client = _fake_client(response)
     sink = _fake_sink()
-    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+    target = _make_target()
+    executor = KnowledgeSearchExecutor(client, target, sink=sink)
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(response)
+    sink.on_knowledge_search.assert_awaited_once_with(target, "test", [])
 
 
 async def test_sink_not_called_when_client_raises():
@@ -370,7 +373,7 @@ async def test_sink_none_still_works():
     assert result.is_error is False
 
 
-async def test_graph_executor_sink_receives_response_object():
+async def test_graph_executor_sink_receives_dispatched_target():
     targets = _make_graph_targets()
     response = _make_response([])
     client = _fake_client(response)
@@ -381,4 +384,4 @@ async def test_graph_executor_sink_receives_response_object():
 
     await executor({"query": "test", "search_method": "local"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(response)
+    sink.on_knowledge_search.assert_awaited_once_with(targets["local"], "test", [])

@@ -1,12 +1,12 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_serializer
-from src.shared.enums.knowledge_new import (
+from ..enums.knowledge_new import (
     ChunkStrategyEnum,
     GraphSearchMethodEnum,
     RAGStrategy,
 )
-from src.shared.models.base import ValueObject
+from .base import ValueObject
 
 __all__ = [
     "CancelRequest",

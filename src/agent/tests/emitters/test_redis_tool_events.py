@@ -14,13 +14,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
+from app.knowledge.target import KnowledgeSearchTarget
 from app.llm.client import LLMChunk
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
-from shared.models.knowledge import (
-    BaseKnowledgeSearchMessageResponse,
-    KnowledgeChunkResponse,
-    NaiveRagSearchConfig,
-)
+from shared.models.knowledge import NaiveRagSearchConfig
+from shared.models.knowledge_new import FoundChunk
 
 
 # ---------------------------------------------------------------------------
@@ -62,20 +60,12 @@ def _make_loop_result() -> LoopResult:
     )
 
 
-def _make_knowledge_response(
-    chunks: list[KnowledgeChunkResponse] | None = None,
-) -> BaseKnowledgeSearchMessageResponse:
-    chunks = chunks if chunks is not None else []
-    return BaseKnowledgeSearchMessageResponse(
+def _make_knowledge_target() -> KnowledgeSearchTarget:
+    return KnowledgeSearchTarget(
+        collection_id=10,
         rag_id=2,
         rag_type="naive",
-        collection_id=10,
-        uuid="search-uuid",
-        retrieved_chunks=len(chunks),
-        query="what is epicstaff",
-        chunks=chunks,
-        rag_search_config=NaiveRagSearchConfig(),
-        token_usage={"prompt_tokens": 12, "completion_tokens": 0},
+        search_config=NaiveRagSearchConfig(),
     )
 
 
@@ -637,16 +627,17 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
 async def test_on_knowledge_search_publishes_full_payload_shape():
     emitter, published = _make_emitter()
     chunks = [
-        KnowledgeChunkResponse(
-            chunk_order=0,
-            chunk_similarity=0.9,
-            chunk_text="EpicStaff is an agentic UI platform.",
-            chunk_source="intro.pdf",
+        FoundChunk(
+            order=0,
+            similarity=0.9,
+            text="EpicStaff is an agentic UI platform.",
+            source="intro.pdf",
         )
     ]
-    response = _make_knowledge_response(chunks)
 
-    await emitter.on_knowledge_search(response)
+    await emitter.on_knowledge_search(
+        _make_knowledge_target(), "what is epicstaff", chunks
+    )
 
     assert len(published) == 1
     assert published[0]["type"] == "agent.knowledge_search"
@@ -659,8 +650,22 @@ async def test_on_knowledge_search_publishes_full_payload_shape():
         "knowledge_query": "what is epicstaff",
         "rag_search_config": NaiveRagSearchConfig().model_dump(),
         "chunks": [chunks[0].model_dump()],
-        "token_usage": {"prompt_tokens": 12, "completion_tokens": 0},
+        "answer": None,
+        "token_usage": {},
     }
+
+
+async def test_on_knowledge_search_graph_answer_shape():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(
+        _make_knowledge_target(), "why", "the synthesised answer"
+    )
+
+    payload = _decode_payload(published[0])
+    assert payload["chunks"] == []
+    assert payload["retrieved_chunks"] == 0
+    assert payload["answer"] == "the synthesised answer"
 
 
 async def test_on_knowledge_search_publish_failure_does_not_propagate():
@@ -677,7 +682,7 @@ async def test_on_knowledge_search_publish_failure_does_not_propagate():
         correlation_id="test-corr",
     )
 
-    await emitter.on_knowledge_search(_make_knowledge_response())
+    await emitter.on_knowledge_search(_make_knowledge_target(), "q", [])
 
 
 # ---------------------------------------------------------------------------
