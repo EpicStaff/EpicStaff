@@ -8,10 +8,11 @@ built-in role seed migration (for sanity-checking applicable bits).
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 
 
-# Action metadata: ordered as the FE renders the matrix columns.
+# Action metadata: ordered as the FE renders the matrix columns. View leads —
+# it is the permission every other one builds on, not bit order.
 ACTION_METADATA = [
-    {"code": "create", "label": "Create", "bit": int(Permission.CREATE)},
     {"code": "read", "label": "View", "bit": int(Permission.READ)},
+    {"code": "create", "label": "Create", "bit": int(Permission.CREATE)},
     {"code": "update", "label": "Edit", "bit": int(Permission.UPDATE)},
     {"code": "delete", "label": "Delete", "bit": int(Permission.DELETE)},
     {"code": "export", "label": "Export", "bit": int(Permission.EXPORT)},

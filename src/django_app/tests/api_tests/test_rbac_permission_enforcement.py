@@ -97,10 +97,11 @@ def test_permission_catalog_returns_actions_and_resource_types(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert "actions" in body and "resource_types" in body
+    # Matrix column order: View leads, then the actions built on it.
     action_codes = [a["code"] for a in body["actions"]]
     assert action_codes == [
-        "create",
         "read",
+        "create",
         "update",
         "delete",
         "export",

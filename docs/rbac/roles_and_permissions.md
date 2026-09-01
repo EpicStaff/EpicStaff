@@ -80,8 +80,8 @@ of caller and org. Cache-friendly.
 ```json
 {
   "actions": [
-    { "code": "create", "label": "Create", "bit": 1 },
     { "code": "read",   "label": "View",   "bit": 2 },
+    { "code": "create", "label": "Create", "bit": 1 },
     { "code": "update", "label": "Edit",   "bit": 4 },
     { "code": "delete", "label": "Delete", "bit": 8 },
     { "code": "export", "label": "Export", "bit": 16 }
@@ -102,7 +102,8 @@ of caller and org. Cache-friendly.
 }
 ```
 
-`actions[]` is the full verb set. Each
+`actions[]` is the full verb set, **in matrix column order** — render the
+columns in the order given rather than sorting client-side. Each
 `resource_types[].applicable_actions` is the subset of actions that
 make sense for that resource **and are grantable into a custom role** —
 the matrix is resource rows × action columns, and cells outside
