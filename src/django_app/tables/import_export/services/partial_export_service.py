@@ -10,7 +10,6 @@ from tables.import_export.serializers.graph import EdgeImportSerializer
 # Start/end nodes are intentionally excluded: they are structural and every
 # graph already has them, so they are not part of partial export/import.
 LIST_KEY_TO_ENTITY_TYPE: dict[str, EntityType] = {
-    "crew_node_list": EntityType.CREW_NODE,
     "python_node_list": EntityType.PYTHON_NODE,
     "audio_transcription_node_list": EntityType.AUDIO_TRANSCRIPTION_NODE,
     "file_extractor_node_list": EntityType.FILE_EXTRACTOR_NODE,
@@ -20,7 +19,6 @@ LIST_KEY_TO_ENTITY_TYPE: dict[str, EntityType] = {
     "classification_decision_table_node_list": EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
     "subgraph_node_list": EntityType.SUBGRAPH_NODE,
     "graph_note_list": EntityType.NOTE_NODE,
-    "code_agent_node_list": EntityType.CODE_AGENT_NODE,
     "schedule_trigger_node_list": EntityType.SCHEDULE_TRIGGER_NODE,
     "agent_node_list": EntityType.AGENT_NODE,
     "task_node_list": EntityType.TASK_NODE,

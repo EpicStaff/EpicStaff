@@ -6,9 +6,10 @@ import { LabelsStorageService } from '../../features/flows/services/labels-stora
 import { CollectionsStorageService } from '../../features/knowledge-sources/services/collections-storage.service';
 import { DocumentsStorageService } from '../../features/knowledge-sources/services/documents-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../features/knowledge-sources/services/naive-rag-documents-storage.service';
-import { ProjectsStorageService } from '../../features/projects/services/projects-storage.service';
 import { OrganizationsStorageService } from '../../features/role-base-access/services/admin/organizations-storage.service';
 import { RolesService } from '../../features/role-base-access/services/admin/roles.service';
+import { ToolsLabelsStorageService } from '../../features/tools/services/tools-labels-storage.service';
+import { ToolsViewStorageService } from '../../features/tools/services/tools-view-storage.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import {
@@ -17,16 +18,15 @@ import {
     LlmConfigStorageService,
     LlmModelsStorageService,
     LlmProvidersStorageService,
-    NgrokConfigStorageService,
     RealtimeConfigStorageService,
     RealtimeModelsStorageService,
+    SecretsStorageService,
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from './index';
+import { StorageService } from './storage-service.interface';
 
-export interface StorageService {
-    clear(): void;
-}
+export type { StorageService } from './storage-service.interface';
 
 @Injectable({ providedIn: 'root' })
 export class AppStorageService {
@@ -37,21 +37,22 @@ export class AppStorageService {
         inject(OrganizationsStorageService),
         inject(DefaultModelsStorageService),
         inject(LabelsStorageService),
+        inject(ToolsLabelsStorageService),
         inject(FlowsStorageService),
         inject(CollectionsStorageService),
         inject(DocumentsStorageService),
         inject(NaiveRagDocumentsStorageService),
-        inject(ProjectsStorageService),
         inject(EmbeddingConfigStorageService),
         inject(EmbeddingModelsStorageService),
         inject(LlmConfigStorageService),
         inject(LlmModelsStorageService),
         inject(LlmProvidersStorageService),
-        inject(NgrokConfigStorageService),
         inject(RealtimeConfigStorageService),
         inject(RealtimeModelsStorageService),
+        inject(SecretsStorageService),
         inject(TranscriptionConfigStorageService),
         inject(TranscriptionModelsStorageService),
+        inject(ToolsViewStorageService),
     ];
 
     clearAll(): void {

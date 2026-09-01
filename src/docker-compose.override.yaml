@@ -17,10 +17,6 @@ services:
     environment:
       DJANGO_HOST: django_app
 
-  manager:
-    ports:
-      - "${MANAGER_PORT:-8001}:${MANAGER_PORT:-8001}"
-
   frontend:
     ports:
       - "${FRONTEND_PORT:-4201}:80"

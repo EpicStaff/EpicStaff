@@ -113,27 +113,28 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
         return session ? `ID ${session.id}` : `ID -`;
     }
 
+    // `sessions` is sorted newest-first, so the previous (older) session is the next index down the list.
     public goToPreviousSession(): void {
-        const index = this.getCurrentSessionIndex();
-        if (index > 0) {
-            this.onSessionChange(this.sessions[index - 1].id.toString());
-        }
-    }
-
-    public goToNextSession(): void {
         const index = this.getCurrentSessionIndex();
         if (index >= 0 && index < this.sessions.length - 1) {
             this.onSessionChange(this.sessions[index + 1].id.toString());
         }
     }
 
+    public goToNextSession(): void {
+        const index = this.getCurrentSessionIndex();
+        if (index > 0) {
+            this.onSessionChange(this.sessions[index - 1].id.toString());
+        }
+    }
+
     public get hasPreviousSession(): boolean {
-        return this.getCurrentSessionIndex() > 0;
+        const index = this.getCurrentSessionIndex();
+        return index >= 0 && index < this.sessions.length - 1;
     }
 
     public get hasNextSession(): boolean {
-        const index = this.getCurrentSessionIndex();
-        return index >= 0 && index < this.sessions.length - 1;
+        return this.getCurrentSessionIndex() > 0;
     }
 
     public openSessionPage(): void {

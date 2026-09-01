@@ -6,7 +6,6 @@ from tables.models import (
     StartNode,
     PythonNode,
     DecisionTableNode,
-    CrewNode,
     FileExtractorNode,
     WebhookTriggerNode,
     TelegramTriggerNode,
@@ -23,7 +22,6 @@ from tables.models import (
     ClassificationConditionGroup,
 )
 from tables.models.graph_models import (
-    CodeAgentNode,
     GraphNote,
     ScheduleTriggerNode,
     ClassificationDecisionTablePrompt,
@@ -173,7 +171,7 @@ class TelegramTriggerNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta:
         model = TelegramTriggerNode
-        exclude = ["created_at", "updated_at", "telegram_bot_api_key"]
+        exclude = ["created_at", "updated_at", "telegram_bot_api_key_secret"]
 
 
 class PythonNodeImportSerializer(BaseNodeImportSerializer):
@@ -207,21 +205,9 @@ class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
         exclude = ["created_at", "updated_at"]
 
 
-class CrewNodeImportSerializer(BaseNodeImportSerializer):
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = CrewNode
-        exclude = ["created_at", "updated_at"]
-
-
 class SubgraphNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = SubGraphNode
-        exclude = ["created_at", "updated_at"]
-
-
-class CodeAgentNodeImportSerializer(BaseNodeImportSerializer):
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = CodeAgentNode
         exclude = ["created_at", "updated_at"]
 
 

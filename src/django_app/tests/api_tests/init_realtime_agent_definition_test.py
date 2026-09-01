@@ -10,8 +10,8 @@ Covers:
 - Place filtering: place=CHAT-only surfaces are excluded; owned surfaces with
   no explicit AgentDefaultSurface row are included (implicit ALL).
 - Graph-rag tie-break: basic search config wins over local when both are set.
-- Validation: both ids / neither id -> 400; unknown agent_definition_id -> 400
-  (mirrors the legacy agent_id path, which also collapses to 400).
+- Validation: missing agent_definition_id -> 400; unknown agent_definition_id
+  -> 400.
 """
 
 import json
@@ -37,7 +37,7 @@ from tables.models.knowledge_models.collection_models import (
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.realtime_models import RealtimeAgentDefinition
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -63,13 +63,10 @@ def agent_definition(default_org, llm_config):
 
 
 @pytest.fixture
-def rt_agent_definition(
-    agent_definition, openai_realtime_model_config, realtime_transcription_config
-):
+def rt_agent_definition(agent_definition, openai_realtime_provider_config):
     return RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_realtime_provider_config,
     )
 
 
@@ -161,6 +158,25 @@ def test_init_realtime_agent_definition_happy_path(
     assert payload["goal"] == agent_definition.description
     assert payload["backstory"] == agent_definition.instructions
     assert payload["memory"] is False
+
+
+@pytest.mark.django_db
+def test_init_realtime_agent_definition_populates_created_by_for_browser_session(
+    rt_agent_definition, auth_client, regular_user, redis_client_mock
+):
+    """Same finding-#33 follow-up as the legacy agent_id path: a browser
+    `/chats` session on an AgentDefinition-backed voice agent still has a
+    real authenticated user, so `user_id` must be populated."""
+    url = reverse("init-realtime")
+
+    response = auth_client.post(
+        url,
+        data={"agent_definition_id": rt_agent_definition.pk},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.json()
+    assert _published_payload(redis_client_mock)["user_id"] == regular_user.id
 
 
 # ---------------------------------------------------------------------------
@@ -306,25 +322,7 @@ def test_init_realtime_agent_definition_graph_rag_basic_wins_over_local(
 
 
 @pytest.mark.django_db
-def test_init_realtime_both_ids_provided_returns_400(
-    auth_client, wikipedia_agent_with_configured_realtime, rt_agent_definition
-):
-    url = reverse("init-realtime")
-
-    response = auth_client.post(
-        url,
-        data={
-            "agent_id": wikipedia_agent_with_configured_realtime.pk,
-            "agent_definition_id": rt_agent_definition.pk,
-        },
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-def test_init_realtime_neither_id_provided_returns_400(auth_client):
+def test_init_realtime_missing_agent_definition_id_returns_400(auth_client):
     url = reverse("init-realtime")
 
     response = auth_client.post(url, data={}, format="json")
@@ -334,9 +332,8 @@ def test_init_realtime_neither_id_provided_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_init_realtime_unknown_agent_definition_id_returns_400(auth_client):
-    """The old agent_id path also collapses missing-agent Http404 into 400
-    (broad except in InitRealtimeAPIView.post) — the definition path mirrors
-    that behavior exactly."""
+    """Missing-agent Http404 collapses into 400 (broad except in
+    InitRealtimeAPIView.post)."""
     url = reverse("init-realtime")
 
     response = auth_client.post(
@@ -347,18 +344,18 @@ def test_init_realtime_unknown_agent_definition_id_returns_400(auth_client):
 
 
 @pytest.mark.django_db
-def test_init_realtime_cross_org_agent_definition_rejected(
-    auth_client, org_b, openai_realtime_model_config, realtime_transcription_config
-):
+def test_init_realtime_cross_org_agent_definition_rejected(auth_client, org_b):
     """An org_a caller must not be able to init a realtime session for another
     org's AgentDefinition by guessing/reusing its RealtimeAgentDefinition pk."""
     other_agent_definition = AgentDefinition.objects.create(
         organization=org_b, name="other-org-agent"
     )
+    other_config = OpenAIRealtimeConfig.objects.create(
+        custom_name="other-org-openai-config", org=org_b
+    )
     other_rt_agent_definition = RealtimeAgentDefinition.objects.create(
         agent_definition=other_agent_definition,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=other_config,
     )
 
     url = reverse("init-realtime")

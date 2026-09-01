@@ -107,6 +107,16 @@
                     }
                 </div>
 
+                @if (!isBuiltIn()) {
+                    <div class="form-section">
+                        <app-node-secrets-field
+                            [value]="selectedSecretIds()"
+                            tooltipText="Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                            (valueChange)="onSecretsChange($event)"
+                        />
+                    </div>
+                }
+
                 @if (activeEditor() !== ActiveEditor.Python) {
                     <div
                         class="editor-card"
@@ -167,6 +177,7 @@
                                 <app-code-editor
                                     [pythonCode]="form.controls.pythonCode.value"
                                     [showHeader]="false"
+                                    [secretNames]="secretNames()"
                                     [readOnly]="isBuiltIn()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onPythonErrorChange($event)"
@@ -192,7 +203,7 @@
                         <div class="parameters-mode-switch">
                             <span>Table mode</span>
                             <app-toggle-switch
-                                [checked]="parametersTableMode()"
+                                [checked]="parametersSwitchOn()"
                                 (checkedChange)="setParametersTableMode($event)"
                             ></app-toggle-switch>
                         </div>
@@ -381,6 +392,7 @@
                             <app-code-editor
                                 [pythonCode]="form.controls.pythonCode.value"
                                 [showHeader]="false"
+                                [secretNames]="secretNames()"
                                 [readOnly]="isBuiltIn()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onPythonErrorChange($event)"

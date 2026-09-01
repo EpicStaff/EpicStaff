@@ -63,6 +63,11 @@ logger.remove()
 logger.add(sink=sys.stdout, level="DEBUG")
 
 
+# SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): this helper and the module-level
+# `client` below connect to the host Docker daemon so the integration test suite can
+# read container status and logs for test diagnostics (read-only usage). Consumers
+# `is_container_running`, `check_containers`, and `log_container` inherit this
+# exception and are intentionally NOT annotated individually.
 def _get_docker_host_from_context() -> str | None:
     """Fetch Docker host from the current context."""
     try:
@@ -110,34 +115,6 @@ def is_container_running(container_name: str) -> bool:
     except docker.errors.APIError as e:
         logger.error(f"Error connecting to Docker API: {e}")
         return False
-
-
-def validate_task_and_session(task_name, task_id, agent_id, session_id):
-    task_response = requests.get(
-        f"{DJANGO_URL}/task-messages/?session_id={session_id}", headers=get_headers()
-    )
-    validate_response(task_response)
-    task_message = task_response.json()
-
-    agent_response = requests.get(
-        f"{DJANGO_URL}/agent-messages/?session_id={session_id}", headers=get_headers()
-    )
-    validate_response(agent_response)
-    agent_message = agent_response.json()
-
-    assert agent_message["results"][0]["agent"] == agent_id, "Agent ID mismatch"
-    assert task_message["results"][0]["task"] == task_id, "Task ID mismatch"
-    assert task_message["results"][0]["name"] == task_name, "Task name mismatch"
-
-    session_response = requests.get(
-        f"{DJANGO_URL}/sessions/{session_id}/", headers=get_headers()
-    )
-    validate_response(session_response)
-    session_data = session_response.json()
-
-    assert (
-        session_data["crew_schema"]["tasks"][0]["name"] == task_name
-    ), "Session task name mismatch"
 
 
 def _get_sse_ticket() -> str:
@@ -278,37 +255,11 @@ def run_session(graph_id: int, variables: dict | None = None) -> int:
         "graph_id": graph_id,
         "variables": variables,
     }
-    run_crew_response = requests.post(
+    run_response = requests.post(
         f"{DJANGO_URL}/run-session/", json=run_data, headers=get_headers()
     )
-    validate_response(run_crew_response)
-    return run_crew_response.json()["session_id"]
-
-
-def create_task(*args, **kwargs) -> tuple:
-    tasks_response = requests.post(
-        f"{DJANGO_URL}/tasks/", json=kwargs, headers=get_headers()
-    )
-    validate_response(tasks_response)
-
-    return tasks_response.json()["id"], tasks_response.json()["name"]
-
-
-def create_crew(*args, **kwargs) -> int:
-    crew_response = requests.post(
-        f"{DJANGO_URL}/crews/", json=kwargs, headers=get_headers()
-    )
-    validate_response(crew_response)
-    return crew_response.json()["id"]
-
-
-def create_agent(*args, **kwargs) -> int:
-    agent_response = requests.post(
-        f"{DJANGO_URL}/agents/", json=kwargs, headers=get_headers()
-    )
-    validate_response(agent_response)
-
-    return agent_response.json()["id"]
+    validate_response(run_response)
+    return run_response.json()["session_id"]
 
 
 def create_llm_config(llm_id: int) -> int:
@@ -343,16 +294,6 @@ def create_llm_config(llm_id: int) -> int:
         llm_config = llm_config_response.json()
 
     return llm_config["id"]
-
-
-def get_tool(tool_alias: str) -> int:
-    response_tools = requests.get(f"{DJANGO_URL}/tools/", headers=get_headers())
-    validate_response(response_tools)
-    tool_list = response_tools.json()["results"]
-
-    tool = list(filter(lambda tool: tool["name_alias"] == tool_alias, tool_list))
-
-    return tool[0]["id"]
 
 
 def create_graph(graph_name: str, entry_point: str | None = None) -> int:
@@ -485,28 +426,6 @@ def create_python_node(
 
     response = requests.post(
         f"{DJANGO_URL}/pythonnodes/", json=python_node_data, headers=get_headers()
-    )
-    validate_response(response)
-    return response.json()["id"]
-
-
-def create_crew_node(
-    crew_id: int,
-    node_name: str,
-    graph_id: int,
-    input_map: dict,
-    output_variable_path: str | None = None,
-) -> int:
-    crew_node_data = {
-        "crew_id": crew_id,
-        "node_name": node_name,
-        "graph": graph_id,
-        "input_map": input_map,
-        "output_variable_path": output_variable_path,
-    }
-
-    response = requests.post(
-        f"{DJANGO_URL}/crewnodes/", json=crew_node_data, headers=get_headers()
     )
     validate_response(response)
     return response.json()["id"]

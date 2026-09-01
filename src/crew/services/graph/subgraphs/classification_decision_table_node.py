@@ -107,7 +107,7 @@ class ClassificationDecisionTableNodeSubgraph:
 
         Supports:
           - dot access:    "variables.chat_id"
-          - bracket access with dynamic key: "variables.shared[variables.chat_id].lease_holder"
+          - bracket access with dynamic key: "variables.messages[variables.index].text"
           - direct lookup: "session_id"
 
         No eval() is used.
@@ -115,8 +115,8 @@ class ClassificationDecisionTableNodeSubgraph:
         import re
 
         # Tokenise into dot-segments and bracket-segments
-        # e.g. "variables.shared[variables.chat_id].lease_holder"
-        #   → ["variables", "shared", "[variables.chat_id]", "lease_holder"]
+        # e.g. "variables.messages[variables.index].text"
+        #   → ["variables", "messages", "[variables.index]", "text"]
         tokens: list[str] = []
         for part in re.split(r"\.(?![^\[]*\])", path_expr):
             # Split bracket sub-expressions within each part
@@ -239,8 +239,6 @@ class ClassificationDecisionTableNodeSubgraph:
     async def _execute_expression(self, expression: str, state: State) -> bool:
         """Evaluate a Python expression in sandbox. Returns bool."""
         variables_dict = state["variables"].model_dump()
-        if "shared" in variables_dict:
-            del variables_dict["shared"]
 
         var_assignments = self._build_var_assignments(list(variables_dict.keys()))
 
@@ -284,8 +282,6 @@ def main(**kwargs) -> bool:
     async def _execute_manipulation(self, manipulation: str, state: State) -> None:
         """Execute manipulation code in sandbox. Updates state variables."""
         variables_dict = state["variables"].model_dump()
-        if "shared" in variables_dict:
-            del variables_dict["shared"]
 
         var_assignments = self._build_var_assignments(list(variables_dict.keys()))
 
@@ -324,8 +320,6 @@ def main(**kwargs) -> dict:
         )
 
         variables_dict = state["variables"].model_dump()
-        if "shared" in variables_dict:
-            del variables_dict["shared"]
 
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=python_code_data,
@@ -433,8 +427,6 @@ def main(**kwargs) -> dict:
 
         # Render prompt with current variables
         variables_dict = state["variables"].model_dump()
-        if "shared" in variables_dict:
-            del variables_dict["shared"]
         rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
         logger.info(
@@ -539,8 +531,6 @@ def main(**kwargs) -> dict:
             )
 
             input_vars = state["variables"].model_dump()
-            if "shared" in input_vars:
-                del input_vars["shared"]
             msg = self.custom_session_message_writer.add_start_message(
                 session_id=self.session_id,
                 node_name=self.node_name,
@@ -706,12 +696,8 @@ def main(**kwargs) -> dict:
 
                     if combined_manipulation:
                         vars_before = state["variables"].model_dump()
-                        if "shared" in vars_before:
-                            del vars_before["shared"]
                         await self._execute_manipulation(combined_manipulation, state)
                         vars_after = state["variables"].model_dump()
-                        if "shared" in vars_after:
-                            del vars_after["shared"]
                         changed = {
                             k: v
                             for k, v in vars_after.items()

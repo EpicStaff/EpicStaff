@@ -7,6 +7,7 @@ services:
       python manage.py migrate &&
       python manage.py fix_sequences &&
       python manage.py upload_models &&
+      python manage.py seed_system_api_key &&
       python manage.py collectstatic --noinput &&
       python manage.py listen_redis &
       python manage.py cache_redis &
@@ -19,6 +20,7 @@ services:
     volumes:
       - ./django_app:/app/src/django_app:cached
       - ./shared:/app/src/shared:cached
+      - media_data:/app/media
 
   crewdb:
     ports:
@@ -39,18 +41,16 @@ services:
       DJANGO_HOST: django_app
     volumes:
       - ./realtime:/app/src/realtime
+      - ./shared:/app/src/shared:cached
 
   manager:
-    command: uvicorn app:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001} --workers 1 --reload
-    ports:
-      - "${MANAGER_PORT:-8001}:${MANAGER_PORT:-8001}"
+    command: sh -c "watchfiles --filter python 'python main.py' ."
     env_file:
       - .dev.env
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./manager:/app/src/manager
-      - ./tool:/app/src/manager/tool
 
   crew:
     command: >
@@ -58,7 +58,6 @@ services:
       poetry run watchfiles
       --filter python
       --ignore-paths /app/src/crew/.venv
-      --ignore-paths /app/src/crew/libraries
       --ignore-paths /app/src/crew/__pycache__
       --ignore-paths /app/src/crew/.pytest_cache
       --ignore-paths /app/src/crew/.ruff_cache
@@ -68,8 +67,6 @@ services:
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./crew/callbacks:/app/src/crew/callbacks:cached
-      - ./crew/config:/app/src/crew/config:cached
       - ./crew/models:/app/src/crew/models:cached
       - ./crew/services:/app/src/crew/services:cached
       - ./crew/utils:/app/src/crew/utils:cached
@@ -104,6 +101,7 @@ services:
     volumes:
       - ./webhook/app:/app/src/webhook/app
       - ./webhook/run.py:/app/src/webhook/run.py
+      - ./shared:/app/src/shared
 
   knowledge:
     command: sh -c "watchfiles --filter python 'python main.py' ."

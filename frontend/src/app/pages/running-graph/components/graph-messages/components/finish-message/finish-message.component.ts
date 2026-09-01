@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
 
-import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
@@ -35,11 +34,10 @@ import {
                     />
                 </div>
                 <h3>
-                    @if (project && project.name) {
-                        <span class="project-name">{{ project.name }}</span>
-                    }
-                    @if (!project || !project.name) {
-                        <span>Default Project</span>
+                    @if (nodeName) {
+                        <span class="node-name">{{ nodeName }}</span>
+                    } @else {
+                        <span>Flow</span>
                     }
                     finished
                 </h3>
@@ -190,7 +188,7 @@ import {
                     text-overflow: ellipsis;
                     max-width: 100%;
 
-                    .project-name {
+                    .node-name {
                         color: #5672cd;
                         font-weight: 400;
                         margin-right: 5px;
@@ -271,7 +269,8 @@ import {
 })
 export class FinishMessageComponent implements OnInit {
     @Input() message!: GraphMessage;
-    @Input() project: GetProjectRequest | null = null;
+    /** Name of the graph node this finish message came from; null for a whole-flow finish. */
+    @Input() nodeName: string | null = null;
 
     isMessageExpanded = false;
     isOutputExpanded = true;

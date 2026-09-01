@@ -16,8 +16,20 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AppSvgIconComponent, ButtonComponent, SearchComponent, TabButtonComponent } from '@shared/components';
+import { LabelSidebarComponent } from '@shared/components';
+import {
+    AppCustomFilterDialogComponent,
+    AppCustomFilterDialogData,
+    AppCustomFilterDialogResult,
+    AppIncludeExcludeDialogComponent,
+    AppIncludeExcludeDialogData,
+    AppIncludeExcludeDialogResult,
+    IncludeExcludeTab,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { LabelTreeNode } from '@shared/models';
 import {
     AppStorageService,
     EmbeddingConfigStorageService,
@@ -31,32 +43,19 @@ import {
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from '@shared/services';
+import { LABELS_STORE } from '@shared/services';
 import { forkJoin, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, take } from 'rxjs/operators';
 
 import { EntityTypeResult, ImportResult, ImportResultItem } from '../../../../core/models/import-result.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
-import {
-    CustomFilterDialogData,
-    CustomFilterDialogResult,
-    FlowsCustomFilterDialogComponent,
-} from '../../components/filter/flows-custom-filter-dialog/flows-custom-filter-dialog.component';
 import {
     FlowsFilterMenuAction,
     FlowsFilterMenuComponent,
 } from '../../components/filter/flows-filter-menu/flows-filter-menu.component';
-import {
-    FlowsIncludeExcludeDialogComponent,
-    IncludeExcludeDialogData,
-    IncludeExcludeDialogResult,
-    IncludeExcludeTab,
-} from '../../components/filter/flows-include-exclude-dialog/flows-include-exclude-dialog.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../../models/flow-filter.model';
@@ -65,7 +64,6 @@ import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow-filter-url.utils';
-import { FlowsLabelSidebarComponent } from './components/flows-label-sidebar/flows-label-sidebar.component';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
@@ -91,15 +89,17 @@ type ImportFileData = Record<string, ImportFileEntity[]>;
         TabButtonComponent,
         FormsModule,
         AppSvgIconComponent,
-        FlowsLabelSidebarComponent,
+        LabelSidebarComponent,
         HideInlineSubtitleOnOverflowDirective,
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         FlowsFilterMenuComponent,
         HasPermissionDirective,
         MatTooltipModule,
+        SearchComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
 })
 export class FlowsListPageComponent implements OnInit, OnDestroy {
     public tabs = [
@@ -162,6 +162,60 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public toggleSidebar(): void {
         this.showSidebar.update((v) => !v);
+    }
+
+    public readonly deleteMessageForLabel = (label: LabelTreeNode): string => {
+        return `Are you sure you want to delete <strong>${label.name}</strong> label? This will remove it from all flows and sublabels.`;
+    };
+
+    public readonly deleteCautionForLabel = (label: LabelTreeNode): string | undefined => {
+        const flows = this.flowStorageService.flows();
+        const sublabelCount = this.countAllDescendants(label);
+        const sublabelIds = this.getAllDescendantIds(label);
+
+        const directFlowCount = flows.filter((f) => (f.label_ids || []).includes(label.id)).length;
+        const sublabelFlowCount =
+            sublabelIds.length > 0
+                ? flows.filter((f) => (f.label_ids || []).some((id) => sublabelIds.includes(id))).length
+                : 0;
+
+        if (directFlowCount === 0 && sublabelCount === 0) return undefined;
+
+        const parts: string[] = [];
+        if (directFlowCount > 0) {
+            parts.push(`<strong>${directFlowCount} flow${directFlowCount !== 1 ? 's' : ''}</strong>`);
+        }
+        if (sublabelCount > 0) {
+            const sublabelPart = `<strong>${sublabelCount} sublabel${sublabelCount !== 1 ? 's' : ''}</strong>`;
+            if (sublabelFlowCount > 0) {
+                parts.push(
+                    `${sublabelPart} containing <strong>${sublabelFlowCount} flow${sublabelFlowCount !== 1 ? 's' : ''}</strong>`
+                );
+            } else {
+                parts.push(sublabelPart);
+            }
+        }
+        return `The label is used in ${parts.join(' and ')}.`;
+    };
+
+    public onLabelDeleted(): void {
+        this.flowStorageService.getFlows(true).subscribe();
+    }
+
+    private countAllDescendants(node: LabelTreeNode): number {
+        return node.children.reduce((acc, child) => acc + 1 + this.countAllDescendants(child), 0);
+    }
+
+    private getAllDescendantIds(node: LabelTreeNode): number[] {
+        const ids: number[] = [];
+        const collect = (n: LabelTreeNode) => {
+            for (const child of n.children) {
+                ids.push(child.id);
+                collect(child);
+            }
+        };
+        collect(node);
+        return ids;
     }
 
     public selectAllLabels(): void {
@@ -285,7 +339,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 this.applyFilterPatch({ sortOrder: 'name_desc' });
                 return;
             case 'include_exclude':
-                this.openIncludeExcludeDialog('flows');
+                this.openIncludeExcludeDialog('primary');
                 return;
             case 'custom_filter':
                 this.openCustomFilterDialog();
@@ -306,21 +360,28 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
         this.labelsStorage.loadLabels().subscribe(() => {
             const current = this.flowStorageService.getCurrentFilter();
-            const data: IncludeExcludeDialogData = {
+            const data: AppIncludeExcludeDialogData = {
                 initialTab,
-                flows: this.flowStorageService.flows(),
-                selectedFlowIds: current.includedFlowIds,
+                primaryTab: {
+                    label: 'Flows',
+                    icon: 'flow',
+                    searchPlaceholder: 'Search flow...',
+                    emptyText: 'No flows match the search.',
+                },
+                items: this.flowStorageService.flows().map((f) => ({ id: f.id, name: f.name })),
+                selectedItemIds: current.includedFlowIds,
                 selectedLabelIds: current.includedLabelIds,
             };
-            const ref = this.dialog.open<IncludeExcludeDialogResult | undefined>(FlowsIncludeExcludeDialogComponent, {
+            const ref = this.dialog.open<AppIncludeExcludeDialogResult | undefined>(AppIncludeExcludeDialogComponent, {
                 data,
                 panelClass: 'flows-filter-dialog-panel',
                 hasBackdrop: true,
+                providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
             });
             ref.closed.subscribe((result) => {
                 if (!result) return;
                 this.applyFilterPatch({
-                    includedFlowIds: result.includedFlowIds,
+                    includedFlowIds: result.includedItemIds,
                     includedLabelIds: result.includedLabelIds,
                 });
             });
@@ -328,23 +389,36 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     private openCustomFilterDialog(): void {
-        const data: CustomFilterDialogData = {
+        const data: AppCustomFilterDialogData = {
+            scopes: [
+                { key: 'flow_name', label: 'Flows', icon: 'flow', heading: 'Show flows matching the name conditions' },
+                {
+                    key: 'label_name',
+                    label: 'Labels',
+                    icon: 'label',
+                    heading: 'Show flows matching the label conditions',
+                },
+            ],
             initialCondition: this.flowStorageService.getCurrentFilter().customFilter,
         };
-        const ref = this.dialog.open<CustomFilterDialogResult | undefined>(FlowsCustomFilterDialogComponent, {
+        const ref = this.dialog.open<AppCustomFilterDialogResult | undefined>(AppCustomFilterDialogComponent, {
             data,
             panelClass: 'flows-filter-dialog-panel',
             hasBackdrop: true,
         });
         ref.closed.subscribe((result) => {
             if (!result) return;
-            this.applyFilterPatch({ customFilter: result.condition });
+            // Shared dialog stores scope as `string`; flows narrows it back to its own union.
+            this.applyFilterPatch({
+                customFilter: result.condition as FlowsFilterState['customFilter'],
+            });
         });
     }
 
     public openCreateFlowDialog(): void {
         const dialogRef = this.dialog.open<GraphDto | undefined>(CreateFlowDialogComponent, {
             width: '500px',
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((result: GraphDto | undefined) => {

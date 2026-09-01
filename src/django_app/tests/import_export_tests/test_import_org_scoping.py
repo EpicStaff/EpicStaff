@@ -1,7 +1,6 @@
 import pytest
 
 from tables.models import (
-    Agent,
     Graph,
     LLMConfig,
     McpTool,
@@ -10,9 +9,12 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
+from agents.models import AgentDefinition
 from tables.models.label_models import Label
 from tables.models.rbac_models import Organization
+from tables.models.realtime_models import OpenAIRealtimeConfig
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.schemas import ImportSettings
@@ -34,26 +36,33 @@ def _import(export_data, org_id):
 
 @pytest.mark.django_db
 class TestStrictCrossOrg:
-    def test_agent_not_reused_across_orgs(self, rich_seeded_db, export_service, org_b):
-        agent = rich_seeded_db["agents"][0]  # lives in default_org
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+    def test_agent_definition_not_reused_across_orgs(
+        self, exportable_agent_definition, export_service, org_b
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         id_mapper, _ = _import(export_data, org_b.id)
 
-        # The agent and its LLMConfig must be CREATED in org_b, not reused from default_org
-        assert id_mapper.get_reused_ids(EntityType.AGENT) == []
-        new_agent = Agent.objects.get(id=id_mapper.get_created_ids(EntityType.AGENT)[0])
-        assert new_agent.org_id == org_b.id
+        # The definition and its LLMConfig must be CREATED in org_b, not reused
+        # from default_org.
+        assert id_mapper.get_reused_ids(EntityType.AGENT_DEFINITION) == []
+        new_definition = AgentDefinition.objects.get(
+            id=id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
+        )
+        assert new_definition.organization_id == org_b.id
 
         new_cfg_ids = id_mapper.get_created_ids(EntityType.LLM_CONFIG)
         assert new_cfg_ids, "LLM config should be created in org_b, not reused"
         assert LLMConfig.objects.get(id=new_cfg_ids[0]).org_id == org_b.id
 
     def test_config_reused_within_same_org(
-        self, rich_seeded_db, export_service, default_org
+        self, exportable_agent_definition, export_service, default_org
     ):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         id_mapper, _ = _import(export_data, default_org.id)
 
@@ -118,14 +127,43 @@ class TestMcpAndLabelCrossOrg:
         assert created, "label must be created in org_b"
         assert Label.objects.get(id=created[0]).org_id == org_b.id
 
+    def test_tool_scope_label_not_attached_to_imported_graph(
+        self, export_service, default_org
+    ):
+        graph = Graph.objects.create(name="label-scope-graph", org=default_org)
+        flow_label = Label.objects.create(
+            name="flow-label", org=default_org, scope=Label.Scope.FLOW
+        )
+        tool_label = Label.objects.create(
+            name="tool-label", org=default_org, scope=Label.Scope.TOOL
+        )
+        graph.labels.add(flow_label, tool_label)
+
+        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+
+        id_mapper, _ = ImportService(entity_registry).import_data(
+            export_data,
+            EntityType.GRAPH,
+            settings=ImportSettings(import_labels=True),
+            org_id=default_org.id,
+        )
+
+        new_graph = Graph.objects.get(
+            id=id_mapper.get_created_ids(EntityType.GRAPH)[0]
+        )
+        new_graph_label_names = set(new_graph.labels.values_list("name", flat=True))
+        assert "flow-label" in new_graph_label_names
+        assert "tool-label" not in new_graph_label_names
+
 
 @pytest.mark.django_db
 class TestHybridCrossOrg:
     def test_builtin_model_reused_custom_tool_created(
-        self, rich_seeded_db, export_service, org_b
+        self, exportable_agent_definition, export_service, org_b
     ):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         id_mapper, _ = _import(export_data, org_b.id)
 
@@ -143,9 +181,65 @@ class TestHybridCrossOrg:
 
 
 @pytest.mark.django_db
+class TestProviderRealtimeConfigCrossOrg:
+    """EST-3629/3630 follow-up: OpenAIRealtimeConfig (and its Eleven/Gemini
+    siblings, same base strategy) now own `org` NOT NULL — create_entity must
+    stamp it, and find_existing/uniqueness must not leak across orgs."""
+
+    def test_create_entity_stamps_active_org(self, default_org):
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        data = {"custom_name": "openai-cfg", "model_name": "gpt-realtime-1.5"}
+
+        created = strategy.create_entity(data, None, org_id=default_org.id)
+
+        assert created.org_id == default_org.id
+
+    def test_find_existing_is_org_scoped(self, default_org, org_b):
+        cfg = OpenAIRealtimeConfig.objects.create(
+            org=default_org, custom_name="shared-cfg", model_name="gpt-realtime-1.5"
+        )
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        data = {"custom_name": "shared-cfg", "model_name": "gpt-realtime-1.5"}
+
+        assert strategy.find_existing(data, None, org_id=org_b.id) is None
+        assert strategy.find_existing(data, None, org_id=default_org.id) == cfg
+
+    def test_created_in_active_org_not_reused_cross_org(self, default_org, org_b):
+        OpenAIRealtimeConfig.objects.create(
+            org=default_org, custom_name="shared-cfg", model_name="gpt-realtime-1.5"
+        )
+        existing = OpenAIRealtimeConfig.objects.get(custom_name="shared-cfg")
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        export_data = {
+            "main_entity": EntityType.OPENAI_REALTIME_CONFIG,
+            EntityType.OPENAI_REALTIME_CONFIG: [
+                strategy.export_entity(existing)
+            ],
+        }
+
+        id_mapper, _ = _import(export_data, org_b.id)
+
+        created = id_mapper.get_created_ids(EntityType.OPENAI_REALTIME_CONFIG)
+        assert created, "config must be created in org_b, not reused from default_org"
+        assert OpenAIRealtimeConfig.objects.get(id=created[0]).org_id == org_b.id
+
+    def test_unique_name_check_is_org_scoped(self, default_org):
+        OpenAIRealtimeConfig.objects.create(
+            org=default_org, custom_name="dup-cfg", model_name="gpt-realtime-1.5"
+        )
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        data = {"custom_name": "dup-cfg", "model_name": "gpt-realtime-1.5"}
+
+        created = strategy.create_entity(data, None, org_id=default_org.id)
+
+        # Same-org duplicate name must be disambiguated, not collide.
+        assert created.custom_name != "dup-cfg"
+
+
+@pytest.mark.django_db
 class TestWebhookAndGraphCrossOrg:
     def test_webhook_find_existing_is_org_scoped(self, default_org, org_b):
-        wt = WebhookTrigger.objects.create(path="shared-path")
+        wt = WebhookTrigger.objects.create(path="shared-path", org=default_org)
         graph = Graph.objects.create(name="src flow", org=default_org)
         code = PythonCode.objects.create(
             code="def main(): ...", entrypoint="main", libraries=""

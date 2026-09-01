@@ -5,8 +5,6 @@ from django.db import transaction
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
-    CodeAgentNode,
-    CrewNode,
     Edge,
     FileExtractorNode,
     Graph,
@@ -30,7 +28,6 @@ from tables.models.graph_models import (
 )
 from src.shared.models import (
     AgentNodeData,
-    CodeAgentNodeData,
     ConditionalEdgeData,
     EdgeData,
     GraphData,
@@ -46,6 +43,10 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.secrets import (
+    UndeclaredSecretError,
+    secret_declaration_validator,
+)
 from tables.services.surface_knowledge_warning_service import (
     SurfaceKnowledgeWarningService,
 )
@@ -60,6 +61,11 @@ from utils.singleton_meta import SingletonMeta
 
 
 class SessionManagerService(metaclass=SingletonMeta):
+    LIVE_SESSION_STATUSES = (
+        Session.SessionStatus.PENDING,
+        Session.SessionStatus.RUN,
+    )
+
     def __init__(
         self,
         redis_service: RedisService,
@@ -75,6 +81,13 @@ class SessionManagerService(metaclass=SingletonMeta):
 
     def get_session(self, session_id: int) -> Session:
         return Session.objects.get(id=session_id)
+
+    def count_live_sessions(self, *, org_id: int) -> int:
+        """Count how many of an org's sessions are currently occupying execution capacity."""
+        return Session.objects.filter(
+            graph__org_id=org_id,
+            status__in=self.LIVE_SESSION_STATUSES,
+        ).count()
 
     def stop_session(self, session_id: int) -> int:
         return self.redis_service.publish_stop_session(session_id=session_id)
@@ -145,9 +158,6 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         variables = self._get_actual_variables(variables)
 
-        # Remove 'shared' initialization dict - it's for Redis proxy, not storage
-        variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
-
         graph = Graph.objects.get(pk=graph_id)
         status_data = {"token_budget": token_budget} if token_budget is not None else {}
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
@@ -161,7 +171,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             session = Session.objects.create(
                 graph_id=graph_id,
                 status=Session.SessionStatus.PENDING,
-                variables=variables_for_db,
+                variables=variables,
                 time_to_live=graph.time_to_live,
                 graph_user=graph_user,
                 entrypoint=entrypoint,
@@ -207,7 +217,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         token_budget: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
-        logger.info(f"'run_session' got variables: {variables=}")
+        logger.info("'run_session' got variables: {}", variables)
 
         graph = Graph.objects.get(pk=graph_id)
         run_vars = self.persistent_variables_service.build_run_variables(
@@ -227,6 +237,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             token_budget=token_budget,
         )
         try:
+            violations = secret_declaration_validator.violations(graph_id=graph_id)
+            if violations:
+                raise UndeclaredSecretError(
+                    "Session aborted: "
+                    + " ".join(violation.describe() for violation in violations)
+                )
+
             session_data: SessionData = self.create_session_data(
                 session=session, token_budget=token_budget
             )
@@ -235,6 +252,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
+                org_id=graph.org_id,
             )
             required_listeners = 2
             if received_n != required_listeners:
@@ -244,7 +262,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
                 }
             logger.info(
-                f"Session data published in Redis for session ID: {session.pk}."
+                "Session data published in Redis for session ID: {}.", session.pk
             )
 
         except Exception as e:
@@ -311,7 +329,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph: The graph to build data for
             unique_subgraphs: Dictionary to collect unique subgraphs (only used at top level)
         """
-        crew_node_list = CrewNode.objects.filter(graph=graph.pk).select_related("crew")
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
@@ -336,7 +353,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         ).select_related("python_code")
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
-        code_agent_node_list = CodeAgentNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(
                 graph=graph.pk
@@ -420,7 +436,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         # to avoid re-querying the same tables via NodeNameResolver
         name_cache: dict[int, str] = {}
         for node_list in (
-            crew_node_list,
             python_node_list,
             file_extractor_node_list,
             audio_transcription_node_list,
@@ -430,7 +445,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             webhook_trigger_node_list,
             telegram_trigger_node_list,
             schedule_trigger_node_list,
-            code_agent_node_list,
             task_node_list,
             agent_node_list,
         ):
@@ -462,15 +476,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         """
         cv = self.converter_service
 
-        crew_node_data_list = [
-            cv.convert_crew_node_to_pydantic(
-                crew_node=item,
-                resolver=resolver,
-                graph_id=graph.pk,
-                session_id=session.pk if session else None,
-            )
-            for item in crew_node_list
-        ]
         python_node_data_list = [
             cv.convert_python_node_to_pydantic(
                 python_node=item,
@@ -516,29 +521,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             for item in audio_transcription_node_list
         ]
-        code_agent_node_data_list: list[CodeAgentNodeData] = []
-        for item in code_agent_node_list:
-            code_agent_node_data_list.append(
-                CodeAgentNodeData(
-                    node_name=resolver(item.id),
-                    llm_config_id=item.llm_config_id,
-                    agent_mode=item.agent_mode,
-                    session_id=item.session_id,
-                    system_prompt=item.system_prompt,
-                    stream_handler_code=item.stream_handler_code,
-                    libraries=item.libraries or [],
-                    polling_interval_ms=item.polling_interval_ms,
-                    silence_indicator_s=item.silence_indicator_s,
-                    indicator_repeat_s=item.indicator_repeat_s,
-                    chunk_timeout_s=item.chunk_timeout_s,
-                    inactivity_timeout_s=item.inactivity_timeout_s,
-                    max_wait_s=item.max_wait_s,
-                    input_map=item.input_map,
-                    output_variable_path=item.output_variable_path,
-                    stream_config=item.stream_config or {},
-                    output_schema=item.output_schema or {},
-                )
-            )
 
         task_node_payload_service = TaskNodePayloadService(cv)
         task_node_data_list: list[TaskNodeData] = [
@@ -643,12 +625,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         return GraphData(
             graph_id=graph.pk,
             name=graph.name,
-            crew_node_list=crew_node_data_list,
             webhook_trigger_node_data_list=webhook_trigger_node_data_list,
             python_node_list=python_node_data_list,
             file_extractor_node_list=file_extractor_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
-            code_agent_node_list=code_agent_node_data_list,
             task_node_list=task_node_data_list,
             agent_node_list=agent_node_data_list,
             edge_list=edge_data_list,

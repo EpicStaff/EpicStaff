@@ -18,7 +18,6 @@ from tables.import_export.enums import NodeType, EntityType
 
 # NodeType -> reverse-relation accessor on the Graph model.
 NODE_RELATIONS: dict[str, str] = {
-    NodeType.CREW_NODE: "crew_node_list",
     NodeType.SUBGRAPH_NODE: "subgraph_node_list",
     NodeType.PYTHON_NODE: "python_node_list",
     NodeType.WEBHOOK_TRIGGER_NODE: "webhook_trigger_node_list",
@@ -30,7 +29,6 @@ NODE_RELATIONS: dict[str, str] = {
     NodeType.TELEGRAM_TRIGGER_NODE: "telegram_trigger_node_list",
     NodeType.END_NODE: "end_node",
     NodeType.NOTE_NODE: "graph_note_list",
-    NodeType.CODE_AGENT_NODE: "code_agent_node_list",
     NodeType.SCHEDULE_TRIGGER_NODE: "schedule_trigger_node_list",
     NodeType.AGENT_NODE: "agent_node_list",
     NodeType.TASK_NODE: "task_node_list",

@@ -8,7 +8,6 @@ import { ImportResult } from '../models/import-result.model';
 export type ExportFormat = 'json' | 'csv';
 
 export interface PartialExportRequest {
-    crew_node_list: number[];
     agent_node_list: number[];
     task_node_list: number[];
     python_node_list: number[];
@@ -20,7 +19,6 @@ export interface PartialExportRequest {
     decision_table_node_list: number[];
     classification_decision_table_node_list: number[];
     graph_note_list: number[];
-    code_agent_node_list: number[];
     schedule_trigger_node_list: number[];
     edge_list: number[];
 }

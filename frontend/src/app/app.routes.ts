@@ -8,6 +8,9 @@ import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import { permissionGuard, superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
+import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
+import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
+import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { PermissionsService } from './services/auth/permissions.service';
@@ -78,56 +81,28 @@ export const routes: Routes = [
                         children: [],
                     },
                     {
-                        path: 'projects',
-                        loadComponent: () =>
-                            import('./features/projects/pages/projects-list-page/projects-list-page.component').then(
-                                (m) => m.ProjectsListPageComponent
-                            ),
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
-                        children: [
-                            { path: '', redirectTo: 'my', pathMatch: 'full' },
-                            {
-                                path: 'my',
-                                loadComponent: () =>
-                                    import('./features/projects/pages/projects-list-page/components/my-projects/my-projects.component').then(
-                                        (m) => m.MyProjectsComponent
-                                    ),
-                            },
-                            {
-                                path: 'templates',
-                                loadComponent: () =>
-                                    import('./features/projects/pages/projects-list-page/components/templates/project-templates.component').then(
-                                        (m) => m.ProjectTemplatesComponent
-                                    ),
-                            },
-                        ],
-                    },
-                    {
-                        path: 'projects/:projectId',
-                        loadComponent: () =>
-                            import('./open-project-page/open-project-page.component').then(
-                                (m) => m.OpenProjectPageComponent
-                            ),
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
-                        canDeactivate: [UnsavedChangesGuard],
-                    },
-                    {
-                        path: 'staff',
-                        loadComponent: () =>
-                            import('./pages/staff-page/staff-page.component').then((m) => m.StaffPageComponent),
-                        canDeactivate: [UnsavedChangesGuard],
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
-                    },
-                    {
                         path: 'agents',
                         loadComponent: () =>
                             import('./features/agent-definitions/pages/agent-definitions-page/agent-definitions-page.component').then(
                                 (m) => m.AgentDefinitionsPageComponent
                             ),
                         canDeactivate: [UnsavedChangesGuard],
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
+                    },
+                    // Legacy CrewAI routes. `**` only acts as a wildcard when it is the
+                    // whole path, so it has to live in children — `path: 'projects/**'`
+                    // would match the literal URL /projects/** and nothing else. Nesting
+                    // it here also swallows any depth (/projects/12/edit) instead of
+                    // carrying the leftover segments over to /agents.
+                    {
+                        path: 'projects',
+                        children: [{ path: '**', redirectTo: '/agents' }],
+                    },
+                    {
+                        path: 'staff',
+                        redirectTo: '/agents',
+                        pathMatch: 'full',
                     },
                     {
                         path: 'tools',
@@ -151,16 +126,18 @@ export const routes: Routes = [
                             {
                                 path: 'custom',
                                 loadComponent: () =>
-                                    import('./features/tools/pages/tools-list-page/components/custom-tools/custom-tools.component').then(
-                                        (m) => m.CustomToolsComponent
+                                    import('./features/tools/pages/tools-list-page/components/tools-list/tools-list.component').then(
+                                        (m) => m.ToolsListComponent
                                     ),
+                                providers: [{ provide: TOOLS_LIST_PORT, useClass: CustomToolsPort }],
                             },
                             {
                                 path: 'mcp',
                                 loadComponent: () =>
-                                    import('./features/tools/pages/tools-list-page/components/mcp-tools/mcp-tools.component').then(
-                                        (m) => m.McpToolsComponent
+                                    import('./features/tools/pages/tools-list-page/components/tools-list/tools-list.component').then(
+                                        (m) => m.ToolsListComponent
                                     ),
+                                providers: [{ provide: TOOLS_LIST_PORT, useClass: McpToolsPort }],
                             },
                         ],
                     },

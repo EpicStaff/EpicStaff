@@ -60,7 +60,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 | `Role` | `rbac_role` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | One row per (role, resource_type) with an integer permission **bitmask**. |
 | `ApiKey` | — | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
-| `PasswordResetToken` | `rbac_password_reset_token` | Single-use UUID token, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). |
+| `PasswordResetToken` | `rbac_password_reset_token` | Single-use reset grant, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). Stores only `token_hash` (SHA-256 of a `secrets.token_urlsafe(32)` value) — the raw token exists once, in the emailed link, so a read of this table is not replayable. The row's existence *is* the grant: consuming or superseding one deletes it, so there is no `is_used` flag and no accumulation of spent verifiers. Generation, hashing and deletion live in `PasswordResetTokenRepository`. |
 | `OrgScopedModel` | abstract | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 
 ### 2.1 Enums (`rbac_enums.py`)
@@ -137,9 +137,28 @@ Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tick
 or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomically via
 `GETDEL`, passed as `?ticket=` on the stream URL.
 
-Throttling: `LoginThrottle` (5/min, `ip|email` bucket) on login/swagger-token,
-`PasswordResetRequestThrottle` (5/hour) on reset request, and the password-change request
-endpoint reuses the login throttle.
+Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
+
+| Throttle | Endpoint(s) | Bucket | Default rate |
+|---|---|---|---|
+| `LoginThrottle` | login, swagger-token, profile password-change request | `ip\|email` | 5/min |
+| `PasswordResetRequestThrottle` | password-reset request | `ip\|email` | 5/hour |
+| `PasswordResetConfirmThrottle` | password-reset confirm | `ip` | 10/hour |
+| `TokenRefreshThrottle` | token refresh | `ip` | 30/min |
+| `NotifyEmailThrottle` | notify/email | authenticated user id | 10/hour |
+
+The last two key on IP alone because their requests carry no identifier to compose with — the
+refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the
+token being guessed, so keying on it would give an attacker a fresh bucket per attempt. Both
+subclass DRF's `AnonRateThrottle`, which supplies the IP key; their views set
+`authentication_classes = []`, so every caller is anonymous and the throttle always applies.
+
+HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
+`settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403
+first_setup_disabled` unless the mode is `open`. The other creation path,
+always available regardless of the mode, is `manage.py create_superadmin`.
+See [auth_endpoints.md](auth_endpoints.md) and
+[first_setup_operations.md](first_setup_operations.md).
 
 ---
 
@@ -243,6 +262,11 @@ transactions with `SELECT FOR UPDATE`:
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
+- bootstrap advisory lock (`acquire_bootstrap_lock`,
+  `services/rbac/utils/bootstrap_lock.py`) — `FirstSetupService.setup()` and
+  `ResetUserService.reset()` both take a PostgreSQL transaction-scoped
+  advisory lock before checking whether a user exists, so concurrent callers
+  cannot race past that check and create two bootstrap superadmins.
 
 Follow the same pattern: view-level gate for the verb, service-level guard for the
 invariant.
@@ -257,7 +281,7 @@ All mixins live in `tables/views/mixins.py` and share `OrgScopedResolverMixin`
 
 | Mixin | Use for | Declares | Behavior |
 |---|---|---|---|
-| `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, Agent, Crew, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
+| `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, AgentDefinition, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
 | `OrgScopedChildViewSetMixin` | Children scoped through a parent FK (nodes, edges, sessions, RealtimeAgent, …) | `org_filter_path = "graph__org_id"` | filters through the path; on create asserts the parent is in the active org (404 otherwise); does NOT stamp org |
 | `OrgScopedHybridViewSetMixin` | Shared built-ins + per-org custom rows (LLMModel via `is_custom`, PythonCodeTool via `built_in`, …) | `global_visibility_q`, `custom_create_values` | lists built-ins OR own-org rows; creates always stamped org + forced out of the built-in subset |
 | `OrgScopedQuerysetMixin` | Non-standard scope (multiple parents, hybrid-parent visibility) | `get_org_scope_q(org_id)`, optional `scope_distinct` | applies your Q |
@@ -272,8 +296,8 @@ Queryset scoping protects reads; **FK references in writes** are protected by de
 fields (`tables/serializers/org_scoped_fields.py`):
 
 - `OrgScopedPrimaryKeyRelatedField(queryset=..., org_lookup="org_id")` — strict targets
-  (Agent, Crew, Graph, LLMConfig, RealtimeConfig, McpTool, PythonCodeToolConfig…).
-  `org_lookup` accepts paths like `"crew__org_id"`.
+  (AgentDefinition, Graph, LLMConfig, RealtimeConfig, McpTool, PythonCodeToolConfig…).
+  `org_lookup` accepts paths like `"graph__org_id"`.
 - `OrgVisiblePrimaryKeyRelatedField(queryset=...)` — hybrid targets (LLMModel,
   EmbeddingModel, Realtime*Model, PythonCodeTool): built-ins (`built_in=True` /
   `is_custom=False`) OR own-org rows. Use this one for hybrid targets, otherwise built-ins
@@ -374,7 +398,7 @@ to that module — never raw `Response({"error": ...})`.
 ### 8.2 New child resource (no own org column)
 
 No model change. ViewSet: `OrgScopedChildViewSetMixin` + `org_filter_path`
-(`"graph__org_id"`, `"crew__org_id"`, `"agent__org_id"`, …) + `HasOrgPermission` with the
+(`"graph__org_id"`, `"agent_node__graph__org_id"`, `"session__graph__org_id"`, …) + `HasOrgPermission` with the
 parent's resource type. The mixin already blocks creating a child under another org's
 parent. In the serializer, the parent FK should still use `OrgScopedPrimaryKeyRelatedField`
 so updates cannot re-point the child cross-org.
@@ -456,6 +480,9 @@ path — the default org is only for bootstrap and data migrations.
 | Auth backend (JWT + API key) | `services/rbac/authentication.py` |
 | Login/logout/first-setup/reset-user/introspect views | `views/auth_views.py` |
 | First-time setup | `services/rbac/first_setup_service.py`, `utils/superadmin_bootstrap.py` |
+| First-setup mode gate | `services/rbac/first_setup_mode.py` |
+| Bootstrap advisory lock (first-setup + reset-user) | `services/rbac/utils/bootstrap_lock.py` |
+| CLI superadmin creation | `management/commands/create_superadmin.py` |
 | Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
 | Org CRUD (superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |

@@ -2,9 +2,11 @@ from typing import Optional
 
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication
+from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.authenticator import ApiKeyAuthenticator
 
 
@@ -84,3 +86,44 @@ class ApiKeyAuthentication(BaseAuthentication):
         if not raw_key:
             return None
         return self._authenticator.authenticate(raw_key)
+
+
+class JwtOrApiKeyAuthentication(BaseAuthentication):
+    """
+    Bearer JWT or X-Api-Key / `Authorization: ApiKey ...` authentication.
+
+    Combines `JwtAuthentication` and `ApiKeyAuthentication` into a single
+    authenticator for view/setting slots that need "one class, either
+    credential type" (e.g. `DEFAULT_AUTHENTICATION_CLASSES` in test settings).
+    Tries a Bearer JWT first, then falls back to API key resolution via
+    `ApiKeyAuthenticator`.
+    """
+
+    _authenticator = ApiKeyAuthenticator()
+
+    def __init__(self) -> None:
+        self.jwt_auth = JWTAuthentication()
+
+    def authenticate_header(self, request: Request) -> str:
+        return "Bearer"
+
+    def authenticate(self, request: Request):
+        auth_header = _get_header(request, "HTTP_AUTHORIZATION")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            return self.jwt_auth.authenticate(request)
+
+        raw_key = _get_api_key_from_headers(request)
+        if raw_key:
+            return self._authenticator.authenticate(raw_key)
+
+        return None
+
+
+class IsAuthenticatedOrApiKey(BasePermission):
+    """Allow requests authenticated by a valid ApiKey (including env-seeded
+    system keys whose owner is AnonymousUser) or by a regular user session."""
+
+    def has_permission(self, request, view) -> bool:
+        if isinstance(request.auth, ApiKey):
+            return True
+        return bool(request.user and request.user.is_authenticated)

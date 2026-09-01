@@ -1,4 +1,5 @@
 from django.db import transaction
+from loguru import logger
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from tables.models import Graph
@@ -25,7 +26,6 @@ _NODE_ENTITY_TYPES = {
     EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
     EntityType.SUBGRAPH_NODE,
     EntityType.NOTE_NODE,
-    EntityType.CODE_AGENT_NODE,
     EntityType.SCHEDULE_TRIGGER_NODE,
     EntityType.AGENT_NODE,
     EntityType.TASK_NODE,
@@ -117,6 +117,14 @@ class PartialImportService:
         denied_resources = set()
 
         for entity_type in dep_types:
+            if not self.registry.has_strategy(entity_type):
+                logger.warning(
+                    "Skipping unsupported entity type {} during partial import "
+                    "(no longer supported)",
+                    entity_type,
+                )
+                continue
+
             strategy = self.registry.get_strategy(entity_type)
             for entity_data in export_data.get(entity_type, []):
                 old_id = entity_data["id"]

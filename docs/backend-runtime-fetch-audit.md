@@ -11,7 +11,7 @@ are an explicit user choice made through the product UI — out of scope for "si
 classification, listed as an EULA carve-out at the end of this doc.
 
 Scope: `src/django_app`, `src/crew` (incl. vendored `libraries/mem0`, `libraries/crewAI`),
-`src/knowledge` (incl. vendored `libraries/graphrag`), `src/realtime`, `src/tool`,
+`src/knowledge` (incl. vendored `libraries/graphrag`), `src/realtime`,
 `src/sandbox`, `src/shared`.
 
 ---
@@ -89,7 +89,7 @@ Scope: `src/django_app`, `src/crew` (incl. vendored `libraries/mem0`, `libraries
 
 ### 8. Docker build-vs-runtime check
 
-- `src/crew/Dockerfile.crew` and `src/knowledge/Dockerfile.knowledge` both only run `poetry install` in the builder stage — no `RUN python -c "..."` pre-warm/pre-cache steps for tokenizers, embedding models, or NLTK/spacy data anywhere in either file. Every other service Dockerfile checked (`django_app`, `manager`, `realtime`, `sandbox`, `tool`, `webhook`) follows the same plain-`poetry install` pattern and none of them touch model/tokenizer downloads based on the earlier grep, so they're out of scope for this specific finding.
+- `src/crew/Dockerfile.crew` and `src/knowledge/Dockerfile.knowledge` both only run `poetry install` in the builder stage — no `RUN python -c "..."` pre-warm/pre-cache steps for tokenizers, embedding models, or NLTK/spacy data anywhere in either file. Every other service Dockerfile checked (`django_app`, `manager`, `realtime`, `sandbox`, `webhook`) follows the same plain-`poetry install` pattern and none of them touch model/tokenizer downloads based on the earlier grep, so they're out of scope for this specific finding.
 - Conclusion: nothing in this repo currently does the "safe" thing (pre-cache at build) for any of the tokenizer paths above — all identified downloads happen at first runtime use inside the customer's environment.
 
 ---

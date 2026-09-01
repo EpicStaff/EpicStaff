@@ -198,8 +198,6 @@ export class ImportResultDialogComponent implements AfterViewInit {
     public navigateToEntity(entityType: string, id: number | string): void {
         const routeMap: { [key: string]: string } = {
             Flow: '/flows',
-            Project: '/projects',
-            Agent: '/agents',
         };
 
         const basePath = routeMap[entityType];
@@ -214,7 +212,7 @@ export class ImportResultDialogComponent implements AfterViewInit {
      * Check if entity has navigable route
      */
     public isNavigable(entityType: string): boolean {
-        const navigableTypes = ['Flow', 'Project', 'Agent'];
+        const navigableTypes = ['Flow'];
         return navigableTypes.includes(entityType);
     }
 

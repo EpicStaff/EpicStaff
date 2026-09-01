@@ -212,28 +212,33 @@ function buildCdtNodePayload(
     const defaultRef = resolveNodeRef(defaultTargetUuid, allNodes, idMap);
     const errorRef = resolveNodeRef(errorTargetUuid, allNodes, idMap);
 
+    const preSecretIds = preComp.secret_ids || [];
+    const postSecretIds = postComp.secret_ids || [];
+
     return {
         graph: graphId,
         node_name: node.node_name,
         pre_python_code:
-            preCodeValue.trim() === ''
+            preCodeValue.trim() === '' && !preSecretIds.length
                 ? null
                 : {
                       code: preCodeValue,
                       libraries: preComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: preSecretIds,
                   },
         pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
         post_python_code:
-            postCodeValue.trim() === ''
+            postCodeValue.trim() === '' && !postSecretIds.length
                 ? null
                 : {
                       code: postCodeValue,
                       libraries: postComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: postSecretIds,
                   },
         post_input_map: postComp.input_map || tableData?.post_input_map || {},
         post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,
@@ -336,7 +341,6 @@ export function buildBulkSavePayload(
 
     const deleted = {
         start_node_ids: nodeDiff.startNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        crew_node_ids: nodeDiff.crewNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
@@ -356,7 +360,6 @@ export function buildBulkSavePayload(
             .map((n) => n.backendId!)
             .filter((id) => id != null),
         graph_note_ids: nodeDiff.noteNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        code_agent_node_ids: nodeDiff.codeAgentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         classification_decision_table_node_ids: nodeDiff.classificationDecisionTableNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
@@ -370,15 +373,6 @@ export function buildBulkSavePayload(
             variables: n.data.initialState ?? {},
             metadata: toNodeMetadata(n),
         })),
-        crew_node_list: nodeItems(nodeDiff.crewNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            crew_id: n.data.id,
-            input_map: n.input_map || {},
-            output_variable_path: n.output_variable_path || null,
-            stream_config: n.stream_config ?? {},
-            metadata: toNodeMetadata(n),
-        })),
         python_node_list: nodeItems(nodeDiff.pythonNodes, (n) => {
             const { use_storage, ...pythonCode } = n.data;
             return {
@@ -387,7 +381,6 @@ export function buildBulkSavePayload(
                 python_code: pythonCode,
                 input_map: n.input_map || {},
                 output_variable_path: n.output_variable_path || null,
-                stream_config: n.stream_config ?? {},
                 use_storage: use_storage ?? false,
                 test_input: n.test_input ?? {},
                 metadata: toNodeMetadata(n),
@@ -460,12 +453,13 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            webhook_node_auth: { enabled: n.data.webhook_node_auth?.enabled ?? false },
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
-            telegram_bot_api_key: n.data.telegram_bot_api_key,
+            telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
             metadata: toNodeMetadata(n),
@@ -485,28 +479,6 @@ export function buildBulkSavePayload(
             graph: graphId,
             content: n.data.content,
             metadata: { ...toNodeMetadata(n), backgroundColor: n.data.backgroundColor ?? null },
-        })),
-        code_agent_node_list: nodeItems(nodeDiff.codeAgentNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            llm_config: n.data?.llm_config_id ?? null,
-            agent_mode: n.data?.agent_mode ?? 'code_interpreter',
-            session_id: n.data?.session_id ?? '',
-            system_prompt: n.data?.system_prompt ?? '',
-            stream_handler_code: n.data?.stream_handler_code ?? '',
-            libraries: n.data?.libraries ?? [],
-            polling_interval_ms: n.data?.polling_interval_ms ?? 100,
-            silence_indicator_s: n.data?.silence_indicator_s ?? 3,
-            indicator_repeat_s: n.data?.indicator_repeat_s ?? 5,
-            chunk_timeout_s: n.data?.chunk_timeout_s ?? 30,
-            inactivity_timeout_s: n.data?.inactivity_timeout_s ?? 120,
-            max_wait_s: n.data?.max_wait_s ?? 300,
-            input_map: n.input_map,
-            output_variable_path: n.output_variable_path,
-            stream_config: n.stream_config ?? {},
-            output_schema: n.data?.output_schema ?? {},
-            use_storage: n.data?.use_storage ?? false,
-            metadata: toNodeMetadata(n),
         })),
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)

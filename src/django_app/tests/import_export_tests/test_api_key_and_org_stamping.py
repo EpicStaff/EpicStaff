@@ -21,6 +21,7 @@ from tables.import_export.services.import_service import ImportService
 from tables.import_export.registry import entity_registry
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.services.secrets import secret_service
 
 
 @pytest.fixture
@@ -58,18 +59,24 @@ def _build_identity_mapper(export_data):
 @pytest.mark.django_db
 class TestImportedLLMConfigApiKeyNotLeaked:
     def test_create_entity_does_not_copy_api_key_from_existing_config(
-        self, rich_seeded_db, export_service
+        self, rich_seeded_db, exportable_agent_definition, export_service
     ):
         """
-        Another LLMConfig with a non-null api_key for the same provider exists in DB.
-        Calling create_entity must produce a config with api_key=None — no leaking.
+        Another LLMConfig with a credential attached for the same provider exists
+        in DB. Calling create_entity must produce a config with no Secret
+        attached — no leaking.
         """
         existing_config = rich_seeded_db["llm_config"]
-        existing_config.api_key = "sk-leaked-key-must-not-appear-on-import"
+        existing_config.api_key_secret = secret_service.create(
+            text="sk-leaked-key-must-not-appear-on-import",
+            org=existing_config.org,
+            name="leaky-existing-config-key",
+        )
         existing_config.save()
 
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         mapper = _build_identity_mapper(export_data)
         strategy = entity_registry.get_strategy(EntityType.LLM_CONFIG)
@@ -77,9 +84,10 @@ class TestImportedLLMConfigApiKeyNotLeaked:
 
         new_config = strategy.create_entity(config_data, mapper)
 
-        assert (
-            new_config.api_key is None
-        ), f"api_key={new_config.api_key!r} was copied from existing config; expected None"
+        assert new_config.api_key_secret_id is None, (
+            f"api_key_secret_id={new_config.api_key_secret_id!r} was copied from "
+            f"existing config; expected None"
+        )
 
 
 @pytest.mark.django_db

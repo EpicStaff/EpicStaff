@@ -1,14 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { FullRealtimeConfigService } from '@shared/services';
 
-import {
-    ChatAgent,
-    ChatAgentKind,
-    chatAgentRealtimeConfigId,
-    chatAgentTitle,
-    chatAgentTranscriptionConfigId,
-    ChatAgentVM,
-} from '../models/chat-agent.model';
+import { ChatAgent, chatAgentRealtimeConfigId, chatAgentTitle, ChatAgentVM } from '../models/chat-agent.model';
 
 @Injectable({
     providedIn: 'root',
@@ -18,36 +11,33 @@ export class ChatsService {
 
     private selectedChatAgent = signal<ChatAgent | null>(null);
 
-    readonly activeTab = signal<ChatAgentKind>('staff');
-
     readonly selectedChatAgent$ = computed(() => this.selectedChatAgent());
 
-    // Display projection. Resolves realtime model name/custom name from the reactive
-    // realtime-config store, so it updates if configs load after selection.
     readonly selectedAgentVM$ = computed<ChatAgentVM | null>(() => {
         const sel = this.selectedChatAgent();
         if (!sel) return null;
+
         const realtimeConfigId = chatAgentRealtimeConfigId(sel);
-        const full =
-            realtimeConfigId != null
-                ? (this.fullRealtimeConfigService.fullRealtimeConfigs().find((c) => c.id === realtimeConfigId) ?? null)
-                : null;
+        let modelName: string | null = null;
+        let customName: string | null = null;
+
+        if (realtimeConfigId != null) {
+            const full =
+                this.fullRealtimeConfigService.fullRealtimeConfigs().find((c) => c.id === realtimeConfigId) ?? null;
+            modelName = full?.modelDetails?.name ?? null;
+            customName = full?.custom_name ?? null;
+        }
+
         return {
-            kind: sel.kind,
             id: sel.agent.id,
             title: chatAgentTitle(sel),
             realtimeConfigId,
-            transcriptionConfigId: chatAgentTranscriptionConfigId(sel),
-            modelName: full?.modelDetails?.name ?? null,
-            customName: full?.custom_name ?? null,
+            modelName,
+            customName,
         };
     });
 
     setSelectedChatAgent(agent: ChatAgent | null): void {
         this.selectedChatAgent.set(agent);
-    }
-
-    setActiveTab(tab: ChatAgentKind): void {
-        this.activeTab.set(tab);
     }
 }

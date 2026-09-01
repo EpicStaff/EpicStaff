@@ -3,13 +3,11 @@ import {
     AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
-    CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
     LLMNodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -27,7 +25,6 @@ export interface NodeDiff<T> {
 
 export interface NodeDiffByType {
     startNodes: NodeDiff<StartNodeModel>;
-    crewNodes: NodeDiff<ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNodeModel>;
     taskNodes: NodeDiff<TaskNodeModel>;
     agentNodes: NodeDiff<AgentNodeModel>;
@@ -41,7 +38,6 @@ export interface NodeDiffByType {
     scheduleNodes: NodeDiff<ScheduleTriggerNodeModel>;
     decisionTableNodes: NodeDiff<DecisionTableNodeModel>;
     noteNodes: NodeDiff<GraphNoteModel>;
-    codeAgentNodes: NodeDiff<CodeAgentNodeModel>;
     classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
 }
 

@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
@@ -180,7 +181,10 @@ export class NodePanelShellComponent {
     private isUpdatingNode = false;
     private isAutosaving = false;
 
-    constructor(private sidePanelService: SidePanelService) {
+    constructor(
+        private sidePanelService: SidePanelService,
+        private toastService: ToastService
+    ) {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             if (trigger && this.panelInstance && !this.isAutosaving) {
@@ -297,6 +301,7 @@ export class NodePanelShellComponent {
                 this.save.emit(updatedNode);
                 return;
             }
+            this.toastService.error("Changes weren't saved — this node has invalid fields.");
         }
         this.sidePanelService.clearSelection();
     }

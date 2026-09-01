@@ -27,69 +27,6 @@ export const DEFAULT_LLMS_SECTIONS: DefaultLlmsSection[] = [
                 icon: 'func-calling',
                 configType: ModelTypes.LLM,
             },
-            {
-                id: 'voice-llm',
-                field: 'voice_llm_config',
-                title: 'Voice LLM',
-                description: 'Voice LLM enables real-time spoken interaction by generating immediate voice responses.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'voice',
-                configType: ModelTypes.REALTIME,
-            },
-            {
-                id: 'transcription-llm',
-                field: 'transcription_llm_config',
-                title: 'Transcription LLM',
-                description:
-                    'Transcription LLM converts spoken language into accurate written text for further processing.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'transcription',
-                configType: ModelTypes.TRANSCRIPTION,
-            },
-        ],
-    },
-    {
-        id: 'crew',
-        title: 'For Crew',
-        cards: [
-            {
-                id: 'project-manager-llm',
-                field: 'project_manager_llm_config',
-                title: 'Project Manager LLM',
-                description:
-                    'The Crew Manager LLM coordinates and manages the team workflow within a hierarchical structure.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'project-manager',
-                configType: ModelTypes.LLM,
-            },
-            // {
-            //     id: 'planning-llm',
-            //     title: 'Planning LLM',
-            //     description:
-            //         'Planning LLM guides agents in creating and organizing plans to achieve goals efficiently.',
-            //     selectLabel: 'Select LLM from Library',
-            //     icon: 'llm-agents/planning',
-            // },
-            {
-                id: 'memory-embedding-model',
-                field: 'memory_embedding_config',
-                title: 'Memory Embedding Model',
-                description:
-                    "The Crew Embedding LLM manages your team's memory by handling short-term, long-term, and entity memory.",
-                selectLabel: 'Select LLM from Library',
-                icon: 'memory-embedding',
-                configType: ModelTypes.EMBEDDING,
-            },
-            {
-                id: 'memory-llm',
-                field: 'memory_llm_config',
-                title: 'Memory LLM',
-                description:
-                    'Memory LLM manages how your agents store and retrieve information, providing reliable context handling.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'memory',
-                configType: ModelTypes.LLM,
-            },
         ],
     },
     // {

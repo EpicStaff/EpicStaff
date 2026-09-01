@@ -11,6 +11,7 @@ Responsibilities:
 """
 
 import json
+from collections import Counter
 from datetime import timedelta
 from typing import AsyncIterator
 
@@ -22,7 +23,11 @@ from django.utils import timezone
 
 from utils.logger import logger
 
-from tables.exceptions import LLMConfigMissingError, LLMConfigInvalidError, ToolExecutionError
+from tables.exceptions import (
+    LLMConfigMissingError,
+    LLMConfigInvalidError,
+    ToolExecutionError,
+)
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -38,8 +43,9 @@ from tables.services.llm_clients import (
     UnsupportedLLMProviderError,
     get_llm_client,
 )
+from tables.services.secrets import secret_resolver
 from . import partial_json as _partial_json
-from .tools import _NODE_TABLES, _TOOL_CALLABLES, TOOL_SPECS
+from .tools import _TOOL_CALLABLES, TOOL_SPECS
 from .constants import _MAX_TOOL_ITERATIONS, _REASONING_EMPTY_HINT
 from .helpers import (
     _clear_cancel_flag,
@@ -50,7 +56,7 @@ from .helpers import (
     _persist_messages,
     _strip_markdown_tables,
 )
-from .node_registry import NODE_RELATED_NAMES
+from .node_registry import FLOW_ASSISTANT_NODE_TYPES
 from .system_prompt import SystemPromptInputs, build_system_prompt
 
 
@@ -83,20 +89,34 @@ class FlowAssistantService:
         """
         graph = flow_assistant.graph
 
-        # Node counts via single query per related manager
-        node_counts: dict[str, int] = {}
-        for label, rel in NODE_RELATED_NAMES:
-            manager = getattr(graph, rel, None)
-            if manager is not None:
-                count = manager.count()
-                if count:
-                    node_counts[label] = count
-
         subflows = [
             f"  - {sn.subgraph.name}: {sn.subgraph.description}"
             for sn in graph.subgraph_node_list.select_related("subgraph").all()
             if sn.subgraph
         ]
+
+        # ConditionalEdge is an edge, not a node (NodeTypeSpec.is_edge) — kept out
+        # of both the node counts and the "Nodes in this flow" list below, same
+        # as get_flow_overview.
+        node_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if not spec.is_edge]
+
+        # Build "Nodes in this flow" list — up to 30 entries, sorted by (type, id).
+        # One query per node table; node_counts below is derived from these same
+        # rows instead of a second query per related manager.
+        node_tuples: list[tuple[str, int, str]] = []
+        for spec in node_specs:
+            for node in spec.model.objects.filter(graph_id=graph.pk).only(
+                *spec.only_fields()
+            ):
+                node_tuples.append((spec.label, node.pk, spec.display_name(node)))
+        node_tuples.sort(key=lambda t: (t[0], t[1]))
+
+        counts_by_label = Counter(label for label, _, _ in node_tuples)
+        node_counts = {
+            spec.label: counts_by_label[spec.label]
+            for spec in node_specs
+            if counts_by_label[spec.label]
+        }
 
         node_summary_lines = [
             f"  - {label}: {count}" for label, count in node_counts.items()
@@ -106,14 +126,6 @@ class FlowAssistantService:
         )
         subflow_summary = "\n".join(subflows) if subflows else "  (none)"
         description = graph.description or "(no description provided)"
-
-        # Build "Nodes in this flow" list — up to 30 entries, sorted by (type, id).
-        node_tuples: list[tuple[str, int, str]] = []
-        for node_type, model_cls, has_db_node_name in _NODE_TABLES:
-            fields = ["id", "node_name"] if has_db_node_name else ["id"]
-            for node in model_cls.objects.filter(graph_id=graph.pk).only(*fields):
-                node_tuples.append((node_type, node.pk, getattr(node, "node_name", "")))
-        node_tuples.sort(key=lambda t: (t[0], t[1]))
 
         _MAX_NODES_IN_PROMPT = 30
         if not node_tuples:
@@ -208,7 +220,9 @@ class FlowAssistantService:
         last_message_at in a single atomic block. Returns the created row.
         """
         with transaction.atomic():
-            next_idx_result = conversation.message_rows.aggregate(m=Max("message_index"))
+            next_idx_result = conversation.message_rows.aggregate(
+                m=Max("message_index")
+            )
             next_idx = next_idx_result["m"]
             next_idx = 0 if next_idx is None else next_idx + 1
             row = FlowAssistantMessage.objects.create(
@@ -249,10 +263,18 @@ class FlowAssistantService:
                 f"FlowAssistant for graph {flow_assistant.graph_id} has no llm_config set."
             )
 
+        # sync_to_async: stream_reply is an async generator, so the ORM lookup cannot run inline.
+        api_key = await sync_to_async(secret_resolver.resolve)(
+            secret_id=flow_assistant.llm_config.api_key_secret_id,
+            org_id=flow_assistant.llm_config.org_id,
+            context="FlowAssistant.llm_config.api_key",
+        )
+
         try:
             client = get_llm_client(
                 flow_assistant.llm_config,
                 output_schema=FLOW_ASSISTANT_OUTPUT_SCHEMA,
+                api_key=api_key,
             )
         except UnsupportedLLMProviderError as exc:
             raise LLMConfigInvalidError(str(exc)) from exc

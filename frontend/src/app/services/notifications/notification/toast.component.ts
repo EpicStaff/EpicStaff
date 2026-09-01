@@ -20,7 +20,6 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                     animate.leave="toast-leave"
                     class="toast-item"
                     [ngClass]="toast.type"
-                    (click)="closeToast(toast.id)"
                 >
                     <div class="toast-content">
                         <div class="toast-icon-wrapper">
@@ -152,6 +151,9 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             .toast-close-btn {
                 background: transparent;
                 border: none;
+                border-radius: 5px;
+                display: flex;
+                align-items: center;
                 color: #a0a0a0;
                 cursor: pointer;
                 padding: 4px;
@@ -159,6 +161,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 flex-shrink: 0;
 
                 &:hover {
+                    background: var(--color-ks-hover-row);
                     color: #e0e0e0;
                 }
             }

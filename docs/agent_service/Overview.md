@@ -2,14 +2,13 @@
 
 The **agent service** (`src/agent`) executes a single agent's work — one prompt
 or an ordered list of prompts — driving a bespoke LLM tool-use loop over
-**LiteLLM** (no CrewAI). It is a Redis-Streams worker: crew publishes a request,
+**LiteLLM**, with no agent framework underneath. It is a Redis-Streams worker: crew publishes a request,
 the service runs the agent, and publishes the result back.
 
 - **Consumers:** the crew service dispatches `TaskNode` → `SINGLE_TASK` and
   `AgentNode` → `LIST_OF_TASKS` here (`src/crew/services/agent_task_service.py`).
-- **Not** a CrewAI runtime — the resolver rejects `configured-tool` / `proxy-tool`
-  refs as "crew-only". Tools are called directly against the sandbox / knowledge /
-  MCP services.
+- The resolver rejects `configured-tool` / `proxy-tool` refs as "crew-only".
+  Tools are called directly against the sandbox / knowledge / MCP services.
 - FE-facing message shapes for these nodes: see
   [../agent_and_task_node/Session_Messages.md](../agent_and_task_node/Session_Messages.md).
 
@@ -239,7 +238,7 @@ boot.
 | `AGENT_DROP_UNSUPPORTED_LLM_PARAMS` | `true` | strip params a provider rejects |
 | `SANDBOX_REQUEST_CHANNEL` / `SANDBOX_RESULT_CHANNEL` | `code_exec_tasks` / `code_results` | sandbox |
 | `KNOWLEDGE_SEARCH_GET_CHANNEL` / `KNOWLEDGE_SEARCH_RESPONSE_CHANNEL` | `knowledge:search:get` / `:response` | knowledge |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`, `LOG_LEVEL` | — | infra |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`, `AGENT_LOG_LEVEL` | — | infra |
 
 ## Adding a new runner
 

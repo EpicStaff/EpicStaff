@@ -5,7 +5,10 @@ from django.db import transaction
 from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.models.python_models import PythonCode
-from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from tables.services.copy_services.helpers import (
+    apply_python_code_fields,
+    create_python_code,
+)
 from tables.serializers.org_scoped_fields import (
     org_visible_queryset,
     resolve_active_org_id,
@@ -26,73 +29,6 @@ def assert_node_ref_in_graph(node_id, graph, field: str) -> None:
         raise serializers.ValidationError(
             {field: f'Invalid pk "{node_id}" - object does not exist.'}
         )
-
-
-class NestedAgentExportMixin:
-    """
-    A mixin that defines methods for exporting `Agent` fields data when
-    agent is being used as part of another entity in serializer.
-
-    Feilds that can be defined in a child class:
-        `tools`: dictionary where `key` is tools name and `value` is list of tool IDs
-        `llm_config`: integer field
-        `fcm_llm_config`: integer field
-        `realtime_agent`: integer field
-
-    Methods:
-        `get_tools`: returns lists of IDs for each tool type that agent has in database
-        `get_llm_config`: returns an ID of agent's LLMConfig
-        `get_fcm_llm_config`: returns an ID of agent's FCM LLMConfig
-        `get_realtime_agent`: returns an ID of realtime agent that is related to agent
-    """
-
-    def get_tools(self, agent):
-        return {
-            "python_tools": list(
-                PythonCodeTool.objects.filter(
-                    agentpythoncodetools__agent_id=agent.pk
-                ).values_list("id", flat=True)
-            ),
-            "configured_tools": list(
-                ToolConfig.objects.filter(
-                    agentconfiguredtools__agent_id=agent.pk
-                ).values_list("id", flat=True)
-            ),
-            "mcp_tools": list(
-                McpTool.objects.filter(agentmcptools__agent_id=agent.pk).values_list(
-                    "id", flat=True
-                )
-            ),
-        }
-
-    def get_llm_config(self, agent: Agent):
-        if agent.llm_config:
-            return agent.llm_config.id
-
-    def get_fcm_llm_config(self, agent: Agent):
-        if agent.fcm_llm_config:
-            return agent.fcm_llm_config.id
-
-    def get_realtime_agent(self, agent: Agent):
-        if agent.realtime_agent:
-            return agent.realtime_agent.pk
-
-
-class NestedCrewExportMixin:
-    """
-    A mixin that defines methods for exporting `Crew` fields data when
-    crew is being used as part of another entity in serializer.
-
-    Feilds that can be defined in a child class:
-        `agents`: a list of integers
-
-    Methods:
-        `get_ageants`: returns a list of agent IDs for this crew
-    """
-
-    def get_agents(self, crew):
-        agents = list(crew.agents.all().values_list("id", flat=True))
-        return agents
 
 
 class TagHandlingMixin:
@@ -174,7 +110,7 @@ class TagHandlingMixin:
 class NestedPythonCodeMixin:
     def _create_with_python_code(self, model_class, validated_data):
         python_code_data = validated_data.pop("python_code")
-        python_code = PythonCode.objects.create(**python_code_data)
+        python_code = create_python_code(python_code_data=python_code_data)
         return model_class.objects.create(python_code=python_code, **validated_data)
 
     def _update_python_code(self, instance, validated_data):
@@ -184,9 +120,9 @@ class NestedPythonCodeMixin:
             expected_hash = python_code_data.pop("content_hash", None)
             if expected_hash is not None:
                 python_code._expected_hash = expected_hash
-            for attr, value in python_code_data.items():
-                setattr(python_code, attr, value)
-            python_code.save()
+            apply_python_code_fields(
+                python_code=python_code, python_code_data=python_code_data
+            )
 
     def create(self, validated_data):
         return self._create_with_python_code(self.Meta.model, validated_data)
@@ -223,12 +159,12 @@ class ToolsConnectionMixin:
         Return mapping for tool synchronization.
 
         Key:
-            Tool model class (e.g. ToolConfig)
+            Tool model class (e.g. PythonCodeTool)
 
         Value:
             tuple:
-                - through model class (e.g. TaskConfiguredTools)
-                - tool prefix used in tool_ids (e.g. "configured-tool")
+                - through model class (e.g. TaskPythonCodeTools)
+                - tool prefix used in tool_ids (e.g. "python-code-tool")
                 - FK field name in through model (e.g. "tool_id")
         """
         raise NotImplementedError

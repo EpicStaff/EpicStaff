@@ -15,6 +15,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -38,6 +39,7 @@ import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import {
     ClassificationDecisionTableData,
+    ComputationConfig,
     PromptConfig,
 } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -46,6 +48,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -65,6 +68,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         AppSvgIconComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
@@ -106,12 +110,19 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    public readonly preSelectedSecretIds = signal<number[]>([]);
+    public readonly postSelectedSecretIds = signal<number[]>([]);
+    public readonly preSecretNames = computed(() => this.namesFor(this.preSelectedSecretIds()));
+    public readonly postSecretNames = computed(() => this.namesFor(this.postSelectedSecretIds()));
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
+    private secretsRestoredForNodeId: string | null = null;
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -123,11 +134,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
 
     private preInputMapVersion = signal(0);
+    private postInputMapVersion = signal(0);
 
     public preInputMapKeys = computed(() => {
         this.preInputMapVersion();
         if (!this.form) return [];
         const arr = this.form.get('pre_input_map') as FormArray;
+        if (!arr) return [];
+        return arr.controls.map((ctrl) => ctrl.value?.key?.trim()).filter((k: string) => !!k);
+    });
+
+    public postInputMapKeys = computed(() => {
+        this.postInputMapVersion();
+        if (!this.form) return [];
+        const arr = this.form.get('post_input_map') as FormArray;
         if (!arr) return [];
         return arr.controls.map((ctrl) => ctrl.value?.key?.trim()).filter((k: string) => !!k);
     });
@@ -188,6 +208,69 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+
+        effect(() => {
+            const graphId = this.graphId();
+            const node = this.node();
+            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
+            this.secretsRestoredForNodeId = node.id;
+
+            const tableData = (node.data as { table?: ClassificationDecisionTableData })?.table;
+            const preComp = tableData?.pre_computation;
+            const postComp = tableData?.post_computation;
+            if (preComp?.secret_ids !== undefined && postComp?.secret_ids !== undefined) return;
+
+            const nodeId = node.id;
+            const nodeName = node.node_name;
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    if (this.node().id !== nodeId) return;
+                    const preIds = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        nodeName,
+                        NodeType.CLASSIFICATION_TABLE,
+                        'pre_python_code'
+                    );
+                    const postIds = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        nodeName,
+                        NodeType.CLASSIFICATION_TABLE,
+                        'post_python_code'
+                    );
+                    this.applyRestoredSecrets(preComp, postComp, preIds, postIds);
+                });
+        });
+    }
+
+    /**
+     * Applies restored pre/post secret_ids to the picker signals and patches just those fields
+     * into the dirty-tracking baseline. Doesn't call resetBaseline(), which would recompute the
+     * whole node snapshot and bake in any other field the user edited while this async lookup
+     * (SecretDeclarationIndexService.getIndex()) was in flight.
+     */
+    private applyRestoredSecrets(
+        preComp: ComputationConfig | undefined,
+        postComp: ComputationConfig | undefined,
+        preIds: number[],
+        postIds: number[]
+    ): void {
+        const restorePre = preComp?.secret_ids === undefined && preIds.length > 0;
+        const restorePost = postComp?.secret_ids === undefined && postIds.length > 0;
+        if (!restorePre && !restorePost) return;
+
+        if (restorePre) this.preSelectedSecretIds.set(preIds);
+        if (restorePost) this.postSelectedSecretIds.set(postIds);
+
+        if (!this.initialNodeSnapshot) return;
+        const snapshot = JSON.parse(this.initialNodeSnapshot);
+        if (restorePre) snapshot.data.table.pre_computation.secret_ids = [...preIds].sort();
+        if (restorePost) snapshot.data.table.post_computation.secret_ids = [...postIds].sort();
+        this.initialNodeSnapshot = JSON.stringify(snapshot);
+        this.notifyExternalChange();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -258,6 +341,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
+        this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
+        this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
@@ -308,6 +393,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'post_input_map', pairs);
+                this.postInputMapVersion.update((v) => v + 1);
                 this.codeChange$.next();
             });
 
@@ -343,12 +429,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
+                secret_ids: this.preSelectedSecretIds(),
             },
             post_computation: {
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.post_libraries),
+                secret_ids: this.postSelectedSecretIds(),
             },
             condition_groups: conditionGroups,
             route_variable_name: 'route_code',
@@ -631,6 +719,26 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCode = code;
         this.notifyExternalChange();
         this.codeChange$.next();
+    }
+
+    public onPreSecretsChange(values: number[]): void {
+        this.preSelectedSecretIds.set(values);
+        this.notifyExternalChange();
+        this.codeChange$.next();
+    }
+
+    public onPostSecretsChange(values: number[]): void {
+        this.postSelectedSecretIds.set(values);
+        this.notifyExternalChange();
+        this.codeChange$.next();
+    }
+
+    private namesFor(ids: number[]): string[] {
+        const selected = new Set(ids);
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
     }
 
     // ── Input map helpers ──

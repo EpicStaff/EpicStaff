@@ -1,9 +1,7 @@
 import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
-import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
 import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
 import { Edge } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
 import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
@@ -49,7 +47,6 @@ export interface GetGraphLightRequest {
 export interface GraphDto extends GetGraphLightRequest {
     save_version: number;
     start_node_list: StartNode[];
-    crew_node_list: CrewNode[];
     python_node_list: PythonNode[];
     task_node_list: TaskNode[];
     agent_node_list?: AgentNode[];
@@ -66,7 +63,6 @@ export interface GraphDto extends GetGraphLightRequest {
     metadata: FlowModel;
     audio_transcription_node_list: GetAudioToTextNodeRequest[];
     graph_note_list: GraphNote[];
-    code_agent_node_list: GetCodeAgentNodeRequest[];
     schedule_trigger_node_list: GetScheduleTriggerNodeRequest[];
 }
 
@@ -77,7 +73,6 @@ export interface CreateGraphDtoRequest {
     metadata?: Record<string, unknown>;
     tags?: string[];
     start_node_list?: StartNode[];
-    crew_node_list?: CrewNode[];
     python_node_list?: PythonNode[];
     edge_list?: Edge[];
     conditional_edge_list?: ConditionalEdge[];

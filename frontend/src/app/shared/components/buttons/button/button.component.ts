@@ -12,7 +12,14 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
     styleUrls: ['./button.component.scss'],
 })
 export class ButtonComponent {
-    @Input() type: 'primary' | 'secondary' | 'ghost' | 'icon' | 'outline-primary' | 'outline-secondary' = 'primary';
+    @Input() type:
+        | 'primary'
+        | 'primary-white'
+        | 'secondary'
+        | 'ghost'
+        | 'icon'
+        | 'outline-primary'
+        | 'outline-secondary' = 'primary';
     @Input() mod: 'default' | 'small' = 'default';
     @Input() leftIcon?: string; // e.g., 'ui/x'
     @Input() iconSize: string = '1.1rem';

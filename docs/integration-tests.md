@@ -89,7 +89,7 @@ The `-v` flag removes all volumes (including the PostgreSQL data volume), so the
 | `redis` | Queue / pub-sub | 6379 |
 | `django_app` | Main REST API | 8000 |
 | `manager_container` | Agent manager | 8001 |
-| `crew` | CrewAI orchestration | 8002 |
+| `crew` | Flow orchestration (LangGraph) | 8002 |
 | `realtime` | SSE / realtime | 8050 |
 | `sandbox` | Code execution | — |
 | `knowledge` | RAG service | — |

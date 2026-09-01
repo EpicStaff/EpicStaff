@@ -44,26 +44,11 @@
                     #messageRow
                 >
                     @if (entry.shouldShowTransition) {
-                        <app-project-transition></app-project-transition>
+                        <app-run-transition></app-run-transition>
                     }
                     @switch (entry.message.message_data.message_type) {
                         @case (MessageType.START) {
                             <app-start-message [message]="entry.message"></app-start-message>
-                        }
-                        @case (MessageType.USER) {
-                            <app-user-message [message]="entry.message"></app-user-message>
-                        }
-                        @case (MessageType.AGENT) {
-                            <app-agent-message
-                                [message]="entry.message"
-                                [agent]="entry.agent"
-                            ></app-agent-message>
-                        }
-                        @case (MessageType.AGENT_FINISH) {
-                            <app-agent-finish-message
-                                [message]="entry.message"
-                                [agent]="entry.agent"
-                            ></app-agent-finish-message>
                         }
                         @case (MessageType.PYTHON) {
                             <app-python-message [message]="entry.message"></app-python-message>
@@ -80,9 +65,6 @@
                         @case (MessageType.ERROR) {
                             <app-error-message [message]="entry.message"></app-error-message>
                         }
-                        @case (MessageType.TASK) {
-                            <app-task-message [message]="entry.message"></app-task-message>
-                        }
                         @case (MessageType.CONDITION_GROUP) {
                             <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
                         }
@@ -95,14 +77,8 @@
                         @case (MessageType.FINISH) {
                             <app-finish-message
                                 [message]="entry.message"
-                                [project]="entry.project"
+                                [nodeName]="entry.nodeName"
                             ></app-finish-message>
-                        }
-                        @case (MessageType.CODE_AGENT_STREAM) {
-                            <app-code-agent-stream-message
-                                [message]="entry.message"
-                                [allMessages]="messages"
-                            ></app-code-agent-stream-message>
                         }
                         @case (MessageType.TASK_NODE_STREAM) {
                             <app-node-stream-message
@@ -244,23 +220,6 @@
                                                             [message]="nestedEntry.message"
                                                         ></app-start-message>
                                                     }
-                                                    @case (MessageType.USER) {
-                                                        <app-user-message
-                                                            [message]="nestedEntry.message"
-                                                        ></app-user-message>
-                                                    }
-                                                    @case (MessageType.AGENT) {
-                                                        <app-agent-message
-                                                            [message]="nestedEntry.message"
-                                                            [agent]="nestedEntry.agent"
-                                                        ></app-agent-message>
-                                                    }
-                                                    @case (MessageType.AGENT_FINISH) {
-                                                        <app-agent-finish-message
-                                                            [message]="nestedEntry.message"
-                                                            [agent]="nestedEntry.agent"
-                                                        ></app-agent-finish-message>
-                                                    }
                                                     @case (MessageType.PYTHON) {
                                                         <app-python-message
                                                             [message]="nestedEntry.message"
@@ -286,11 +245,6 @@
                                                             [message]="nestedEntry.message"
                                                         ></app-error-message>
                                                     }
-                                                    @case (MessageType.TASK) {
-                                                        <app-task-message
-                                                            [message]="nestedEntry.message"
-                                                        ></app-task-message>
-                                                    }
                                                     @case (MessageType.CONDITION_GROUP) {
                                                         <app-classification-dt-message
                                                             [message]="nestedEntry.message"
@@ -309,14 +263,8 @@
                                                     @case (MessageType.FINISH) {
                                                         <app-finish-message
                                                             [message]="nestedEntry.message"
-                                                            [project]="nestedEntry.project"
+                                                            [nodeName]="nestedEntry.nodeName"
                                                         ></app-finish-message>
-                                                    }
-                                                    @case (MessageType.CODE_AGENT_STREAM) {
-                                                        <app-code-agent-stream-message
-                                                            [message]="nestedEntry.message"
-                                                            [allMessages]="messages"
-                                                        ></app-code-agent-stream-message>
                                                     }
                                                     @case (MessageType.TASK_NODE_STREAM) {
                                                         <app-node-stream-message
@@ -391,9 +339,6 @@
     }
 
     <!-- Waiting for user input component -->
-    @if (statusWaitForUser) {
-        <app-wait-for-user-input (messageSubmitted)="onUserMessageSubmitted($event)"></app-wait-for-user-input>
-    }
 
     @if (showScrollToTop) {
         <button

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -8,8 +9,8 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import {
@@ -20,6 +21,7 @@ import {
 } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     createInputMapFromPairs,
@@ -40,7 +42,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         PythonTerminalComponent,
         NodeStorageSectionComponent,
         AppSvgIconComponent,
-        HelpTooltipComponent,
+        NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
     template: `
@@ -86,6 +88,13 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 ></app-input-map>
                             </div>
 
+                            <app-node-secrets-field
+                                [activeColor]="activeColor"
+                                [value]="selectedSecretIds()"
+                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                (valueChange)="onSecretsChange($event)"
+                            />
+
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -101,27 +110,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
-
-                            <div
-                                class="stream-config-section"
-                                formGroupName="stream_config"
-                            >
-                                <span class="section-label">Streaming to EpicChat</span>
-                                <div class="checkbox-list">
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="execution_status"
-                                            [style.accent-color]="activeColor"
-                                        />
-                                        <span>Execution status</span>
-                                        <app-help-tooltip
-                                            size="18px"
-                                            text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
-                                        />
-                                    </label>
-                                </div>
-                            </div>
 
                             <app-node-storage-section
                                 [useStorage]="useStorage()"
@@ -167,6 +155,8 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                     class="code-editor-section"
                                     [class.no-bottom-radius]="isOpenTestMode()"
                                     [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
+                                    [inputMapKeys]="inputMapKeys()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
@@ -396,40 +386,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 @include mixins.secondary-button;
             }
 
-            .section-label {
-                font-size: 0.75rem;
-                color: #d9d9d999;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }
-
-            .stream-config-section {
-                display: flex;
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            .checkbox-list {
-                display: flex;
-                flex-direction: column;
-                gap: 0.35rem;
-            }
-
-            .checkbox-item {
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                font-size: 0.85rem;
-                color: #d4d4d4;
-                cursor: pointer;
-
-                input[type='checkbox'] {
-                    width: 16px;
-                    height: 16px;
-                    cursor: pointer;
-                }
-            }
-
             .panel-header {
                 display: flex;
                 justify-content: flex-end;
@@ -446,6 +402,22 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 400);
+
+    public readonly selectedSecretIds = signal<number[]>([]);
+    public readonly secretNames = computed(() => {
+        const selected = new Set(this.selectedSecretIds());
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
+    });
+    public readonly inputMapKeys = computed(() => {
+        this.formDirtyTick();
+        if (!this.form) return [];
+        return getValidInputPairs(this.inputMapPairs)
+            .map((control) => (control.value.key as string)?.trim())
+            .filter((key): key is string => !!key);
+    });
 
     isOpenTestMode = signal(false);
     testResult = signal<PythonCodeResult | null>(null);
@@ -486,10 +458,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
+    private secretsRestoredForNodeId: string | null = null;
 
     constructor(
         private readonly sidePanelService: SidePanelService,
-        private readonly pythonCodeRunService: PythonCodeRunService
+        private readonly pythonCodeRunService: PythonCodeRunService,
+        private readonly secretDeclarationIndexService: SecretDeclarationIndexService,
+        private readonly secretsStorageService: SecretsStorageService
     ) {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
@@ -513,6 +488,33 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             }
             this.wasSaving = saving;
         });
+        effect(() => {
+            const graphId = this.graphId();
+            const node = this.node();
+            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
+            this.secretsRestoredForNodeId = node.id;
+            if (node.data.secret_ids !== undefined) return;
+
+            const nodeId = node.id;
+            const nodeName = node.node_name;
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    if (this.node().id !== nodeId) return;
+                    const declared = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        nodeName,
+                        NodeType.PYTHON,
+                        'python_code'
+                    );
+                    if (declared.length) {
+                        this.selectedSecretIds.set(declared);
+                        this.resetSecretsBaseline();
+                    }
+                });
+        });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
     }
 
@@ -522,6 +524,20 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initialPythonCode = this.pythonCode;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
+        this.formDirtyTick.update((v) => v + 1);
+    }
+
+    /**
+     * Patches only secret_ids into the dirty-tracking baseline, instead of recomputing the whole
+     * signature like resetDirtyAfterSave() does — the secret-restoration effect resolves
+     * asynchronously, and recomputing the full baseline at that point would bake in any other
+     * field the user edited in the meantime as if it were already saved.
+     */
+    private resetSecretsBaseline(): void {
+        if (!this.form || !this.initialFormSignatureExceptTestValues) return;
+        const baseline = JSON.parse(this.initialFormSignatureExceptTestValues) as Record<string, unknown>;
+        baseline['secret_ids'] = [...this.selectedSecretIds()].sort();
+        this.initialFormSignatureExceptTestValues = JSON.stringify(baseline);
         this.formDirtyTick.update((v) => v + 1);
     }
 
@@ -538,6 +554,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const stripped = {
             ...raw,
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
+            secret_ids: [...this.selectedSecretIds()].sort(),
         };
         return JSON.stringify(stripped);
     }
@@ -570,6 +587,12 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.codeEditorHasError = hasError;
     }
 
+    onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
+        this.formDirtyTick.update((v) => v + 1);
+        this.sidePanelService.triggerAutosave();
+    }
+
     onStorageToggle(value: boolean): void {
         this.useStorage.set(value);
         this.sidePanelService.triggerAutosave();
@@ -592,18 +615,15 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     initializeForm(): FormGroup {
         this.terminalLogs.set([]);
-        const sc = this.node().stream_config;
 
         this.useStorage.set(this.node().data.use_storage ?? false);
+        this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             libraries: [this.node().data.libraries?.join(', ') || ''],
-            stream_config: this.fb.group({
-                execution_status: [sc?.['execution_status'] ?? true],
-            }),
             test_input: this.fb.array([]),
         });
 
@@ -656,8 +676,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 entrypoint: 'main',
                 libraries: librariesArray,
                 use_storage: this.useStorage(),
+                secret_ids: this.selectedSecretIds(),
             },
-            stream_config: this.form.value.stream_config || {},
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };
     }

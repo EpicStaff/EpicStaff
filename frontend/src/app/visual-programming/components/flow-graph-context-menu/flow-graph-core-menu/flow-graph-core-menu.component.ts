@@ -161,12 +161,6 @@ export class FlowGraphCoreMenuComponent {
             color: NODE_COLORS[NodeType.SCHEDULE_TRIGGER],
         },
         {
-            label: 'Code Agent',
-            type: NodeType.CODE_AGENT,
-            icon: NODE_ICONS[NodeType.CODE_AGENT],
-            color: NODE_COLORS[NodeType.CODE_AGENT],
-        },
-        {
             label: 'Task Node',
             type: NodeType.TASK,
             icon: NODE_ICONS[NodeType.TASK],
@@ -244,7 +238,7 @@ export class FlowGraphCoreMenuComponent {
         } else if (type === NodeType.TELEGRAM_TRIGGER) {
             data = {
                 webhook_trigger: null,
-                telegram_bot_api_key: '',
+                telegram_bot_api_key_secret_id: null,
                 fields: [],
             };
         } else if (type === NodeType.SCHEDULE_TRIGGER) {

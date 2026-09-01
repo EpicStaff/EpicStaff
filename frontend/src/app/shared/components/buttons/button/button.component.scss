@@ -32,6 +32,13 @@
     }
 }
 
+// Same as .btn-primary, but with pure-white text instead of the default --color-text-primary —
+// for callers that specifically need max contrast against the solid accent background.
+.btn-primary-white {
+    @extend .btn-primary;
+    color: var(--color-ks-white);
+}
+
 .btn-secondary {
     background: var(--color-nodes-background);
     border: 1px solid var(--color-divider-subtle);
@@ -65,6 +72,12 @@
         border-color: var(--accent-color-hover);
         color: var(--accent-color-hover);
     }
+
+    &:disabled {
+        opacity: 1;
+        color: var(--inactive-purple);
+        border-color: var(--inactive-purple);
+    }
 }
 
 .btn-outline-secondary {
@@ -96,20 +109,24 @@
     &--icon-left {
         &-default {
             padding-left: 2.4rem;
+            padding-right: 1rem;
         }
 
         &-small {
             padding-left: 2rem;
+            padding-right: 0.75rem;
         }
     }
 
     &--icon-right {
         &-default {
             padding-right: 2.4rem;
+            padding-left: 1rem;
         }
 
         &-small {
             padding-right: 2rem;
+            padding-left: 0.75rem;
         }
     }
 }

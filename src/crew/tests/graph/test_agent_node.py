@@ -297,7 +297,6 @@ async def test_execute_forwards_knowledge_search_envelope_as_extracted_chunks(
 
     assert len(extracted_chunks_messages) == 1
     message = extracted_chunks_messages[0]
-    assert message["sse_visible"] is True
     for key, value in knowledge_payload.items():
         assert message[key] == value
 

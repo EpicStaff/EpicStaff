@@ -1,3 +1,5 @@
+import textwrap
+from collections import defaultdict
 from copy import deepcopy
 
 from tables.graph_versioning.constants import (
@@ -11,6 +13,7 @@ from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.graph import GraphStrategy
+from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 from tables.import_export.utils import ensure_unique_identifier
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
@@ -19,13 +22,15 @@ from tables.models import (
     PythonCode,
     PythonCodeTool,
     PythonNode,
+    Secret,
     WebhookTrigger,
     WebhookTriggerNode,
 )
-from tables.models.graph_models import StartNode
+from tables.models.graph_models import StartNode, TelegramTriggerNode
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
+from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
 
 
 class GraphVersioningManager:
@@ -43,6 +48,295 @@ class GraphVersioningManager:
         conditional edges) into a JSON-serializable dict.
         """
         return self._graph_strategy.export_entity(graph)
+
+    def collect_secret_declarations(self, *, graph: Graph) -> dict:
+        """Which secret names each of this graph's Python-code sites declares."""
+        nodes: dict[str, dict[str, list[str]]] = {}
+        conditional_edges: list[dict] = []
+
+        for site in GRAPH_PYTHON_CODE_SITES:
+            rows = (
+                site.model.objects.filter(graph=graph)
+                .select_related(site.code_field)
+                .prefetch_related(f"{site.code_field}__secrets")
+            )
+            for row in rows:
+                python_code = getattr(row, site.code_field)
+                if python_code is None:
+                    continue
+                names = sorted(secret.name for secret in python_code.secrets.all())
+                if not names:
+                    continue
+                if site.model is ConditionalEdge:
+                    conditional_edges.append(
+                        {"source_node_id": row.source_node_id, "names": names}
+                    )
+                else:
+                    nodes.setdefault(str(row.pk), {})[site.code_field] = names
+
+        return {
+            "nodes": nodes,
+            "conditional_edges": conditional_edges,
+            "telegram": self._collect_telegram_secrets(graph=graph),
+        }
+
+    def restore_secret_declarations(
+        self, *, graph: Graph, declarations: dict | None, node_mapper: IDMapper
+    ) -> list[dict]:
+        """Re-link the declarations a snapshot recorded, warning about the rest."""
+        if not declarations:
+            return []
+
+        warnings: list[dict] = []
+        warnings.extend(
+            self._restore_node_declarations(
+                graph=graph,
+                recorded=declarations.get("nodes") or {},
+                node_mapper=node_mapper,
+            )
+        )
+        warnings.extend(
+            self._restore_conditional_edge_declarations(
+                graph=graph,
+                recorded=declarations.get("conditional_edges") or [],
+                node_mapper=node_mapper,
+            )
+        )
+        warnings.extend(
+            self._restore_telegram_declarations(
+                graph=graph,
+                recorded=declarations.get("telegram") or {},
+                node_mapper=node_mapper,
+            )
+        )
+        return warnings
+
+    @staticmethod
+    def _resolve_names(
+        *, names: list[str], org_id: int
+    ) -> tuple[list[Secret], list[str]]:
+        """Split recorded names into the Secrets that still exist and those gone.
+
+        Scoped to one org, so a name that exists only in another organisation
+        counts as missing rather than re-linking across the boundary.
+        """
+        rows = {
+            secret.name: secret
+            for secret in Secret.objects.filter(org_id=org_id, name__in=names)
+        }
+        resolved = [rows[name] for name in names if name in rows]
+        missing = [name for name in names if name not in rows]
+        return resolved, missing
+
+    def _restore_node_declarations(
+        self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
+    ) -> list[dict]:
+        warnings: list[dict] = []
+        for old_node_id, by_code_field in recorded.items():
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            for code_field, names in by_code_field.items():
+                if new_node_id is None:
+                    warnings.extend(
+                        self._dropped(
+                            names=names,
+                            node_name=f"node #{old_node_id}",
+                            reason_suffix=(
+                                "its node was not restored, so the declaration "
+                                "had nowhere to attach."
+                            ),
+                        )
+                    )
+                    continue
+                row = self._find_site_row(
+                    graph=graph, node_id=new_node_id, code_field=code_field
+                )
+                if row is None:
+                    warnings.extend(
+                        self._dropped(
+                            names=names,
+                            node_name=f"node #{new_node_id}",
+                            reason_suffix=(
+                                f"no restored node carries a '{code_field}' to "
+                                "attach the declaration to."
+                            ),
+                        )
+                    )
+                    continue
+                warnings.extend(
+                    self._link(
+                        python_code=getattr(row, code_field),
+                        names=names,
+                        org_id=graph.org_id,
+                        node_name=getattr(row, "node_name", None)
+                        or f"node #{new_node_id}",
+                    )
+                )
+        return warnings
+
+    @staticmethod
+    def _find_site_row(*, graph: Graph, node_id: int, code_field: str):
+        """The restored row for one (node id, code field) pair."""
+        for site in GRAPH_PYTHON_CODE_SITES:
+            if site.model is ConditionalEdge or site.code_field != code_field:
+                continue
+            row = (
+                site.model.objects.filter(pk=node_id, graph=graph)
+                .select_related(code_field)
+                .first()
+            )
+            if row is not None:
+                return row
+        return None
+
+    def _restore_conditional_edge_declarations(
+        self, *, graph: Graph, recorded: list, node_mapper: IDMapper
+    ) -> list[dict]:
+        """Correlate edge declarations through the node each edge branches off."""
+        warnings: list[dict] = []
+        by_source: dict[object, list[dict]] = defaultdict(list)
+        for entry in recorded:
+            by_source[entry.get("source_node_id")].append(entry)
+
+        for old_source_id, entries in by_source.items():
+            names = sorted({name for entry in entries for name in entry["names"]})
+            label = f"conditional edge from node #{old_source_id}"
+
+            if old_source_id is None:
+                warnings.extend(
+                    self._dropped(
+                        names=names,
+                        node_name=label,
+                        reason_suffix=(
+                            "the edge has no source node, so it cannot be "
+                            "identified after restore."
+                        ),
+                    )
+                )
+                continue
+
+            new_source_id = node_mapper.get_or_none(
+                NODE_MAPPING_KEY, int(old_source_id)
+            )
+            if new_source_id is None:
+                warnings.extend(
+                    self._dropped(
+                        names=names,
+                        node_name=label,
+                        reason_suffix=(
+                            "its source node was not restored, so the edge "
+                            "cannot be identified."
+                        ),
+                    )
+                )
+                continue
+
+            edges = list(
+                ConditionalEdge.objects.filter(
+                    graph=graph, source_node_id=new_source_id
+                ).select_related("python_code")
+            )
+            if len(edges) != 1 or len(entries) != 1:
+                warnings.extend(
+                    self._dropped(
+                        names=names,
+                        node_name=label,
+                        reason_suffix=(
+                            f"{len(entries)} recorded declaration(s) and "
+                            f"{len(edges)} restored edge(s) share that source "
+                            "node, so the pairing is ambiguous."
+                        ),
+                    )
+                )
+                continue
+
+            warnings.extend(
+                self._link(
+                    python_code=edges[0].python_code,
+                    names=names,
+                    org_id=graph.org_id,
+                    node_name=label,
+                )
+            )
+        return warnings
+
+    def _restore_telegram_declarations(
+        self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
+    ) -> list[dict]:
+        warnings: list[dict] = []
+        for old_node_id, name in recorded.items():
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            node = (
+                None
+                if new_node_id is None
+                else TelegramTriggerNode.objects.filter(
+                    pk=new_node_id, graph=graph
+                ).first()
+            )
+            if node is None:
+                warnings.extend(
+                    self._dropped(
+                        names=[name],
+                        node_name=f"node #{old_node_id}",
+                        reason_suffix="its node was not restored.",
+                    )
+                )
+                continue
+
+            resolved, missing = self._resolve_names(names=[name], org_id=graph.org_id)
+            if missing:
+                warnings.extend(
+                    self._dropped(
+                        names=missing,
+                        node_name=node.node_name,
+                        reason_suffix=(
+                            "it no longer exists in this organization, so the "
+                            "bot token was not restored."
+                        ),
+                    )
+                )
+                continue
+            node.telegram_bot_api_key_secret = resolved[0]
+            node.save(update_fields=["telegram_bot_api_key_secret"])
+        return warnings
+
+    def _link(
+        self, *, python_code: PythonCode, names: list[str], org_id: int, node_name: str
+    ) -> list[dict]:
+        """Attach every name that still resolves; warn about every one that does not."""
+        resolved, missing = self._resolve_names(names=names, org_id=org_id)
+        python_code.secrets.set(resolved)
+        return self._dropped(
+            names=missing,
+            node_name=node_name,
+            reason_suffix="it no longer exists in this organization.",
+        )
+
+    @staticmethod
+    def _dropped(*, names: list[str], node_name: str, reason_suffix: str) -> list[dict]:
+        """One warning per lost declaration, shaped like the dependency warnings.
+
+        Same keys the restore response already carries, so the caller renders these
+        with no change on its side.
+        """
+        return [
+            {
+                "type": "secret_declaration_dropped",
+                "node_name": node_name,
+                "reason": (
+                    f'Secret "{name}" was declared when this version was saved, '
+                    f"but {reason_suffix} The declaration was not restored."
+                ),
+            }
+            for name in names
+        ]
+
+    @staticmethod
+    def _collect_telegram_secrets(graph: Graph) -> dict[str, str]:
+        """TelegramTriggerNode's bot-token secret, by name."""
+        rows = TelegramTriggerNode.objects.filter(
+            graph=graph, telegram_bot_api_key_secret__isnull=False
+        ).select_related("telegram_bot_api_key_secret")
+        return {str(row.pk): row.telegram_bot_api_key_secret.name for row in rows}
 
     def collect_dependencies(self, graph: Graph) -> dict:
         """
@@ -79,11 +373,13 @@ class GraphVersioningManager:
                 model.objects.filter(id__in=ids).values_list("id", flat=True)
             )
 
-            # set as missing webhook triggers without ngrok config
+            # set as missing webhook triggers without any tunnel config
+            # (provider_type=None means no NgrokWebhookConfig or LocalhostWebhookConfig attached)
             if entity_type_value == EntityType.WEBHOOK_TRIGGER.value:
                 unconfigured_ids = set(
                     WebhookTrigger.objects.filter(
-                        id__in=existing_ids, ngrok_webhook_config__isnull=True
+                        id__in=existing_ids,
+                        provider_type__isnull=True,
                     ).values_list("id", flat=True)
                 )
                 existing_ids -= unconfigured_ids
@@ -96,7 +392,6 @@ class GraphVersioningManager:
     def _build_missing_sets(self, missing: dict) -> _MissingSets:
         """Gather all missing dependencies ids into dataclass structure"""
         return _MissingSets(
-            crews=set(missing.get(EntityType.CREW.value, [])),
             subgraphs=set(missing.get(EntityType.GRAPH.value, [])),
             llm_configs=set(missing.get(EntityType.LLM_CONFIG.value, [])),
             webhooks=set(missing.get(EntityType.WEBHOOK_TRIGGER.value, [])),
@@ -116,7 +411,29 @@ class GraphVersioningManager:
         warnings: list[dict] = []
 
         for node in nodes:
-            handler = HANDLER_REGISTRY.get(node.get("node_type"))
+            node_type = node.get("node_type")
+
+            # Old snapshots still carry nodes of types that no longer exist.
+            # Skipping feeds their ids into skipped_node_ids, so the cleanup
+            # below drops the references pointing at them.
+            if node_type not in NODE_TYPE_TO_ENTITY_TYPE:
+                skipped_node_ids.add(node.get("id"))
+                # No "node_id": the node is never recreated, so change_old_warnings_ids
+                # would have nothing to remap it to — same contract as node_skipped.
+                warnings.append(
+                    {
+                        "type": "node_type_unsupported",
+                        "node_name": node.get("node_name") or node_type,
+                        "node_type": node_type,
+                        "reason": (
+                            f"Node type '{node_type}' is no longer supported "
+                            "and was skipped."
+                        ),
+                    }
+                )
+                continue
+
+            handler = HANDLER_REGISTRY.get(node_type)
             if handler is not None:
                 missing_id = handler.find_missing_id(node, missing_sets)
                 if missing_id is not None:
@@ -133,15 +450,26 @@ class GraphVersioningManager:
         self, snapshot_nodes: list[dict], skipped_node_ids: set[int]
     ) -> list[dict]:
         """
-        Check DecisionTableNode connections.
-        Set None if related entity doesn't exist
+        Check DecisionTableNode and ClassificationDecisionTableNode connections.
+        Set None if related entity doesn't exist.
+
+        Both node types carry the same reference shape (default_next_node_id,
+        next_error_node_id and condition_groups[].next_node_id). CDT references are
+        also blanked later by _remap_classification_decision_table_references, but
+        only clearing them here puts them in the restore warnings, so the user is
+        told which branches were dropped.
         """
+        table_node_types = (
+            NodeType.DECISION_TABLE_NODE,
+            NodeType.CLASSIFICATION_DECISION_TABLE_NODE,
+        )
         warnings: list[dict] = []
 
         for node in snapshot_nodes:
-            if node.get("node_type") != NodeType.DECISION_TABLE_NODE:
+            node_type = node.get("node_type")
+            if node_type not in table_node_types:
                 continue
-            node_name = node.get("node_name") or NodeType.DECISION_TABLE_NODE
+            node_name = node.get("node_name") or node_type
             for field in ("default_next_node_id", "next_error_node_id"):
                 target = node.get(field)
                 if target in skipped_node_ids:
@@ -525,5 +853,14 @@ class GraphVersioningManager:
     ) -> None:
         for w in warning_msgs:
             old_id = w.get("node_id")
-            if old_id:
-                w["node_id"] = node_mapper.get(NODE_MAPPING_KEY, old_id)
+            if not old_id:
+                continue
+            new_id = node_mapper.get_or_none(NODE_MAPPING_KEY, old_id)
+            if new_id is None:
+                # The node was not recreated, so no current id exists. Drop the key
+                # rather than leave the snapshot id behind — it would point at an
+                # unrelated node in the restored graph. Raising here would turn a
+                # successful restore into a 500 over a cosmetic field.
+                w.pop("node_id", None)
+                continue
+            w["node_id"] = new_id

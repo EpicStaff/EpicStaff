@@ -8,8 +8,6 @@ import { mapEdgesToConnections } from './connections/plain-edge.mapper';
 import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
-import { mapCodeAgentNodeToModel } from './nodes/code-agent-node.mapper';
-import { mapCrewNodeToModel } from './nodes/crew-node.mapper';
 import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper';
 import { mapEndNodeToModel } from './nodes/end-node.mapper';
 import { mapFileExtractorNodeToModel } from './nodes/file-extractor-node.mapper';
@@ -47,7 +45,6 @@ function deduplicateNodeNumbers(nodes: NodeModel[]): NodeModel[] {
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
     const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
-    const crewNodes = (graph.crew_node_list ?? []).map((n) => mapCrewNodeToModel(n));
     const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));
     const taskNodes = (graph.task_node_list ?? []).map((n) => mapTaskNodeToModel(n));
     const agentNodes = (graph.agent_node_list ?? []).map((n) => mapAgentNodeToModel(n));
@@ -60,7 +57,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const telegramTriggerNodes = (graph.telegram_trigger_node_list ?? []).map((n) => mapTelegramTriggerNodeToModel(n));
     const scheduleTriggerNodes = (graph.schedule_trigger_node_list ?? []).map((n) => mapScheduleTriggerNodeToModel(n));
     const endNodes = (graph.end_node_list ?? []).map((n) => mapEndNodeToModel(n));
-    const codeAgentNodes = (graph.code_agent_node_list ?? []).map((n) => mapCodeAgentNodeToModel(n));
     const decisionTableNodes = (graph.decision_table_node_list ?? []).map((n) => mapDecisionTableNodeToModel(n));
     const classificationDecisionTableNodes = (graph.classification_decision_table_node_list ?? []).map((n) =>
         mapClassificationDecisionTableNodeToModel(n)
@@ -69,7 +65,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 2. Combine into one flat node list ───────────────────────────────
     const allNodes: NodeModel[] = [
         ...startNodes,
-        ...crewNodes,
         ...pythonNodes,
         ...taskNodes,
         ...agentNodes,
@@ -82,7 +77,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...telegramTriggerNodes,
         ...scheduleTriggerNodes,
         ...endNodes,
-        ...codeAgentNodes,
         ...decisionTableNodes,
         ...classificationDecisionTableNodes,
     ];

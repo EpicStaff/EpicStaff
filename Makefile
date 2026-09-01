@@ -100,6 +100,9 @@ dev-logs:
 dev-restart:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env restart $(s)
 
+dev-s:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env restart $(s)
+
 dev-logs-s:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f $(s)
 
@@ -170,7 +173,7 @@ prod-ngrok:
 # ==========================================
 
 gen-env:
-	@echo "--- Regenerating src/.dev.env, src/debug.env, src/.env.example from src/env.yaml ---"
+	@echo "--- Regenerating src/.dev.env, src/.debug.env, src/.env.example from src/env.yaml ---"
 	@python scripts/generate_env.py
 
 check-env:

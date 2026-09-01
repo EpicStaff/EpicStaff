@@ -6,10 +6,12 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { LABELS_STORE } from '@shared/services';
 import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
+import { LabelsStorageService } from '../../../../../../features/flows/services/labels-storage.service';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 // import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -114,6 +116,7 @@ export class FlowHeaderComponent {
                 },
             },
             width: '500px',
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((result) => {

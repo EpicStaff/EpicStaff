@@ -1,8 +1,8 @@
 # Agent Service (`src/agent/`)
 
 `src/agent/` is a standalone, async Python microservice that runs **single
-agents** via [LiteLLM](https://github.com/BerriAI/litellm) — it does **not**
-use CrewAI. It consumes work items from Redis Streams, drives a streaming
+agents** via [LiteLLM](https://github.com/BerriAI/litellm) — a bespoke
+tool-calling loop, no agent framework. It consumes work items from Redis Streams, drives a streaming
 ReAct tool-calling loop, optionally enforces a JSON-Schema structured output,
 and publishes results back to Redis Streams.
 

@@ -3,14 +3,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, ButtonComponent, LabelDropdownComponent } from '@shared/components';
 import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
-import { CreateGraphDtoRequest, GraphDto } from '../../../../features/flows/models/graph.model';
-import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { LabelDropdownComponent } from '../label-dropdown/label-dropdown.component';
+import { CreateGraphDtoRequest, GraphDto } from '../../models/graph.model';
+import { FlowsStorageService } from '../../services/flows-storage.service';
 
 export interface FlowDialogData {
     isEdit: boolean;

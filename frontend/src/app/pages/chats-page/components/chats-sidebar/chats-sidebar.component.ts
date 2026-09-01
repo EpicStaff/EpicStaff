@@ -46,8 +46,8 @@ export class ChatsSidebarComponent {
         return this.el.nativeElement;
     }
 
-    trackByAgent(_index: number, agent: ChatAgent): string {
-        return `${agent.kind}:${agent.agent.id}`;
+    trackByAgent(_index: number, agent: ChatAgent): number {
+        return agent.agent.id;
     }
 
     get filteredAgents(): ChatAgent[] {

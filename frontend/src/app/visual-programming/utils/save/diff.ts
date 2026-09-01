@@ -6,14 +6,12 @@ import {
     AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
-    CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -115,24 +113,15 @@ function toStartComparable(node: StartNodeModel): unknown {
     return { variables: node.data.initialState ?? {}, metadata: toNodeMetadata(node) };
 }
 
-function toCrewComparable(node: ProjectNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        crew_id: node.data.id,
-        input_map: node.input_map || {},
-        output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
-        metadata: toNodeMetadata(node),
-    };
-}
-
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data,
+        // secret_ids order is incidental (which secret record happened to resolve first), not a
+        // real difference — sort it so two independent reconstructions of the same set don't
+        // register as a change.
+        python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
         metadata: toNodeMetadata(node),
     };
@@ -230,11 +219,15 @@ function toSubgraphComparable(node: SubGraphNodeModel): unknown {
 function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data.python_code,
+        python_code: {
+            ...node.data.python_code,
+            secret_ids: [...(node.data.python_code.secret_ids || [])].sort(),
+        },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
+        webhook_node_auth: { enabled: node.data.webhook_node_auth?.enabled ?? false },
         metadata: toNodeMetadata(node),
     };
 }
@@ -242,7 +235,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
 function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        telegram_bot_api_key: node.data.telegram_bot_api_key,
+        telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
         metadata: toNodeMetadata(node),
@@ -273,30 +266,6 @@ function toNoteComparable(node: GraphNoteModel): unknown {
         node_name: node.node_name,
         content: node.data.content,
         metadata: { ...toNodeMetadata(node), backgroundColor: node.data.backgroundColor ?? null },
-    };
-}
-
-function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        llm_config: node.data?.llm_config_id ?? null,
-        agent_mode: node.data?.agent_mode ?? 'code_interpreter',
-        session_id: node.data?.session_id ?? '',
-        system_prompt: node.data?.system_prompt ?? '',
-        stream_handler_code: node.data?.stream_handler_code ?? '',
-        libraries: node.data?.libraries ?? [],
-        polling_interval_ms: node.data?.polling_interval_ms ?? 100,
-        silence_indicator_s: node.data?.silence_indicator_s ?? 3,
-        indicator_repeat_s: node.data?.indicator_repeat_s ?? 5,
-        chunk_timeout_s: node.data?.chunk_timeout_s ?? 30,
-        inactivity_timeout_s: node.data?.inactivity_timeout_s ?? 120,
-        max_wait_s: node.data?.max_wait_s ?? 300,
-        input_map: node.input_map,
-        output_variable_path: node.output_variable_path,
-        stream_config: node.stream_config ?? {},
-        output_schema: node.data?.output_schema ?? {},
-        use_storage: node.data?.use_storage ?? false,
-        metadata: toNodeMetadata(node),
     };
 }
 
@@ -368,6 +337,8 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
+        pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
+        post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
         metadata: toNodeMetadata(node),
     };
 }
@@ -378,11 +349,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<StartNodeModel>(previous.nodes, NodeType.START),
             nodesByType<StartNodeModel>(current.nodes, NodeType.START),
             toStartComparable
-        ),
-        crewNodes: diffNodesByBackendId(
-            nodesByType<ProjectNodeModel>(previous.nodes, NodeType.PROJECT),
-            nodesByType<ProjectNodeModel>(current.nodes, NodeType.PROJECT),
-            toCrewComparable
         ),
         pythonNodes: diffNodesByBackendId(
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),
@@ -448,11 +414,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<GraphNoteModel>(previous.nodes, NodeType.NOTE),
             nodesByType<GraphNoteModel>(current.nodes, NodeType.NOTE),
             toNoteComparable
-        ),
-        codeAgentNodes: diffNodesByBackendId(
-            nodesByType<CodeAgentNodeModel>(previous.nodes, NodeType.CODE_AGENT),
-            nodesByType<CodeAgentNodeModel>(current.nodes, NodeType.CODE_AGENT),
-            toCodeAgentComparable
         ),
         classificationDecisionTableNodes: diffNodesByBackendId(
             nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),

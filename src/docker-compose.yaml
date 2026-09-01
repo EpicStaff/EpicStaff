@@ -14,6 +14,8 @@ x-common-env: &common_env
   DB_HOST_NAME: ${DB_HOST_NAME:-crewdb}
   DB_PORT: ${DB_PORT:-5432}
   DB_NAME: ${POSTGRES_DB:-crew}
+  DJANGO_API_KEY: ${DJANGO_API_KEY}
+
 
 services:
   django_app:
@@ -26,7 +28,8 @@ services:
     environment:
       <<: *common_env
       DEBUG: ${DEBUG:-False}
-      SECRET_KEY: ${SECRET_KEY:-unsafe-dev-key}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -47,11 +50,14 @@ services:
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
       STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
-      JWT_SECRET: ${JWT_SECRET:-}
+      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — generate one with `openssl rand -base64 48`.}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
       PASSWORD_RESET_TOKEN_TTL: ${PASSWORD_RESET_TOKEN_TTL:-900}
       PASSWORD_RESET_REQUEST_THROTTLE_RATE: ${PASSWORD_RESET_REQUEST_THROTTLE_RATE:-5/hour}
+      PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${PASSWORD_RESET_CONFIRM_THROTTLE_RATE:-10/hour}
+      TOKEN_REFRESH_THROTTLE_RATE: ${TOKEN_REFRESH_THROTTLE_RATE:-30/min}
       EMAIL_HOST: ${EMAIL_HOST:-}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
@@ -61,10 +67,9 @@ services:
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@epicstaff.local}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:4200}
       FRONTEND_PASSWORD_RESET_PATH: ${FRONTEND_PASSWORD_RESET_PATH:-/reset-password}
-      DJANGO_AUTO_CREATE_ADMIN: ${DJANGO_AUTO_CREATE_ADMIN:-False}
-      DJANGO_ADMIN_EMAIL: ${DJANGO_ADMIN_EMAIL:-}
-      DJANGO_ADMIN_PASSWORD: ${DJANGO_ADMIN_PASSWORD:-}
-      DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-}
+      DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-Organization}
+      FIRST_SETUP_MODE: ${FIRST_SETUP_MODE:-cli_only}
+      LOGIN_THROTTLE_RATE: ${LOGIN_THROTTLE_RATE:-5/min}
       DJANGO_API_KEY: ${DJANGO_API_KEY:-}
       PASSWORD_CHANGE_TICKET_TTL_SECONDS: ${PASSWORD_CHANGE_TICKET_TTL_SECONDS:-300}
       AVATAR_MAX_BYTES: ${AVATAR_MAX_BYTES:-5242880}
@@ -72,7 +77,7 @@ services:
       MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
     volumes:
-      - media_data:/app/src/django_app/media
+      - media_data:/app/media
     networks:
       backend-network:
         aliases:
@@ -102,12 +107,9 @@ services:
       KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: knowledge:search:response
       REALTIME_AGENTS_SCHEMA_CHANNEL: realtime_agents:schema
       REALTIME_PORT: ${REALTIME_PORT:-8050}
-      MANAGER_HOST: ${MANAGER_HOST:-host.docker.internal}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_REALTIME_USER: ${DB_REALTIME_USER}
       DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
       DJANGO_AUTH_URL: ${DJANGO_AUTH_URL}
-      DJANGO_API_KEY: ${DJANGO_API_KEY}
       DJANGO_AUTH_TIMEOUT: ${DJANGO_AUTH_TIMEOUT:-5}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
@@ -120,8 +122,6 @@ services:
     depends_on:
       crewdb:
         condition: service_healthy
-      manager:
-        condition: service_started
       redis:
         condition: service_healthy
       knowledge:
@@ -137,14 +137,8 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      PULL_TOOL: ${PULL_TOOL}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
-    volumes:
-      - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
-      - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
     networks:
       - backend-network
     tty: true
@@ -172,8 +166,6 @@ services:
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
       DB_REALTIME_USER: ${DB_REALTIME_USER}
       DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
-      DB_CREW_USER: ${DB_CREW_USER}
-      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
       DB_PORT: ${DB_PORT:-5432}
       DJANGO_HOST: ${DJANGO_HOST}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
@@ -198,6 +190,7 @@ services:
     restart: unless-stopped
     networks:
       - backend-network
+      - sandbox-network
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf
       - redis_data:/data
@@ -223,16 +216,6 @@ services:
     container_name: crew
     environment:
       <<: *common_env
-      MANAGER_HOST: ${MANAGER_HOST}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
-      CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
-      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
-      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
-      EC_TELEMETRY: ${EC_TELEMETRY:-False}
-      MEM0_TELEMETRY: ${MEM0_TELEMETRY:-False}
-      MONITORING_MODE: ${MONITORING_MODE}
-      DB_CREW_USER: ${DB_CREW_USER}
-      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
       MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
@@ -242,9 +225,6 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
       AGENT_RESULT_TIMEOUT_S: ${AGENT_RESULT_TIMEOUT_S:-600}
       REMEMBERED_OUTPUTS_TTL_S: ${REMEMBERED_OUTPUTS_TTL_S:-3600}
-    volumes:
-      - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
-      - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
     networks:
       - backend-network
     tty: true
@@ -254,8 +234,6 @@ services:
         condition: service_healthy
       sandbox:
         condition: service_started
-      crewdb:
-        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -270,6 +248,7 @@ services:
       <<: *common_env
       BASE_VENV_PATH: ${BASE_VENV_PATH}
       OUTPUT_PATH: ${OUTPUT_PATH}
+      MASK_SECRET: ${MASK_SECRET:-true}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
@@ -280,41 +259,25 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - backend-network
+      - sandbox-network
     tty: true
     stdin_open: true
     mem_limit: "2g"
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  code:
-    image: ghcr.io/epicstaff/code:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: ./code/Dockerfile.code
-    container_name: code
-    init: true
-    environment:
-      - DJANGO_API_URL=http://django_app:${DJANGO_PORT:-8000}/api
-      - CODE_MANAGER_PORT=${CODE_MANAGER_PORT}
-      - CODE_BASE_PORT=${CODE_BASE_PORT}
-      - CODE_MAX_INSTANCES=${CODE_MAX_INSTANCES}
-      - CODE_IDLE_TIMEOUT=${CODE_IDLE_TIMEOUT}
-      - CODE_REAP_INTERVAL=${CODE_REAP_INTERVAL}
-      - CODE_INSTANCES_DIR=${CODE_INSTANCES_DIR}
-      - CONTAINER_SAVEFILES_PATH=${CONTAINER_SAVEFILES_PATH}
-    ports:
-      - "${CODE_MANAGER_PORT:-4080}:${CODE_MANAGER_PORT:-4080}"
-    volumes:
-      - ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}
-      - code_instances:${CODE_INSTANCES_DIR}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend-network
-    tty: true
-    stdin_open: true
+    # Security hardening: drop all Linux capabilities except those the root
+    # parent process needs. pip/venv run as root (they install internal local
+    # packages from root-owned /app/src/shared/* source dirs where egg-info is
+    # written in-place — sandboxuser cannot write there). Only the final
+    # code-execution subprocess is dropped to sandboxuser.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID  # setuid/setgid before spawning the user-code child.
+      - SETGID
+      - CHOWN  # chown per-exec output and home dirs to sandboxuser.
+      - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
+      - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
     depends_on:
       redis:
         condition: service_healthy
@@ -346,7 +309,7 @@ services:
         condition: service_healthy
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: minio
     command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
     environment:
@@ -356,6 +319,7 @@ services:
       - minio_data:/data
     networks:
       - backend-network
+      - sandbox-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${MINIO_PORT:-9000}/minio/health/live || exit 1"]
       interval: 10s
@@ -365,7 +329,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     container_name: minio-init
     networks:
       - backend-network
@@ -395,7 +359,7 @@ services:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:-latest}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
     container_name: webhook
     build:
       context: .
@@ -404,7 +368,6 @@ services:
       <<: *common_env
       USE_TUNNEL: ${USE_TUNNEL}
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
-      WEBHOOK_AUTH: ${WEBHOOK_AUTH}
       NGROK_DOMAIN: ${NGROK_DOMAIN}
       WEBHOOK_EMPTY_JSON_PATHS: ${WEBHOOK_EMPTY_JSON_PATHS}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
@@ -451,27 +414,11 @@ services:
         condition: service_started
     restart: always
 
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: ngrok
-    entrypoint: ["/bin/sh", "-c", "ngrok http --url=$$NGROK_DOMAIN realtime:${REALTIME_PORT:-8050}"]
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-      - NGROK_DOMAIN=${NGROK_DOMAIN}
-    ports:
-      - "4040:4040"
-    networks:
-      - backend-network
-    depends_on:
-      - realtime
-    restart: always
-    profiles:
-      - voice
 
   #DEV container for test SMTP (remove later) 
   mailpit:
     container_name: mailpit
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
     ports:
       - "1025:1025"   # SMTP
       - "8025:8025"   # web UI: http://localhost:8025/
@@ -494,7 +441,7 @@ services:
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:-2}
       AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:-true}
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:-0.8}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:-INFO}
     depends_on:
       redis:
         condition: service_healthy
@@ -510,7 +457,6 @@ volumes:
   media_data:
     external: true
   redis_data: {}
-  code_instances: {}
   minio_data: {}
 
   graph_data:
@@ -524,3 +470,5 @@ networks:
   mcp-network:
     driver: bridge
     external: true
+  sandbox-network:
+    driver: bridge
