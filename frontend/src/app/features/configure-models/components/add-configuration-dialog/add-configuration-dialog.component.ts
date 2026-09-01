@@ -17,6 +17,7 @@ import {
     SliderWithStepperComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
@@ -64,6 +65,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     private readonly secretsStorageService = inject(SecretsStorageService);
     readonly dialogRef = inject(DialogRef);
     readonly data = inject<{ initialTab?: ConfigTab }>(DIALOG_DATA, { optional: true });
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
 
     activeTab = signal<ConfigTab>(this.data?.initialTab ?? 'llm');
     selectedProvider = signal<RealtimeProvider>('openai');
