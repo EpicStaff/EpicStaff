@@ -2,6 +2,7 @@ import { generateUuid } from '@shared/utils';
 
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
+import { normalizeCdtSectionColor, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
@@ -72,6 +73,14 @@ export function mapClassificationDecisionTableNodeToModel(
                     section: g.section ?? null,
                     next_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
                 })),
+                sections: reconcileCdtSections(
+                    (n.sections ?? []).map((s) => ({
+                        id: s.id,
+                        name: s.name,
+                        metadata: { color: normalizeCdtSectionColor(s.metadata?.color) },
+                    })),
+                    n.condition_groups.map((g) => g.section ?? null)
+                ),
             },
         },
         position: ui.position,

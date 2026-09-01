@@ -6,6 +6,7 @@ import {
     CreateConditionGroupRequest,
     CreateDecisionTableNodeRequest,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -252,6 +253,11 @@ function buildCdtNodePayload(
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
         ...(errorRef.tempId != null ? { next_error_node_temp_id: errorRef.tempId } : {}),
         condition_groups: conditionGroups,
+        sections: ((tableData?.sections ?? []) as CdtSection[]).map((s) => ({
+            id: s.id,
+            name: s.name,
+            metadata: { color: normalizeCdtSectionColor(s.metadata?.color) },
+        })),
         metadata: toNodeMetadata(node),
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
 }

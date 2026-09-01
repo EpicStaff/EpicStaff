@@ -35,6 +35,7 @@ import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
+import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
     PromptConfig,
@@ -97,6 +98,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public activeTab = signal<TabType>('table');
 
     public conditionGroups = signal<ConditionGroup[]>([]);
+    public sections = signal<CdtSection[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
     public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
@@ -324,6 +326,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
         this.conditionGroups.set(groupsCopy);
+        const sectionsCopy = this.cloneSections(tableData.sections ?? []);
+        const referencedSectionIds = groupsCopy.map((group) => group.section ?? null);
+        this.sections.set(reconcileCdtSections(sectionsCopy, referencedSectionIds));
         this.prompts.set({ ...(tableData.prompts || {}) });
 
         this.activeTab.set('table');
@@ -356,6 +361,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.post_libraries),
             },
             condition_groups: conditionGroups,
+            sections: this.cloneSections(this.sections() || []),
             route_variable_name: 'route_code',
             default_next_node: this.form.value.default_next_node,
             next_error_node: this.form.value.next_error_node,
@@ -412,6 +418,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onConditionGroupsChange(groups: ConditionGroup[]): void {
         this.conditionGroups.set(this.cloneConditionGroups(groups));
+        this.cdr.markForCheck();
+        this.sidePanelService.triggerAutosave();
+    }
+
+    public onSectionsChange(sections: CdtSection[]): void {
+        this.sections.set(this.cloneSections(sections));
         this.cdr.markForCheck();
         this.sidePanelService.triggerAutosave();
     }
@@ -600,6 +612,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             defaultLlmConfig: this.form.value.default_llm_config || null,
             conditionGroups: this.conditionGroups(),
             prompts: this.prompts(),
+            sections: this.sections(),
         });
         const csv = this.cdtExportImportService.exportToCsv(exportData);
         this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
@@ -782,10 +795,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         }));
     }
 
+    private cloneSections(sections: CdtSection[]): CdtSection[] {
+        return sections.map((section) => ({
+            ...section,
+            metadata: { ...section.metadata },
+        }));
+    }
+
     private getDefaultTableData(): ClassificationDecisionTableData {
         return {
             pre_computation_code: '',
             condition_groups: [],
+            sections: [],
             prompts: {},
             output_variables: [],
             route_variable_name: 'route_code',

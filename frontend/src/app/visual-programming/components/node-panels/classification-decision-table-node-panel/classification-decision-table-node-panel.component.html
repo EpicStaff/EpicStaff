@@ -108,6 +108,7 @@
                     <div class="grid-section">
                         <app-classification-decision-table-grid
                             [conditionGroups]="conditionGroups()"
+                            [sections]="sections()"
                             [activeColor]="activeColor"
                             [currentNodeId]="node().id"
                             [storageNodeId]="gridStorageId()"
@@ -117,6 +118,7 @@
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
+                            (sectionsChange)="onSectionsChange($event)"
                             (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
                             (promptAdd)="onPromptAdd($event.id, $event.config)"
                             (openPromptLibrary)="onOpenPromptLibrary($event)"

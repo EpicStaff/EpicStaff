@@ -1,3 +1,4 @@
+import { CdtSection } from './cdt-section.model';
 import { ConditionGroup } from './decision-table.model';
 
 export interface ComputationConfig {
@@ -19,6 +20,7 @@ export interface ClassificationDecisionTableData {
     pre_computation?: ComputationConfig;
     post_computation?: ComputationConfig;
     condition_groups: ConditionGroup[];
+    sections?: CdtSection[];
     route_variable_name: string;
     default_next_node: string | null;
     next_error_node: string | null;

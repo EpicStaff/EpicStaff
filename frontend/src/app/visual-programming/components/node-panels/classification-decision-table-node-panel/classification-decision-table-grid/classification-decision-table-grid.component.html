@@ -40,6 +40,7 @@
     <div
         class="grid-wrapper"
         [class.has-above-btns]="hasAboveAddButtons()"
+        (mouseleave)="hoveredSectionId.set(null)"
     >
         <!-- Above-grid "+" buttons: shown only when the corresponding params group is empty -->
         @if (!hasFieldCols() && exprAddPos()) {
@@ -67,27 +68,94 @@
             @for (item of groupOverlayItems(); track item.sectionId) {
                 <div
                     class="group-overlay"
+                    [class.collapsed]="item.isCollapsed"
                     [style.top.px]="item.top"
                     [style.height.px]="item.height"
                 >
-                    <button
-                        type="button"
-                        class="group-overlay-chevron"
-                        [class.collapsed]="item.isCollapsed"
-                        [class.active]="groupMenuSectionId() === item.sectionId"
-                        (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
-                        title="Group options"
-                    >
-                        <app-svg-icon
-                            icon="play"
-                            size="14px"
-                        ></app-svg-icon>
-                    </button>
-                    @if (!item.isCollapsed) {
+                    @if (item.isCollapsed) {
+                        <div class="group-overlay-gutter">
+                            <button
+                                type="button"
+                                class="group-overlay-chevron collapsed"
+                                [class.active]="groupMenuSectionId() === item.sectionId"
+                                [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                [style.color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
+                                title="Group options"
+                            >
+                                <app-svg-icon
+                                    icon="play"
+                                    size="14px"
+                                ></app-svg-icon>
+                            </button>
+                        </div>
+                    } @else if (hoveredSectionId() === item.sectionId) {
                         <div
-                            class="group-overlay-bracket"
-                            [class.active]="groupMenuSectionId() === item.sectionId"
+                            class="group-overlay-border"
+                            [style.border-color]="item.color"
                         ></div>
+                        <div
+                            class="group-overlay-chip"
+                            [style.background]="item.color"
+                            [class.is-light]="isLightSectionColor(item.color)"
+                            (mouseenter)="hoveredSectionId.set(item.sectionId)"
+                        >
+                            <span
+                                class="group-overlay-chip-name"
+                                [title]="item.name"
+                                >{{ item.name }}</span
+                            >
+                            <button
+                                type="button"
+                                class="group-overlay-chip-btn"
+                                title="Edit group"
+                                (click)="openEditGroupDialog(item.sectionId, $event)"
+                            >
+                                <app-svg-icon
+                                    icon="edit-label"
+                                    size="12px"
+                                ></app-svg-icon>
+                            </button>
+                            <button
+                                type="button"
+                                class="group-overlay-chip-btn group-overlay-chip-btn--delete"
+                                title="Ungroup"
+                                (click)="handleChipUngroup(item.sectionId, $event)"
+                            >
+                                <app-svg-icon
+                                    icon="close"
+                                    size="16px"
+                                ></app-svg-icon>
+                            </button>
+                        </div>
+                    } @else {
+                        <div class="group-overlay-gutter">
+                            <button
+                                type="button"
+                                class="group-overlay-chevron"
+                                [class.active]="groupMenuSectionId() === item.sectionId"
+                                [style.top.px]="item.chevronTop"
+                                [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                [style.color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
+                                title="Group options"
+                            >
+                                <app-svg-icon
+                                    icon="play"
+                                    size="14px"
+                                ></app-svg-icon>
+                            </button>
+                            @if (item.bracketHeight > 0) {
+                                <div
+                                    class="group-overlay-bracket"
+                                    [class.active]="groupMenuSectionId() === item.sectionId"
+                                    [class.at-bottom]="placeCollapseAtBottom()"
+                                    [style.top.px]="item.bracketTop"
+                                    [style.height.px]="item.bracketHeight"
+                                    [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                ></div>
+                            }
+                        </div>
                     }
                 </div>
             }
@@ -183,14 +251,7 @@
         >
             Ungroup
         </div>
-        @if (isCurrentGroupCollapsed()) {
-            <div
-                class="group-menu-item"
-                (click)="handleGroupMenuExpand()"
-            >
-                Expand Group
-            </div>
-        } @else {
+        @if (!isCurrentGroupCollapsed()) {
             <div
                 class="group-menu-item"
                 (click)="handleGroupMenuCollapse()"
@@ -199,16 +260,89 @@
             </div>
         }
         <div
+            class="group-menu-item group-menu-item--submenu"
+            (click)="openExpandGroupSubmenu($event)"
+        >
+            <span>Expand Group</span>
+            <app-svg-icon
+                icon="chevron-right"
+                size="12px"
+            ></app-svg-icon>
+        </div>
+        <div
             class="group-menu-item"
             (click)="handleGroupMenuExpandAll()"
         >
-            Expand All Row Groups
+            Expand All Groups
         </div>
         <div
             class="group-menu-item"
             (click)="handleGroupMenuCollapseAll()"
         >
-            Collapse All Row Groups
+            Collapse All Groups
+        </div>
+        <div
+            class="group-menu-item group-menu-item--toggle"
+            (click)="handleGroupMenuToggleBottomPlacement()"
+        >
+            <span>Place Collapse at Bottom</span>
+            @if (placeCollapseAtBottom()) {
+                <app-svg-icon
+                    icon="check"
+                    size="12px"
+                ></app-svg-icon>
+            }
+        </div>
+    </div>
+</ng-template>
+
+<ng-template #expandGroupSubmenuTemplate>
+    <div class="group-submenu">
+        <div class="group-submenu-search">
+            <app-svg-icon
+                icon="search"
+                size="14px"
+            ></app-svg-icon>
+            <input
+                type="text"
+                placeholder="Search group..."
+                [value]="expandGroupSubmenuSearch()"
+                (input)="onExpandGroupSearchInput($event)"
+            />
+        </div>
+        <div class="group-submenu-list">
+            @for (section of expandGroupSubmenuFilteredSections(); track section.id) {
+                <label class="group-submenu-item">
+                    <input
+                        type="checkbox"
+                        [checked]="expandGroupSubmenuChecked().has(section.id)"
+                        (change)="toggleExpandGroupSubmenuSection(section.id)"
+                    />
+                    <span
+                        class="group-submenu-item-dot"
+                        [style.background]="sectionColor(section)"
+                    ></span>
+                    <span class="group-submenu-item-name">{{ section.name }}</span>
+                </label>
+            } @empty {
+                <div class="group-submenu-empty">No groups found</div>
+            }
+        </div>
+        <div class="group-submenu-footer">
+            <button
+                type="button"
+                class="group-submenu-btn group-submenu-btn--secondary"
+                (click)="cancelExpandGroupSubmenu()"
+            >
+                Cancel
+            </button>
+            <button
+                type="button"
+                class="group-submenu-btn group-submenu-btn--primary"
+                (click)="saveExpandGroupSubmenu()"
+            >
+                Save Changes
+            </button>
         </div>
     </div>
 </ng-template>

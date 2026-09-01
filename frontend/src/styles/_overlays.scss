@@ -10,6 +10,11 @@
     z-index: 9950 !important;
 }
 
+// CDT "Create/Edit Group" dialog backdrop.
+.cdk-overlay-backdrop.cdt-group-dialog-backdrop {
+    background: rgba(21, 21, 21, 0.6);
+}
+
 // Column header freeze/hide dropdown (CDK overlay, rendered to document body)
 .chm-dropdown {
     background: #27272b;

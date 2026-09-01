@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 
+import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 
@@ -31,6 +32,12 @@ export interface CdtExportPromptConfig {
     variable_mappings: Record<string, string>;
 }
 
+export interface CdtExportSection {
+    id: string;
+    name: string;
+    color: string;
+}
+
 export interface CdtExportData {
     node_name: string;
     pre_python_code: CdtExportPythonCode;
@@ -44,6 +51,7 @@ export interface CdtExportData {
     default_llm_config: number | null;
     condition_groups: CdtExportConditionGroup[];
     prompt_configs: CdtExportPromptConfig[];
+    sections: CdtExportSection[];
 }
 
 export type CdtParseResult = { data: CdtExportData } | { errors: string[] };
@@ -70,6 +78,8 @@ const PROMPT_CONFIG_COLUMNS = [
     'result_variable',
     'variable_mappings',
 ] as const;
+
+const SECTION_COLUMNS = ['id', 'name', 'color'] as const;
 
 @Injectable({ providedIn: 'root' })
 export class CdtExportImportService {
@@ -129,7 +139,13 @@ export class CdtExportImportService {
             ),
         ].join('\n');
 
-        return [metadata, conditionGroups, promptConfigs].join('\n\n');
+        const sections = [
+            '#sections',
+            this.csvRow([...SECTION_COLUMNS]),
+            ...data.sections.map((section) => this.csvRow([section.id ?? '', section.name ?? '', section.color ?? ''])),
+        ].join('\n');
+
+        return [metadata, conditionGroups, promptConfigs, sections].join('\n\n');
     }
 
     public downloadFile(content: string, filename: string, mimeType: string): void {
@@ -189,6 +205,15 @@ export class CdtExportImportService {
             );
         }
 
+        const rawSections = obj['sections'];
+        const sections: CdtExportSection[] = [];
+        if (Array.isArray(rawSections)) {
+            rawSections.forEach((s) => {
+                const normalized = this.normalizeSection((s ?? {}) as Record<string, unknown>);
+                if (normalized.id) sections.push(normalized);
+            });
+        }
+
         if (errors.length > 0) {
             return { errors };
         }
@@ -216,6 +241,7 @@ export class CdtExportImportService {
                 default_llm_config: this.asNullableNumber(obj['default_llm_config']),
                 condition_groups: conditionGroups,
                 prompt_configs: promptConfigs,
+                sections,
             },
         };
     }
@@ -236,6 +262,7 @@ export class CdtExportImportService {
                 default_llm_config: null,
                 condition_groups: [],
                 prompt_configs: [],
+                sections: [],
             };
         }
 
@@ -259,6 +286,9 @@ export class CdtExportImportService {
                 promptIdToKey.set(id, key);
             }
         });
+
+        const rawSections = Array.isArray(node['sections']) ? (node['sections'] as Record<string, unknown>[]) : [];
+        const sections: CdtExportSection[] = rawSections.map((s) => this.normalizeSection(s)).filter((s) => !!s.id);
 
         const rawConditionGroups = Array.isArray(node['condition_groups'])
             ? (node['condition_groups'] as Record<string, unknown>[])
@@ -305,6 +335,7 @@ export class CdtExportImportService {
             default_llm_config: this.asNullableNumber(node['default_llm_config']),
             condition_groups: conditionGroups,
             prompt_configs: promptConfigs,
+            sections,
         };
     }
 
@@ -323,6 +354,7 @@ export class CdtExportImportService {
         defaultLlmConfig: number | null;
         conditionGroups: ConditionGroup[];
         prompts: Record<string, PromptConfig>;
+        sections?: CdtSection[];
     }): CdtExportData {
         return {
             node_name: input.nodeName ?? '',
@@ -355,6 +387,11 @@ export class CdtExportImportService {
                 output_schema: config.output_schema ?? null,
                 result_variable: config.result_variable ?? '',
                 variable_mappings: config.variable_mappings ?? {},
+            })),
+            sections: (input.sections ?? []).map((section) => ({
+                id: section.id,
+                name: section.name,
+                color: normalizeCdtSectionColor(section.metadata?.color),
             })),
         };
     }
@@ -393,6 +430,16 @@ export class CdtExportImportService {
         return record;
     }
 
+    public toSections(data: CdtExportData): CdtSection[] {
+        return (data.sections ?? [])
+            .filter((section) => !!section.id)
+            .map((section) => ({
+                id: section.id,
+                name: section.name ?? '',
+                metadata: { color: normalizeCdtSectionColor(section.color) },
+            }));
+    }
+
     private csvRow(cells: string[]): string {
         return cells.map((cell) => this.csvEscape(cell)).join(',');
     }
@@ -429,6 +476,16 @@ export class CdtExportImportService {
                 schema == null ? null : typeof schema === 'string' ? schema : (schema as Record<string, unknown>),
             result_variable: this.asString(prompt['result_variable']),
             variable_mappings: this.asStringRecord(prompt['variable_mappings']),
+        };
+    }
+
+    private normalizeSection(section: Record<string, unknown>): CdtExportSection {
+        const metadata = (section['metadata'] ?? {}) as Record<string, unknown>;
+        const color = typeof section['color'] === 'string' ? section['color'] : metadata['color'];
+        return {
+            id: this.asString(section['id']),
+            name: this.asString(section['name']),
+            color: normalizeCdtSectionColor(typeof color === 'string' ? color : null),
         };
     }
 

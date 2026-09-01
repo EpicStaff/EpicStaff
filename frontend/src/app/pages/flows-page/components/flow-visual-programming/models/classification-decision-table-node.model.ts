@@ -17,6 +17,12 @@ export interface CreatePromptConfigRequest {
     variable_mappings: Record<string, string>;
 }
 
+export interface ClassificationDecisionTableSectionBackend {
+    id: string;
+    name: string;
+    metadata: { color?: string };
+}
+
 export interface ClassificationConditionGroupBackend {
     id: number;
     classification_decision_table_node: number;
@@ -77,6 +83,7 @@ export interface GetClassificationDecisionTableNodeRequest {
     default_next_node_id: number | null;
     next_error_node_id: number | null;
     condition_groups: ClassificationConditionGroupBackend[];
+    sections?: ClassificationDecisionTableSectionBackend[];
     metadata?: unknown;
 }
 
@@ -98,5 +105,6 @@ export interface CreateClassificationDecisionTableNodeRequest {
     next_error_node_id?: number | null;
     next_error_node_temp_id?: string | null;
     condition_groups: CreateClassificationConditionGroupRequest[];
+    sections?: ClassificationDecisionTableSectionBackend[];
     metadata?: unknown;
 }
