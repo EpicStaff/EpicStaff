@@ -1,0 +1,7 @@
+from django_app.settings import env
+
+REDIS_HOST = env.str("REDIS_HOST", "localhost")
+REDIS_PORT = env.int("REDIS_PORT", 6379)
+REDIS_PASSWORD = env.str("REDIS_PASSWORD")
+
+REDIS_TUNNEL_CONFIG_CHANNEL = env.str("REDIS_TUNNEL_CONFIG_CHANNEL", "REDIS_TUNNEL_CONFIG_CHANNEL")
