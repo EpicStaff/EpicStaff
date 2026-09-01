@@ -342,6 +342,7 @@ except Exception:
         logger.info("Executing code using {}...", python_executable)
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
+        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
         if context.get("use_storage"):
             env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
             env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
