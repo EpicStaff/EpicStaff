@@ -9,7 +9,6 @@ skips `kind=twilio` rows when building the payload for `src/webhook`.
 """
 
 import pytest
-from django.core.exceptions import ValidationError
 
 from tables.models.rbac_models import Organization
 from tables.models.webhook_models import (
@@ -81,21 +80,21 @@ class TestTwilioChannelAuthSync:
         auth = WebhookTriggerAuth.objects.get(trigger=trigger)
         assert auth.secret_id == second_secret.id
 
-    def test_rejects_syncing_onto_a_trigger_with_a_conflicting_auth_kind(self, org):
+    def test_does_not_overwrite_auth_when_trigger_has_conflicting_auth_kind(self, org):
         """`TwilioChannelSerializer.validate()` already rejects this at the API
         boundary (400). This signal is the last line of defense for any path
         that bypasses the serializer (direct `.save()`, fixtures, management
-        commands) -- it must reject just as hard, not silently no-op, or the
-        trigger is left pointing at a `TwilioChannel` whose auth strategy
-        doesn't match."""
+        commands) -- it must not silently let the `TwilioChannel` steal/overwrite
+        the trigger's existing auth row. It no longer raises (the `TwilioChannel`
+        save itself succeeds), but the conflicting `WebhookTriggerAuth` row must
+        be left completely untouched."""
         trigger = _make_trigger(org, "twilio-sync-conflict-path")
         WebhookTriggerAuth.objects.create(
             trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK
         )
         secret = secret_service.create(text="auth-token-4", org=org, name="tw-secret-4")
 
-        with pytest.raises(ValidationError):
-            _make_twilio_channel(org, trigger, secret)
+        _make_twilio_channel(org, trigger, secret)
 
         auth = WebhookTriggerAuth.objects.get(trigger=trigger)
         assert auth.kind == WebhookTriggerAuthKind.WEBHOOK

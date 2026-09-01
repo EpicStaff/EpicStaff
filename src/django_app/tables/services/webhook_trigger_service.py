@@ -21,7 +21,7 @@ from tables.models.webhook_models import (
 from src.shared.models import WebhookConfigData
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
-from tables.services.secrets import secret_resolver
+from tables.services.secrets import secret_resolver, SecretResolutionError
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.validators.telegram_secret_token_validator import (
@@ -34,6 +34,8 @@ USER_SETTABLE_AUTH_KINDS = (
     WebhookTriggerAuthKind.TELEGRAM,
     WebhookTriggerAuthKind.TWILIO,
 )
+
+AUTH_SECRET_MIN_LENGTH = 32
 
 
 class WebhookTriggerService(metaclass=SingletonMeta):
@@ -143,21 +145,34 @@ class WebhookTriggerService(metaclass=SingletonMeta):
             )
 
     def register_webhooks(self) -> bool:
-        data = WebhookConfigData(
-            ngrok_configs=[
-                self.converter_service.convert_ngrok_webhook_config_to_pydantic(config)
-                for config in NgrokWebhookConfig.objects.select_related(
-                    "trigger", "trigger__auth", "trigger__auth__secret"
-                ).all()
-            ],
-            localhost_configs=[
-                self.converter_service.convert_localhost_webhook_config_to_pydantic(
-                    config
+        ngrok_configs, localhost_configs = [], []
+        for config in NgrokWebhookConfig.objects.select_related(
+            "trigger", "trigger__auth", "trigger__auth__secret"
+        ).all():
+            try:
+                ngrok_configs.append(
+                    self.converter_service.convert_ngrok_webhook_config_to_pydantic(
+                        config
+                    )
                 )
-                for config in LocalhostWebhookConfig.objects.select_related(
-                    "trigger", "trigger__auth", "trigger__auth__secret"
-                ).all()
-            ],
+            except SecretResolutionError as e:
+                logger.error(f"Error converting Ngrok webhook config: {e}")
+
+        for config in LocalhostWebhookConfig.objects.select_related(
+            "trigger", "trigger__auth", "trigger__auth__secret"
+        ).all():
+            try:
+                localhost_configs.append(
+                    self.converter_service.convert_localhost_webhook_config_to_pydantic(
+                        config
+                    )
+                )
+            except SecretResolutionError as e:
+                logger.error(f"Error converting Localhost webhook config: {e}")
+            
+        data = WebhookConfigData(
+            ngrok_configs=ngrok_configs,
+            localhost_configs=localhost_configs,
         )
 
         redis_client = self.redis_service.redis_client
@@ -308,13 +323,19 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                 f"kind='{kind}' secret."
             )
 
-        if kind == WebhookTriggerAuthKind.TELEGRAM and secret is not None:
+        if secret is not None:
             plaintext = secret_resolver.resolve(
                 secret_id=secret.pk,
                 org_id=trigger.org_id,
-                context="WebhookTriggerAuth.secret (telegram)",
+                context="Plaintext secret for webhook trigger auth",
             )
-            validate_telegram_secret_token(plaintext)
+            if len(plaintext) < AUTH_SECRET_MIN_LENGTH:
+                raise ValueError(
+                    f"The provided secret must be at least {AUTH_SECRET_MIN_LENGTH} characters long."
+                )
+
+            if kind == WebhookTriggerAuthKind.TELEGRAM:
+                validate_telegram_secret_token(plaintext)
 
         auth, _ = WebhookTriggerAuth.objects.update_or_create(
             trigger=trigger,

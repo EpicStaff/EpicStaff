@@ -54,7 +54,7 @@ async def handle_webhook(
     authenticated = (
         bool(token)
         and bool(auth.secret)
-        and hmac.compare_digest(token, auth.secret)
+        and hmac.compare_digest(token.encode("utf-8"), auth.secret.encode("utf-8"))
     )
     if not authenticated:
         logger.warning(

@@ -1401,7 +1401,7 @@ class TestWebhookTriggerAuthAPI:
     def test_create_with_auth_secret_id_sets_webhook_kind_auth(
         self, auth_client, default_org
     ):
-        secret = _make_secret(default_org, "epicstaff-api-key-value123")
+        secret = _make_secret(default_org, "epicstaff-api-key-value123-long-enough")
 
         response = auth_client.post(
             reverse("webhooktrigger-list"),
@@ -1445,7 +1445,7 @@ class TestWebhookTriggerAuthAPI:
         assert create.status_code == 201, create.json()
         trigger_id = create.json()["id"]
 
-        first_secret = _make_secret(default_org, "first-api-key")
+        first_secret = _make_secret(default_org, "first-api-key-long-enough-value1")
         update = auth_client.patch(
             reverse("webhooktrigger-detail", args=[trigger_id]),
             {"auth_secret_id": first_secret.id},
@@ -1454,7 +1454,7 @@ class TestWebhookTriggerAuthAPI:
         assert update.status_code == 200, update.json()
         assert update.json()["auth"]["secret_tail"] == first_secret.tail
 
-        second_secret = _make_secret(default_org, "second-api-key-2")
+        second_secret = _make_secret(default_org, "second-api-key-2-long-enough-value")
         rotate = auth_client.patch(
             reverse("webhooktrigger-detail", args=[trigger_id]),
             {"auth_secret_id": second_secret.id},
@@ -1466,7 +1466,7 @@ class TestWebhookTriggerAuthAPI:
     def test_create_with_auth_kind_telegram_sets_telegram_kind_auth(
         self, auth_client, default_org
     ):
-        secret = _make_secret(default_org, "TelegramSecretABC123")
+        secret = _make_secret(default_org, "TelegramSecretABC123LongEnoughValue")
 
         response = auth_client.post(
             reverse("webhooktrigger-list"),
@@ -1499,7 +1499,7 @@ class TestWebhookTriggerAuthAPI:
         trigger's existing kind (telegram here), not silently default back
         to webhook. This is exactly the case that used to be rejected before
         the Telegram secret became user-settable."""
-        first_secret = _make_secret(default_org, "TelegramSecretFirst1")
+        first_secret = _make_secret(default_org, "TelegramSecretFirst1LongEnoughValue")
         create = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -1513,7 +1513,7 @@ class TestWebhookTriggerAuthAPI:
         assert create.status_code == 201, create.json()
         trigger_id = create.json()["id"]
 
-        second_secret = _make_secret(default_org, "TelegramSecretSecond2")
+        second_secret = _make_secret(default_org, "TelegramSecretSecond2LongEnoughValue")
         update = auth_client.patch(
             reverse("webhooktrigger-detail", args=[trigger_id]),
             {"auth_secret_id": second_secret.id},
@@ -1544,10 +1544,62 @@ class TestWebhookTriggerAuthAPI:
 
         assert response.status_code == 400, response.json()
 
+    def test_webhook_kind_secret_shorter_than_minimum_length_is_rejected(
+        self, auth_client, default_org
+    ):
+        """`AUTH_SECRET_MIN_LENGTH = 32` (`WebhookTriggerService.set_trigger_auth_secret`)
+        rejects any user-settable `kind=webhook` secret shorter than that,
+        regardless of the Telegram charset validator."""
+        short_secret = _make_secret(default_org, "short-webhook-secret-29-chars")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-webhook-too-short-path",
+                "provider_type": None,
+                "auth_secret_id": short_secret.id,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+        from tables.models.webhook_models import WebhookTriggerAuth
+
+        assert not WebhookTriggerAuth.objects.filter(
+            trigger__path="auth-webhook-too-short-path"
+        ).exists()
+
+    def test_telegram_kind_secret_shorter_than_minimum_length_is_rejected(
+        self, auth_client, default_org
+    ):
+        """Same `AUTH_SECRET_MIN_LENGTH = 32` floor applies to `kind=telegram`
+        secrets, checked before the Telegram charset validator runs."""
+        short_secret = _make_secret(default_org, "TelegramShort1")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-telegram-too-short-path",
+                "provider_type": None,
+                "auth_secret_id": short_secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+        from tables.models.webhook_models import WebhookTriggerAuth
+
+        assert not WebhookTriggerAuth.objects.filter(
+            trigger__path="auth-telegram-too-short-path"
+        ).exists()
+
     def test_explicit_auth_kind_conflicting_with_existing_kind_is_rejected(
         self, auth_client, default_org
     ):
-        first_secret = _make_secret(default_org, "TelegramSecretConflict1")
+        first_secret = _make_secret(default_org, "TelegramSecretConflict1LongEnoughValue")
         create = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -1610,7 +1662,7 @@ class TestWebhookTriggerAuthAPI:
         from tables.exceptions import RegisterTelegramTriggerError
         from tables.models.webhook_models import WebhookTriggerAuth
 
-        first_secret = _make_secret(default_org, "FirstTelegramSecret1")
+        first_secret = _make_secret(default_org, "FirstTelegramSecret1LongEnoughValue")
         create = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -1637,7 +1689,7 @@ class TestWebhookTriggerAuthAPI:
         )
         assert node_create.status_code == 201, node_create.json()
 
-        second_secret = _make_secret(default_org, "SecondTelegramSecret2")
+        second_secret = _make_secret(default_org, "SecondTelegramSecret2LongEnoughValue")
 
         with mock.patch(
             "tables.services.telegram_trigger_service.TelegramTriggerService"
@@ -1849,7 +1901,7 @@ class TestWebhookTriggerAuthAPI:
         """Sanity check: `telegram_registration_warning` only ever appears
         for `kind=telegram` updates -- a plain `kind=webhook` secret update
         (no Telegram resync involved at all) must never carry it."""
-        secret = _make_secret(default_org, "plain-webhook-secret-value")
+        secret = _make_secret(default_org, "plain-webhook-secret-value-long-enough")
         create = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -1917,7 +1969,7 @@ class TestWebhookTriggerAuthAPI:
     ):
         """`kind=webhook` stays allowed on a localhost trigger -- that's the
         legitimate local-dev use case; only telegram/twilio are restricted."""
-        secret = _make_secret(default_org, "webhook-kind-localhost-allowed1")
+        secret = _make_secret(default_org, "webhook-kind-localhost-allowed-value1")
 
         response = auth_client.post(
             reverse("webhooktrigger-list"),

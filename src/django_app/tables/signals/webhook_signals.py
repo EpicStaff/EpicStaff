@@ -1,5 +1,4 @@
 from loguru import logger
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
@@ -157,10 +156,11 @@ def twilio_channel_post_save_handler(sender, instance: TwilioChannel, **_):
 
     existing = getattr(trigger, "auth", None)
     if existing is not None and existing.kind != WebhookTriggerAuthKind.TWILIO:
-        raise ValidationError(
+        logger.error(
             f"Cannot sync Twilio auth onto trigger {trigger.pk}: its auth is "
             f"already configured for kind='{existing.kind}'."
         )
+        return
 
     WebhookTriggerAuth.objects.update_or_create(
         trigger=trigger,
