@@ -933,13 +933,12 @@ export class RagTabComponent implements OnInit {
         if (this.isAnchorKey(key)) {
             const anchorValue = params[ANCHOR_FIELD_NAME[key]];
             if (typeof anchorValue === 'number') this.lastSuggestedMaxContextTokens.set(key, anchorValue);
-            // The anchor field (and, for drift, its always-editable siblings — see
-            // DRIFT_ALWAYS_EDITABLE_FIELDS) stays live-editable while a suggestion
-            // request is in flight (see the anchor field's template binding, which
-            // is never gated on useSuggestedParams()). Patching it here would
-            // silently overwrite whatever the user typed into it after the request
-            // fired but before this response landed.
-            for (const field of ANCHOR_FIELDS[key] ?? []) {
+            const fieldsToExclude = isCustomAnchor
+                ? (ANCHOR_FIELDS[key] ?? [])
+                : key === 'drift'
+                  ? DRIFT_ALWAYS_EDITABLE_FIELDS
+                  : [];
+            for (const field of fieldsToExclude) {
                 delete params[field];
             }
         }
