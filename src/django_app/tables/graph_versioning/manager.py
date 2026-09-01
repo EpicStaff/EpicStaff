@@ -13,6 +13,7 @@ from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.graph import GraphStrategy
+from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 from tables.import_export.utils import ensure_unique_identifier
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
@@ -411,7 +412,29 @@ class GraphVersioningManager:
         warnings: list[dict] = []
 
         for node in nodes:
-            handler = HANDLER_REGISTRY.get(node.get("node_type"))
+            node_type = node.get("node_type")
+
+            # Old snapshots still carry nodes of types that no longer exist.
+            # Skipping feeds their ids into skipped_node_ids, so the cleanup
+            # below drops the references pointing at them.
+            if node_type not in NODE_TYPE_TO_ENTITY_TYPE:
+                skipped_node_ids.add(node.get("id"))
+                # No "node_id": the node is never recreated, so change_old_warnings_ids
+                # would have nothing to remap it to — same contract as node_skipped.
+                warnings.append(
+                    {
+                        "type": "node_type_unsupported",
+                        "node_name": node.get("node_name") or node_type,
+                        "node_type": node_type,
+                        "reason": (
+                            f"Node type '{node_type}' is no longer supported "
+                            "and was skipped."
+                        ),
+                    }
+                )
+                continue
+
+            handler = HANDLER_REGISTRY.get(node_type)
             if handler is not None:
                 missing_id = handler.find_missing_id(node, missing_sets)
                 if missing_id is not None:
@@ -428,15 +451,26 @@ class GraphVersioningManager:
         self, snapshot_nodes: list[dict], skipped_node_ids: set[int]
     ) -> list[dict]:
         """
-        Check DecisionTableNode connections.
-        Set None if related entity doesn't exist
+        Check DecisionTableNode and ClassificationDecisionTableNode connections.
+        Set None if related entity doesn't exist.
+
+        Both node types carry the same reference shape (default_next_node_id,
+        next_error_node_id and condition_groups[].next_node_id). CDT references are
+        also blanked later by _remap_classification_decision_table_references, but
+        only clearing them here puts them in the restore warnings, so the user is
+        told which branches were dropped.
         """
+        table_node_types = (
+            NodeType.DECISION_TABLE_NODE,
+            NodeType.CLASSIFICATION_DECISION_TABLE_NODE,
+        )
         warnings: list[dict] = []
 
         for node in snapshot_nodes:
-            if node.get("node_type") != NodeType.DECISION_TABLE_NODE:
+            node_type = node.get("node_type")
+            if node_type not in table_node_types:
                 continue
-            node_name = node.get("node_name") or NodeType.DECISION_TABLE_NODE
+            node_name = node.get("node_name") or node_type
             for field in ("default_next_node_id", "next_error_node_id"):
                 target = node.get(field)
                 if target in skipped_node_ids:
@@ -825,5 +859,14 @@ class GraphVersioningManager:
     ) -> None:
         for w in warning_msgs:
             old_id = w.get("node_id")
-            if old_id:
-                w["node_id"] = node_mapper.get(NODE_MAPPING_KEY, old_id)
+            if not old_id:
+                continue
+            new_id = node_mapper.get_or_none(NODE_MAPPING_KEY, old_id)
+            if new_id is None:
+                # The node was not recreated, so no current id exists. Drop the key
+                # rather than leave the snapshot id behind — it would point at an
+                # unrelated node in the restored graph. Raising here would turn a
+                # successful restore into a 500 over a cosmetic field.
+                w.pop("node_id", None)
+                continue
+            w["node_id"] = new_id

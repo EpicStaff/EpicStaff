@@ -29,7 +29,6 @@ def callback_factory():
         knowledge_search_service=MagicMock(),
         crewai_output_channel="crewai_output",
         stream_writer=MagicMock(),
-        stream_config={},
     )
 
 
@@ -159,9 +158,7 @@ class TestFindingsMessageRecognition:
         assert "agent" in message_types
         assert FINDINGS_MESSAGE_TYPE in message_types
 
-    def test_huge_non_json_result_is_skipped_without_full_parse(
-        self, callback_factory
-    ):
+    def test_huge_non_json_result_is_skipped_without_full_parse(self, callback_factory):
         """A large non-JSON string (e.g. a file dump) must be rejected by the
         cheap prefix/size pre-checks before json.loads is ever called."""
         step_callback = callback_factory.get_step_callback(agent_id=5)
@@ -176,9 +173,7 @@ class TestFindingsMessageRecognition:
         published = custom_message_calls(callback_factory)
         assert all(m.get("message_type") != FINDINGS_MESSAGE_TYPE for m in published)
 
-    def test_normal_findings_payload_still_parsed_and_published(
-        self, callback_factory
-    ):
+    def test_normal_findings_payload_still_parsed_and_published(self, callback_factory):
         """Sanity check that the new pre-checks don't interfere with a
         normal-sized, well-formed findings payload."""
         step_callback = callback_factory.get_step_callback(agent_id=5)

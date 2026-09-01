@@ -78,7 +78,7 @@ export interface CreateTaskNodeRequest {
 /**
  * UI-facing data held on the Task node's canvas model (`TaskNodeModel.data`).
  * Mirrors the flat `TaskNode` DTO fields plus a display-only `name`, matching the
- * `CustomPythonCode.name` / `CodeAgentNodeData` convention used by sibling node types.
+ * `CustomPythonCode.name` convention used by sibling node types.
  */
 export interface TaskNodeData {
     name: string;

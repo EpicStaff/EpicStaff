@@ -1,10 +1,10 @@
 import { BasePort } from '../models/port.model';
 import { DEFAULT_AGENT_NODE_PORTS } from './agent-ports/agent-node-default-ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from './audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_CODE_AGENT_NODE_PORTS } from './code-agent-ports/code-agent-node-default-ports';
 import { DEFAULT_EDGE_NODE_PORTS } from './edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from './end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from './file-extractor-ports/file-extractor-default-ports';
+import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from './knowledge-retriever-ports/knowledge-retriever-default-ports';
 import { DEFAULT_LLM_NODE_PORTS } from './llm-ports/llm-node-default-ports';
 import { DEFAULT_PROJECT_NODE_PORTS } from './project-ports/project-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from './python-ports/python-node-default-ports';
@@ -35,6 +35,6 @@ export const PORTS_DICTIONARY: { [role: string]: BasePort } = Object.fromEntries
         ...DEFAULT_END_NODE_PORTS,
         ...DEFAULT_SUBGRAPH_NODE_PORTS,
         ...DEFAULT_AUDIO_TO_TEXT_NODE_PORTS,
-        ...DEFAULT_CODE_AGENT_NODE_PORTS,
+        ...DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS,
     ].map((port) => [port.role, port])
 );

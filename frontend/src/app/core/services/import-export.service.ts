@@ -20,9 +20,9 @@ export interface PartialExportRequest {
     decision_table_node_list: number[];
     classification_decision_table_node_list: number[];
     graph_note_list: number[];
-    code_agent_node_list: number[];
     schedule_trigger_node_list: number[];
     edge_list: number[];
+    knowledge_node_list: number[];
 }
 
 export interface ImportFlowRequestOptions {

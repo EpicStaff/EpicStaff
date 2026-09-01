@@ -6,10 +6,10 @@ import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_CODE_AGENT_NODE_PORTS } from '../rules/code-agent-ports/code-agent-node-default-ports';
 import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
+import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from '../rules/knowledge-retriever-ports/knowledge-retriever-default-ports';
 import { DEFAULT_LLM_NODE_PORTS } from '../rules/llm-ports/llm-node-default-ports';
 import { DEFAULT_PROJECT_NODE_PORTS } from '../rules/project-ports/project-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from '../rules/python-ports/python-node-default-ports';
@@ -79,8 +79,8 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_END_NODE_PORTS;
         case NodeType.SUBGRAPH:
             return DEFAULT_SUBGRAPH_NODE_PORTS;
-        case NodeType.CODE_AGENT:
-            return DEFAULT_CODE_AGENT_NODE_PORTS;
+        case NodeType.KNOWLEDGE_RETRIEVER:
+            return DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS;
         case NodeType.NOTE:
             return [];
         default:
@@ -417,6 +417,32 @@ function getConnectionLayout(
     return 'mixed';
 }
 
+function isHorizontalBackward(
+    source: BaseNodeModel,
+    target: BaseNodeModel,
+    sourcePort?: ViewPort,
+    targetPort?: ViewPort
+): boolean {
+    const sourceExitX = sourcePort?.position === 'left' ? source.position.x : source.position.x + source.size.width;
+
+    const targetEntryX = targetPort?.position === 'right' ? target.position.x + target.size.width : target.position.x;
+
+    return sourceExitX > targetEntryX;
+}
+
+function isVerticalBackward(
+    source: BaseNodeModel,
+    target: BaseNodeModel,
+    sourcePort?: ViewPort,
+    targetPort?: ViewPort
+): boolean {
+    const sourceExitY = sourcePort?.position === 'top' ? source.position.y : source.position.y + source.size.height;
+
+    const targetEntryY = targetPort?.position === 'bottom' ? target.position.y + target.size.height : target.position.y;
+
+    return sourceExitY > targetEntryY;
+}
+
 export function isBackwardConnection(connection: ConnectionModel, nodes: BaseNodeModel[]): boolean {
     const source = nodes.find((n) => n.id === connection.sourceNodeId);
     const target = nodes.find((n) => n.id === connection.targetNodeId);
@@ -425,46 +451,25 @@ export function isBackwardConnection(connection: ConnectionModel, nodes: BaseNod
     const sourcePort = source.ports?.find((p) => p.id === connection.sourcePortId);
     const targetPort = target.ports?.find((p) => p.id === connection.targetPortId);
 
-    const layout = getConnectionLayout(source, target, sourcePort, targetPort);
-
-    if (layout === 'horizontal') {
-        const sourceExitX = sourcePort?.position === 'left' ? source.position.x : source.position.x + source.size.width;
-
-        const targetEntryX =
-            targetPort?.position === 'right' ? target.position.x + target.size.width : target.position.x;
-
-        return sourceExitX > targetEntryX;
-    }
-
-    if (layout === 'vertical') {
-        const sourceExitY = sourcePort?.position === 'top' ? source.position.y : source.position.y + source.size.height;
-
-        const targetEntryY =
-            targetPort?.position === 'bottom' ? target.position.y + target.size.height : target.position.y;
-
-        return sourceExitY > targetEntryY;
-    }
-
     const bothHorizontalPorts = isHorizontalPort(sourcePort?.position) && isHorizontalPort(targetPort?.position);
-
     const bothVerticalPorts = isVerticalPort(sourcePort?.position) && isVerticalPort(targetPort?.position);
 
     if (bothHorizontalPorts) {
-        const sourceExitX = sourcePort?.position === 'left' ? source.position.x : source.position.x + source.size.width;
-
-        const targetEntryX =
-            targetPort?.position === 'right' ? target.position.x + target.size.width : target.position.x;
-
-        return sourceExitX > targetEntryX;
+        return isHorizontalBackward(source, target, sourcePort, targetPort);
     }
 
     if (bothVerticalPorts) {
-        const sourceExitY = sourcePort?.position === 'top' ? source.position.y : source.position.y + source.size.height;
+        return isVerticalBackward(source, target, sourcePort, targetPort);
+    }
 
-        const targetEntryY =
-            targetPort?.position === 'bottom' ? target.position.y + target.size.height : target.position.y;
+    const layout = getConnectionLayout(source, target, sourcePort, targetPort);
 
-        return sourceExitY > targetEntryY;
+    if (layout === 'horizontal') {
+        return isHorizontalBackward(source, target, sourcePort, targetPort);
+    }
+
+    if (layout === 'vertical') {
+        return isVerticalBackward(source, target, sourcePort, targetPort);
     }
 
     return false;

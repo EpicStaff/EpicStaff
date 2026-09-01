@@ -4,6 +4,10 @@ import zipfile
 from abc import ABC, abstractmethod
 from typing import Iterator
 
+from tables.services.storage_service.archive_limits import (
+    ArchiveExtractionGuard,
+    default_guard,
+)
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FolderInfo,
@@ -82,9 +86,12 @@ class AbstractStorageBackend(ABC):
 
         return normalized
 
-    def _iter_archive_entries(self, archive_file) -> Iterator[tuple[str, bytes]]:
+    def _iter_archive_entries(
+        self, archive_file, guard: ArchiveExtractionGuard | None = None
+    ) -> Iterator[tuple[str, bytes]]:
         """Yield (relative_path, bytes) for every file inside a ZIP or TAR archive."""
         pos = archive_file.tell()
+        guard = guard or default_guard()
 
         if zipfile.is_zipfile(archive_file):
             archive_file.seek(pos)
@@ -92,8 +99,13 @@ class AbstractStorageBackend(ABC):
             with zipfile.ZipFile(archive_file, "r") as zf:
                 for entry in zf.infolist():
                     if not entry.is_dir():
+                        guard.account_entry()
                         safe_name = self._sanitize_archive_member_name(entry.filename)
-                        yield safe_name, zf.read(entry.filename)
+                        with zf.open(entry, "r") as member_file:
+                            yield (
+                                safe_name,
+                                guard.read_member(member_file, entry.filename),
+                            )
 
             return
 
@@ -114,10 +126,11 @@ class AbstractStorageBackend(ABC):
                             f"Archive member is a symlink or hardlink: {member.name!r}"
                         )
                     if member.isfile():
+                        guard.account_entry()
                         safe_name = self._sanitize_archive_member_name(member.name)
                         fobj = tf.extractfile(member)
                         if fobj:
-                            yield safe_name, fobj.read()
+                            yield safe_name, guard.read_member(fobj, member.name)
 
             return
 

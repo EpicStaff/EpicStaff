@@ -8,6 +8,7 @@ from models.state import State
 from services.graph.nodes import (
     AudioTranscriptionNode,
     FileContentExtractorNode,
+    KnowledgeNode,
     PythonNode,
     CrewNode,
     BaseNode,
@@ -16,7 +17,6 @@ from services.graph.nodes import (
 
 from services.agent_task_service import AgentTaskService
 from services.graph.nodes.agent_node import AgentNode
-from services.graph.nodes.code_agent_node import CodeAgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.remembered_outputs import RememberedOutputsStore
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
@@ -323,7 +323,6 @@ class SessionGraphBuilder:
                 output_variable_path=crew_node_data.output_variable_path,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=self.stop_event,
-                stream_config=crew_node_data.stream_config,
             )
             self.add_node(crew_node)
 
@@ -336,9 +335,24 @@ class SessionGraphBuilder:
                 input_map=python_node_data.input_map,
                 output_variable_path=python_node_data.output_variable_path,
                 stop_event=self.stop_event,
-                stream_config=python_node_data.stream_config,
             )
             self.add_node(python_node)
+
+        for knowledge_node_data in schema.knowledge_node_list:
+            knowledge_node = KnowledgeNode(
+                session_id=self.session_id,
+                node_name=knowledge_node_data.node_name,
+                stop_event=self.stop_event,
+                input_map=knowledge_node_data.input_map,
+                output_variable_path=knowledge_node_data.output_variable_path,
+                collection_id=knowledge_node_data.collection_id,
+                rag_type_id=knowledge_node_data.rag_type_id,
+                query=knowledge_node_data.query,
+                rag_search_config=knowledge_node_data.rag_search_config,
+                knowledge_search_service=self.knowledge_search_service,
+                embedder_api_key=knowledge_node_data.embedder_api_key,
+            )
+            self.add_node(knowledge_node)
 
         for file_extractor_node_data in schema.file_extractor_node_list:
             file_extractor_node = FileContentExtractorNode(
@@ -367,32 +381,6 @@ class SessionGraphBuilder:
                 org_id=audio_transcription_node_data.org_id,
             )
             self.add_node(audio_transcription_node)
-
-        for ca_data in schema.code_agent_node_list:
-            code_agent_node = CodeAgentNode(
-                session_id=self.session_id,
-                graph_id=schema.graph_id,
-                node_name=ca_data.node_name,
-                stop_event=self.stop_event,
-                input_map=ca_data.input_map,
-                output_variable_path=ca_data.output_variable_path,
-                python_code_executor_service=self.python_code_executor_service,
-                llm_config_id=ca_data.llm_config_id,
-                agent_mode=ca_data.agent_mode,
-                code_session_id=ca_data.session_id,
-                system_prompt=ca_data.system_prompt,
-                stream_handler_code=ca_data.stream_handler_code,
-                libraries=ca_data.libraries,
-                polling_interval_ms=ca_data.polling_interval_ms,
-                silence_indicator_s=ca_data.silence_indicator_s,
-                indicator_repeat_s=ca_data.indicator_repeat_s,
-                chunk_timeout_s=ca_data.chunk_timeout_s,
-                inactivity_timeout_s=ca_data.inactivity_timeout_s,
-                max_wait_s=ca_data.max_wait_s,
-                stream_config=ca_data.stream_config,
-                output_schema=ca_data.output_schema,
-            )
-            self.add_node(code_agent_node)
 
         for edge in schema.edge_list:
             self.add_edge(edge.start_key, edge.end_key)

@@ -162,12 +162,6 @@ export class FlowGraphCoreMenuComponent {
             color: NODE_COLORS[NodeType.SCHEDULE_TRIGGER],
         },
         {
-            label: 'Code Agent',
-            type: NodeType.CODE_AGENT,
-            icon: NODE_ICONS[NodeType.CODE_AGENT],
-            color: NODE_COLORS[NodeType.CODE_AGENT],
-        },
-        {
             label: 'Task Node',
             type: NodeType.TASK,
             icon: NODE_ICONS[NodeType.TASK],
@@ -178,6 +172,12 @@ export class FlowGraphCoreMenuComponent {
             type: NodeType.AGENT,
             icon: NODE_ICONS[NodeType.AGENT],
             color: NODE_COLORS[NodeType.AGENT],
+        },
+        {
+            label: 'Knowledge Retriever',
+            type: NodeType.KNOWLEDGE_RETRIEVER,
+            icon: NODE_ICONS[NodeType.KNOWLEDGE_RETRIEVER],
+            color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
         },
     ];
 
@@ -249,6 +249,8 @@ export class FlowGraphCoreMenuComponent {
                 fields: [],
             };
         } else if (type === NodeType.SCHEDULE_TRIGGER) {
+            data = null;
+        } else if (type === NodeType.KNOWLEDGE_RETRIEVER) {
             data = null;
         } else if (type === NodeType.END) {
             data = null;

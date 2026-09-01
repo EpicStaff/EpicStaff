@@ -15,15 +15,18 @@ from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     CrewNode,
     Edge,
     FileExtractorNode,
     Graph,
+    KnowledgeNode,
     PythonNode,
     SubGraphNode,
     TaskNode,
 )
+from tables.models.knowledge_models import SourceCollection
+from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
+from tables.services.rag_assignment_service import SearchConfigService
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -179,6 +182,73 @@ class FileExtractorNodeSerializer(
         fields = "__all__"
 
 
+class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    """Plain node serializer (no search configs). Base for bulk-save, which
+    persists the config blocks separately via its saveable.
+
+    rag_type ("naive"/"graph") and rag_id are stored verbatim as the FE sends them
+    from /available-rags — no resolution here. RAG validation lives in
+    KnowledgeNodeValidator, invoked by the viewset and the bulk-save saveable."""
+
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+    source_collection = OrgScopedPrimaryKeyRelatedField(
+        queryset=SourceCollection.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = KnowledgeNode
+        fields = "__all__"
+        extra_kwargs = {
+            "search_method": {"write_only": True},
+        }
+
+
+class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
+    """Adds the nested read-back of node-bound search configs (mirror of
+    AgentReadSerializer.search_configs). Used for list/retrieve and inside
+    GraphSerializer.knowledge_node_list."""
+
+    search_configs = serializers.SerializerMethodField()
+
+    def get_search_configs(self, node: KnowledgeNode) -> dict | None:
+        return SearchConfigService.get_node_search_configs(node)
+
+
+class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
+    """Accepts a partial nested `search_configs` block and merges it into the
+    node-bound config rows (mirror of AgentWriteSerializer). Only provided
+    fields are touched — the FE may send just what changed."""
+
+    search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        graph = (attrs.get("search_configs") or {}).get("graph") or {}
+        if graph.get("search_method") and not attrs.get("search_method"):
+            attrs["search_method"] = graph["search_method"]
+        return super().validate(attrs)
+
+    def create(self, validated_data):
+        search_configs_data = validated_data.pop("search_configs", None)
+        node = super().create(validated_data)
+        if search_configs_data:
+            SearchConfigService.apply_node_search_configs(node, search_configs_data)
+        return node
+
+    def update(self, instance, validated_data):
+        search_configs_data = validated_data.pop("search_configs", None)
+        node = super().update(instance, validated_data)
+        if search_configs_data:
+            SearchConfigService.apply_node_search_configs(node, search_configs_data)
+            node.refresh_from_db()
+        return node
+
+    def to_representation(self, instance):
+        """Return the persisted nested config (read format), not the raw input."""
+        data = super().to_representation(instance)
+        data["search_configs"] = SearchConfigService.get_node_search_configs(instance)
+        return data
+
+
 class AudioTranscriptionNodeSerializer(
     ContentHashWritableMixin, serializers.ModelSerializer
 ):
@@ -186,24 +256,6 @@ class AudioTranscriptionNodeSerializer(
 
     class Meta:
         model = AudioTranscriptionNode
-        fields = "__all__"
-
-
-class CodeAgentNodeSerializer(serializers.ModelSerializer):
-    """
-    DEPRECATED: CodeAgentNodeSerializer is deprecated. Use AgentNodeSerializer
-    or TaskNodeSerializer instead. Exists only for backward compatibility with
-    existing CodeAgentNode rows.
-    """
-
-    # Org isolation: only an LLMConfig from the caller's active org may be referenced.
-    llm_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=LLMConfig.objects.all(), required=False, allow_null=True
-    )
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta:
-        model = CodeAgentNode
         fields = "__all__"
 
 

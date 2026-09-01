@@ -3,13 +3,14 @@ import { GetProjectRequest } from '../../../features/projects/models/project.mod
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { CodeAgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
+import { GetKnowledgeRetrieverNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/knowledge-retriever-node.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { TelegramTriggerNodeField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
 import { NodeType } from '../enums/node-type';
+import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
 import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
@@ -130,8 +131,7 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.CLASSIFICATION_TABLE;
     data: {
         name?: string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        table: any;
+        table: ClassificationDecisionTableData;
     };
 }
 
@@ -149,10 +149,9 @@ export interface SubGraphNodeModel extends BaseNodeModel {
     data: GetGraphLightRequest;
 }
 
-export interface CodeAgentNodeModel extends BaseNodeModel {
-    type: NodeType.CODE_AGENT;
-    data: CodeAgentNodeData;
-    stream_config?: Record<string, boolean>;
+export interface KnowledgeRetrieverNodeModel extends BaseNodeModel {
+    type: NodeType.KNOWLEDGE_RETRIEVER;
+    data: GetKnowledgeRetrieverNodeRequest;
 }
 
 export type NodeModel =
@@ -173,5 +172,5 @@ export type NodeModel =
     | TelegramTriggerNodeModel
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
-    | EndNodeModel
-    | CodeAgentNodeModel;
+    | KnowledgeRetrieverNodeModel
+    | EndNodeModel;

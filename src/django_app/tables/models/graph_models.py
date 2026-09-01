@@ -20,6 +20,8 @@ from tables.models.base_models import (
 from tables.models.label_models import Label
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
+from tables.models.knowledge_models.graphrag_models import AgentGraphRag
+from tables.models.knowledge_models.collection_models import BaseRagType
 
 
 class GraphManager(ActiveManager):
@@ -130,7 +132,6 @@ class CrewNode(BaseNode, SoftDeleteFields):
         "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
     )
     crew = models.ForeignKey("Crew", on_delete=models.CASCADE)
-    stream_config = models.JSONField(default=dict, blank=True)
 
 
 class PythonNode(BaseNode, SoftDeleteFields):
@@ -138,7 +139,6 @@ class PythonNode(BaseNode, SoftDeleteFields):
         "Graph", on_delete=models.CASCADE, related_name="python_node_list"
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    stream_config = models.JSONField(default=dict, blank=True)
     test_input = models.JSONField(default=dict, blank=True)
     use_storage = models.BooleanField(default=False)
 
@@ -170,7 +170,34 @@ class PythonNode(BaseNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class FileExtractorNode(BaseNode, SoftDeleteFields):
+class KnowledgeNode(BaseNode):
+    graph = models.ForeignKey(
+        "Graph", on_delete=models.CASCADE, related_name="knowledge_node_list"
+    )
+    source_collection = models.ForeignKey(
+        "SourceCollection", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    # RAG addressed the same way as the agent path and the knowledge service:
+    # a type name ("naive"/"graph") plus the impl id surfaced by /available-rags.
+    rag_type = models.CharField(
+        max_length=30,
+        choices=BaseRagType.RagType.choices,
+        null=True,
+        blank=True,
+        default=None,
+    )
+    rag_id = models.IntegerField(null=True, blank=True, default=None)
+    query = models.TextField(blank=True, default="")
+    search_method = models.CharField(
+        max_length=10,
+        choices=AgentGraphRag.SearchMethod.choices,
+        null=True,
+        blank=True,
+        default=None,
+    )
+
+
+class FileExtractorNode(SoftDeleteFields, BaseNode):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
@@ -221,35 +248,6 @@ class SubGraphNode(BaseNode, SoftDeleteFields):
         related_name="as_subgraph",
         null=True,
     )
-
-
-class CodeAgentNode(BaseNode, SoftDeleteFields):
-    """
-    DEPRECATED: CodeAgentNode is deprecated. Use AgentNode or TaskNode instead.
-    New flows must not create CodeAgentNodes; this model exists only for backward
-    compatibility with existing graphs.
-    """
-
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="code_agent_node_list"
-    )
-    llm_config = models.ForeignKey(
-        "LLMConfig", on_delete=models.SET_NULL, null=True, blank=True
-    )
-    agent_mode = models.CharField(max_length=10, default="build")
-    session_id = models.CharField(max_length=255, blank=True, default="")
-    system_prompt = models.TextField(blank=True, default="")
-    stream_handler_code = models.TextField(blank=True, default="")
-    libraries = models.JSONField(default=list, blank=True)
-    polling_interval_ms = models.IntegerField(default=1000)
-    silence_indicator_s = models.IntegerField(default=3)
-    indicator_repeat_s = models.IntegerField(default=5)
-    chunk_timeout_s = models.IntegerField(default=30)
-    inactivity_timeout_s = models.IntegerField(default=120)
-    max_wait_s = models.IntegerField(default=300)
-    stream_config = models.JSONField(default=dict, blank=True)
-    output_schema = models.JSONField(default=dict, blank=True)
-    use_storage = models.BooleanField(default=False)
 
 
 class Edge(BaseGraphEntity, SoftDeleteFields, models.Model):

@@ -32,6 +32,7 @@ from .ai_providers import (
 from .graph_nodes import (
     CrewNodeData,
     PythonNodeData,
+    KnowledgeNodeData,
     FileExtractorNodeData,
     AudioTranscriptionNodeData,
     ConditionData,
@@ -51,7 +52,6 @@ from .graph_nodes import (
     SubGraphNodeData,
     GraphData,
     SubGraphData,
-    CodeAgentNodeData,
     PromptConfigData,
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
@@ -73,6 +73,7 @@ from .surfaces import (
     CombinedSurfaceData,
 )
 from .knowledge import (
+    KnowledgeStatus,
     BaseRagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
@@ -163,6 +164,7 @@ __all__ = [
     # graph_nodes
     "CrewNodeData",
     "PythonNodeData",
+    "KnowledgeNodeData",
     "FileExtractorNodeData",
     "AudioTranscriptionNodeData",
     "ConditionData",
@@ -182,7 +184,6 @@ __all__ = [
     "SubGraphNodeData",
     "GraphData",
     "SubGraphData",
-    "CodeAgentNodeData",
     "PromptConfigData",
     "ClassificationConditionGroupData",
     "ClassificationDecisionTableNodeData",
@@ -202,6 +203,7 @@ __all__ = [
     "CombinedSurfaceKnowledgeData",
     "CombinedSurfaceData",
     # knowledge
+    "KnowledgeStatus",
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
     "GraphRagSearchConfig",

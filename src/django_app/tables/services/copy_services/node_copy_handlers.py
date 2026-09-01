@@ -7,6 +7,7 @@ from agents.services.surface_content_service import (
 )
 from tables.import_export.enums import NodeType
 from tables.models import Graph
+from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
@@ -20,6 +21,7 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -27,7 +29,6 @@ from tables.models.graph_models import (
     TaskNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
-    CodeAgentNode,
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
@@ -135,25 +136,29 @@ def copy_telegram_trigger_node(
     return new_node
 
 
-def copy_code_agent_node(graph: Graph, node: CodeAgentNode) -> CodeAgentNode:
-    return CodeAgentNode.objects.create(
+def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
+    new_node = KnowledgeNode.objects.create(
         graph=graph,
-        llm_config=node.llm_config,
-        agent_mode=node.agent_mode,
-        session_id=node.session_id,
-        system_prompt=node.system_prompt,
-        stream_handler_code=node.stream_handler_code,
-        libraries=node.libraries,
-        polling_interval_ms=node.polling_interval_ms,
-        silence_indicator_s=node.silence_indicator_s,
-        indicator_repeat_s=node.indicator_repeat_s,
-        chunk_timeout_s=node.chunk_timeout_s,
-        inactivity_timeout_s=node.inactivity_timeout_s,
-        max_wait_s=node.max_wait_s,
-        stream_config=node.stream_config,
-        output_schema=node.output_schema,
+        source_collection=node.source_collection,
+        rag_type=node.rag_type,
+        rag_id=node.rag_id,
+        query=node.query,
+        search_method=node.search_method,
         **get_base_node_fields(node),
     )
+    for relation in KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS:
+        # Reverse OneToOne raises RelatedObjectDoesNotExist (a subclass of
+        # AttributeError) when absent, so getattr default returns None.
+        config = getattr(node, relation, None)
+        if config is None:
+            continue
+        field_values = {
+            f.name: getattr(config, f.name)
+            for f in config._meta.fields
+            if f.name not in ("id", "knowledge_node")
+        }
+        type(config).objects.create(knowledge_node=new_node, **field_values)
+    return new_node
 
 
 def copy_schedule_trigger_node(
@@ -338,10 +343,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
         "classification_decision_table_node_list",
         copy_classification_decision_table_node,
     ),
-    NodeType.CODE_AGENT_NODE: (
-        "code_agent_node_list",
-        copy_code_agent_node,
-    ),
     NodeType.TASK_NODE: ("task_node_list", copy_task_node),
     NodeType.AGENT_NODE: ("agent_node_list", copy_agent_node),
+    NodeType.KNOWLEDGE_NODE: (
+        "knowledge_node_list",
+        copy_knowledge_node,
+    ),
 }
