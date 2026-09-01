@@ -12,6 +12,10 @@ from tables.models.rbac_models import (
     Role,
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.services.rbac.organization_management_service import (
+    OrganizationManagementService,
+)
+from tables.services.rbac.rbac_exceptions import OrganizationNameConflictError
 
 # Last-resort organization name. settings.DEFAULT_ORGANIZATION_NAME already
 # coalesces an empty env var, but the fallback is repeated here at the point
@@ -45,8 +49,9 @@ class SuperadminBootstrap:
       3. Otherwise create the row with the resolved name (the `org_name`
          argument if given, else the configured name), flagged.
       - Race-safety: the create runs in a nested savepoint; if it races a
-        parallel insert and IntegrityError fires (name or single-default
-        constraint), refetch and use the winner.
+        parallel insert, IntegrityError fires for the single-default
+        constraint and OrganizationNameConflictError fires for the name
+        collision — both trigger the same refetch/use-the-winner recovery.
     """
 
     SUPERADMIN_ROLE_NAME = BuiltInRole.SUPERADMIN
@@ -120,16 +125,22 @@ class SuperadminBootstrap:
             return org, False
 
         # 3. Truly empty system: create it with the resolved name, flagged.
-        #    The nested savepoint keeps a failed insert from poisoning the
-        #    caller's outer atomic block, so the refetch below is actually
-        #    reachable on a lost race.
+        #    Delegated to OrganizationManagementService.create_organization()
+        #    so the default org gets the same MinIO storage provisioning as
+        #    any other organization (finding #38) — a bare
+        #    Organization.objects.create() here would leave it without
+        #    storage credentials. The nested savepoint keeps a failed insert
+        #    from poisoning the caller's outer atomic block, so the refetch
+        #    below is actually reachable on a lost race.
         try:
             with transaction.atomic():
-                return (
-                    Organization.objects.create(name=resolved_name, is_default=True),
-                    True,
+                org = OrganizationManagementService().create_organization(
+                    name=resolved_name
                 )
-        except IntegrityError:
+                org.is_default = True
+                org.save(update_fields=["is_default"])
+                return org, True
+        except (OrganizationNameConflictError, IntegrityError):
             # Race lost — another transaction created the row between our
             # filter and create. The DB-level constraints are ground truth;
             # refetch and use the winner.

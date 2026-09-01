@@ -13,6 +13,7 @@ from src.shared.storage_credentials.scope_publisher import (
 
 CREDENTIAL_RESPONSE_KEY_PREFIX = "storage_credential_response"
 CREDENTIAL_LEASE_KEY_PREFIX = "storage_credential_lease"
+CREDENTIAL_IN_PROGRESS_KEY_PREFIX = "storage_credential_in_progress"
 ISSUER_HEARTBEAT_KEY = "storage_credential_issuer_heartbeat"
 
 
@@ -26,3 +27,7 @@ def response_key(execution_id: str) -> str:
 
 def lease_key(execution_id: str) -> str:
     return f"{CREDENTIAL_LEASE_KEY_PREFIX}:{execution_id}"
+
+
+def in_progress_key(execution_id: str) -> str:
+    return f"{CREDENTIAL_IN_PROGRESS_KEY_PREFIX}:{execution_id}"

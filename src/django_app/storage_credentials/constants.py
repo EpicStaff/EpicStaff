@@ -44,4 +44,15 @@ STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE = "issue_temporary_credential"
 # redelivery to another consumer.
 STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS = 30_000
 
+# How long the "in progress" marker set right after a delivery wins the
+# scope GETDEL survives. Must outlast the slowest realistic
+# credential_service.issue() call (a MinIO admin API round-trip) plus the
+# STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS redelivery threshold above,
+# with meaningful margin, so that a redelivered duplicate (via XAUTOCLAIM)
+# can see the original delivery is still working -- or just finished --
+# instead of racing it with a spurious "scope_not_published" error
+# response. 90s gives 3x STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS
+# (30s) of buffer.
+CREDENTIAL_IN_PROGRESS_TTL_SECONDS = 90
+
 CODE_RESULTS_CHANNEL = "code_results"

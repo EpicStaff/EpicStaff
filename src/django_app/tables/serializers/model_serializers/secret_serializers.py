@@ -48,7 +48,7 @@ class SecretSerializer(serializers.ModelSerializer):
         ]
         validators = [
             OrgScopedUniqueTogetherValidator(
-                queryset=Secret.objects.all(),
+                queryset=Secret.objects.filter(system=False),
                 fields=["name"],
                 message="A secret with this name already exists in this organization.",
             )

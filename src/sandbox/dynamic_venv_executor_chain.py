@@ -523,7 +523,24 @@ class DynamicVenvExecutorChain:
             context["temp_storage_access_key"] = credentials["access_key"]
             context["temp_storage_secret_key"] = credentials["secret_key"]
 
-        result = await self.chain.handle(context)
+        try:
+            result = await self.chain.handle(context)
+        except Exception as e:
+            # Mirrors the storage-credential-request failure branch above:
+            # once a temporary credential has been acquired for this
+            # execution_id, main.py must always reach the code_results
+            # publish step so django_app's result_listener revokes it. If
+            # venv creation or library install blows up (subprocess spawn
+            # failure, OOM, disk error, ...) the exception must not
+            # propagate past this point, or the credential leaks until the
+            # TTL sweep.
+            logger.exception("Execution chain failed")
+            return CodeResultData(
+                execution_id=execution_id,
+                stderr=f"Execution chain failed: {e}",
+                stdout="",
+                returncode=1,
+            )
 
         logger.info(result)
         return result

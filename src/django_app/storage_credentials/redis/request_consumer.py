@@ -21,6 +21,7 @@ from loguru import logger
 from src.shared.redis_streams import RedisStreamClient, StreamEnvelope, StreamMessage
 
 from storage_credentials.constants import (
+    CREDENTIAL_IN_PROGRESS_TTL_SECONDS,
     CREDENTIAL_RESPONSE_TTL_SECONDS,
     STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS,
     STORAGE_CREDENTIAL_REQUEST_CONSUMER_GROUP,
@@ -107,7 +108,43 @@ class StorageCredentialRequestConsumer:
     async def _issue_for(self, execution_id: str) -> None:
         scope_raw = await self._redis_client.getdel(keys.scope_key(execution_id))
         if scope_raw is None:
+            # Either genuinely never published, or this is a redelivery
+            # (XAUTOCLAIM, min-idle STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS)
+            # of a message whose first delivery already won the GETDEL and is
+            # still inside credential_service.issue() (or just finished). The
+            # in-progress marker distinguishes the two: only push the error
+            # response when nobody has ever claimed this scope.
+            still_in_progress = await self._redis_client.get(
+                keys.in_progress_key(execution_id)
+            )
+            if still_in_progress is not None:
+                return
             await self._respond_error(execution_id, "scope_not_published")
+            return
+
+        # Mark this delivery as the owner before the (potentially slow)
+        # MinIO admin API call, so a redelivered duplicate that loses the
+        # GETDEL race above can tell the scope was claimed rather than
+        # never published.
+        try:
+            await self._redis_client.set(
+                keys.in_progress_key(execution_id),
+                "1",
+                nx=True,
+                ex=CREDENTIAL_IN_PROGRESS_TTL_SECONDS,
+            )
+        except Exception as error:
+            # Nothing has been minted yet at this point, so failing closed
+            # here cannot orphan a credential -- it can only leave the
+            # scope's GETDEL already consumed. That's acceptable: the
+            # caller gets an explicit error response instead of a BLPOP
+            # timeout, which is strictly better than the alternative.
+            logger.error(
+                "Failed to set in-progress marker for execution {}: {}",
+                execution_id,
+                error,
+            )
+            await self._respond_error(execution_id, "in_progress_marker_failed")
             return
 
         scope = json.loads(scope_raw)

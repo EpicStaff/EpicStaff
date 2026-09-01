@@ -33,6 +33,7 @@ EXECUTION_ID = "exec-1"
 def redis_client():
     client = MagicMock()
     client.getdel = AsyncMock()
+    client.get = AsyncMock()
     client.set = AsyncMock()
     client.rpush = AsyncMock()
     client.expire = AsyncMock()
@@ -70,6 +71,9 @@ async def test_issue_for_with_no_published_scope_never_calls_mint(
     consumer, redis_client, credential_service
 ):
     redis_client.getdel.return_value = None
+    # Genuinely nobody is in-progress for this execution_id -- this is a
+    # true "scope never published" case, not a redelivery race.
+    redis_client.get.return_value = None
 
     await consumer._issue_for(EXECUTION_ID)
 
@@ -95,8 +99,13 @@ async def test_issue_for_with_invalid_scope_never_calls_mint(
 
     error_payload = json.loads(redis_client.rpush.await_args.args[1])
     assert error_payload == {"error": "bad scope"}
-    # No lease is set for a request that never minted anything.
-    redis_client.set.assert_not_awaited()
+    # `set` is awaited exactly once here -- for the in-progress marker,
+    # written right after winning the GETDEL and before scope validation
+    # runs. No lease is ever set for a request that never minted anything.
+    redis_client.set.assert_awaited_once()
+    set_keys = [call.args[0] for call in redis_client.set.await_args_list]
+    assert set_keys == [keys.in_progress_key(EXECUTION_ID)]
+    assert keys.lease_key(EXECUTION_ID) not in set_keys
 
 
 @pytest.mark.asyncio
@@ -112,7 +121,14 @@ async def test_issue_for_success_sets_a_lease_and_responds(
     credential_service.issue.assert_awaited_once_with(
         org_id=1, storage_org_prefix="org_1", storage_allowed_paths=["flowA"]
     )
-    redis_client.set.assert_awaited_once()
+    # `set` is awaited twice: once for the in-progress marker (right after
+    # winning the GETDEL), once for the lease (after a successful mint).
+    assert redis_client.set.await_count == 2
+    set_keys = [call.args[0] for call in redis_client.set.await_args_list]
+    assert set_keys == [
+        keys.in_progress_key(EXECUTION_ID),
+        keys.lease_key(EXECUTION_ID),
+    ]
     lease_key, lease_value = redis_client.set.await_args.args[:2]
     assert lease_key == keys.lease_key(EXECUTION_ID)
     assert json.loads(lease_value) == {"org_id": 1, "access_key": "temp-ak"}
