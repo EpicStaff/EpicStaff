@@ -27,10 +27,11 @@ export class ReviewNavigatorComponent {
     @ViewChild('codeEditor') private codeEditorRef?: CodeEditorComponent;
 
     public librariesCount(code: ReviewPythonCode | undefined): number {
-        return code?.libraries.split(/\s+/).filter(Boolean).length ?? 0;
+        return this.librariesList(code).length;
     }
 
-    private librariesList(code: ReviewPythonCode): string[] {
+    private librariesList(code: ReviewPythonCode | undefined): string[] {
+        if (typeof code?.libraries !== 'string') return [];
         return code.libraries.split(/\s+/).filter(Boolean);
     }
 

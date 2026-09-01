@@ -22,6 +22,14 @@ export const FLOW_NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
     [NodeType.AGENT]: 'Agent Node',
     [NodeType.TASK]: 'Task Node',
     [NodeType.PROJECT]: 'Project Node',
+    [NodeType.SUBGRAPH]: 'Subgraph Node',
+    [NodeType.START]: 'Start Node',
+    [NodeType.END]: 'End Node',
+    [NodeType.FILE_EXTRACTOR]: 'File Extractor Node',
+    [NodeType.AUDIO_TO_TEXT]: 'Audio Transcription Node',
+    [NodeType.SCHEDULE_TRIGGER]: 'Schedule Trigger Node',
+    [NodeType.TABLE]: 'Decision Table Node',
+    [NodeType.NOTE]: 'Note',
 };
 
 export const ENTITY_TYPE_LABELS: Record<string, string> = {

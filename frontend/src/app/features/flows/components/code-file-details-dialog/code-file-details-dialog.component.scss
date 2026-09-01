@@ -1,6 +1,7 @@
 .code-file-details-dialog {
     width: 560px;
     max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 48px);
     display: flex;
     flex-direction: column;
     background: var(--color-background-body);
@@ -15,6 +16,7 @@
         justify-content: space-between;
         padding: 16px 24px;
         border-bottom: 1px solid var(--color-flow-card-bg);
+        flex-shrink: 0;
     }
 
     &__title {
@@ -46,6 +48,7 @@
         display: flex;
         flex-direction: column;
         padding: 20px;
+        min-height: 0;
     }
 
     &__section {
@@ -82,7 +85,10 @@
     &__chips {
         display: flex;
         flex-wrap: wrap;
+        align-content: flex-start;
         gap: 8px;
+        max-height: 240px;
+        overflow-y: auto;
     }
 
     &__chip {
