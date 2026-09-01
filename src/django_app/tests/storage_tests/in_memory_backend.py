@@ -10,6 +10,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 
 
 class InMemoryStorageBackend(AbstractStorageBackend):
@@ -28,7 +29,8 @@ class InMemoryStorageBackend(AbstractStorageBackend):
 
     def _full_path(self, path: str) -> str:
         """Prepend the organization prefix to a caller-provided path."""
-        return self.organization_prefix + path.lstrip("/")
+        safe_path = sanitize_storage_path(path, allow_empty=True)
+        return self.organization_prefix + safe_path
 
     def _strip_prefix(self, full_key: str) -> str:
         """Remove the organization prefix from a stored key."""
@@ -88,7 +90,10 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         self._objects[full_path] = (b"", datetime.now(timezone.utc))
 
     def exists(self, path: str) -> bool:
-        return self._full_path(path) in self._objects
+        full_path = self._full_path(path)
+        if path.endswith("/") and not full_path.endswith("/"):
+            full_path += "/"
+        return full_path in self._objects
 
     # --- Listing ---
 
@@ -420,7 +425,8 @@ class InMemoryStorageBackend(AbstractStorageBackend):
                 stem = stem[: -len(ext)]
                 break
 
-        folder_key = prefix.rstrip("/") + "/" + stem
+        safe_stem = sanitize_storage_path(stem, allow_empty=False)
+        folder_key = f"{prefix.rstrip('/')}/{safe_stem}" if prefix else safe_stem
         full_folder_key = self._full_path(folder_key)
         unique_full_key = self._unique_key(full_folder_key, is_folder=True)
         unique_folder_path = self._strip_prefix(unique_full_key)
