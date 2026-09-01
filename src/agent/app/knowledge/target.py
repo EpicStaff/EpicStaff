@@ -31,4 +31,3 @@ class KnowledgeSearchTarget(BaseModel):
     search_config: RagSearchConfig
     embedder_api_key: str | None = None
     llm_api_key: str | None = None
-    """Graph RAG runs LLM calls server-side; naive search leaves this ``None``."""

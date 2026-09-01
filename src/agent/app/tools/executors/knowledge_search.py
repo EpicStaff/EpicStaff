@@ -53,7 +53,6 @@ async def _execute_search(
                 sink_error,
             )
 
-    # Graph search returns a synthesised answer string; naive returns chunks.
     if isinstance(result, str):
         return ToolResult(
             tool_call_id="",
