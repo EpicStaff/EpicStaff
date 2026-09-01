@@ -18,6 +18,7 @@ export const DEFAULT_START_NODE_PORTS: BasePort[] = [
             'audio-to-text-in',
             'task-in',
             'agent-in',
+            'knowledge-retriever-in',
         ],
         position: 'right',
         color: '#d3d3d3',
