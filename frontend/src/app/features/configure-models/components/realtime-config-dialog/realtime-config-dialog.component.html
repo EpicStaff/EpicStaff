@@ -78,6 +78,14 @@
             </div>
             <div>
                 <app-custom-input
+                    label="Base URL (optional)"
+                    formControlName="base_url"
+                    placeholder="https://api.openai.com/v1"
+                    tooltipText="Leave blank to use OpenAI's default endpoint. For self-hosted/local deployments only — must include http:// or https://"
+                />
+            </div>
+            <div>
+                <app-custom-input
                     label="Transcription Model"
                     formControlName="transcription_model_name"
                     placeholder="whisper-1"

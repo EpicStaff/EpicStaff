@@ -153,6 +153,7 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
             "custom_name",
             "api_key_secret_id",
             "model_name",
+            "base_url",
             "transcription_model_name",
             "transcription_api_key_secret_id",
             "voice_recognition_prompt",
