@@ -1064,13 +1064,16 @@ class TestWebhookTriggerLiveUrlIncludesPath:
 
 @pytest.mark.django_db
 class TestCrossTypeTriggerNodeConflictValidation:
-    """EST-1869: a single `WebhookTrigger` may now legitimately be attached
-    to BOTH a `WebhookTriggerNode` and a `TelegramTriggerNode` at the same
-    time -- DB-driven fan-out in `redis_pubsub.webhook_events_handler` means
-    each node type is resolved and notified independently, so dual-attach no
-    longer breaks either registration scheme. Covered here at the
-    serializer/API layer for both directions, plus regression checks for the
-    unaffected single-type flows and same-instance re-save."""
+    """A `WebhookTrigger` serves exactly one node type at a time -- once
+    it's claimed by a `WebhookTriggerNode` or a `TelegramTriggerNode`,
+    attaching the *other* node type to the same trigger is rejected. This
+    is intentional: auth now lives on the trigger as a single fixed
+    strategy (`WebhookTriggerAuth`, one-to-one on the trigger), so a shared
+    trigger can never serve two different node types with two different
+    auth expectations at once. Covered here at the serializer/API layer for
+    both directions, an end-to-end check that the restriction also holds
+    for real inbound dispatch, plus regression checks for the unaffected
+    single-type flows and same-instance re-save."""
 
     def _webhook_node_payload(self, node_name, graph, webhook_trigger_id="__unset__"):
         payload = {
@@ -1099,7 +1102,7 @@ class TestCrossTypeTriggerNodeConflictValidation:
             payload["webhook_trigger"] = webhook_trigger_id
         return payload
 
-    def test_creating_telegram_node_on_trigger_already_claimed_by_webhook_node_allowed(
+    def test_creating_telegram_node_on_trigger_already_claimed_by_webhook_node_rejected(
         self, auth_client, graph: Graph, default_org, mock_telegram_service
     ):
         trigger = WebhookTrigger.objects.create(
@@ -1118,15 +1121,15 @@ class TestCrossTypeTriggerNodeConflictValidation:
             format="json",
         )
 
-        assert response.status_code == 201, response.json()
-        assert TelegramTriggerNode.objects.filter(
+        assert response.status_code == 400, response.json()
+        assert not TelegramTriggerNode.objects.filter(
             node_name="Telegram Conflict", webhook_trigger=trigger
         ).exists()
         assert WebhookTriggerNode.objects.filter(
             node_name="Webhook Owner", webhook_trigger=trigger
         ).exists()
 
-    def test_creating_webhook_node_on_trigger_already_claimed_by_telegram_node_allowed(
+    def test_creating_webhook_node_on_trigger_already_claimed_by_telegram_node_rejected(
         self, auth_client, graph: Graph, default_org, mock_telegram_service
     ):
         trigger = WebhookTrigger.objects.create(
@@ -1145,20 +1148,22 @@ class TestCrossTypeTriggerNodeConflictValidation:
             format="json",
         )
 
-        assert response.status_code == 201, response.json()
-        assert WebhookTriggerNode.objects.filter(
+        assert response.status_code == 400, response.json()
+        assert not WebhookTriggerNode.objects.filter(
             node_name="Webhook Conflict", webhook_trigger=trigger
         ).exists()
         assert TelegramTriggerNode.objects.filter(
             node_name="Telegram Owner", webhook_trigger=trigger
         ).exists()
 
-    def test_trigger_attached_to_both_node_types_fans_out_via_real_api_create_path(
+    def test_trigger_claimed_by_one_node_type_rejects_the_other_and_only_fans_out_to_the_first(
         self, auth_client, graph: Graph, default_org, mock_telegram_service, monkeypatch
     ):
         """End-to-end regression guard: a `WebhookTrigger` created through the
-        real API and attached to both node types must fan out to both
-        services on an inbound event -- not just pass serializer validation."""
+        real API and claimed by one node type must reject an attach attempt
+        for the other node type, and an inbound event against that trigger
+        must dispatch only to the node type that actually owns it -- not
+        just pass serializer validation."""
         import json
 
         from tables.services import redis_pubsub
@@ -1166,21 +1171,24 @@ class TestCrossTypeTriggerNodeConflictValidation:
         from tables.models.session_models import Session
 
         trigger = WebhookTrigger.objects.create(
-            path="dual-attach-api-path", provider_type=None, org=default_org
+            path="single-attach-api-path", provider_type=None, org=default_org
         )
         webhook_create = auth_client.post(
             reverse("webhooktriggernode-list"),
-            self._webhook_node_payload("Dual API Webhook", graph, trigger.id),
+            self._webhook_node_payload("Single API Webhook", graph, trigger.id),
             format="json",
         )
         assert webhook_create.status_code == 201, webhook_create.json()
 
         telegram_create = auth_client.post(
             reverse("telegramtriggernode-list"),
-            self._telegram_node_payload("Dual API Telegram", graph, trigger.id),
+            self._telegram_node_payload("Rejected API Telegram", graph, trigger.id),
             format="json",
         )
-        assert telegram_create.status_code == 201, telegram_create.json()
+        assert telegram_create.status_code == 400, telegram_create.json()
+        assert not TelegramTriggerNode.objects.filter(
+            node_name="Rejected API Telegram"
+        ).exists()
 
         class _FakeGraphDump:
             def model_dump(self, mode=None):
@@ -1223,7 +1231,9 @@ class TestCrossTypeTriggerNodeConflictValidation:
 
         svc.webhook_events_handler(message)
 
-        assert Session.objects.filter(graph=graph).count() == 2
+        # Only the webhook node (the trigger's actual owner) fans out --
+        # the rejected telegram attach never got a chance to also receive it.
+        assert Session.objects.filter(graph=graph).count() == 1
 
     def test_normal_single_type_webhook_node_create_update_detach_reattach_unaffected(
         self, auth_client, graph: Graph, default_org
@@ -1348,76 +1358,18 @@ class TestCrossTypeTriggerNodeConflictValidation:
 
 
 @pytest.mark.django_db
-class TestWebhookNodeAuthAPI:
-    """EST-3826: the generic webhook-trigger node's `webhook_node_auth` only
-    accepts a client-controlled `{"enabled": bool}` -- `scheme`/`header_name`/
-    `timestamp_header_name`/`tolerance_seconds`/`signing_secret` all stay
-    server-generated and any client-supplied values for them are silently
-    ignored, not applied. A row is always auto-created on node creation
-    (enabled by default, via the `WebhookTriggerNode` post_save signal), and
-    explicit `{"webhook_node_auth": null}` is rejected with 400 -- there is no
-    supported way to delete the row through this endpoint, only to disable it
-    via `{"enabled": false}`.
-    """
+class TestWebhookTriggerNodeHasNoAuthField:
+    """Auth now lives exclusively on `WebhookTrigger` (see
+    `webhook_trigger_api_test.py`'s trigger-level auth coverage and
+    `test_webhook_trigger_service.py`), never on the node -- no
+    `webhook_node_auth` field survives on `WebhookTriggerNodeSerializer`,
+    not even read-only."""
 
-    def _create_webhook_node(self, auth_client, graph, enabled=True):
-        payload = {
-            "node_name": "Auth Round Trip Node",
-            "graph": graph.id,
-            "python_code": {
-                "libraries": [],
-                "code": "def handler(event, context):\n    return event",
-                "entrypoint": "handler",
-                "global_kwargs": {},
-            },
-            "metadata": {},
-            "webhook_node_auth": {
-                "enabled": enabled,
-                # These sub-fields are not client-writable -- included here to
-                # assert they're ignored, not applied.
-                "header_name": "X-My-Signature",
-                "timestamp_header_name": "X-My-Timestamp",
-                "tolerance_seconds": 120,
-            },
-        }
-        return auth_client.post(
-            reverse("webhooktriggernode-list"), payload, format="json"
-        )
-
-    def test_create_with_auth_round_trips_and_ignores_non_enabled_fields(
+    def test_created_node_has_no_webhook_node_auth_field(
         self, auth_client, graph: Graph
     ):
-        response = self._create_webhook_node(auth_client, graph, enabled=True)
-
-        assert response.status_code == 201, response.json()
-        node_id = response.json()["id"]
-        auth = response.json()["webhook_node_auth"]
-        assert auth["enabled"] is True
-        # Server-generated defaults, not the client-supplied values above.
-        assert auth["header_name"] == "X-Webhook-Signature"
-        assert auth["timestamp_header_name"] == "X-Webhook-Timestamp"
-        assert auth["tolerance_seconds"] == 300
-        assert auth["signing_secret"]
-
-        from tables.models.webhook_models import WebhookAuthScheme, WebhookNodeAuth
-
-        node = WebhookTriggerNode.objects.get(id=node_id)
-        db_auth = WebhookNodeAuth.objects.get(webhook_trigger_node=node)
-        assert db_auth.scheme == WebhookAuthScheme.HMAC_SHA256
-
-        detail = auth_client.get(reverse("webhooktriggernode-detail", args=[node_id]))
-        assert detail.status_code == 200
-        assert detail.json()["webhook_node_auth"]["signing_secret"] == (
-            db_auth.signing_secret
-        )
-
-    def test_create_without_auth_field_still_auto_creates_enabled_row(
-        self, auth_client, graph: Graph
-    ):
-        # Omitting `webhook_node_auth` entirely -- the post_save signal still
-        # guarantees a row exists, enabled by default.
         payload = {
-            "node_name": "No Auth At All",
+            "node_name": "No Node-Level Auth",
             "graph": graph.id,
             "python_code": {
                 "libraries": [],
@@ -1431,36 +1383,557 @@ class TestWebhookNodeAuthAPI:
             reverse("webhooktriggernode-list"), payload, format="json"
         )
         assert response.status_code == 201, response.json()
-        auth = response.json()["webhook_node_auth"]
-        assert auth is not None
-        assert auth["enabled"] is True
+        assert "webhook_node_auth" not in response.json()
 
-    def test_update_then_explicit_null_is_rejected(self, auth_client, graph: Graph):
-        create = self._create_webhook_node(auth_client, graph, enabled=True)
+        node_id = response.json()["id"]
+        detail = auth_client.get(reverse("webhooktriggernode-detail", args=[node_id]))
+        assert detail.status_code == 200
+        assert "webhook_node_auth" not in detail.json()
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerAuthAPI:
+    """Trigger-level `kind=webhook` (`EPICSTAFF_API_KEY`) and `kind=telegram`
+    (`X-Telegram-Bot-Api-Secret-Token`) auth, both user-settable via
+    `auth_secret_id`/`auth_kind` on `/api/webhook-triggers/`. See
+    `WebhookTriggerService.set_trigger_auth_secret`."""
+
+    def test_create_with_auth_secret_id_sets_webhook_kind_auth(
+        self, auth_client, default_org
+    ):
+        secret = _make_secret(default_org, "epicstaff-api-key-value123")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-create-path",
+                "provider_type": None,
+                "auth_secret_id": secret.id,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["auth"] == {
+            "kind": "webhook",
+            "secret_tail": secret.tail,
+        }
+
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        trigger = WebhookTrigger.objects.get(id=response.json()["id"])
+        auth = WebhookTriggerAuth.objects.get(trigger=trigger)
+        assert auth.kind == WebhookTriggerAuthKind.WEBHOOK
+        assert auth.secret_id == secret.id
+
+    def test_create_without_auth_secret_id_has_no_auth(self, auth_client):
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "auth-none-path", "provider_type": None},
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["auth"] is None
+
+    def test_update_sets_and_replaces_auth_secret(self, auth_client, default_org):
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "auth-update-path", "provider_type": None},
+            format="json",
+        )
         assert create.status_code == 201, create.json()
-        node_id = create.json()["id"]
+        trigger_id = create.json()["id"]
 
+        first_secret = _make_secret(default_org, "first-api-key")
         update = auth_client.patch(
-            reverse("webhooktriggernode-detail", args=[node_id]),
-            {"webhook_node_auth": {"enabled": False}},
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": first_secret.id},
             format="json",
         )
         assert update.status_code == 200, update.json()
-        assert update.json()["webhook_node_auth"]["enabled"] is False
+        assert update.json()["auth"]["secret_tail"] == first_secret.tail
 
-        # There is no supported way to delete the row through this endpoint --
-        # explicit `null` is a validation error, not a clear/delete.
-        clear = auth_client.patch(
-            reverse("webhooktriggernode-detail", args=[node_id]),
-            {"webhook_node_auth": None},
+        second_secret = _make_secret(default_org, "second-api-key-2")
+        rotate = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": second_secret.id},
             format="json",
         )
-        assert clear.status_code == 400, clear.json()
-        assert "webhook_node_auth" in clear.json()
+        assert rotate.status_code == 200, rotate.json()
+        assert rotate.json()["auth"]["secret_tail"] == second_secret.tail
 
-        from tables.models.webhook_models import WebhookNodeAuth
+    def test_create_with_auth_kind_telegram_sets_telegram_kind_auth(
+        self, auth_client, default_org
+    ):
+        secret = _make_secret(default_org, "TelegramSecretABC123")
 
-        assert WebhookNodeAuth.objects.filter(
-            webhook_trigger_node_id=node_id
-        ).exists()
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-telegram-create-path",
+                "provider_type": None,
+                "auth_secret_id": secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["auth"] == {
+            "kind": "telegram",
+            "secret_tail": secret.tail,
+        }
+
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        trigger = WebhookTrigger.objects.get(id=response.json()["id"])
+        auth = WebhookTriggerAuth.objects.get(trigger=trigger)
+        assert auth.kind == WebhookTriggerAuthKind.TELEGRAM
+        assert auth.secret_id == secret.id
+
+    def test_updating_auth_secret_id_on_an_existing_telegram_trigger_infers_telegram_kind(
+        self, auth_client, default_org
+    ):
+        """`auth_kind` is optional on update -- omitting it must infer the
+        trigger's existing kind (telegram here), not silently default back
+        to webhook. This is exactly the case that used to be rejected before
+        the Telegram secret became user-settable."""
+        first_secret = _make_secret(default_org, "TelegramSecretFirst1")
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-telegram-update-path",
+                "provider_type": None,
+                "auth_secret_id": first_secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        second_secret = _make_secret(default_org, "TelegramSecretSecond2")
+        update = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": second_secret.id},
+            format="json",
+        )
+
+        assert update.status_code == 200, update.json()
+        assert update.json()["auth"] == {
+            "kind": "telegram",
+            "secret_tail": second_secret.tail,
+        }
+
+    def test_telegram_secret_with_disallowed_characters_is_rejected(
+        self, auth_client, default_org
+    ):
+        bad_secret = _make_secret(default_org, "has a space!")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-telegram-bad-charset-path",
+                "provider_type": None,
+                "auth_secret_id": bad_secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_explicit_auth_kind_conflicting_with_existing_kind_is_rejected(
+        self, auth_client, default_org
+    ):
+        first_secret = _make_secret(default_org, "TelegramSecretConflict1")
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-kind-conflict-path",
+                "provider_type": None,
+                "auth_secret_id": first_secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        webhook_secret = _make_secret(default_org, "should-not-be-applied")
+        response = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": webhook_secret.id, "auth_kind": "webhook"},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_setting_auth_on_a_trigger_already_used_for_twilio_is_rejected(
+        self, auth_client, default_org
+    ):
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "auth-twilio-conflict-path", "provider_type": None},
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+        trigger = WebhookTrigger.objects.get(id=trigger_id)
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger, kind=WebhookTriggerAuthKind.TWILIO
+        )
+
+        secret = _make_secret(default_org, "should-not-be-applied")
+        response = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": secret.id},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_updating_telegram_auth_secret_with_registration_failure_still_saves_secret(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        """Critical review fix (EST-3939): `register_telegram_trigger` runs
+        AFTER `set_trigger_auth_secret` has already committed the new secret
+        to the DB. If it raises (tunnel unavailable, Telegram API error,
+        network failure), the new secret must NOT be rolled back -- the
+        user's intent to set that secret was already correctly persisted --
+        but the client must be told registration failed and will need a
+        retry, via a 200 response carrying `telegram_registration_warning`,
+        instead of an uncaught 500."""
+        from tables.exceptions import RegisterTelegramTriggerError
+        from tables.models.webhook_models import WebhookTriggerAuth
+
+        first_secret = _make_secret(default_org, "FirstTelegramSecret1")
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-telegram-resync-failure-path",
+                "provider_type": None,
+                "auth_secret_id": first_secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        node_create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            {
+                "node_name": "Resync Failure Node",
+                "telegram_bot_api_key": "123456:ABC-DEF",
+                "graph": graph.id,
+                "fields": [],
+                "webhook_trigger": trigger_id,
+            },
+            format="json",
+        )
+        assert node_create.status_code == 201, node_create.json()
+
+        second_secret = _make_secret(default_org, "SecondTelegramSecret2")
+
+        with mock.patch(
+            "tables.services.telegram_trigger_service.TelegramTriggerService"
+            ".register_telegram_trigger",
+            side_effect=RegisterTelegramTriggerError(
+                "Tunnel URL is not yet available, try again once the tunnel "
+                "is established.",
+                status_code=503,
+            ),
+        ):
+            update = auth_client.patch(
+                reverse("webhooktrigger-detail", args=[trigger_id]),
+                {"auth_secret_id": second_secret.id},
+                format="json",
+            )
+
+        # Not a 500, and not a 4xx/5xx that would imply the request itself
+        # failed -- the secret write succeeded, only the side-effect resync
+        # didn't.
+        assert update.status_code == 200, update.json()
+        assert update.json()["auth"]["secret_tail"] == second_secret.tail
+        assert "telegram_registration_warning" in update.json()
+        assert "retried" in update.json()["telegram_registration_warning"]
+
+        # the new secret is persisted regardless of the resync failure
+        auth = WebhookTriggerAuth.objects.get(trigger_id=trigger_id)
+        assert auth.secret_id == second_secret.id
+
+    def test_auth_kind_webhook_rejected_when_trigger_has_telegram_node(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        """A trigger already driving a `TelegramTriggerNode` can't be given
+        `kind=webhook` auth -- Telegram never sends `EPICSTAFF_API_KEY`, so
+        that would silently leave it unauthenticated against real traffic."""
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "kind-mismatch-webhook-on-telegram", "provider_type": None},
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        node_create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            {
+                "node_name": "Mismatch Telegram Node",
+                "graph": graph.id,
+                "fields": [],
+                "webhook_trigger": trigger_id,
+            },
+            format="json",
+        )
+        assert node_create.status_code == 201, node_create.json()
+
+        secret = _make_secret(default_org, "should-not-be-applied-webhook-kind")
+        response = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": secret.id, "auth_kind": "webhook"},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_auth_kind_telegram_rejected_when_trigger_has_webhook_node(
+        self, auth_client, graph: Graph, default_org
+    ):
+        """Symmetric case: a trigger already driving a `WebhookTriggerNode`
+        can't be given `kind=telegram` auth."""
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "kind-mismatch-telegram-on-webhook", "provider_type": None},
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        node_create = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Mismatch Webhook Node",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": trigger_id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert node_create.status_code == 201, node_create.json()
+
+        secret = _make_secret(default_org, "should-not-be-applied-telegram-kind")
+        response = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"auth_secret_id": secret.id, "auth_kind": "telegram"},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_auth_kind_twilio_reservation_on_bare_trigger_succeeds(self, auth_client):
+        """`kind=twilio` may be reserved on a bare trigger (no node attached
+        yet, no secret) -- the real secret is filled in later once a
+        `TwilioChannel` claims the reservation."""
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "twilio-reservation-bare-path",
+                "provider_type": None,
+                "auth_kind": "twilio",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["auth"] == {"kind": "twilio", "secret_tail": None}
+
+    def test_auth_kind_twilio_with_secret_is_rejected(self, auth_client, default_org):
+        """`kind=twilio` is a bare reservation -- it must not accept a
+        secret directly through this endpoint."""
+        secret = _make_secret(default_org, "should-not-be-applied-twilio-kind")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "twilio-reservation-with-secret-path",
+                "provider_type": None,
+                "auth_kind": "twilio",
+                "auth_secret_id": secret.id,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_reserved_twilio_trigger_rejects_telegram_node_attach(
+        self, auth_client, graph: Graph
+    ):
+        """A `kind=twilio`-reserved trigger never reaches `src/webhook`'s
+        generic ingress -- attaching a `TelegramTriggerNode` to it would
+        silently orphan that node."""
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "twilio-reserved-rejects-telegram-node",
+                "provider_type": None,
+                "auth_kind": "twilio",
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        node_create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            {
+                "node_name": "Should Not Attach",
+                "graph": graph.id,
+                "fields": [],
+                "webhook_trigger": trigger_id,
+            },
+            format="json",
+        )
+
+        assert node_create.status_code == 400, node_create.json()
+
+    def test_reserved_twilio_trigger_rejects_webhook_node_attach(
+        self, auth_client, graph: Graph
+    ):
+        """Symmetric case: a `kind=twilio`-reserved trigger also rejects a
+        `WebhookTriggerNode` attach attempt."""
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "twilio-reserved-rejects-webhook-node",
+                "provider_type": None,
+                "auth_kind": "twilio",
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        node_create = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Should Not Attach Webhook",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": trigger_id,
+                "metadata": {},
+            },
+            format="json",
+        )
+
+        assert node_create.status_code == 400, node_create.json()
+
+    def test_updating_webhook_kind_auth_secret_has_no_registration_warning_field(
+        self, auth_client, default_org
+    ):
+        """Sanity check: `telegram_registration_warning` only ever appears
+        for `kind=telegram` updates -- a plain `kind=webhook` secret update
+        (no Telegram resync involved at all) must never carry it."""
+        secret = _make_secret(default_org, "plain-webhook-secret-value")
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-webhook-no-warning-path",
+                "provider_type": None,
+                "auth_secret_id": secret.id,
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        assert "telegram_registration_warning" not in create.json()
+
+    def test_auth_kind_telegram_rejected_on_localhost_provider_trigger(
+        self, auth_client, default_org
+    ):
+        """A localhost-only tunnel isn't publicly reachable, so Telegram's
+        `setWebhook` call would target an unreachable URL -- `kind=telegram`
+        must be rejected on a `provider_type=localhost` trigger, mirroring
+        the existing Twilio/localhost rejection."""
+        secret = _make_secret(default_org, "TelegramSecretLocalhostReject1")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-telegram-localhost-reject-path",
+                "provider_type": "localhost",
+                "localhost_config": {
+                    "name": "tg-localhost-reject",
+                    "domain": "localhost:8009",
+                },
+                "auth_secret_id": secret.id,
+                "auth_kind": "telegram",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "localhost" in str(response.json()).lower()
+
+    def test_auth_kind_twilio_rejected_on_localhost_provider_trigger(
+        self, auth_client
+    ):
+        """Symmetric case: `kind=twilio` reservation must also be rejected
+        on a `provider_type=localhost` trigger -- Twilio can never reach it
+        either."""
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-twilio-localhost-reject-path",
+                "provider_type": "localhost",
+                "localhost_config": {
+                    "name": "twilio-localhost-reject",
+                    "domain": "localhost:8009",
+                },
+                "auth_kind": "twilio",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "localhost" in str(response.json()).lower()
+
+    def test_auth_kind_webhook_allowed_on_localhost_provider_trigger(
+        self, auth_client, default_org
+    ):
+        """`kind=webhook` stays allowed on a localhost trigger -- that's the
+        legitimate local-dev use case; only telegram/twilio are restricted."""
+        secret = _make_secret(default_org, "webhook-kind-localhost-allowed1")
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "auth-webhook-localhost-allowed-path",
+                "provider_type": "localhost",
+                "localhost_config": {
+                    "name": "webhook-localhost-allowed",
+                    "domain": "localhost:8009",
+                },
+                "auth_secret_id": secret.id,
+                "auth_kind": "webhook",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["auth"]["kind"] == "webhook"
 
