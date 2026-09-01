@@ -25,7 +25,7 @@
 
         <app-select
             label="Realtime Agent"
-            formControlName="realtime_agent"
+            formControlName="realtime_agent_definition"
             [items]="agentItems()"
             placeholder="Select an agent"
             tooltipText="The realtime agent that will handle calls on this channel"
@@ -41,6 +41,7 @@
                 formControlName="account_sid"
                 placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 tooltipText="Your Twilio Account SID"
+                [required]="true"
             />
         </div>
 

@@ -98,9 +98,9 @@ export class AddEditChannelDialogComponent implements OnInit {
 
         this.form = this.fb.group({
             name: [ch?.name ?? '', Validators.required],
-            realtime_agent: [ch?.realtime_agent ?? null],
+            realtime_agent_definition: [ch?.realtime_agent_definition ?? null],
             is_active: [ch?.is_active ?? true],
-            account_sid: [tw?.account_sid ?? ''],
+            account_sid: [tw?.account_sid ?? '', Validators.required],
             auth_token_secret_id: [tw?.auth_token_secret_id ?? null, [Validators.required]],
             phone_number: [tw?.phone_number ?? ''],
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
@@ -163,7 +163,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                 .createChannel({
                     name: v.name,
                     channel_type: 'twilio',
-                    realtime_agent: v.realtime_agent ?? null,
+                    realtime_agent_definition: v.realtime_agent_definition ?? null,
                     is_active: v.is_active,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
@@ -190,7 +190,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                 .updateChannel({
                     id: saved.id,
                     name: v.name,
-                    realtime_agent: v.realtime_agent ?? null,
+                    realtime_agent_definition: v.realtime_agent_definition ?? null,
                     is_active: v.is_active,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
@@ -199,7 +199,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                         this.savedChannel.set({
                             ...saved,
                             name: v.name,
-                            realtime_agent: v.realtime_agent ?? null,
+                            realtime_agent_definition: v.realtime_agent_definition ?? null,
                             is_active: v.is_active,
                         });
                         this.channelService.channelsChanged$.next();

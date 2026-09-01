@@ -197,8 +197,8 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
     auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="auth_token_secret",
-        required=False,
-        allow_null=True,
+        required=True,
+        allow_null=False,
     )
 
     class Meta:

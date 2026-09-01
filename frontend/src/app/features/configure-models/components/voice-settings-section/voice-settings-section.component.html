@@ -64,11 +64,11 @@
                     </div>
 
                     <div class="channel-card__meta">
-                        @if (channel.realtime_agent && agentMap().has(channel.realtime_agent)) {
+                        @if (channel.realtime_agent_definition && agentMap().has(channel.realtime_agent_definition)) {
                             <div class="channel-card__meta-item">
                                 <span class="channel-card__meta-label">Agent</span>
                                 <span class="channel-card__meta-value">{{
-                                    agentMap().get(channel.realtime_agent)
+                                    agentMap().get(channel.realtime_agent_definition)
                                 }}</span>
                             </div>
                         }
