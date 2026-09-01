@@ -75,15 +75,29 @@ the Webhook Developer Guide's "Webhook Inbound Authentication
 2. Register Webhooks (Global Sync)
 ----------------------------------
 
-- **Endpoint**: `/api/register-webhooks/`  
-- **Method**: `POST`
+There is no HTTP endpoint for this anymore -- `/api/register-webhooks/` and
+`/api/register-telegram-trigger/` were removed (no real callers existed
+beyond the tests written for a since-abandoned auth-gating fix). Webhook/
+tunnel registration still happens automatically:
 
-Use this endpoint to manually trigger a global synchronization of all configured
-webhook tunnels via Redis.
+- **Automatically**: `NgrokWebhookConfig` save/delete signals
+  (`webhook_signals.py`) call `WebhookTriggerService().register_webhooks()`
+  directly; `TelegramTriggerNode` lifecycle signals (`telegram_signals.py`)
+  call `TelegramTriggerService().register_telegram_trigger()` directly. No
+  HTTP call is needed for normal operation.
+- **Manually** (global re-sync of every organization's webhook/telegram
+  tunnel configs): run the management command from `src/django_app`:
+
+  ```bash
+  python manage.py register_webhooks
+  ```
+
+  See `src/django_app/tables/management/commands/register_webhooks.py`.
 
 ### 2.1 Behavior
 
-When a `POST` request is made:
+When triggered (automatically via signals, or manually via the management
+command):
 
 1. All stored `NgrokWebhookConfig` instances are retrieved from the database.
 2. Their settings are broadcast over the `REDIS_TUNNEL_CONFIG_CHANNEL`.

@@ -130,10 +130,6 @@ class BaseToolSerializer(serializers.Serializer):
         return repr
 
 
-class RegisterTelegramTriggerSerializer(serializers.Serializer):
-    telegram_trigger_node_id = serializers.IntegerField(required=True)
-
-
 class ProcessDocumentChunkingSerializer(serializers.Serializer):
     document_id = serializers.IntegerField(required=True)
 
