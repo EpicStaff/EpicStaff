@@ -31,11 +31,23 @@ def test_build_no_attachments_no_schema():
 
     assert len(messages) == 2
     assert messages[0]["role"] == "system"
-    assert messages[0]["content"] == (
+    assert messages[0]["content"].startswith(
         f"Your name is {agent.name}.\nThese are instructions you should follow: {agent.instructions}"
     )
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "Do X"
+
+
+def test_system_prompt_contains_trust_directive():
+    builder = SingleTaskPromptBuilder()
+    agent = _agent_spec()
+    messages = builder.build(agent, instructions="Do X")
+
+    system_content = messages[0]["content"]
+    assert "untrusted data" in system_content
+    assert "tools" in system_content
+    assert "knowledge search" in system_content
+    assert "MCP" in system_content
 
 
 def test_build_with_output_schema():
@@ -61,9 +73,9 @@ def test_build_with_attachments():
     assert len(messages) == 4  # system + 2 attachments + user
     assert messages[0]["role"] == "system"
     assert messages[1]["role"] == "user"
-    assert messages[1]["content"] == "Context snippet A"
+    assert messages[1]["content"] == "[context source: rag:1]\nContext snippet A"
     assert messages[2]["role"] == "system"
-    assert messages[2]["content"] == "Extra system info"
+    assert messages[2]["content"] == "[context source: rag:2]\nExtra system info"
     assert messages[3]["role"] == "user"
     assert messages[3]["content"] == "Analyze."
 
@@ -73,6 +85,6 @@ def test_system_message_content():
     agent = _agent_spec(instructions="Analyze data carefully.")
     messages = builder.build(agent, instructions="Run analysis.")
 
-    assert messages[0]["content"] == (
+    assert messages[0]["content"].startswith(
         f"Your name is {agent.name}.\nThese are instructions you should follow: {agent.instructions}"
     )
