@@ -197,7 +197,13 @@ REST_FRAMEWORK = {
     },
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL").rstrip("/")
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip().split(",")
+    if origin.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (
     *default_headers,
@@ -382,7 +388,6 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:4200").rstrip("/")
 FRONTEND_PASSWORD_RESET_PATH = os.getenv(
     "FRONTEND_PASSWORD_RESET_PATH", "/reset-password"
 )

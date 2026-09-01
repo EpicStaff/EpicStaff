@@ -1,5 +1,5 @@
 """
-EST-3285: org_id must be forced into global_kwargs (and carried on the typed
+org_id must be forced into global_kwargs (and carried on the typed
 CodeTaskData field) so sandboxed callback tools (fanout_tool, subflow_tool,
 schedule_manager_tool) can read `globals()["org_id"]` and send
 X-Organization-Id to org-scoped Django endpoints. org_id is resolved

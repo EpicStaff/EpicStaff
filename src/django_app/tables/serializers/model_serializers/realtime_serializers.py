@@ -261,11 +261,34 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
+        queryset=RealtimeAgentDefinition.objects.all(),
+        org_lookup="agent_definition__organization_id",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = RealtimeChannel
         fields = "__all__"
         read_only_fields = ["org", "created_by"]
+
+    def validate(self, attrs):
+        realtime_agent = attrs.get(
+            "realtime_agent", getattr(self.instance, "realtime_agent", None)
+        )
+        realtime_agent_definition = attrs.get(
+            "realtime_agent_definition",
+            getattr(self.instance, "realtime_agent_definition", None),
+        )
+
+        if realtime_agent is not None and realtime_agent_definition is not None:
+            raise serializers.ValidationError(
+                "A RealtimeChannel may have at most one destination set "
+                "(realtime_agent or realtime_agent_definition)."
+            )
+
+        return attrs
 
 
 class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
@@ -276,7 +299,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     never a logged-in user AND never a self-issued `key_type=USER` API key). That
     caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
     Twilio webhook requests. Do NOT reuse this serializer for any user-facing
-    endpoint — that would reopen the EST-3633 leak.
+    endpoint
 
     `TwilioChannel.auth_token` is now a Secret reference (`auth_token_secret`), so
     it must be resolved at the point of use rather than read as a plain model
