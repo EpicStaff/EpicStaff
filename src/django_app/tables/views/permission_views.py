@@ -8,10 +8,7 @@ from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
 )
 from tables.services.rbac.org_context_service import OrgContextService
-from tables.services.rbac.permission_catalog import (
-    ACTION_METADATA,
-    RESOURCE_TYPE_METADATA,
-)
+from tables.services.rbac.permission_catalog import build_catalog
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.swagger_schemas.permission_schema import (
     PERMISSIONS_CATALOG_GET,
@@ -28,12 +25,7 @@ class PermissionCatalogView(APIView):
 
     @extend_schema(**PERMISSIONS_CATALOG_GET)
     def get(self, request):
-        return Response(
-            {
-                "actions": ACTION_METADATA,
-                "resource_types": RESOURCE_TYPE_METADATA,
-            }
-        )
+        return Response(build_catalog())
 
 
 class MyPermissionsView(APIView):

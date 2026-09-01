@@ -117,6 +117,63 @@ Render `platform_actions` cells as disabled / "superadmin-only". Submitting
 a platform action in a role's `permissions[]` is a `400 invalid`
 ("platform-level … cannot be granted").
 
+Each entry additionally carries **`recommended_with`**, elided from the
+listing above for brevity — see the next section.
+
+### `recommended_with`
+
+Permissions worth granting alongside another. **Advisory only** — nothing
+here is enforced, and a role that ignores every recommendation saves
+normally. It exists so the matrix UI can nudge the author toward a
+coherent role instead of one that grants edit rights without the read
+access needed to use them.
+
+```json
+{
+  "code": "flows",
+  "applicable_actions": ["create", "read", "update", "delete", "export"],
+  "platform_actions": [],
+  "recommended_with": {
+    "create": [
+      { "resource_type": "flows",       "action": "read" },
+      { "resource_type": "projects",    "action": "read" },
+      { "resource_type": "llm_configs", "action": "read" }
+    ],
+    "read": [
+      { "resource_type": "projects",    "action": "read" },
+      { "resource_type": "llm_configs", "action": "read" }
+    ],
+    "update": [
+      { "resource_type": "flows",       "action": "read" },
+      { "resource_type": "projects",    "action": "read" },
+      { "resource_type": "llm_configs", "action": "read" }
+    ],
+    "delete": [{ "resource_type": "flows", "action": "read" }],
+    "export": [{ "resource_type": "flows", "action": "read" }]
+  }
+}
+```
+
+Keys are action codes; values are the cells to suggest when that action is
+checked. **Every action in `applicable_actions` is a key** — an empty list
+where nothing is recommended — so you can index without nil-checks. Actions
+in `platform_actions` never appear: they cannot be granted, so a suggestion
+on them is unreachable.
+
+The shape of the advice:
+
+- **Reading** a resource suggests reading whatever it references — a flow
+  points at projects and LLM configs, an agent at knowledge sources, tools
+  and LLM configs.
+- **Creating or editing** suggests the resource's own `read` plus everything
+  that read suggests. You cannot sensibly author what you cannot see.
+- **Deleting and exporting** suggest only the resource's own `read`.
+
+Suggestions are direct, not transitive: `projects:create` recommends
+`flows:create`, and `flows:create` has recommendations of its own. Look up
+each cell as the user accepts it and the chain unfolds one step at a time,
+which keeps the initial suggestion short and lets the user stop early.
+
 ---
 
 ## `GET /api/permissions/me/`
@@ -572,6 +629,20 @@ Special cases handled outside this loop:
   checked, ignore `permissions[]`.
 - `permissions === "*"` on `/api/permissions/me/` → same wildcard
   treatment for the action-gating layer.
+
+When the user checks a cell, read its suggestions off the same catalog row:
+
+```js
+function suggestionsFor(catalog, resourceCode, action, checkedCells) {
+  const rt = catalog.resource_types.find(r => r.code === resourceCode);
+  return (rt.recommended_with[action] ?? [])
+    .filter(c => !checkedCells.has(`${c.resource_type}:${c.action}`));
+}
+```
+
+Highlight what comes back, or offer to check it. Accepting a suggestion is
+itself a checked cell, so calling `suggestionsFor` again on that cell walks
+the next step of the chain.
 
 ---
 

@@ -11,6 +11,11 @@ class CatalogActionSerializer(serializers.Serializer):
     bit = serializers.IntegerField()
 
 
+class RecommendedPermissionSerializer(serializers.Serializer):
+    resource_type = serializers.CharField()
+    action = serializers.CharField()
+
+
 class CatalogResourceTypeSerializer(serializers.Serializer):
     code = serializers.CharField()
     label = serializers.CharField()
@@ -18,6 +23,9 @@ class CatalogResourceTypeSerializer(serializers.Serializer):
     description = serializers.CharField()
     applicable_actions = serializers.ListField(child=serializers.CharField())
     platform_actions = serializers.ListField(child=serializers.CharField())
+    recommended_with = serializers.DictField(
+        child=RecommendedPermissionSerializer(many=True)
+    )
 
 
 class CatalogResponseSerializer(serializers.Serializer):
