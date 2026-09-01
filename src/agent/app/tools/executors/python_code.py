@@ -34,6 +34,8 @@ class PythonCodeToolExecutor:
             storage_allowed_paths=python_code.storage_allowed_paths,
             storage_org_prefix=python_code.storage_org_prefix,
             session_id=python_code.session_id,
+            org_id=python_code.org_id,
+            secrets=python_code.secrets,
         )
 
         try:

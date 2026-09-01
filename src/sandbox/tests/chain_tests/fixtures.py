@@ -8,7 +8,11 @@ import pytest
 from typing import Any, Generator
 
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
-from services.storage_credential_manager import StorageCredentialManager
+
+
+class _FakeStorageCredentialClient:
+    async def request(self, execution_id: str) -> dict:
+        return {"access_key": "test-access", "secret_key": "test-secret"}
 
 
 @pytest.fixture
@@ -22,22 +26,18 @@ def base_venv_path() -> Path:
 
 
 @pytest.fixture
-def storage_credential_manager() -> StorageCredentialManager:
-    return StorageCredentialManager(
-        host="http://localhost:9000",
-        access_key="test-access",
-        secret_key="test-secret",
-    )
+def storage_credential_client() -> _FakeStorageCredentialClient:
+    return _FakeStorageCredentialClient()
 
 
 @pytest.fixture
 def executor_chain(
-    output_path, base_venv_path, storage_credential_manager
+    output_path, base_venv_path, storage_credential_client
 ) -> Generator[Any, Any, DynamicVenvExecutorChain]:
     yield DynamicVenvExecutorChain(
         output_path=output_path,
         base_venv_path=base_venv_path,
-        storage_credential_manager=storage_credential_manager,
+        storage_credential_client=storage_credential_client,
     )
 
 

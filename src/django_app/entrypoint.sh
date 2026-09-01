@@ -11,6 +11,10 @@ echo "Postgres is ready."
 echo "Applying database migrations..."
 python manage.py migrate
 
+# Backfill MinIO storage credentials for any organization missing them
+echo "Backfilling org storage credentials..."
+python manage.py backfill_org_storage_credentials
+
 # Fix PostgreSQL sequences for all tables
 echo "Fixing PostgreSQL sequences..."
 python manage.py fix_sequences
@@ -34,6 +38,10 @@ python manage.py listen_redis &
 # Start Redis cache in the background
 echo "Starting Redis caching..."
 python manage.py cache_redis &
+
+# Start the per-execution MinIO credential issuer/revoker in the background
+echo "Starting storage credential issuer..."
+python manage.py run_storage_credential_issuer &
 
 # Start Django application
 PORT="${DJANGO_PORT:-8000}"

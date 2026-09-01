@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
@@ -16,11 +17,27 @@ class Secret(OrgScopedModel, TimestampMixin, MetadataMixin):
     name = models.CharField(max_length=128)
     value = models.CharField(max_length=12000, editable=False)
     tail = models.CharField(max_length=4, blank=True, default="", editable=False)
+    system = models.BooleanField(
+        default=False,
+        editable=False,
+        help_text=(
+            "Infrastructure secret (e.g. org-level MinIO credentials) managed "
+            "internally by storage_credentials. Never exposed through the "
+            "user-facing Secret API."
+        ),
+    )
 
     class Meta(OrgScopedModel.Meta):
         constraints = [
             models.UniqueConstraint(
-                fields=["org", "name"], name="unique_secret_name_per_org"
+                fields=["org", "name"],
+                condition=Q(system=False),
+                name="unique_secret_name_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["org", "name"],
+                condition=Q(system=True),
+                name="unique_system_secret_name_per_org",
             ),
             models.CheckConstraint(
                 condition=~models.Q(value=""), name="secret_value_not_empty"

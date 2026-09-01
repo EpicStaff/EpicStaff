@@ -276,6 +276,40 @@ def test_api_key_auth_cannot_access_secrets(admin_a, org_a, issue_api_key):
 
 
 @pytest.mark.django_db
+def test_list_excludes_system_secrets(client_a, org_a):
+    Secret.objects.create(name="USER_SECRET", value="ciphertext-u", org=org_a)
+    Secret.objects.create(
+        name="system_minio_org_user", value="ciphertext-s", org=org_a, system=True
+    )
+    resp = client_a.get("/api/secrets/")
+    assert resp.status_code == 200
+    names = {s["name"] for s in _results(resp)}
+    assert "USER_SECRET" in names
+    assert "system_minio_org_user" not in names
+
+
+@pytest.mark.django_db
+def test_retrieve_system_secret_by_id_returns_404(client_a, org_a):
+    system_secret = Secret.objects.create(
+        name="system_minio_org_user", value="ciphertext-s", org=org_a, system=True
+    )
+    resp = client_a.get(f"/api/secrets/{system_secret.id}/")
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_posting_system_true_is_ignored_and_creates_a_non_system_secret(client_a):
+    resp = client_a.post(
+        "/api/secrets/",
+        {"name": "OPENAI_KEY", "value": "sk-live-abc123", "system": True},
+        format="json",
+    )
+    assert resp.status_code == 201
+    secret = Secret.objects.get(id=resp.data["id"])
+    assert secret.system is False
+
+
+@pytest.mark.django_db
 def test_leading_and_trailing_whitespace_is_trimmed(client_a):
     # A common paste artifact (clipboard trailing newline, accidental leading
     # space) — not a legitimate part of any real credential, so it's trimmed

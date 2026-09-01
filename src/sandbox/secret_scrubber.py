@@ -71,3 +71,21 @@ def scrub(*, text: str | None, secrets: dict[str, str]) -> str | None:
     if pattern is None:
         return text
     return pattern.sub(MASK, text)
+
+
+def build_masking_values(
+    secrets: dict[str, str] | None, extra: dict[str, str] | None
+) -> dict[str, str]:
+    """A copy of `secrets` extended with values that must be masked but must
+    never travel to the executed code as a "user" secret (e.g. per-execution
+    MinIO credentials).
+
+    Returns a new dict; the caller's `secrets` (which becomes
+    `EPICSTAFF_SECRETS` for the executed code) is never mutated. This
+    masking applies unconditionally, regardless of `masking_enabled()` — a
+    temporary storage credential is never something a developer legitimately
+    wants to see in plaintext output.
+    """
+    values = dict(secrets or {})
+    values.update({k: v for k, v in (extra or {}).items() if v})
+    return values

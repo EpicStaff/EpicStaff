@@ -7,6 +7,7 @@ from services.graph.events import StopEvent
 from utils.singleton_meta import SingletonMeta
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.storage_credentials import publish_credential_scope_async
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
@@ -59,6 +60,12 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
+
+        # Trusted scope for the storage-credential issuer, written before the
+        # task itself is published.
+        await publish_credential_scope_async(
+            self.redis_service.aioredis_client, code_task_data
+        )
         await self.redis_service.apublish(
             "code_exec_tasks", code_task_data.model_dump()
         )

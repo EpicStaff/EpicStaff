@@ -14,7 +14,7 @@ RUN_PYTHON_CODE_POST = dict(
             examples=[
                 OpenApiExample(
                     "Execution started",
-                    value={"execution_id": "17-07-2026_19-01-11-924@e66d"},
+                    value={"execution_id": "b3f2c9a0-4e7d-4c2f-9a1e-6d2f8c1b7a3e"},
                     response_only=True,
                 ),
             ],

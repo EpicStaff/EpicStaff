@@ -267,8 +267,6 @@ services:
       OUTPUT_PATH: ${OUTPUT_PATH}
       MASK_SECRET: ${MASK_SECRET:-true}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
       STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
     volumes:
       - sandbox_venvs:${BASE_VENV_PATH}

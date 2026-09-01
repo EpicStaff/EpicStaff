@@ -1,10 +1,10 @@
-from datetime import datetime
 import os
 from typing import Any
 import uuid
 from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
-from tables.models import PythonCode, PythonCodeResult
+from src.shared.storage_credentials import publish_credential_scope
+from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
     UndeclaredSecretError,
@@ -70,7 +70,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             context=f"PythonCode(id={python_code_id}).secrets",
         )
 
-        execution_id = self.gen_execution_id()
+        execution_id = str(uuid.uuid4())
         PythonCodeResult.objects.create(
             execution_id=execution_id,
             org_id=organization_id,
@@ -78,6 +78,19 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code=python_code,
         )
         self._evict_oldest_results(organization_id)
+
+        # A bare "Test run" has no graph/session context to resolve
+        # storage_allowed_paths from (unlike converter_service's node/tool
+        # conversions). use_storage is derived from whether this PythonCode
+        # is used by at least one storage-enabled PythonCodeTool; when so,
+        # it gets the whole-org prefix with no narrower path restriction --
+        # the same default converter_service uses when a tool/node declares
+        # use_storage but no allowed paths.
+        use_storage = PythonCodeTool.objects.filter(
+            python_code=python_code, use_storage=True
+        ).exists()
+        storage_org_prefix = f"org_{organization_id}" if use_storage else None
+
         code_task_data = CodeTaskData(
             venv_name=f"venv_{python_code_id}",
             libraries=python_code.get_libraries_list(),
@@ -86,10 +99,16 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             func_kwargs=varaibles,
             execution_id=execution_id,
             global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
+            use_storage=use_storage,
+            storage_org_prefix=storage_org_prefix,
+            org_id=organization_id if use_storage else None,
             secrets=secrets,
         )
 
         channel = self.code_exec_task_channel
+        # Trusted scope for the storage-credential issuer, written before the
+        # task itself is published.
+        publish_credential_scope(self.redis_service.redis_client, code_task_data)
         self.redis_service.redis_client.publish(
             channel, code_task_data.model_dump_json()
         )
@@ -121,11 +140,3 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
         if stale_ids:
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
-
-    def gen_execution_id(self):
-        now = datetime.now()
-        short_uuid = str(uuid.uuid4())[:4]
-        formatted_time = now.strftime(
-            f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}"
-        )
-        return f"{formatted_time}@{short_uuid}"

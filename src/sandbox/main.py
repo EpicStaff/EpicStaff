@@ -4,9 +4,10 @@ import os
 import shutil
 from pathlib import Path
 from src.shared.models import CodeTaskData
+from src.shared.redis_streams import RedisStreamClient
 
-from services.storage_credential_manager import StorageCredentialManager
 from services.redis_service import RedisService
+from services.storage_credential_client import StorageCredentialClient
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 from secret_scrubber import MASK_SECRET_ENV_VAR, masking_enabled
 from utils.logger import logger
@@ -22,18 +23,23 @@ storage_mutation_channel = os.environ.get(
 task_channel = os.environ.get("CODE_EXEC_TASK_CHANNEL", "code_exec_tasks")
 output_path = Path(os.environ.get("OUTPUT_PATH", "executions"))
 base_venv_path = Path(os.environ.get("BASE_VENV_PATH", "venvs"))
-storage_host = os.environ.get("STORAGE_ENDPOINT")
-storage_access_key = os.environ.get("STORAGE_ACCESS_KEY")
-storage_secret_key = os.environ.get("STORAGE_SECRET_KEY")
-storage_credential_manager = StorageCredentialManager(
-    host=storage_host,
-    access_key=storage_access_key,
-    secret_key=storage_secret_key,
+# Deliberately no STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here:
+# sandbox no longer holds any static MinIO credential. Temporary,
+# per-execution credentials are requested from the issuer running in
+# django_app -- see StorageCredentialClient / dynamic_venv_executor_chain.py.
+storage_credential_request_stream_client = RedisStreamClient(
+    host=redis_host, port=redis_port, password=redis_password
+)
+storage_credential_client = StorageCredentialClient(
+    host=redis_host,
+    port=redis_port,
+    password=redis_password,
+    stream_client=storage_credential_request_stream_client,
 )
 executor_chain = DynamicVenvExecutorChain(
     output_path=output_path,
     base_venv_path=base_venv_path,
-    storage_credential_manager=storage_credential_manager,
+    storage_credential_client=storage_credential_client,
 )
 os.chdir("savefiles")
 
@@ -81,6 +87,7 @@ async def init():
     sweep_output_path()
     log_secret_masking_state()
     await redis_service.connect()
+    await storage_credential_request_stream_client.connect()
 
 
 async def listen_redis():

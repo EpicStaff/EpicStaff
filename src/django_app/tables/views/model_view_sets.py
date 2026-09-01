@@ -2890,6 +2890,12 @@ class SecretViewSet(
     queryset = Secret.objects.all()
     serializer_class = SecretSerializer
 
+    def get_queryset(self):
+        # system=True rows (e.g. org-level MinIO credentials) are internal to
+        # storage_credentials and must never be visible through this API —
+        # not even their existence. A direct GET by id must 404, not 403.
+        return super().get_queryset().filter(system=False)
+
     @extend_schema(**SECRET_USAGE_GET)
     @action(detail=True, methods=["get"], url_path="usage")
     def usage(self, request, pk=None):
