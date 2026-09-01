@@ -241,6 +241,17 @@
         [selectedValues]="manipSelectedFieldsModel()"
         (selectionChange)="onManipSelectionChange($event)"
     />
+    <app-multi-select
+        #expandGroupMultiSelect
+        [hideTrigger]="true"
+        [showSearch]="true"
+        checkboxPosition="left"
+        color="white"
+        searchPlaceholder="Search group..."
+        [items]="expandGroupMultiSelectItems()"
+        [selectedValues]="expandGroupSelectedModel()"
+        (selectionChange)="onExpandGroupSelectionChange($event)"
+    />
 </div>
 
 <ng-template #groupMenuTemplate>
@@ -261,6 +272,7 @@
         }
         <div
             class="group-menu-item group-menu-item--submenu"
+            [class.active]="expandGroupMultiSelect?.isOpen()"
             (click)="openExpandGroupSubmenu($event)"
         >
             <span>Expand Group</span>
@@ -292,57 +304,6 @@
                     size="12px"
                 ></app-svg-icon>
             }
-        </div>
-    </div>
-</ng-template>
-
-<ng-template #expandGroupSubmenuTemplate>
-    <div class="group-submenu">
-        <div class="group-submenu-search">
-            <app-svg-icon
-                icon="search"
-                size="14px"
-            ></app-svg-icon>
-            <input
-                type="text"
-                placeholder="Search group..."
-                [value]="expandGroupSubmenuSearch()"
-                (input)="onExpandGroupSearchInput($event)"
-            />
-        </div>
-        <div class="group-submenu-list">
-            @for (section of expandGroupSubmenuFilteredSections(); track section.id) {
-                <label class="group-submenu-item">
-                    <input
-                        type="checkbox"
-                        [checked]="expandGroupSubmenuChecked().has(section.id)"
-                        (change)="toggleExpandGroupSubmenuSection(section.id)"
-                    />
-                    <span
-                        class="group-submenu-item-dot"
-                        [style.background]="sectionColor(section)"
-                    ></span>
-                    <span class="group-submenu-item-name">{{ section.name }}</span>
-                </label>
-            } @empty {
-                <div class="group-submenu-empty">No groups found</div>
-            }
-        </div>
-        <div class="group-submenu-footer">
-            <button
-                type="button"
-                class="group-submenu-btn group-submenu-btn--secondary"
-                (click)="cancelExpandGroupSubmenu()"
-            >
-                Cancel
-            </button>
-            <button
-                type="button"
-                class="group-submenu-btn group-submenu-btn--primary"
-                (click)="saveExpandGroupSubmenu()"
-            >
-                Save Changes
-            </button>
         </div>
     </div>
 </ng-template>

@@ -131,7 +131,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private hiddenBadgeMenuCtrl = new OverlayMenuController(this.overlay, this.vcr);
-    private expandGroupSubmenuCtrl = new OverlayMenuController(this.overlay, this.vcr);
 
     private gridApi!: GridApi;
     private outsideClickUnlisten: (() => void) | null = null;
@@ -201,15 +200,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             bracketHeight: number;
         }>
     >([]);
-
-    public expandGroupSubmenuSearch = signal<string>('');
-    public expandGroupSubmenuChecked = signal<Set<string>>(new Set());
-    public expandGroupSubmenuFilteredSections = computed<CdtSection[]>(() => {
-        const query = this.expandGroupSubmenuSearch().trim().toLowerCase();
-        const sections = this.sectionsState();
-        if (!query) return sections;
-        return sections.filter((section) => section.name.toLowerCase().includes(query));
-    });
 
     // Enable/disable filter mode (default: show only enabled rows)
     public enableFilterMode = signal<EnableFilterMode>('enabled');
@@ -518,15 +508,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         return items;
     });
 
+    /** Items for the Expand Group picker: one entry per section. Ungrouped — no group labels. */
+    public expandGroupMultiSelectItems = computed<SelectItem[]>(() =>
+        this.sectionsState().map((section) => ({ name: section.name, value: section.id }))
+    );
+
     // Pre-open model value signals for the multi-selects
     public exprSelectedFieldsModel = signal<unknown[]>([]);
     public manipSelectedFieldsModel = signal<unknown[]>([]);
+    public expandGroupSelectedModel = signal<unknown[]>([]);
 
     @ViewChild('exprMultiSelect') exprMultiSelect!: MultiSelectComponent;
     @ViewChild('manipMultiSelect') manipMultiSelect!: MultiSelectComponent;
+    @ViewChild('expandGroupMultiSelect') expandGroupMultiSelect!: MultiSelectComponent;
     @ViewChild('groupMenuTemplate') groupMenuTemplate!: TemplateRef<unknown>;
     @ViewChild('hiddenBadgeMenuTemplate') hiddenBadgeMenuTemplate!: TemplateRef<unknown>;
-    @ViewChild('expandGroupSubmenuTemplate') expandGroupSubmenuTemplate!: TemplateRef<unknown>;
 
     public exprAddPos = signal<{ x: number; y: number } | null>(null);
     public manipAddPos = signal<{ x: number; y: number } | null>(null);
@@ -1880,7 +1876,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.positionResizeObserver?.disconnect();
         this.groupMenuOverlayRef?.dispose();
         this.hiddenBadgeMenuCtrl.dispose();
-        this.expandGroupSubmenuCtrl.dispose();
         const hostEl = this.elRef.nativeElement;
         hostEl.removeEventListener('mousedown', this.rowDragMouseDown, true);
     }
@@ -2364,49 +2359,26 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public openExpandGroupSubmenu(event: MouseEvent): void {
         const anchor = event.currentTarget as HTMLElement;
         const collapsed = this.collapsedGroups();
-        const checked = new Set(
-            this.sectionsState()
-                .map((s) => s.id)
-                .filter((id) => !collapsed.has(id))
-        );
-        this.expandGroupSubmenuChecked.set(checked);
-        this.expandGroupSubmenuSearch.set('');
-        this.expandGroupSubmenuCtrl.toggle(anchor, this.expandGroupSubmenuTemplate, {
-            withFlipFallback: true,
-            withPush: true,
-        });
+        const expanded = this.sectionsState()
+            .map((s) => s.id)
+            .filter((id) => !collapsed.has(id));
+        this.expandGroupSelectedModel.set(expanded);
+        // Flies out to the side of the menu row, not below it: right-of-row / top-aligned first,
+        // then the mirrored left side and the two bottom-aligned variants.
+        this.expandGroupMultiSelect.openAt(anchor, expanded, [
+            { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
+            { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -4 },
+            { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
+            { originX: 'start', originY: 'bottom', overlayX: 'end', overlayY: 'bottom', offsetX: -4 },
+        ]);
     }
 
-    public onExpandGroupSearchInput(event: Event): void {
-        const value = (event.target as HTMLInputElement).value;
-        this.expandGroupSubmenuSearch.set(value);
-    }
-
-    public toggleExpandGroupSubmenuSection(sectionId: string): void {
-        const next = new Set(this.expandGroupSubmenuChecked());
-        if (next.has(sectionId)) {
-            next.delete(sectionId);
-        } else {
-            next.add(sectionId);
-        }
-        this.expandGroupSubmenuChecked.set(next);
-    }
-
-    public cancelExpandGroupSubmenu(): void {
-        this.expandGroupSubmenuCtrl.close();
-    }
-
-    public saveExpandGroupSubmenu(): void {
-        const checked = this.expandGroupSubmenuChecked();
+    public onExpandGroupSelectionChange(values: unknown[]): void {
+        const expanded = new Set(values.map((v) => String(v)));
         const allIds = this.sectionsState().map((s) => s.id);
-        this.collapsedGroups.set(new Set(allIds.filter((id) => !checked.has(id))));
-        this.expandGroupSubmenuCtrl.close();
+        this.collapsedGroups.set(new Set(allIds.filter((id) => !expanded.has(id))));
         this.closeGroupMenu();
         queueMicrotask(() => this.recomputeGroupOverlays());
-    }
-
-    public sectionColor(section: CdtSection): string {
-        return getCdtSectionColor(section);
     }
 
     public isLightSectionColor(color: string | null | undefined): boolean {

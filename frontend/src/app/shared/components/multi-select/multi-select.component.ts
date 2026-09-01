@@ -1,4 +1,4 @@
-import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { ConnectedPosition, Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
     ChangeDetectionStrategy,
@@ -115,20 +115,30 @@ export class MultiSelectComponent implements OnInit {
         this.openAt(this.triggerBtn.nativeElement);
     }
 
-    openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
+    /**
+     * @param positions Optional full override of the dropdown position list. Used verbatim when a
+     *  non-empty array is passed; otherwise the default below-the-trigger list applies. Exists for
+     *  side-opening submenu flyouts, which must fly out beside their anchor row rather than below it.
+     */
+    openAt(originElement: HTMLElement, seedValues?: unknown[], positions?: ConnectedPosition[]): void {
         if (this.disabled()) return;
+        const resolvedPositions: ConnectedPosition[] =
+            Array.isArray(positions) && positions.length > 0
+                ? positions
+                : [
+                      // Preferred: below, left-aligned with trigger
+                      { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                      // Below, right-aligned with trigger (when right edge would clip)
+                      { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                      // Above, left-aligned (when bottom would clip)
+                      { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                      // Above, right-aligned (corner)
+                      { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                  ];
+
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
-            .withPositions([
-                // Preferred: below, left-aligned with trigger
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                // Below, right-aligned with trigger (when right edge would clip)
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                // Above, left-aligned (when bottom would clip)
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                // Above, right-aligned (corner)
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
-            ])
+            .withPositions(resolvedPositions)
             .withPush(false)
             .withFlexibleDimensions(false)
             .withViewportMargin(8);
