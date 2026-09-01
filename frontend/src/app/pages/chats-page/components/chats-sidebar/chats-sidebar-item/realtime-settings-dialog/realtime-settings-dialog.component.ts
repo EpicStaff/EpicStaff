@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RadioButtonComponent, SelectComponent, SelectItem } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { finalize } from 'rxjs';
 
 import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/elevenlabs-realtime-config-storage.service';
@@ -40,6 +41,8 @@ type ProviderConfigValue = number | { id: number } | null | undefined;
     styleUrls: ['./realtime-settings-dialog.component.scss'],
 })
 export class RealtimeSettingsDialogComponent implements OnInit {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     private readonly dialogRef = inject<DialogRef<PartialAgent>>(DialogRef);
     public readonly data = inject<{ agent: FullAgent }>(DIALOG_DATA);
     private readonly agentsService = inject(AgentsService);

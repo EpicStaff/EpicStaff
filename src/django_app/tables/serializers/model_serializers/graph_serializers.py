@@ -11,7 +11,6 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
     AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
@@ -74,7 +73,6 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
 
         exec_to_subgraph_id = {exec_id: message_data.get("subgraph_id")}
         counts_by_exec_id: dict[str, dict[str, int]] = {}
-        seen_code_agent_streams = set()
         for msg in subtree_messages:
             msg_data = msg["message_data"] or {}
             msg_type = msg_data.get("message_type")
@@ -91,12 +89,6 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
             if not parent_exec:
                 continue
             parent_exec = str(parent_exec)
-
-            if msg_type == "code_agent_stream":
-                dedup_key = (parent_exec, msg["name"])
-                if dedup_key in seen_code_agent_streams:
-                    continue
-                seen_code_agent_streams.add(dedup_key)
 
             per_type = counts_by_exec_id.setdefault(parent_exec, {})
             per_type[msg_type] = per_type.get(msg_type, 0) + 1
@@ -184,7 +176,6 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
-    code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
     task_node_list = TaskNodeSerializer(many=True, read_only=True)
     agent_node_list = AgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
@@ -229,7 +220,6 @@ class GraphSerializer(serializers.ModelSerializer):
             "decision_table_node_list",
             "classification_decision_table_node_list",
             "subgraph_node_list",
-            "code_agent_node_list",
             "task_node_list",
             "agent_node_list",
             "start_node_list",

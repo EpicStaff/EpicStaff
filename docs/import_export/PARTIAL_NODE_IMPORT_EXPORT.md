@@ -130,7 +130,7 @@ Exports selected nodes from graph `{id}`.
 }
 ```
 
-Supported list keys: `start_node_list`, `crew_node_list`, `python_node_list`, `audio_transcription_node_list`, `file_extractor_node_list`, `telegram_trigger_node_list`, `webhook_trigger_node_list`, `decision_table_node_list`, `classification_decision_table_node_list`, `subgraph_node_list`, `end_node_list`, `graph_note_list`, `code_agent_node_list`, `schedule_trigger_node_list`.
+Supported list keys: `start_node_list`, `crew_node_list`, `python_node_list`, `audio_transcription_node_list`, `file_extractor_node_list`, `telegram_trigger_node_list`, `webhook_trigger_node_list`, `decision_table_node_list`, `classification_decision_table_node_list`, `subgraph_node_list`, `end_node_list`, `graph_note_list`,, `schedule_trigger_node_list`.
 
 The view converts these keys to `NodeRef` objects using `LIST_KEY_TO_ENTITY_TYPE` defined in `services/partial_export_service.py`, then calls `GraphPartialExportService.export()`.
 

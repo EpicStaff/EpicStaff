@@ -56,7 +56,7 @@ COPY --from=builder /app /app
 # Add virtualenv to PATH.
 # MEM0_TELEMETRY=False: hard default so mem0's posthog telemetry (upstream
 # default is "True" if unset) stays disabled in every deploy target, not just
-# the reference docker-compose.yaml (EST-3245 action item 4).
+# the reference docker-compose.yaml.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see docs/backend-runtime-fetch-audit.md item 7).

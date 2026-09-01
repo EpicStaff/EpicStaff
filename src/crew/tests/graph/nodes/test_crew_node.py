@@ -67,7 +67,7 @@ async def test_execute_injects_internal_session_id_into_global_kwargs():
 async def test_execute_internal_session_id_wins_over_user_defined_and_warns(
     monkeypatch,
 ):
-    """DECIDED approach (EST-3307-BE review): a user-defined 'session_id' in
+    """a user-defined 'session_id' in
     the node's input is overridden by the internal id -- but the collision
     must be logged as a warning, not silently swallowed."""
     crew_parser_service = _make_crew_parser_service()

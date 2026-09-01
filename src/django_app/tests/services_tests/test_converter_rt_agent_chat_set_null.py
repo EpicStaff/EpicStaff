@@ -1,5 +1,5 @@
 """
-Code review fix (branch feature/EST-1869-voice-settings): `rt_provider` /
+Code review fix: `rt_provider` /
 `rt_model_name` / `rt_api_key` are nullable on `RealtimeAgentChat` (the
 `openai_config` / `elevenlabs_config` / `gemini_config` FKs are all
 `on_delete=SET_NULL`), but `RealtimeAgentChatData` (src/shared/models/agents.py)

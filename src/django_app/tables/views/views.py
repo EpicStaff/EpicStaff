@@ -644,7 +644,7 @@ class AnswerToLLM(APIView):
 
 
 class NotifyEmailView(APIView):
-    """EST-3285 4.8: sends a notification email via notification_tool
+    """sends a notification email via notification_tool
     (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
     EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
     parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
@@ -786,8 +786,7 @@ class InitRealtimeAPIView(APIView):
             # request.auth is only an ApiKey instance for API-key-authenticated
             # requests (see IsApiKeyAuthenticated / ApiKeyAuthentication).
             #
-            # Restricted to key_type=SYSTEM (same EST-3633 pattern as
-            # RealtimeChannelViewSet.lookup_by_token / IsSystemApiKeyAuthenticated):
+            # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it
             # would let any org member start a realtime session on ANY org's
             # agent (org is derived here from the agent's own row, with no

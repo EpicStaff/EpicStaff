@@ -526,6 +526,7 @@ class ConverterService(metaclass=SingletonMeta):
         # Resolve provider-specific fields from the active config FK snapshot
         rt_model_name = None
         rt_api_key_secret_id = None
+        rt_base_url = None
         rt_provider = None
         transcript_model_name = None
         transcript_api_key_secret_id = None
@@ -535,6 +536,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider = "openai"
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
+            rt_base_url = cfg.base_url
             transcript_model_name = cfg.transcription_model_name
             transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
         elif rt_agent_chat.elevenlabs_config_id is not None:
@@ -577,6 +579,7 @@ class ConverterService(metaclass=SingletonMeta):
             tools=self._get_agent_base_tools(agent=agent),
             rt_model_name=rt_model_name,
             rt_api_key_secret_id=rt_api_key_secret_id,
+            rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=agent.default_temperature,
@@ -603,6 +606,7 @@ class ConverterService(metaclass=SingletonMeta):
         # Resolve provider-specific fields from the active config FK snapshot
         rt_model_name = None
         rt_api_key_secret_id = None
+        rt_base_url = None
         rt_provider = None
         transcript_model_name = None
         transcript_api_key_secret_id = None
@@ -612,6 +616,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider = "openai"
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
+            rt_base_url = cfg.base_url
             transcript_model_name = cfg.transcription_model_name
             transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
         elif rt_agent_chat.elevenlabs_config_id is not None:
@@ -654,6 +659,7 @@ class ConverterService(metaclass=SingletonMeta):
             tools=surface_resolution.tools,
             rt_model_name=rt_model_name,
             rt_api_key_secret_id=rt_api_key_secret_id,
+            rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=ad.default_temperature,
@@ -912,7 +918,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
-            stream_config=python_node.stream_config or {},
         )
 
     def convert_conditional_edge_to_pydantic(
@@ -1047,7 +1052,6 @@ class ConverterService(metaclass=SingletonMeta):
             crew=crew_data,
             input_map=crew_node.input_map,
             output_variable_path=crew_node.output_variable_path,
-            stream_config=crew_node.stream_config or {},
         )
 
     def convert_end_node_to_pydantic(
