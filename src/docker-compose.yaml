@@ -36,7 +36,7 @@ services:
       DJANGO_MEDIA_ROOT: ${MEDIA_ROOT}
       WEBHOOK_USE_TUNNEL: ${USE_TUNNEL}
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
-      WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-8009}
       WEBHOOK_HOST_NAME: ${WEBHOOK_HOST_NAME}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
       GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
@@ -392,10 +392,10 @@ services:
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
       NGROK_DOMAIN: ${NGROK_DOMAIN}
       WEBHOOK_EMPTY_JSON_PATHS: ${WEBHOOK_EMPTY_JSON_PATHS}
-      WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-8009}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
     ports:
-      - "${WEBHOOK_PORT:-8051}:${WEBHOOK_PORT:-8051}"
+      - "${WEBHOOK_PORT:-8009}:${WEBHOOK_PORT:-8009}"
     depends_on:
       redis:
         condition: service_healthy
@@ -404,7 +404,7 @@ services:
     networks:
       - backend-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${WEBHOOK_PORT:-8051}/')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${WEBHOOK_PORT:-8009}/')\""]
       interval: 30s
       timeout: 10s
       retries: 30
@@ -420,7 +420,7 @@ services:
       - DOMAIN_NAME=${DOMAIN_NAME}
       - SSL_ENABLE=${SSL_ENABLE}
       - FRONTEND_INTERNAL_PORT=80
-      - WEBHOOK_PORT=${WEBHOOK_PORT:-8051}
+      - WEBHOOK_PORT=${WEBHOOK_PORT:-8009}
     volumes:
       - ./nginx/templates/default.conf.template:/etc/nginx/templates/default.conf.template
       - ./nginx/certs:/etc/nginx/certs:ro

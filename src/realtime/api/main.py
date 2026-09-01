@@ -338,6 +338,7 @@ async def _twilio_voice_webhook(
     auth_token: str | None,
     voice_stream_url: str,
     stream_token: str,
+    base_url: str,
 ) -> Response:
     """Shared logic for both old and new Twilio voice webhook handlers."""
     logger.info(
@@ -347,13 +348,20 @@ async def _twilio_voice_webhook(
 
     if auth_token:
         signature = request.headers.get("X-Twilio-Signature", "")
-        proto = request.headers.get("x-forwarded-proto", "https")
-        host = request.headers.get("x-forwarded-host") or request.headers.get(
-            "host", ""
-        )
+        base_url = (base_url or "").rstrip("/")
+        if not base_url:
+            logger.error(
+                "[voice_webhook] no tunnel domain resolved for this channel's "
+                "webhook_trigger -- cannot validate Twilio signature (fail "
+                "closed, no env-var fallback)"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="No tunnel domain configured for this channel -- cannot validate Twilio signature",
+            )
         path = request.url.path
         query = f"?{request.url.query}" if request.url.query else ""
-        url = f"{proto}://{host}{path}{query}"
+        url = f"{base_url}{path}{query}"
         form_data = dict(await request.form())
         logger.debug(
             f"[voice_webhook] validating signature: url={url} form_data={form_data}"
@@ -366,7 +374,9 @@ async def _twilio_voice_webhook(
             )
             raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     else:
-        logger.warning("[voice_webhook] no auth_token — rejecting request (fail closed)")
+        logger.warning(
+            "[voice_webhook] no auth_token — rejecting request (fail closed)"
+        )
         raise HTTPException(status_code=503, detail="Twilio auth not configured")
 
     if not voice_stream_url:
@@ -375,13 +385,6 @@ async def _twilio_voice_webhook(
 
     voice_stream_url = _append_stream_token(voice_stream_url, stream_token)
 
-    # Both attribute values are XML-escaped via `quoteattr` (handles `&`, `<`,
-    # `>`, and quote characters, returning an already-quoted attribute) —
-    # a raw f-string interpolation here would corrupt/truncate the URL Twilio
-    # parses out of the element if it ever contained an un-escaped `&` (e.g.
-    # multiple query params). The `<Parameter>` child is the actual mechanism
-    # Twilio delivers to the WS leg (see `_append_stream_token` docstring);
-    # the query string on `url` is kept only as a harmless fallback.
     stream_url_attr = quoteattr(voice_stream_url)
     stream_token_attr = quoteattr(stream_token)
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -614,9 +617,11 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         )
 
     logger.info(f"[voice/{channel_token}] voice_stream_url={voice_stream_url}")
+
+    base_url = f"https://{ngrok_domain}" if ngrok_domain else ""
     stream_token = stream_token_repository.mint(bound_key=channel_token)
     return await _twilio_voice_webhook(
-        request, auth_token, voice_stream_url, stream_token
+        request, auth_token, voice_stream_url, stream_token, base_url
     )
 
 
@@ -625,7 +630,9 @@ async def voice_stream_channel(
     channel_token: str, twilio_ws: WebSocket, stream_token: str | None = None
 ):
     """Twilio MediaStream WebSocket (channel-token routing)."""
-    agent_id, agent_definition_id, _channel = await _resolve_channel_agent(channel_token)
+    agent_id, agent_definition_id, _channel = await _resolve_channel_agent(
+        channel_token
+    )
     if not agent_id and not agent_definition_id:
         logger.error(f"No agent for channel token {channel_token}")
         await twilio_ws.close(code=1008)
