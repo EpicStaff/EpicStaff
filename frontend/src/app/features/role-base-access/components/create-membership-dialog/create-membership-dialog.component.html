@@ -39,12 +39,13 @@
                 } @else {
                     <app-select
                         variant="boxed"
+                        [allowCustomValue]="true"
                         [items]="userSelectItems()"
-                        [selectedValue]="selectedUserId()"
+                        [selectedValue]="userSelectValue()"
                         [showSearch]="true"
                         [loading]="isLoadingUsers()"
                         placeholder="Select a user..."
-                        searchPlaceholder="Search by name or email..."
+                        searchPlaceholder="Search or enter email..."
                         (changed)="onUserSelected($event)"
                     />
                 }

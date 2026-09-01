@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
 import { ActionCode, CatalogAction, CatalogResourceType, CatalogResponse, ResourceCode } from '@shared/models';
 
-import { PERMISSION_RELATIONS } from '../../constants/permission-relations.constant';
 import { ACTION_ICONS, GROUP_META, GroupMeta, RESOURCE_META } from '../../constants/permission-table.constant';
 
 interface CatalogGroup {
@@ -96,22 +95,25 @@ export class PermissionsTableComponent {
         );
     });
 
-    /**
-     * Recommendations grouped by the TRIGGER RESOURCE (owner of the selected permission that
-     * caused the recommendation). Rendered as a banner right under that resource's row.
-     *
-     * Each entry aggregates:
-     *   - `triggers` — all selected permission keys from this resource that produced recommendations
-     *   - `missingKeys` — union of their missing (still-required) dependency keys
-     */
+    private readonly relations = computed<Record<string, string[]>>(() => {
+        const map: Record<string, string[]> = {};
+        for (const rt of this.catalog().resource_types) {
+            for (const [action, cells] of Object.entries(rt.recommended_with)) {
+                map[`${rt.code}:${action}`] = cells.map((c) => `${c.resource_type}:${c.action}`);
+            }
+        }
+        return map;
+    });
+
     readonly recommendedByResource = computed<Map<ResourceCode, { triggers: string[]; missingKeys: string[] }>>(() => {
         if (this.readonly()) return new Map();
         const selected = this.selectedPermissions();
         const disabled = this.disabledPermissions();
         const applicable = this.applicableKeySet();
+        const relations = this.relations();
         const acc = new Map<ResourceCode, { triggers: Set<string>; missing: Set<string> }>();
         for (const trigger of selected) {
-            const deps = PERMISSION_RELATIONS[trigger];
+            const deps = relations[trigger];
             if (!deps || deps.length === 0) continue;
             const missing: string[] = [];
             for (const dep of deps) {

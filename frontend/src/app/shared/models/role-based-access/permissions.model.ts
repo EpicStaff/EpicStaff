@@ -35,6 +35,11 @@ export interface CatalogAction {
     bit: number;
 }
 
+export interface RecommendedPermission {
+    resource_type: ResourceCode;
+    action: ActionCode;
+}
+
 export interface CatalogResourceType {
     code: ResourceCode;
     label: string;
@@ -44,6 +49,7 @@ export interface CatalogResourceType {
     /** Global, superadmin-only actions that are never grantable via a role.
      *  For `organizations`: `['create','delete']`; empty (`[]`) for everything else. */
     platform_actions: ActionCode[];
+    recommended_with: Record<ActionCode, RecommendedPermission[]>;
 }
 
 export interface CatalogResponse {

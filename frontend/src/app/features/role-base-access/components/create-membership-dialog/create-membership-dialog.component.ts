@@ -51,6 +51,7 @@ export class CreateMembershipDialogComponent implements OnInit {
     availableOrganizations = signal<Organization[]>([]);
     assignableUsers = signal<AssignableUsersResponse[]>([]);
     selectedUserId = signal<number | null>(null);
+    customEmail = signal<string | null>(null);
     isSubmitting = signal<boolean>(false);
     isLoadingUsers = signal<boolean>(false);
 
@@ -64,10 +65,11 @@ export class CreateMembershipDialogComponent implements OnInit {
             value: u.id,
         }))
     );
+    userSelectValue = computed<number | string | null>(() => this.selectedUserId() ?? this.customEmail());
 
     submitDisabled = computed(() => {
         if (this.isSubmitting()) return true;
-        if (!this.editMode() && this.selectedUserId() == null) return true;
+        if (!this.editMode() && this.selectedUserId() == null && !this.customEmail()) return true;
         const step = this.assignToOrgStep();
         if (!step || step.selectedOrganizations().length === 0) return true;
         return step.hasInvalidRow();
@@ -100,7 +102,16 @@ export class CreateMembershipDialogComponent implements OnInit {
     }
 
     onUserSelected(value: unknown): void {
-        this.selectedUserId.set(typeof value === 'number' ? value : null);
+        if (typeof value === 'number') {
+            this.selectedUserId.set(value);
+            this.customEmail.set(null);
+            return;
+        }
+
+        const email = typeof value === 'string' ? value.trim() : '';
+
+        this.selectedUserId.set(null);
+        this.customEmail.set(email || null);
     }
 
     onClose(): void {
@@ -109,13 +120,19 @@ export class CreateMembershipDialogComponent implements OnInit {
 
     onSubmit(): void {
         const editing = this.editUser();
-        const userId = editing?.id ?? this.selectedUserId();
-        if (userId == null) return;
+        const identity: { user_id?: number; email?: string } = editing
+            ? { user_id: editing.id }
+            : this.selectedUserId() != null
+              ? { user_id: this.selectedUserId()! }
+              : this.customEmail()
+                ? { email: this.customEmail()! }
+                : {};
+        if (identity.user_id == null && !identity.email) return;
 
         this.isSubmitting.set(true);
         const assignments = this.assignToOrgStep()?.getAssignments() ?? [];
 
-        this.performSubmit(userId, assignments)
+        this.performSubmit(identity, assignments)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isSubmitting.set(false))
@@ -132,20 +149,26 @@ export class CreateMembershipDialogComponent implements OnInit {
             });
     }
 
-    private performSubmit(userId: number, assignments: OrgAssignment[]): Observable<boolean> {
+    private performSubmit(
+        identity: { user_id?: number; email?: string },
+        assignments: OrgAssignment[]
+    ): Observable<boolean> {
         const user = this.editUser();
         if (user) return this.updateMemberships(user, assignments);
-        return this.linkExistingByUserId(userId, assignments);
+        return this.linkExisting(identity, assignments);
     }
 
-    /** Create mode: link existing account by user_id per selected org.
+    /** Create mode: link by user_id (existing account) or invite by email per selected org.
      *  Each org is attempted independently; per-org outcomes are toasted. */
-    private linkExistingByUserId(userId: number, assignments: OrgAssignment[]): Observable<boolean> {
+    private linkExisting(
+        identity: { user_id?: number; email?: string },
+        assignments: OrgAssignment[]
+    ): Observable<boolean> {
         if (!assignments.length) return of(false);
         const orgNameById = new Map(this.availableOrganizations().map((o) => [o.id, o.name]));
         const ops = assignments.map((a) => {
             const orgName = orgNameById.get(a.orgId) ?? `org ${a.orgId}`;
-            return this.membershipsService.create({ org_id: a.orgId, user_id: userId, role_id: a.roleId }).pipe(
+            return this.membershipsService.create({ org_id: a.orgId, role_id: a.roleId, ...identity }).pipe(
                 map(() => ({ ok: true as const, org: orgName })),
                 catchError((err: HttpErrorResponse) => of({ ok: false as const, org: orgName, err }))
             );
