@@ -51,7 +51,6 @@ from tables.exceptions import (
     BulkSaveValidationError,
     TaskSerializerError,
 )
-from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
@@ -1964,7 +1963,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent", "rt_agent_definition"]
-    permission_classes = [IsAuthenticatedOrApiKey]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1989,16 +1988,6 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         through `self.get_queryset()` (which requires an active org via
         `OrgContextService`/`X-Organization-Id`) the way `destroy`/`retrieve`
         are.
-
-        Restricted to `key_type=SYSTEM` API-key callers
-        (`IsSystemApiKeyAuthenticated`)
-        `RealtimeChannelViewSet.lookup_by_token` / `InitRealtimeAPIView`. Do
-        not widen this to `IsAuthenticated` or the class-level
-        `IsAuthenticatedOrApiKey`: either would let a caller who has no
-        relationship to the chat's org (a plain JWT session, or a self-issued
-        `key_type=USER` API key any org member can mint) end/mutate another
-        org's realtime chat by guessing/observing its `connection_key`, since
-        the lookup below performs no org filter of its own.
         """
         from django.utils import timezone
 
@@ -2178,7 +2167,8 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     filterset_fields = ["rt_agent_chat", "recording_type"]
     rbac_resource_type = ResourceType.VOICE
     org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
-    permission_classes = [IsAuthenticatedOrApiKey]
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def _is_system_api_key_request(self) -> bool:
         return (
