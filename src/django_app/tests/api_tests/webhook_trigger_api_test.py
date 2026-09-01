@@ -80,7 +80,7 @@ class TestWebhookTriggerAndNodeAPI:
         self, auth_client, graph: Graph, default_org
     ):
         """
-        Inline trigger creation from a node was removed (EST-2987/EST-3491) —
+        Inline trigger creation from a node was removed —
         /api/webhook-trigger-nodes/ only accepts an *existing* WebhookTrigger
         id. Create the trigger via /api/webhook-triggers/ first, then attach
         it to the node by id.
@@ -298,7 +298,7 @@ class TestWebhookTriggerAndNodeAPI:
         assert wt["path"] == "myNgrokWebhookForGet"
         assert wt["provider_type"] == "ngrok"
         assert wt["ngrok_config"]["name"] == "get-test-ngrok"
-        # auth_token must stay write-only/masked on the nested read (EST-3491)
+        # auth_token must stay write-only/masked on the nested read
         assert "auth_token" not in wt["ngrok_config"]
 
         listing = auth_client.get(reverse("webhooktriggernode-list"))
@@ -338,7 +338,7 @@ class TestWebhookTriggerAndNodeAPI:
 
 @pytest.mark.django_db
 class TestWebhookTriggerOrgIsolation:
-    """EST-3491: WebhookTrigger is now a top-level org-owned resource."""
+    """WebhookTrigger is now a top-level org-owned resource."""
 
     def test_non_superadmin_can_crud_own_org_trigger(
         self, auth_client, graph: Graph, default_org
@@ -351,7 +351,7 @@ class TestWebhookTriggerOrgIsolation:
         assert create.status_code == 201
         trigger_id = create.data["id"]
 
-        # EST-3491 follow-up: /api/webhook-triggers/ only lists/retrieves
+        # /api/webhook-triggers/ only lists/retrieves
         # triggers that are actually attached to a flow trigger node — attach
         # one here so the subsequent list/update calls resolve via
         # get_queryset() as expected for a real flow-owned trigger.
@@ -392,7 +392,7 @@ class TestWebhookTriggerOrgIsolation:
         other_trigger = WebhookTrigger.objects.create(
             path="other-org-only-path", provider_type=None, org=other_org
         )
-        # EST-3491 follow-up: /api/webhook-triggers/ only surfaces triggers
+        # /api/webhook-triggers/ only surfaces triggers
         # attached to a flow trigger node — attach one in other_org so the
         # "own org can see it" control below reflects a real flow-owned row.
         other_org_graph = Graph.objects.create(name="other-org-graph", org=other_org)
@@ -673,7 +673,7 @@ class TestWebhookTriggerProviderSwitchCleanup:
 
 @pytest.mark.django_db
 class TestWebhookTriggerTwilioOnlyVisibility:
-    """EST-3491 follow-up, corrected: /api/webhook-triggers/ exposes every
+    """Corrected: /api/webhook-triggers/ exposes every
     WebhookTrigger in the org regardless of what else references it.
     WebhookTrigger is a standalone resource — a row also reused by
     TwilioChannelSerializer (an AGENTS-domain concern) has no bearing on its
@@ -762,7 +762,7 @@ class TestWebhookTriggerTwilioOnlyVisibility:
 
 @pytest.mark.django_db
 class TestWebhookTriggerDuplicatePathValidation:
-    """EST-3620: PUT/PATCH to /api/webhook-triggers/<id>/ with a (path,
+    """PUT/PATCH to /api/webhook-triggers/<id>/ with a (path,
     provider_type) pair that collides with another existing WebhookTrigger
     must fail cleanly with a serializer ValidationError (-> 400), not blow
     up with a raw IntegrityError from the DB's unique_together constraint at
@@ -807,7 +807,7 @@ class TestWebhookTriggerDuplicatePathValidation:
     def test_partial_update_omitting_provider_type_still_detects_collision(
         self, default_org
     ):
-        """The actual bug repro (EST-3620): a PATCH-style partial update
+        """The actual bug repro: a PATCH-style partial update
         supplies only `path` and omits `provider_type` from the payload.
         The fallback to self.instance.provider_type must still catch a
         collision with another trigger sharing that provider_type — before
@@ -858,9 +858,9 @@ class TestWebhookTriggerDuplicatePathValidation:
 
 @pytest.mark.django_db
 class TestWebhookTriggerCreateDoesNotMerge:
-    """EST-3625: POSTing a `path` that collides with an existing trigger must
+    """POSTing a `path` that collides with an existing trigger must
     never silently mutate/merge into that other row. `create()` is a plain
-    insert; `validate()` (already covered by EST-3620 tests above) is the
+    insert; `validate()` (already covered by the tests above) is the
     only thing allowed to reject a request before it reaches `create()`."""
 
     def test_duplicate_path_and_provider_type_is_rejected_not_merged(
@@ -916,7 +916,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
         provider_type) — two different providers ARE allowed to share a
         path as separate rows. POSTing a new provider_type for an existing
         path must create a sibling row, not hijack/mutate the existing one
-        (the EST-3625 bug: the old get_or_create looked up by `path` alone)."""
+        (the old get_or_create looked up by `path` alone)."""
         existing = WebhookTrigger.objects.create(
             path="shared-path-diff-provider",
             provider_type=ProviderType.LOCALHOST,
@@ -978,7 +978,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
 
 @pytest.mark.django_db
 class TestWebhookTriggerLiveUrlIncludesPath:
-    """EST-3626: `WebhookTriggerNestedSerializer.to_representation()` must
+    """`WebhookTriggerNestedSerializer.to_representation()` must
     return the full routable URL (`<tunnel-base>/webhooks/<path>`), not just
     the bare tunnel base, since that's the actual inbound route the
     `webhook` service exposes (`POST /webhooks/{custom_path:path}` in
@@ -1011,7 +1011,7 @@ class TestWebhookTriggerLiveUrlIncludesPath:
     def test_live_url_stays_bare_path_for_telegram_linked_trigger(
         self, default_org
     ):
-        """EST-1869: prefix-based exclusivity routing was removed --
+        """Prefix-based exclusivity routing was removed --
         `live_url` always reflects the bare path now, even for a trigger
         linked to a `TelegramTriggerNode`."""
         trigger = WebhookTrigger.objects.create(
@@ -1064,7 +1064,7 @@ class TestWebhookTriggerLiveUrlIncludesPath:
 
 @pytest.mark.django_db
 class TestCrossTypeTriggerNodeConflictValidation:
-    """EST-1869: a single `WebhookTrigger` may now legitimately be attached
+    """A single `WebhookTrigger` may now legitimately be attached
     to BOTH a `WebhookTriggerNode` and a `TelegramTriggerNode` at the same
     time -- DB-driven fan-out in `redis_pubsub.webhook_events_handler` means
     each node type is resolved and notified independently, so dual-attach no
@@ -1349,7 +1349,7 @@ class TestCrossTypeTriggerNodeConflictValidation:
 
 @pytest.mark.django_db
 class TestWebhookNodeAuthAPI:
-    """EST-3826: the generic webhook-trigger node's `webhook_node_auth` only
+    """The generic webhook-trigger node's `webhook_node_auth` only
     accepts a client-controlled `{"enabled": bool}` -- `scheme`/`header_name`/
     `timestamp_header_name`/`tolerance_seconds`/`signing_secret` all stay
     server-generated and any client-supplied values for them are silently

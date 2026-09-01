@@ -65,7 +65,8 @@ services:
       EMAIL_USE_TLS: ${EMAIL_USE_TLS:-True}
       EMAIL_USE_SSL: ${EMAIL_USE_SSL:-False}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@epicstaff.local}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:4200}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:?FRONTEND_BASE_URL must be set}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
       FRONTEND_PASSWORD_RESET_PATH: ${FRONTEND_PASSWORD_RESET_PATH:-/reset-password}
       DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-Organization}
       FIRST_SETUP_MODE: ${FIRST_SETUP_MODE:-cli_only}
@@ -74,6 +75,10 @@ services:
       PASSWORD_CHANGE_TICKET_TTL_SECONDS: ${PASSWORD_CHANGE_TICKET_TTL_SECONDS:-300}
       AVATAR_MAX_BYTES: ${AVATAR_MAX_BYTES:-5242880}
       AVATAR_ALLOWED_FORMATS: ${AVATAR_ALLOWED_FORMATS:-JPEG,PNG}
+      MAX_UPLOAD_FILE_BYTES: ${MAX_UPLOAD_FILE_BYTES:-52428800}
+      MAX_UPLOAD_TOTAL_BYTES: ${MAX_UPLOAD_TOTAL_BYTES:-52428800}
+      MAX_ARCHIVE_ENTRIES: ${MAX_ARCHIVE_ENTRIES:-2000}
+      MAX_ARCHIVE_UNCOMPRESSED_BYTES: ${MAX_ARCHIVE_UNCOMPRESSED_BYTES:-268435456}
       MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
     volumes:
@@ -117,15 +122,12 @@ services:
       VOICE_STREAM_URL: ${VOICE_STREAM_URL:-}
       DJANGO_HOST: ${DJANGO_HOST:-django_app}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
-      MANAGER_HOST: ${MANAGER_HOST:-manager}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
     networks:
       - backend-network
     depends_on:
       crewdb:
         condition: service_healthy
-      manager:
-        condition: service_started
       redis:
         condition: service_healthy
       knowledge:
@@ -141,10 +143,8 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
     networks:
       - backend-network
     tty: true
@@ -224,7 +224,6 @@ services:
     container_name: crew
     environment:
       <<: *common_env
-      CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
       HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
       ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
       EC_TELEMETRY: ${EC_TELEMETRY:-False}
@@ -300,37 +299,6 @@ services:
       redis:
         condition: service_healthy
 
-  code:
-    image: ghcr.io/epicstaff/code:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: ./code/Dockerfile.code
-    container_name: code
-    init: true
-    environment:
-      - DJANGO_API_URL=http://django_app:${DJANGO_PORT:-8000}/api
-      - CODE_MANAGER_PORT=${CODE_MANAGER_PORT}
-      - CODE_BASE_PORT=${CODE_BASE_PORT}
-      - CODE_MAX_INSTANCES=${CODE_MAX_INSTANCES}
-      - CODE_IDLE_TIMEOUT=${CODE_IDLE_TIMEOUT}
-      - CODE_REAP_INTERVAL=${CODE_REAP_INTERVAL}
-      - CODE_INSTANCES_DIR=${CODE_INSTANCES_DIR}
-      - CONTAINER_SAVEFILES_PATH=${CONTAINER_SAVEFILES_PATH}
-    ports:
-      - "${CODE_MANAGER_PORT:-4080}:${CODE_MANAGER_PORT:-4080}"
-    volumes:
-      - ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}
-      - code_instances:${CODE_INSTANCES_DIR}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend-network
-    tty: true
-    stdin_open: true
-    depends_on:
-      redis:
-        condition: service_healthy
-
   knowledge:
     image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
     build:
@@ -344,6 +312,11 @@ services:
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
       EMBEDDING_HEADERS: ${EMBEDDING_HEADERS:-}
       GRAPH_DATA_DIR: /home/user/root/app/graph_data
+      KNOWLEDGE_MAX_EXTRACTION_INPUT_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_INPUT_BYTES:-52428800}
+      KNOWLEDGE_MAX_EXTRACTION_UNPACKED_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_UNPACKED_BYTES:-268435456}
+      KNOWLEDGE_MAX_EXTRACTION_CONTENT_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_CONTENT_BYTES:-4194304}
+      KNOWLEDGE_MAX_EXTRACTION_HTML_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_HTML_BYTES:-2097152}
+      KNOWLEDGE_MAX_EXTRACTION_PAGES: ${KNOWLEDGE_MAX_EXTRACTION_PAGES:-2000}
 
     volumes:
       - graph_data:/home/user/root/app/graph_data
@@ -420,6 +393,7 @@ services:
       NGROK_DOMAIN: ${NGROK_DOMAIN}
       WEBHOOK_EMPTY_JSON_PATHS: ${WEBHOOK_EMPTY_JSON_PATHS}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
     ports:
       - "${WEBHOOK_PORT:-8051}:${WEBHOOK_PORT:-8051}"
     depends_on:
@@ -506,7 +480,6 @@ volumes:
   media_data:
     external: true
   redis_data: {}
-  code_instances: {}
   minio_data: {}
 
   graph_data:

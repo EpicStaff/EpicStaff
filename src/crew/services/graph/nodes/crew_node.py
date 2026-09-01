@@ -30,7 +30,6 @@ class CrewNode(BaseNode):
         input_map: dict,
         output_variable_path: str,
         knowledge_search_service: KnowledgeSearchService,
-        stream_config: dict | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -44,7 +43,6 @@ class CrewNode(BaseNode):
         self.crewai_output_channel = crewai_output_channel
         self.crew_parser_service = crew_parser_service
         self.knowledge_search_service = knowledge_search_service
-        self.stream_config = stream_config or {}
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
@@ -58,7 +56,6 @@ class CrewNode(BaseNode):
             crewai_output_channel=self.crewai_output_channel,
             stream_writer=writer,
             knowledge_search_service=self.knowledge_search_service,
-            stream_config=self.stream_config,
         )
 
         if "session_id" in input_:

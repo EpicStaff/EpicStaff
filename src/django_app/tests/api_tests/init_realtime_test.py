@@ -80,7 +80,7 @@ def test_init_realtime_populates_created_by_for_browser_jwt_session(
 
 @pytest.mark.django_db
 class TestInitRealtimeApiKeyCaller:
-    """EST-3631 (3rd STR): the Twilio MediaStream WebSocket bridge
+    """the Twilio MediaStream WebSocket bridge
     (`realtime`'s `_voice_stream_handler`) calls POST /api/init-realtime/
     server-to-server with `X-API-Key` and no logged-in user, so it cannot
     supply `X-Organization-Id`. It already resolved `agent_id` itself via
@@ -197,7 +197,7 @@ class TestInitRealtimeApiKeyCaller:
     def test_user_scoped_api_key_rejected_from_starting_session_on_other_org_agent(
         self, wikipedia_agent, default_org, api_client, user_api_key, redis_client_mock
     ):
-        """Companion fix to EST-3633: a self-issued `key_type=USER` API key
+        """a self-issued `key_type=USER` API key
         (any org member can mint one via POST /api/profile/api-keys/) must NOT
         hit the trusted-caller ApiKey branch above — that branch derives org
         straight from the agent's own `org` FK with no membership check, which

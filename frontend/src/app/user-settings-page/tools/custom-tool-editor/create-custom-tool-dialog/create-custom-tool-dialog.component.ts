@@ -197,6 +197,8 @@ export class CreateCustomToolDialogComponent {
     public readonly isCopying = signal(false);
     private tableImportWasInvalid = false;
 
+    private readonly locallyCreatedNames = new Set<string>();
+
     private initialSnapshot = '';
 
     private monacoJsonEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
@@ -497,6 +499,7 @@ export class CreateCustomToolDialogComponent {
             .createPythonCodeToolV2(payload)
             .pipe(
                 tap((created) => {
+                    this.locallyCreatedNames.add(created.name.trim());
                     this.toolsEvents.emitCustomToolCreated(created);
                     this.toast.success(`Tool copied as "${created.name}"`);
                 }),
@@ -598,6 +601,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private adoptForkedCopy(created: GetPythonCodeToolRequest): void {
+        this.locallyCreatedNames.add(created.name.trim());
         this.selectedTool.set(created);
         this.form.controls.name.setValue(created.name);
         this.form.markAsPristine();
@@ -612,6 +616,9 @@ export class CreateCustomToolDialogComponent {
 
     private uniqueToolName(base: string): string {
         const taken = new Set((this.dialogData?.pythonTools ?? []).map((tool) => tool.name.trim()));
+        for (const name of this.locallyCreatedNames) {
+            taken.add(name);
+        }
         let candidate = `${base} (copy)`;
         for (let n = 2; taken.has(candidate); n++) {
             candidate = `${base} (copy ${n})`;

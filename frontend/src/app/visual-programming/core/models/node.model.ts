@@ -3,7 +3,6 @@ import { GetProjectRequest } from '../../../features/projects/models/project.mod
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { CodeAgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
@@ -149,12 +148,6 @@ export interface SubGraphNodeModel extends BaseNodeModel {
     data: GetGraphLightRequest;
 }
 
-export interface CodeAgentNodeModel extends BaseNodeModel {
-    type: NodeType.CODE_AGENT;
-    data: CodeAgentNodeData;
-    stream_config?: Record<string, boolean>;
-}
-
 export type NodeModel =
     | AgentNodeModel
     | TaskNodeModel
@@ -173,5 +166,4 @@ export type NodeModel =
     | TelegramTriggerNodeModel
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
-    | EndNodeModel
-    | CodeAgentNodeModel;
+    | EndNodeModel;

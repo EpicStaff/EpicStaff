@@ -40,7 +40,6 @@ import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     AgentNodeStreamMessageData,
-    CodeAgentStreamMessageData,
     GraphMessage,
     MessageData,
     MessageType,
@@ -55,7 +54,6 @@ import { WarningMessagesComponent } from '../warning-messages/warning-messages.c
 import { AgentFinishMessageComponent } from './components/agent-finish/agent-finish.component';
 import { AgentMessageComponent } from './components/agent-message/agent-message.component';
 import { ClassificationDtMessageComponent } from './components/classification-dt-message/classification-dt-message.component';
-import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
 import { FindingsMessageComponent } from './components/findings-message/findings-message.component';
@@ -97,7 +95,6 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.ERROR,
     MessageType.TASK,
     MessageType.FINISH,
-    MessageType.CODE_AGENT_STREAM,
     MessageType.TASK_NODE_STREAM,
     MessageType.AGENT_NODE_STREAM,
     MessageType.SUBGRAPH_START,
@@ -111,7 +108,6 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
 // Stream-style message types that emit many chunks per node run and get collapsed into
 // a single card per node name (see updateVisibleMessages / getMessageKey below).
 const STREAM_MESSAGE_TYPES: ReadonlySet<string> = new Set([
-    MessageType.CODE_AGENT_STREAM,
     MessageType.TASK_NODE_STREAM,
     MessageType.AGENT_NODE_STREAM,
 ]);
@@ -178,7 +174,6 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
         SubgraphFinishMessageComponent,
-        CodeAgentStreamMessageComponent,
         NodeStreamMessageComponent,
         AppSvgIconComponent,
     ],
@@ -257,7 +252,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private messageContexts: MessageContext[] = [];
     private messageContextByKey = new Map<string, MessageContext>();
     private messageByKey = new Map<string, GraphMessage>();
-    private codeAgentVisibleIndices = new Set<number>();
     private messageGraphIdByKey = new Map<string, number>();
     private graphCache = new Map<number, GraphDto>();
     private graphNameById = new Map<number, string>();
@@ -952,11 +946,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         const nestedPath = [...context.path, context.key];
         return this.messageContexts.reduce(
             (count, ctx) =>
-                this.pathsEqual(ctx.path, nestedPath) &&
-                this.isRenderableNestedMessage(ctx) &&
-                this.isCodeAgentVisible(ctx)
-                    ? count + 1
-                    : count,
+                this.pathsEqual(ctx.path, nestedPath) && this.isRenderableNestedMessage(ctx) ? count + 1 : count,
             0
         );
     }
@@ -979,7 +969,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             case MessageType.CLASSIFICATION_PROMPT:
             case MessageType.CONDITION_GROUP_MANIPULATION:
             case MessageType.FINISH:
-            case MessageType.CODE_AGENT_STREAM:
             case MessageType.SUBGRAPH_START:
             case MessageType.SUBGRAPH_FINISH:
             case MessageType.FINDINGS:
@@ -1303,36 +1292,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         });
 
         this.buildMessageGraphContexts(messages);
-        this.computeCodeAgentVisibleIndices();
-    }
-
-    private computeCodeAgentVisibleIndices(): void {
-        const chosen = new Map<string, number>();
-        for (const ctx of this.messageContexts) {
-            const msg = this.messages[ctx.index];
-            if (msg?.message_data?.message_type !== MessageType.CODE_AGENT_STREAM) continue;
-
-            const groupKey = `${ctx.path.join('|')}::${msg.name}`;
-            const existing = chosen.get(groupKey);
-            const isFinal = (msg.message_data as CodeAgentStreamMessageData).is_final;
-
-            if (existing === undefined || isFinal) {
-                chosen.set(groupKey, ctx.index);
-            } else {
-                const existingMsg = this.messages[existing];
-                const existingFinal = (existingMsg?.message_data as CodeAgentStreamMessageData)?.is_final;
-                if (!existingFinal) {
-                    chosen.set(groupKey, ctx.index);
-                }
-            }
-        }
-        this.codeAgentVisibleIndices = new Set(chosen.values());
-    }
-
-    private isCodeAgentVisible(context: MessageContext): boolean {
-        const msg = this.messages[context.index];
-        if (msg?.message_data?.message_type !== MessageType.CODE_AGENT_STREAM) return true;
-        return this.codeAgentVisibleIndices.has(context.index);
     }
 
     private syncDrillPaths(messages: GraphMessage[]): void {
@@ -1438,8 +1397,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private updateVisibleMessages(): void {
-        // Build a set of message indices to show for stream message types (code_agent_stream,
-        // task_node_stream, agent_node_stream): one card per node name+type — prefer final,
+        // Build a set of message indices to show for stream message types
+        // (task_node_stream, agent_node_stream): one card per node name+type — prefer final,
         // fall back to latest non-final.
         const streamShowIndex = new Map<string, number>(); // `${message_type}:${node_name}` -> message index to show
 
@@ -1474,7 +1433,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 const data = msg?.message_data;
                 const type = data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
-                if (!this.isCodeAgentVisible(context)) return false;
                 if (this.isSseHidden(data)) return false;
                 if (!STREAM_MESSAGE_TYPES.has(type)) return true;
                 return streamShowSet.has(context.index);
@@ -1484,10 +1442,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     private isStreamMessageFinal(data: MessageData | undefined): boolean {
         if (!data) return false;
-        return (
-            (data as CodeAgentStreamMessageData | TaskNodeStreamMessageData | AgentNodeStreamMessageData).is_final ===
-            true
-        );
+        return (data as TaskNodeStreamMessageData | AgentNodeStreamMessageData).is_final === true;
     }
 
     // `sse_visible: false` on a message must hide it from the chat (most relevant on `finish`,
@@ -1503,12 +1458,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
         this.drillPaths.forEach((path, rootKey) => {
             const nestedEntries = this.messageContexts
-                .filter(
-                    (context) =>
-                        this.pathsEqual(context.path, path) &&
-                        this.isRenderableNestedMessage(context) &&
-                        this.isCodeAgentVisible(context)
-                )
+                .filter((context) => this.pathsEqual(context.path, path) && this.isRenderableNestedMessage(context))
                 .map((context) => this.buildMessageEntry(this.messages[context.index], context));
             this.drilldownEntriesByRoot.set(rootKey, nestedEntries);
 
@@ -1613,10 +1563,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     private getMessageKey(message: GraphMessage): string {
         const type = message.message_data?.message_type;
-        // Stable key for code_agent_stream: one component per node name
-        if (type === MessageType.CODE_AGENT_STREAM) {
-            return `ca_stream_${message.name}`;
-        }
         // Stable key for task_node_stream / agent_node_stream: one component per node name+type
         if (type === MessageType.TASK_NODE_STREAM || type === MessageType.AGENT_NODE_STREAM) {
             return `node_stream_${type}_${message.name}`;
