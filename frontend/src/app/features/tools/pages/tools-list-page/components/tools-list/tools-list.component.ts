@@ -21,10 +21,11 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
-import { buildPreviewImportResult, ImportFileData } from '@shared/utils';
-import { map, tap } from 'rxjs/operators';
+import { buildPreviewImportResult, extractHttpErrorMessage, ImportFileData } from '@shared/utils';
+import { EMPTY, from, Observable, of } from 'rxjs';
+import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
-import { hasReviewableCode, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
+import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
 import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
 import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
@@ -325,61 +326,66 @@ export class ToolsListComponent implements OnInit {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
-            file.text().then((text: string) => {
-                let fileData: ImportFileData = {};
-                try {
-                    fileData = JSON.parse(text) as ImportFileData;
-                } catch {}
-
-                this.port
-                    .inspectFile(file)
-                    .pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe({
-                        next: (inspection) => {
-                            if (!hasReviewableCode(inspection.review_items)) {
-                                this.port
-                                    .importFile(file)
-                                    .pipe(takeUntilDestroyed(this.destroyRef))
-                                    .subscribe({
-                                        next: () => this._finishToolImport(),
-                                        error: (err: HttpErrorResponse) => {
-                                            this.toastService.error(
-                                                err.error?.message || `Failed to import ${this.port.entityLabelPlural}.`
-                                            );
-                                        },
-                                    });
-                                return;
-                            }
-
-                            const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(
-                                ImportReviewDialogComponent,
-                                {
-                                    width: '1400px',
-                                    height: '988px',
-                                    maxWidth: '95vw',
-                                    maxHeight: '95vh',
-                                    data: {
-                                        importResult: buildPreviewImportResult(fileData),
-                                        reviewItems: inspection.review_items,
-                                        importFn: () => this.port.importFile(file),
-                                    },
-                                }
-                            );
-
-                            dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((closeResult) => {
-                                if (!closeResult || closeResult.action !== 'imported') return;
-                                this._finishToolImport();
-                            });
-                        },
-                        error: (err: HttpErrorResponse) => {
-                            this.toastService.error(
-                                err.error?.message || `Failed to read the ${this.port.entityLabel} file.`
-                            );
-                        },
-                    });
-            });
+            from(file.text())
+                .pipe(
+                    map((text) => this._parseFileData(text)),
+                    switchMap((fileData) => this._importToolFile(file, fileData)),
+                    catchError((err: HttpErrorResponse) => {
+                        this.toastService.error(
+                            extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
+                        );
+                        return EMPTY;
+                    }),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe(() => this._finishToolImport());
         };
         input.click();
+    }
+
+    private _parseFileData(text: string): ImportFileData {
+        try {
+            return JSON.parse(text) as ImportFileData;
+        } catch {
+            return {};
+        }
+    }
+
+    private _importToolFile(file: File, fileData: ImportFileData): Observable<unknown> {
+        return this.port.inspectFile(file).pipe(
+            switchMap((inspection) => {
+                if (!hasReviewableItems(inspection.review_items)) {
+                    return this.port.importFile(file).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            this.toastService.error(
+                                extractHttpErrorMessage(err, `Failed to import ${this.port.entityLabelPlural}.`)
+                            );
+                            return EMPTY;
+                        })
+                    );
+                }
+
+                const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
+                    width: 'calc(100vw - 2rem)',
+                    height: 'calc(100vh - 2rem)',
+                    data: {
+                        importResult: buildPreviewImportResult(fileData),
+                        reviewItems: inspection.review_items,
+                        importFn: () => this.port.importFile(file),
+                    },
+                });
+
+                return dialogRef.closed.pipe(
+                    switchMap((closeResult) => (closeResult?.action === 'imported' ? of(closeResult.result) : EMPTY))
+                );
+            }),
+            catchError((err: HttpErrorResponse) => {
+                this.toastService.error(
+                    extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
+                );
+                return EMPTY;
+            })
+        );
     }
 
     private _finishToolImport(): void {

@@ -79,48 +79,6 @@
         text-transform: none;
     }
 
-    &__path-box {
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 12px 8px 12px 12px;
-        border-radius: 4px;
-        border: 1px solid var(--transparent-white-16);
-        background: var(--color-flow-card-bg);
-    }
-
-    &__path-value {
-        color: var(--color-text-primary);
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 18px;
-        letter-spacing: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    &__copy-btn {
-        display: inline-flex;
-        align-items: center;
-        flex-shrink: 0;
-        height: 28px;
-        gap: 8px;
-        padding: 0 16px 0 12px;
-        border: 1px solid var(--transparent-white-16);
-        border-radius: 4px;
-        background: transparent;
-        color: var(--color-text-primary);
-        font-size: 13px;
-        cursor: pointer;
-
-        &:hover {
-            background: var(--transparent-white-8);
-        }
-    }
-
     &__chips {
         display: flex;
         flex-wrap: wrap;

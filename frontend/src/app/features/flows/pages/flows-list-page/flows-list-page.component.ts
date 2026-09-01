@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -44,14 +45,20 @@ import {
     TranscriptionModelsStorageService,
 } from '@shared/services';
 import { LABELS_STORE } from '@shared/services';
-import { buildPreviewImportResult, enrichImportResult, ImportFileData, JsonObject } from '@shared/utils';
-import { forkJoin, Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged, take } from 'rxjs/operators';
+import {
+    buildPreviewImportResult,
+    enrichImportResult,
+    extractHttpErrorMessage,
+    ImportFileData,
+    JsonObject,
+} from '@shared/utils';
+import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap, take } from 'rxjs/operators';
 
-import { ImportResult } from '../../../../core/models/import-result.model';
+import { ImportFlowRequestOptions, ImportResult } from '../../../../core/models/import-result.model';
 import {
     FlowNodesByFile,
-    hasReviewableCode,
+    hasReviewableItems,
     ImportReviewDialogCloseResult,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
@@ -441,57 +448,82 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
-            file.text().then((text: string) => {
-                let fileData: ImportFileData = {};
-                try {
-                    fileData = JSON.parse(text) as ImportFileData;
-                } catch {}
-
-                this.importExportService.inspectFlow(file).subscribe({
-                    next: (inspection) => {
-                        if (!hasReviewableCode(inspection.review_items)) {
-                            this.importExportService.importFlow(file, settings).subscribe({
-                                next: (result) => this._finishFlowImport(result, fileData),
-                                error: (error) => {
-                                    const message =
-                                        error?.error?.detail ||
-                                        error?.error?.message ||
-                                        'Failed to import flow. Please check the file and try again.';
-                                    this.toastService.error(message);
-                                },
-                            });
-                            return;
-                        }
-
-                        const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                            width: '1400px',
-                            height: '988px',
-                            maxWidth: '95vw',
-                            maxHeight: '95vh',
-                            data: {
-                                importResult: buildPreviewImportResult(fileData),
-                                reviewItems: inspection.review_items,
-                                allFlowNodes: this._extractFlowNodesFromFile(fileData),
-                                importFn: () => this.importExportService.importFlow(file, settings),
-                            },
-                        });
-
-                        reviewRef.closed.subscribe((closeResult) => {
-                            if (!closeResult || closeResult.action !== 'imported') return;
-                            this._finishFlowImport(closeResult.result as ImportResult, fileData);
-                        });
-                    },
-                    error: (error) => {
-                        const message =
-                            error?.error?.detail ||
-                            error?.error?.message ||
-                            'Failed to read the flow file. Please check the file and try again.';
-                        this.toastService.error(message);
-                    },
-                });
-            });
+            from(file.text())
+                .pipe(
+                    map((text) => this._parseFileData(text)),
+                    switchMap((fileData) => this._importFlowFile(file, fileData, settings)),
+                    catchError((error: HttpErrorResponse) => {
+                        this.toastService.error(
+                            extractHttpErrorMessage(
+                                error,
+                                'Failed to read the flow file. Please check the file and try again.'
+                            )
+                        );
+                        return EMPTY;
+                    }),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe(({ result, fileData }) => this._finishFlowImport(result, fileData));
         };
         input.click();
+    }
+
+    private _parseFileData(text: string): ImportFileData {
+        try {
+            return JSON.parse(text) as ImportFileData;
+        } catch {
+            return {};
+        }
+    }
+
+    private _importFlowFile(
+        file: File,
+        fileData: ImportFileData,
+        settings: ImportFlowRequestOptions
+    ): Observable<{ result: ImportResult; fileData: ImportFileData }> {
+        return this.importExportService.inspectFlow(file).pipe(
+            switchMap((inspection) => {
+                if (!hasReviewableItems(inspection.review_items)) {
+                    return this.importExportService.importFlow(file, settings).pipe(
+                        map((result) => ({ result, fileData })),
+                        catchError((error: HttpErrorResponse) => {
+                            this.toastService.error(
+                                extractHttpErrorMessage(
+                                    error,
+                                    'Failed to import flow. Please check the file and try again.'
+                                )
+                            );
+                            return EMPTY;
+                        })
+                    );
+                }
+
+                const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
+                    width: 'calc(100vw - 2rem)',
+                    height: 'calc(100vh - 2rem)',
+                    data: {
+                        importResult: buildPreviewImportResult(fileData),
+                        reviewItems: inspection.review_items,
+                        allFlowNodes: this._extractFlowNodesFromFile(fileData),
+                        importFn: () => this.importExportService.importFlow(file, settings),
+                    },
+                });
+
+                return reviewRef.closed.pipe(
+                    switchMap((closeResult) =>
+                        closeResult?.action === 'imported'
+                            ? of({ result: closeResult.result as ImportResult, fileData })
+                            : EMPTY
+                    )
+                );
+            }),
+            catchError((error: HttpErrorResponse) => {
+                this.toastService.error(
+                    extractHttpErrorMessage(error, 'Failed to read the flow file. Please check the file and try again.')
+                );
+                return EMPTY;
+            })
+        );
     }
 
     private _finishFlowImport(result: ImportResult, fileData: ImportFileData): void {
@@ -504,8 +536,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
         this.invalidateStorages(result);
         this.labelsStorage.setActiveLabelFilter('all');
-        this.flowStorageService.getFlows(true).subscribe(() => {});
-        this.labelsStorage.loadLabels(true).subscribe(() => {});
+        this.flowStorageService.getFlows(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private invalidateStorages(result: ImportResult): void {

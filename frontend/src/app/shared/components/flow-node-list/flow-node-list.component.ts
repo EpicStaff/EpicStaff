@@ -23,7 +23,6 @@ export interface FlowNodeListItem {
 
 @Component({
     selector: 'app-flow-node-list',
-    standalone: true,
     imports: [NgClass, NgTemplateOutlet, SearchComponent, SelectComponent],
     templateUrl: './flow-node-list.component.html',
     styleUrls: ['./flow-node-list.component.scss'],

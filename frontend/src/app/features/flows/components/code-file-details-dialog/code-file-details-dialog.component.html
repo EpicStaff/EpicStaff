@@ -19,23 +19,7 @@
     <div class="code-file-details-dialog__content">
         <div class="code-file-details-dialog__section">
             <div class="code-file-details-dialog__section-title">Entrypoint</div>
-            <div class="code-file-details-dialog__path-box">
-                <span class="code-file-details-dialog__path-value">{{ entrypointSignature }}</span>
-                <button
-                    class="code-file-details-dialog__copy-btn"
-                    type="button"
-                    aria-label="Copy entrypoint"
-                    matTooltip="Copy entrypoint"
-                    matTooltipPosition="above"
-                    (click)="copyEntrypoint()"
-                >
-                    <app-svg-icon
-                        icon="copy"
-                        size="0.875rem"
-                    ></app-svg-icon>
-                    {{ copied() ? 'Copied' : 'Copy' }}
-                </button>
-            </div>
+            <app-copy-field [value]="entrypointSignature" />
         </div>
 
         <div class="code-file-details-dialog__section">

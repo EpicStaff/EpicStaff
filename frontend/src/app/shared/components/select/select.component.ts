@@ -134,13 +134,16 @@ export class SelectComponent implements ControlValueAccessor {
             this.overlayRef = undefined!;
         }
 
+        const panelWidth = Math.max(originElement.offsetWidth || 0, minWidth);
+
         this.overlayRef = this.overlay.create({
             positionStrategy,
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             hasBackdrop: true,
             backdropClass: 'transparent-backdrop',
             panelClass: this.panelClass() || undefined,
-            minWidth: Math.max(originElement.offsetWidth || 0, minWidth),
+            minWidth: panelWidth,
+            width: panelWidth,
         });
 
         this.overlayRef

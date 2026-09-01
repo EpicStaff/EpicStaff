@@ -48,8 +48,8 @@ export interface InspectResult {
     review_items: ReviewItem[];
 }
 
-export function hasReviewableCode(reviewItems: ReviewItem[]): boolean {
-    return reviewItems.some((item) => item.kind !== 'mcp_tool');
+export function hasReviewableItems(reviewItems: ReviewItem[]): boolean {
+    return reviewItems.length > 0;
 }
 
 export interface ImportReviewDialogData {
@@ -68,6 +68,7 @@ const BACKEND_NODE_TYPE_MAP: Record<string, NodeType> = {
     TelegramTriggerNode: NodeType.TELEGRAM_TRIGGER,
     AgentNode: NodeType.AGENT,
     TaskNode: NodeType.TASK,
+    CrewNode: NodeType.PROJECT,
     SubgraphNode: NodeType.SUBGRAPH,
     StartNode: NodeType.START,
     EndNode: NodeType.END,
