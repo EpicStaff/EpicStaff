@@ -1,4 +1,4 @@
-"""EST-3622 regression suite, extended for EST-3862/EST-3826 (C3) org scoping.
+"""Regression suite, extended for org scoping (C3).
 
 Three related classes of the same underlying bug:
 
@@ -257,7 +257,7 @@ class TestGetTriggerFilters:
 
 @pytest.mark.django_db
 class TestHandleWebhookTriggerConfigIsolation:
-    """Reproduces the EST-3622 cross-config scenario: two ngrok configs each
+    """Reproduces the cross-config scenario: two ngrok configs each
     have their own domain and their own trigger/path. Hitting one domain's
     tunnel (registered for its own path) with the OTHER trigger's path in
     the URL must start nothing."""
@@ -429,7 +429,7 @@ class TestHandleTelegramTriggerConfigIsolation:
 
 @pytest.mark.django_db
 class TestAuthPrincipalDispatchRestriction:
-    """EST-3862/EST-3826: a principal-bearing event restricts fan-out to only
+    """A principal-bearing event restricts fan-out to only
     the node it names; a `None`-principal event preserves today's
     unrestricted fan-out to every attached node on the path.
 
@@ -534,7 +534,7 @@ class TestAuthPrincipalDispatchRestriction:
 
 @pytest.mark.django_db
 class TestUnauthenticatedFallbackSentinelDispatch:
-    """Post-implementation dual-attach fix (EST-1869): a mixed-attach path --
+    """Post-implementation dual-attach fix: a mixed-attach path --
     one node with mandatory/enabled auth, one node with none -- must not
     401-brick the auth-free node. `RedisPubSub.webhook_events_handler`
     recognizes `UNAUTHENTICATED_FALLBACK_PRINCIPAL` and calls both services
@@ -651,7 +651,7 @@ class TestUnauthenticatedFallbackSentinelDispatch:
 
 @pytest.mark.django_db
 class TestCrossOrgPathCollisionIsolation:
-    """C3 (EST-3862/EST-3826 architect follow-up): two different orgs each
+    """C3 (architect follow-up): two different orgs each
     legally register a `WebhookTrigger` with the IDENTICAL `path` string
     (`unique_together` is `(org, path, provider_type)`, not globally unique
     on `path`). An inbound event that resolved to one org's tunnel config
