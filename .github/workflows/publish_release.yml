@@ -49,6 +49,7 @@ jobs:
     with:
       ref: ${{ needs.resolve.outputs.tag }}
       tag: ${{ needs.resolve.outputs.tag }}
+      is_release: true
     permissions:
       contents: read
       packages: write

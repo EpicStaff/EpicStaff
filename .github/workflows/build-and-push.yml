@@ -21,6 +21,11 @@ on:
         description: 'Image tag to push (e.g. latest, branch-slug, vX.Y.Z)'
         required: true
         type: string
+      is_release:
+        description: 'Whether this build is an actual release (gates signing/SBOM steps)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -180,12 +185,15 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Install cosign
+        if: ${{ inputs.is_release }}
         uses: sigstore/cosign-installer@v3
 
       - name: Install syft
+        if: ${{ inputs.is_release }}
         uses: anchore/sbom-action/download-syft@v0
 
       - name: Sign image (keyless)
+        if: ${{ inputs.is_release }}
         shell: bash
         env:
           IMAGE_REF: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
@@ -194,6 +202,7 @@ jobs:
           cosign sign --yes "$IMAGE_REF"
 
       - name: Generate SBOM (SPDX)
+        if: ${{ inputs.is_release }}
         shell: bash
         env:
           IMAGE_REF: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
@@ -202,6 +211,7 @@ jobs:
           syft "$IMAGE_REF" -o spdx-json="${{ matrix.service }}.spdx.json"
 
       - name: Attest SBOM (keyless)
+        if: ${{ inputs.is_release }}
         shell: bash
         env:
           IMAGE_REF: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
