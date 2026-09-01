@@ -24,6 +24,8 @@ class RouteTool:
 def main(file_path: str, append_text: str):
     try:
         full_path = RouteTool().construct_savepath(frompath=file_path)
+        if not RouteTool.is_path_has_permission(full_path):
+            return f"Error: path {file_path} is outside the allowed directory."
         with open(full_path, "a", encoding="utf-8") as file:
             file.write(append_text + "\n")
         return f"Text appended successfully to the file {file_path}."
