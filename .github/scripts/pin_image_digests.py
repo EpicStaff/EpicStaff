@@ -70,6 +70,21 @@ def main() -> int:
         svc["image"] = f"{match.group(1)}@{digest}"
         pinned += 1
 
+    unpinned = [
+        name
+        for name, svc in services.items()
+        if isinstance(svc, dict)
+        and isinstance(svc.get("image"), str)
+        and "${IMAGE_TAG" in svc["image"]
+    ]
+    if unpinned:
+        print(
+            "error: the following services still reference ${IMAGE_TAG} after "
+            f"pinning (missing digest-map.json entry?): {', '.join(sorted(unpinned))}",
+            file=sys.stderr,
+        )
+        return 1
+
     with open(dst, "w", encoding="utf-8") as f:
         yaml.dump(data, f)
 
