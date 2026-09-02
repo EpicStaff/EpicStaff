@@ -794,3 +794,25 @@ $group-gutter-width: 28px;
 :host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-row-drag:active {
     cursor: grabbing;
 }
+
+:host ::ng-deep .ag-header-cell-moving,
+:host ::ng-deep .ag-header-group-cell.ag-header-cell-moving,
+:host ::ng-deep .ag-cell.col-drag-lifted {
+    z-index: 5;
+}
+
+:host ::ng-deep .col-drag-edge-left {
+    border-left: 1px solid #2b2d30; // Figma "Line" — no exact CSS var (design-tokens.md gap;
+    // closest is --color-ks-line #2c2c2e). Developer specified this hex explicitly.
+    box-shadow: -4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}
+:host ::ng-deep .col-drag-edge-right {
+    border-right: 1px solid #2b2d30;
+    box-shadow: 4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}
+
+:host ::ng-deep .col-drag-edge-left.col-drag-edge-right {
+    box-shadow:
+        -4px 0px 4px 0px rgba(0, 0, 0, 0.25),
+        4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}

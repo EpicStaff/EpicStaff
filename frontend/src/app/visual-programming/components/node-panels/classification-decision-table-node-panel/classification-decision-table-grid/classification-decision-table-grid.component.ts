@@ -89,6 +89,7 @@ import { PromptIdCellEditorComponent } from './prompt-id-cell-editor/prompt-id-c
 import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt-tooltip-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
+import { NoDragGhostComponent } from './shared/no-drag-ghost.component';
 import { OverlayMenuController } from './shared/overlay-menu.util';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -144,6 +145,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     // Manipulation field columns (manip_* and manipulation)
     private manipColumnOrder = signal<string[]>([CDT_COLUMN_KIND.MANIPULATION]);
+
+    private exprParamsAfter = signal<string>(CDT_COLUMN_KIND.EXPRESSION);
+    private manipParamsAfter = signal<string>(CDT_COLUMN_KIND.MANIPULATION);
+    private preDragExprAnchor: string | null = null;
+    private preDragManipAnchor: string | null = null;
 
     // Frozen column IDs (pinned left)
     public frozenColIds = signal<Set<string>>(new Set());
@@ -644,6 +650,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 freezeAnchor: this.freezeAnchorColId(),
                 collapsedGroups: [...this.collapsedGroups()],
                 enableFilterMode: this.enableFilterMode(),
+                exprParamsAfter: this.exprParamsAfter(),
+                manipParamsAfter: this.manipParamsAfter(),
             };
             try {
                 localStorage.setItem(this.storageKey, JSON.stringify(state));
@@ -681,6 +689,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             ) {
                 this.enableFilterMode.set(state.enableFilterMode);
             }
+
+            if (typeof state.exprParamsAfter === 'string') {
+                this.exprParamsAfter.set(this.clampParamsAnchor(state.exprParamsAfter));
+            }
+            if (typeof state.manipParamsAfter === 'string') {
+                this.manipParamsAfter.set(this.clampParamsAnchor(state.manipParamsAfter));
+            }
             if (typeof state.freezeAnchor === 'string') {
                 this.freezeAnchorColId.set(state.freezeAnchor);
             } else if (Array.isArray(state.pinned) && state.pinned.length > 0) {
@@ -710,6 +725,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         rowDragManaged: false,
         animateRows: true,
         suppressColumnMoveAnimation: true,
+        dragAndDropImageComponent: NoDragGhostComponent,
+        suppressDragLeaveHidesColumns: true,
         rowSelection: {
             mode: 'multiRow',
             checkboxes: false,
@@ -750,6 +767,48 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 (id) => id?.startsWith(CDT_MANIP_PREFIX) || id === CDT_COLUMN_KIND.MANIPULATION
             );
             this.manipColumnOrder.set(manipResult);
+
+            const fixedIds = ClassificationDecisionTableGridComponent.PARAMS_GROUP_FIXED_ORDER;
+            const deriveAnchor = (prefix: string): { hasGroup: boolean; anchor: string | null } => {
+                let lastFixedSeen: string | null = null;
+                for (const id of allVisible) {
+                    if (id == null) continue;
+                    if (fixedIds.includes(id)) {
+                        lastFixedSeen = id;
+                    } else if (id.startsWith(prefix)) {
+                        return { hasGroup: true, anchor: lastFixedSeen };
+                    }
+                }
+                return { hasGroup: false, anchor: null };
+            };
+            const allowedAnchors = ClassificationDecisionTableGridComponent.PARAMS_GROUP_ALLOWED_ANCHORS;
+            const resolveAnchor = (
+                result: { hasGroup: boolean; anchor: string | null },
+                setAnchor: (value: string) => void,
+                preDragAnchor: string | null,
+                fallback: string
+            ): void => {
+                if (!result.hasGroup) return; // no columns of this group are currently visible
+                if (result.anchor !== null && allowedAnchors.has(result.anchor)) {
+                    setAnchor(result.anchor);
+                } else {
+                    setAnchor(preDragAnchor ?? fallback);
+                }
+            };
+
+            resolveAnchor(
+                deriveAnchor(CDT_FIELD_PREFIX),
+                (v) => this.exprParamsAfter.set(v),
+                this.preDragExprAnchor,
+                CDT_COLUMN_KIND.EXPRESSION
+            );
+            resolveAnchor(
+                deriveAnchor(CDT_MANIP_PREFIX),
+                (v) => this.manipParamsAfter.set(v),
+                this.preDragManipAnchor,
+                CDT_COLUMN_KIND.MANIPULATION
+            );
+
             this.saveGridState();
             setTimeout(() => this.updateAddButtonPositions(), 0);
         },
@@ -761,6 +820,15 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         },
         onColumnVisible: () => {
             setTimeout(() => this.updateAddButtonPositions(), 0);
+        },
+
+        onDragStarted: () => {
+            this.preDragExprAnchor = this.exprParamsAfter();
+            this.preDragManipAnchor = this.manipParamsAfter();
+            setTimeout(() => this.markMovingColumnBodyCells(), 0);
+        },
+        onDragStopped: () => {
+            this.clearMovingColumnBodyCells();
         },
         onCellMouseOver: (event) => {
             const data = event.data as { section?: string | null } | undefined;
@@ -972,6 +1040,43 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.cdr.markForCheck();
     }
 
+    private static readonly PARAMS_GROUP_FIXED_ORDER: readonly string[] = [
+        'selection',
+        'dock_visible',
+        'group_name',
+        CDT_COLUMN_KIND.EXPRESSION,
+        'prompt_id',
+        CDT_COLUMN_KIND.MANIPULATION,
+        'route_code',
+        'continue_flag',
+        'actions',
+    ];
+
+    private static readonly PARAMS_GROUP_ALLOWED_ANCHORS: ReadonlySet<string> = new Set([
+        'dock_visible',
+        'group_name',
+        CDT_COLUMN_KIND.EXPRESSION,
+        'prompt_id',
+        CDT_COLUMN_KIND.MANIPULATION,
+        'route_code',
+        'continue_flag',
+    ]);
+
+    private clampParamsAnchor(anchor: string): string {
+        const order = ClassificationDecisionTableGridComponent.PARAMS_GROUP_FIXED_ORDER;
+        const allowed = ClassificationDecisionTableGridComponent.PARAMS_GROUP_ALLOWED_ANCHORS;
+        if (allowed.has(anchor)) return anchor;
+        const idx = order.indexOf(anchor);
+        if (idx === -1) return CDT_COLUMN_KIND.EXPRESSION;
+        for (let i = idx; i >= 0; i--) {
+            if (allowed.has(order[i])) return order[i];
+        }
+        for (let i = idx; i < order.length; i++) {
+            if (allowed.has(order[i])) return order[i];
+        }
+        return CDT_COLUMN_KIND.EXPRESSION;
+    }
+
     // Compute the full ordered list of all colIds (excluding structural ones like 'actions')
     private getFullColOrder(): string[] {
         const order: string[] = [];
@@ -1124,6 +1229,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 variant: 'delete',
                 showFreeze: false,
                 showChevron: false,
+                showDragGrip: true,
                 onIconClick: () => this.removeFieldColumn(fieldName),
             },
             editable: (params: EditableCallbackParams<ConditionGroup>) =>
@@ -1165,6 +1271,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 variant: 'delete',
                 showFreeze: false,
                 showChevron: false,
+                showDragGrip: true,
                 onIconClick: () => this.removeManipFieldColumn(fieldName),
             },
             editable: (params: EditableCallbackParams<ConditionGroup>) =>
@@ -1306,37 +1413,33 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
         };
 
-        const staticBefore: ColDef[] = [
-            selectionCol,
-            enabledCol,
-            {
-                colId: 'group_name',
-                headerComponent: ColumnHeaderMenuComponent,
-                headerComponentParams: this.makeMenuHeaderParams('group_name', 'Condition Name'),
-                field: 'group_name',
-                editable: true,
-                flex: 1,
-                suppressMovable: true,
-                cellStyle: {
-                    fontSize: '14px',
-                },
-                cellEditorParams: {
-                    maxLength: 1000000,
-                    cellEditorValidator: (value: string) => {
-                        if (!value || value.trim() === '') {
-                            return {
-                                valid: false,
-                                message: 'Condition Name cannot be empty (cell will not be saved).',
-                            };
-                        }
-                        return { valid: true };
-                    },
-                },
-                cellClassRules: {
-                    'cell-required-invalid': (p) => String(p.value ?? '').trim().length === 0,
+        const groupNameCol: ColDef = {
+            colId: 'group_name',
+            headerComponent: ColumnHeaderMenuComponent,
+            headerComponentParams: this.makeMenuHeaderParams('group_name', 'Condition Name'),
+            field: 'group_name',
+            editable: true,
+            flex: 1,
+            suppressMovable: true,
+            cellStyle: {
+                fontSize: '14px',
+            },
+            cellEditorParams: {
+                maxLength: 1000000,
+                cellEditorValidator: (value: string) => {
+                    if (!value || value.trim() === '') {
+                        return {
+                            valid: false,
+                            message: 'Condition Name cannot be empty (cell will not be saved).',
+                        };
+                    }
+                    return { valid: true };
                 },
             },
-        ];
+            cellClassRules: {
+                'cell-required-invalid': (p) => String(p.value ?? '').trim().length === 0,
+            },
+        };
 
         // Expression section
         const visibleFieldCols: ColDef[] = this.movableColumnOrder()
@@ -1346,44 +1449,46 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const hasFieldCols = visibleFieldCols.length > 0;
         const expressionCol = this.buildExpressionColDef();
 
-        let exprSection: (ColDef | ColGroupDef)[];
+        const exprGroupIsPinned =
+            hasFieldCols && this.freezeAnchorColId() === visibleFieldCols[visibleFieldCols.length - 1].colId;
+        const exprGroupChildren: ColDef[] = exprGroupIsPinned
+            ? visibleFieldCols.map((c) => ({ ...c, suppressMovable: true }))
+            : visibleFieldCols;
+
+        let exprGroupDef: ColGroupDef | null = null;
         if (hasFieldCols) {
-            exprSection = [
-                expressionCol,
-                {
-                    groupId: 'expr-params-group',
-                    marryChildren: false,
-                    headerGroupComponent: ParamsGroupHeaderComponent,
-                    headerGroupComponentParams: {
-                        mode: 'full',
-                        onAdd: (event: MouseEvent) => this.toggleFieldPicker(event),
-                        onFreeze: () => {
-                            const ids = visibleFieldCols.map((c) => c.colId!);
-                            if (ids.length === 0) return;
-                            const lastChild = ids[ids.length - 1];
-                            if (this.freezeAnchorColId() === lastChild) {
-                                this.toggleFreeze(lastChild);
-                            } else {
-                                this.freezeThroughLastChild(ids);
-                            }
-                        },
-                        onHide: () =>
-                            this.hideColumnGroup(
-                                'expr-params-group',
-                                'Params',
-                                visibleFieldCols.map((c) => c.colId!)
-                            ),
-                        isPinned: () => {
-                            const ids = visibleFieldCols.map((c) => c.colId!);
-                            if (ids.length === 0) return false;
-                            return this.freezeAnchorColId() === ids[ids.length - 1];
-                        },
+            exprGroupDef = {
+                groupId: 'expr-params-group',
+                marryChildren: true,
+                headerGroupComponent: ParamsGroupHeaderComponent,
+                headerGroupComponentParams: {
+                    mode: 'full',
+                    ownerLabel: 'Expression',
+                    onAdd: (event: MouseEvent) => this.toggleFieldPicker(event),
+                    onFreeze: () => {
+                        const ids = visibleFieldCols.map((c) => c.colId!);
+                        if (ids.length === 0) return;
+                        const lastChild = ids[ids.length - 1];
+                        if (this.freezeAnchorColId() === lastChild) {
+                            this.toggleFreeze(lastChild);
+                        } else {
+                            this.freezeThroughLastChild(ids);
+                        }
                     },
-                    children: visibleFieldCols,
-                } as ColGroupDef,
-            ];
-        } else {
-            exprSection = [expressionCol];
+                    onHide: () =>
+                        this.hideColumnGroup(
+                            'expr-params-group',
+                            'Params',
+                            visibleFieldCols.map((c) => c.colId!)
+                        ),
+                    isPinned: () => {
+                        const ids = visibleFieldCols.map((c) => c.colId!);
+                        if (ids.length === 0) return false;
+                        return this.freezeAnchorColId() === ids[ids.length - 1];
+                    },
+                },
+                children: exprGroupChildren,
+            } as ColGroupDef;
         }
 
         const promptIdCol: ColDef = {
@@ -1436,44 +1541,47 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const hasManipCols = visibleManipCols.length > 0;
         const manipCol = this.buildManipulationColDef();
 
-        let manipSection: (ColDef | ColGroupDef)[];
+        // Freeze guard — see the equivalent comment above the expr group.
+        const manipGroupIsPinned =
+            hasManipCols && this.freezeAnchorColId() === visibleManipCols[visibleManipCols.length - 1].colId;
+        const manipGroupChildren: ColDef[] = manipGroupIsPinned
+            ? visibleManipCols.map((c) => ({ ...c, suppressMovable: true }))
+            : visibleManipCols;
+
+        let manipGroupDef: ColGroupDef | null = null;
         if (hasManipCols) {
-            manipSection = [
-                manipCol,
-                {
-                    groupId: 'manip-params-group',
-                    marryChildren: false,
-                    headerGroupComponent: ParamsGroupHeaderComponent,
-                    headerGroupComponentParams: {
-                        mode: 'full',
-                        onAdd: (event: MouseEvent) => this.toggleManipFieldPicker(event),
-                        onFreeze: () => {
-                            const ids = visibleManipCols.map((c) => c.colId!);
-                            if (ids.length === 0) return;
-                            const lastChild = ids[ids.length - 1];
-                            if (this.freezeAnchorColId() === lastChild) {
-                                this.toggleFreeze(lastChild);
-                            } else {
-                                this.freezeThroughLastChild(ids);
-                            }
-                        },
-                        onHide: () =>
-                            this.hideColumnGroup(
-                                'manip-params-group',
-                                'Params',
-                                visibleManipCols.map((c) => c.colId!)
-                            ),
-                        isPinned: () => {
-                            const ids = visibleManipCols.map((c) => c.colId!);
-                            if (ids.length === 0) return false;
-                            return this.freezeAnchorColId() === ids[ids.length - 1];
-                        },
+            manipGroupDef = {
+                groupId: 'manip-params-group',
+                marryChildren: true,
+                headerGroupComponent: ParamsGroupHeaderComponent,
+                headerGroupComponentParams: {
+                    mode: 'full',
+                    ownerLabel: 'Manipulation',
+                    onAdd: (event: MouseEvent) => this.toggleManipFieldPicker(event),
+                    onFreeze: () => {
+                        const ids = visibleManipCols.map((c) => c.colId!);
+                        if (ids.length === 0) return;
+                        const lastChild = ids[ids.length - 1];
+                        if (this.freezeAnchorColId() === lastChild) {
+                            this.toggleFreeze(lastChild);
+                        } else {
+                            this.freezeThroughLastChild(ids);
+                        }
                     },
-                    children: visibleManipCols,
-                } as ColGroupDef,
-            ];
-        } else {
-            manipSection = [manipCol];
+                    onHide: () =>
+                        this.hideColumnGroup(
+                            'manip-params-group',
+                            'Params',
+                            visibleManipCols.map((c) => c.colId!)
+                        ),
+                    isPinned: () => {
+                        const ids = visibleManipCols.map((c) => c.colId!);
+                        if (ids.length === 0) return false;
+                        return this.freezeAnchorColId() === ids[ids.length - 1];
+                    },
+                },
+                children: manipGroupChildren,
+            } as ColGroupDef;
         }
 
         const routeCodeCol: ColDef = {
@@ -1490,6 +1598,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         };
 
         const skipCol: ColDef = {
+            colId: 'continue_flag',
             headerName: 'Continue',
             field: 'continue_flag',
             editable: true,
@@ -1530,7 +1639,29 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
         };
 
-        return [...staticBefore, ...exprSection, promptIdCol, ...manipSection, routeCodeCol, skipCol, deleteCol];
+        const fixedCols: ColDef[] = [
+            selectionCol,
+            enabledCol,
+            groupNameCol,
+            expressionCol,
+            promptIdCol,
+            manipCol,
+            routeCodeCol,
+            skipCol,
+            deleteCol,
+        ];
+
+        const exprAnchor = this.clampParamsAnchor(this.exprParamsAfter());
+        const manipAnchor = this.clampParamsAnchor(this.manipParamsAfter());
+
+        const result: (ColDef | ColGroupDef)[] = [];
+        for (const col of fixedCols) {
+            result.push(col);
+            const id = (col.colId || col.field) as string;
+            if (exprGroupDef && id === exprAnchor) result.push(exprGroupDef);
+            if (manipGroupDef && id === manipAnchor) result.push(manipGroupDef);
+        }
+        return result;
     }
 
     private applyWidths(defs: (ColDef | ColGroupDef)[], widthMap: Map<string, number>): (ColDef | ColGroupDef)[] {
@@ -1700,6 +1831,51 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
         // Also update badge positions whenever buttons are updated
         this.updateBadgePositions();
+    }
+
+    private markMovingColumnBodyCells(): void {
+        const leafHeaderCells = Array.from(
+            this.elRef.nativeElement.querySelectorAll('.ag-header-cell.ag-header-cell-moving[col-id]')
+        ) as HTMLElement[];
+        if (leafHeaderCells.length === 0) return;
+
+        const sorted = [...leafHeaderCells].sort(
+            (a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left
+        );
+        const leftmostColId = sorted[0].getAttribute('col-id');
+        const rightmostColId = sorted[sorted.length - 1].getAttribute('col-id');
+
+        const colIds = new Set(
+            leafHeaderCells.map((el) => el.getAttribute('col-id')).filter((id): id is string => !!id)
+        );
+        colIds.forEach((colId) => {
+            const isLeft = colId === leftmostColId;
+            const isRight = colId === rightmostColId;
+            this.elRef.nativeElement
+                .querySelectorAll(`.ag-header-cell[col-id="${colId}"]`)
+                .forEach((el: Element) => this.applyDragEdgeClasses(el, isLeft, isRight));
+            this.elRef.nativeElement.querySelectorAll(`.ag-cell[col-id="${colId}"]`).forEach((el: Element) => {
+                el.classList.add('col-drag-lifted');
+                this.applyDragEdgeClasses(el, isLeft, isRight);
+            });
+        });
+
+        this.elRef.nativeElement
+            .querySelectorAll('.ag-header-group-cell.ag-header-cell-moving')
+            .forEach((el: Element) => this.applyDragEdgeClasses(el, true, true));
+    }
+
+    private applyDragEdgeClasses(el: Element, isLeft: boolean, isRight: boolean): void {
+        el.classList.toggle('col-drag-edge-left', isLeft);
+        el.classList.toggle('col-drag-edge-right', isRight);
+    }
+
+    private clearMovingColumnBodyCells(): void {
+        this.elRef.nativeElement
+            .querySelectorAll('.col-drag-lifted, .col-drag-edge-left, .col-drag-edge-right')
+            .forEach((cellEl: Element) => {
+                cellEl.classList.remove('col-drag-lifted', 'col-drag-edge-left', 'col-drag-edge-right');
+            });
     }
 
     toggleFieldPicker(event?: MouseEvent): void {
