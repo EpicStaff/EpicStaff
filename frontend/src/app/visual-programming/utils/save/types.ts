@@ -3,7 +3,6 @@ import {
     AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
-    CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
     FileExtractorNodeModel,
@@ -41,7 +40,6 @@ export interface NodeDiffByType {
     scheduleNodes: NodeDiff<ScheduleTriggerNodeModel>;
     decisionTableNodes: NodeDiff<DecisionTableNodeModel>;
     noteNodes: NodeDiff<GraphNoteModel>;
-    codeAgentNodes: NodeDiff<CodeAgentNodeModel>;
     classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
 }
 

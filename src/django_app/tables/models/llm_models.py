@@ -116,18 +116,6 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     def get_default_model(self):
         return DefaultLLMConfig.load()
 
-    def delete(self, *args, **kwargs):
-        from tables.models import set_field_value_null_in_tool_configs
-        from tables.models import ToolConfigField
-
-        llm_config_id = self.pk
-        result = super().delete(*args, **kwargs)
-
-        set_field_value_null_in_tool_configs(
-            field_type=ToolConfigField.FieldType.LLM_CONFIG, value=llm_config_id
-        )
-        return result
-
 
 class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""

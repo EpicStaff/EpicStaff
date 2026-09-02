@@ -2,8 +2,14 @@ from datetime import datetime, timezone
 from collections import defaultdict
 import uuid
 import base64
-from tables.services.secrets import SecretResolver
 from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
+from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.models.graph_models import TelegramTriggerNode
+from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.serializers.model_serializers import TelegramTriggerNodeDataFieldsSerializer
+
+
+from tables.services.secrets import SecretResolver
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -730,10 +736,6 @@ class RunPythonCodeAPIView(APIView):
 
 
 class InitRealtimeAPIView(APIView):
-    # Without this, the default IsAuthenticated permission rejects a SYSTEM
-    # ApiKey caller (owner is AnonymousUser) before request ever reaches the
-    # key_type==SYSTEM bypass branch below (EST-3633's Twilio MediaStream bridge).
-    permission_classes = [IsAuthenticatedOrApiKey]
     _org_context = OrgContextService()
 
     @extend_schema(**INIT_REALTIME_POST)
@@ -1092,7 +1094,9 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+                client.cancel(
+                    strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index"
+                )
         except ClientError:
             pass
         return Response(status=status.HTTP_204_NO_CONTENT)

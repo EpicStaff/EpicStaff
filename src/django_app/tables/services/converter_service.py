@@ -38,7 +38,6 @@ from src.shared.models import (
     TaskData,
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
-    ToolConfigData,
     WebhookNodeAuthData,
     WebhookTriggerNodeData,
     variables_to_args_schema,
@@ -54,11 +53,9 @@ from tables.models import (
     Task,
 )
 from tables.models.crew_models import (
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
     TaskPythonCodeTools,
@@ -108,7 +105,6 @@ from utils.graph_utils import (
 )
 from utils.singleton_meta import SingletonMeta
 from tables.services.rag_assignment_service import SearchConfigService
-
 from tables.models.embedding_models import EmbeddingConfig
 
 
@@ -223,10 +219,6 @@ class ConverterService(metaclass=SingletonMeta):
             .select_related("agent")
             .prefetch_related(
                 Prefetch(
-                    "task_configured_tool_list",
-                    queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
-                ),
-                Prefetch(
                     "task_python_code_tool_list",
                     queryset=TaskPythonCodeTools.objects.select_related(
                         "tool__python_code"
@@ -255,9 +247,9 @@ class ConverterService(metaclass=SingletonMeta):
                 task=task, graph_id=graph_id, session_id=session_id
             )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (crew.process == "sequential" and task.agent is None), (
-                f"Task {task.name} has no agent, but it's required for sequential process."
-            )
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
 
             task_data_list.append(
                 TaskData(
@@ -302,12 +294,6 @@ class ConverterService(metaclass=SingletonMeta):
                     "python_code_tool_configs",
                     queryset=AgentPythonCodeToolConfigs.objects.select_related(
                         "pythoncodetoolconfig__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "configured_tools",
-                    queryset=AgentConfiguredTools.objects.select_related(
-                        "toolconfig__tool"
                     ),
                 ),
                 Prefetch(
@@ -409,14 +395,6 @@ class ConverterService(metaclass=SingletonMeta):
         python_tool_configs = [
             entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
         ]
-        configured_tools = [entry.toolconfig for entry in agent.configured_tools.all()]
-        if configured_tools:
-            logger.warning(
-                "Agent {} has {} configured tool(s) attached, but the "
-                "configured-tool mechanism was removed; skipping them.",
-                agent.pk,
-                len(configured_tools),
-            )
         mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
 
         all_tools = python_tools + python_tool_configs + mcp_tools
@@ -433,16 +411,6 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
     ) -> list[BaseToolData]:
-        configured_tools = [
-            entry.tool for entry in task.task_configured_tool_list.all()
-        ]
-        if configured_tools:
-            logger.warning(
-                "Task {} has {} configured tool(s) attached, but the "
-                "configured-tool mechanism was removed; skipping them.",
-                task.pk,
-                len(configured_tools),
-            )
         tools = (
             [entry.tool for entry in task.task_python_code_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
@@ -575,11 +543,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if (
-            rt_provider is None
-            or rt_model_name is None
-            or rt_api_key_secret_id is None
-        ):
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
@@ -653,11 +617,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if (
-            rt_provider is None
-            or rt_model_name is None
-            or rt_api_key_secret_id is None
-        ):
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
@@ -805,9 +765,9 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(python_configuration, dict), (
-            "Error reading python tool configuration. How did you even pass validation?"
-        )
+        assert isinstance(
+            python_configuration, dict
+        ), "Error reading python tool configuration. How did you even pass validation?"
 
         storage_allowed_paths = None
         storage_org_prefix = None
@@ -940,7 +900,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
-            stream_config=python_node.stream_config or {},
         )
 
     def convert_conditional_edge_to_pydantic(
@@ -1075,7 +1034,6 @@ class ConverterService(metaclass=SingletonMeta):
             crew=crew_data,
             input_map=crew_node.input_map,
             output_variable_path=crew_node.output_variable_path,
-            stream_config=crew_node.stream_config or {},
         )
 
     def convert_end_node_to_pydantic(

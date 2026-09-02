@@ -1,34 +1,7 @@
-import { CustomFilterClause, CustomFilterCondition, FilterOperator, FlowSortOrder } from '../models/flow-filter.model';
+import { evaluateCustomCondition, LabelDto } from '@shared/models';
+
+import { CustomFilterCondition, FlowSortOrder } from '../models/flow-filter.model';
 import { GetGraphLightRequest } from '../models/graph.model';
-import { LabelDto } from '../models/label.model';
-
-export function matchesOperator(haystack: string, operator: FilterOperator, needle: string): boolean {
-    const h = haystack.toLowerCase();
-    const n = needle.toLowerCase();
-    switch (operator) {
-        case 'equals':
-            return h === n;
-        case 'not_equals':
-            return h !== n;
-        case 'starts_with':
-            return h.startsWith(n);
-        case 'not_starts_with':
-            return !h.startsWith(n);
-        case 'ends_with':
-            return h.endsWith(n);
-        case 'not_ends_with':
-            return !h.endsWith(n);
-        case 'contains':
-            return h.includes(n);
-        case 'not_contains':
-            return !h.includes(n);
-    }
-}
-
-function clauseMatches(haystacks: string[], clause: CustomFilterClause): boolean {
-    if (haystacks.length === 0) return false;
-    return haystacks.some((h) => matchesOperator(h, clause.operator, clause.value));
-}
 
 export function evaluateCustomFilter(
     condition: CustomFilterCondition,
@@ -40,17 +13,7 @@ export function evaluateCustomFilter(
             ? [flow.name]
             : (flow.label_ids ?? []).map((id) => labels.find((l) => l.id === id)?.name).filter((n): n is string => !!n);
 
-    const primaryValue = condition.primary.value.trim();
-    if (!primaryValue) return true;
-
-    const primaryMatches = clauseMatches(haystacks, condition.primary);
-
-    const secondary = condition.secondary;
-    const secondaryValue = secondary?.value.trim() ?? '';
-    if (!secondary || !secondaryValue) return primaryMatches;
-
-    const secondaryMatches = clauseMatches(haystacks, secondary);
-    return condition.combinator === 'AND' ? primaryMatches && secondaryMatches : primaryMatches || secondaryMatches;
+    return evaluateCustomCondition(haystacks, condition);
 }
 
 export function compareFlowsByName(order: FlowSortOrder): (a: GetGraphLightRequest, b: GetGraphLightRequest) => number {

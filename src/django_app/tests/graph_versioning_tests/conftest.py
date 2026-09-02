@@ -39,16 +39,6 @@ def subgraph_node_dict():
 
 
 @pytest.fixture
-def code_agent_node_dict():
-    return {
-        "id": 40,
-        "node_type": NodeType.CODE_AGENT_NODE,
-        "node_name": "Code Agent Node",
-        "llm_config": _LLM_CONFIG_ID,
-    }
-
-
-@pytest.fixture
 def webhook_trigger_node_dict():
     return {
         "id": 50,

@@ -6,7 +6,6 @@ import {
     AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
-    CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
     FileExtractorNodeModel,
@@ -283,30 +282,6 @@ function toNoteComparable(node: GraphNoteModel): unknown {
     };
 }
 
-function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        llm_config: node.data?.llm_config_id ?? null,
-        agent_mode: node.data?.agent_mode ?? 'code_interpreter',
-        session_id: node.data?.session_id ?? '',
-        system_prompt: node.data?.system_prompt ?? '',
-        stream_handler_code: node.data?.stream_handler_code ?? '',
-        libraries: node.data?.libraries ?? [],
-        polling_interval_ms: node.data?.polling_interval_ms ?? 100,
-        silence_indicator_s: node.data?.silence_indicator_s ?? 3,
-        indicator_repeat_s: node.data?.indicator_repeat_s ?? 5,
-        chunk_timeout_s: node.data?.chunk_timeout_s ?? 30,
-        inactivity_timeout_s: node.data?.inactivity_timeout_s ?? 120,
-        max_wait_s: node.data?.max_wait_s ?? 300,
-        input_map: node.input_map,
-        output_variable_path: node.output_variable_path,
-        stream_config: node.stream_config ?? {},
-        output_schema: node.data?.output_schema ?? {},
-        use_storage: node.data?.use_storage ?? false,
-        metadata: toNodeMetadata(node),
-    };
-}
-
 interface CdtConditionGroupUi {
     group_name: string;
     order?: number;
@@ -457,11 +432,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<GraphNoteModel>(previous.nodes, NodeType.NOTE),
             nodesByType<GraphNoteModel>(current.nodes, NodeType.NOTE),
             toNoteComparable
-        ),
-        codeAgentNodes: diffNodesByBackendId(
-            nodesByType<CodeAgentNodeModel>(previous.nodes, NodeType.CODE_AGENT),
-            nodesByType<CodeAgentNodeModel>(current.nodes, NodeType.CODE_AGENT),
-            toCodeAgentComparable
         ),
         classificationDecisionTableNodes: diffNodesByBackendId(
             nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),

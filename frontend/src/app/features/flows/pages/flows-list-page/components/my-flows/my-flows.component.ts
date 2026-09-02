@@ -15,6 +15,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { LABELS_STORE } from '@shared/services';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
@@ -247,6 +248,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 },
             },
             width: '500px',
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((result) => {
@@ -258,6 +260,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private openCopyDialog(flow: GetGraphLightRequest): void {
         const dialogRef = this.dialog.open<string>(FlowRenameDialogComponent, {
             data: { flowName: `${flow.name} Copy`, title: 'Copy Flow' },
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((newName) => {

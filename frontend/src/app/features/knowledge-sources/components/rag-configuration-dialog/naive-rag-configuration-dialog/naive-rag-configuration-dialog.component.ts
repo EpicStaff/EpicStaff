@@ -22,9 +22,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
     private documentsStorage = inject(NaiveRagDocumentsStorageService);
     private ragConfiguration = viewChild.required(NaiveRagConfigurationComponent);
     hasUnsavedChanges = computed(() => this.ragConfiguration().hasUnsavedChanges());
-    indexingDisabled = computed(
-        () => !this.ragConfiguration().filteredAndCheckedDocIds().length && !this.hasUnsavedChanges()
-    );
+    indexingDisabled = computed(() => !this.ragConfiguration().filteredAndCheckedDocIds().length);
 
     processingDocIds = computed(() => {
         const processing = this.collectionsStorage.processingConfigIds();
