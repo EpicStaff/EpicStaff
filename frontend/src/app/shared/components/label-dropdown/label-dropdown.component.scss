@@ -50,8 +50,8 @@
     border: 1px solid var(--color-input-border);
     border-radius: 10px;
     box-shadow:
-        0px 6px 10px rgba(0, 0, 0, 0.15),
-        0px 2px 3px rgba(0, 0, 0, 0.3);
+        0px 6px 10px var(--black-alpha-15),
+        0px 2px 3px var(--black-alpha-30);
 }
 
 .labels-section-header {
@@ -190,7 +190,7 @@
     position: relative;
     height: 40px;
     background: var(--color-input-background);
-    border: 1px solid rgba(217, 217, 222, 0.16);
+    border: 1px solid var(--fog-alpha-16);
     border-radius: 4px;
     flex-shrink: 0;
     transition: border-color 0.15s;
@@ -211,7 +211,7 @@
 
     &.selected {
         border-color: var(--accent-color);
-        background: rgba(104, 95, 255, 0.08);
+        background: var(--purple-alpha-8);
     }
 
     .label-name {
@@ -259,7 +259,7 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #ffffff;
+    color: var(--white);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -324,7 +324,7 @@
         background: var(--accent-color);
         border: none;
         cursor: pointer;
-        color: #ffffff;
+        color: var(--white);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -362,8 +362,8 @@
 .label-error {
     margin: 0.1rem 0.5rem 0.3rem;
     padding: 0.35rem 0.6rem;
-    background: rgba(220, 91, 96, 0.12);
-    border: 1px solid rgba(220, 91, 96, 0.3);
+    background: var(--red-600-alpha-12);
+    border: 1px solid var(--red-600-alpha-30);
     border-radius: 4px;
     color: var(--color-ks-status-failed);
     font-size: 0.8rem;

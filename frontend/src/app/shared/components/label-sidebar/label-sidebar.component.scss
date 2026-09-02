@@ -227,7 +227,7 @@
 }
 
 .confirm-btn {
-    color: #ffffff;
+    color: var(--white);
     background: var(--accent-color);
 
     &:hover {
@@ -325,7 +325,7 @@
 }
 
 .edit-label-btn {
-    color: rgba(217, 217, 222, 0.6);
+    color: var(--color-text-secondary);
     transition: color 0.15s ease;
 
     &:hover,
@@ -361,8 +361,8 @@
 .label-error {
     margin: 0.1rem 0 0.3rem;
     padding: 0.35rem 0.6rem;
-    background: rgba(245, 66, 66, 0.1);
-    border: 1px solid rgba(245, 66, 66, 0.3);
+    background: var(--red-alpha-10);
+    border: 1px solid var(--red-alpha-30);
     border-left: 3px solid var(--color-error);
     border-radius: 4px;
     color: var(--color-error);

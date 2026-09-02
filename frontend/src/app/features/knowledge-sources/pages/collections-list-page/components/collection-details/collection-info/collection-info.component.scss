@@ -20,7 +20,7 @@
         font-size: 0.875rem;
         font-weight: bold;
         line-height: 130%;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         margin-bottom: 0.25rem;
     }
 
@@ -35,11 +35,11 @@
     }
 
     &__meta-label {
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__meta-value {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__guidance {
@@ -81,14 +81,14 @@
     &__guidance-text {
         font-size: 0.75rem;
         line-height: 1.4;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         overflow-wrap: anywhere;
     }
 
     &__guidance-empty {
         font-size: 0.75rem;
         font-style: italic;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__guidance-input {
@@ -124,7 +124,7 @@
         font-size: 0.875rem;
         font-weight: bold;
         line-height: 130%;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__issues-list {
@@ -136,13 +136,13 @@
     &__issue {
         padding: 0.5rem 1rem;
         font-size: 0.625rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         display: flex;
         flex-direction: column;
         row-gap: 0.5rem;
 
         border-radius: 10px;
-        background-color: var(--color-ks-line);
+        background-color: var(--color-line);
     }
 
     &__issue-header {
@@ -159,7 +159,7 @@
     &__issue-type {
         padding: 0.25rem 0.5rem;
         border-radius: 4px;
-        color: var(--color-ks-status-warning);
-        background-color: var(--color-ks-transparent-yellow);
+        color: var(--color-status-warning);
+        background-color: var(--yellow-alpha-6);
     }
 }

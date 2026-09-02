@@ -79,7 +79,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        box-shadow: 0 8px 24px var(--black-alpha-24);
         z-index: 1005;
         max-height: 320px;
         overflow: hidden;
@@ -125,7 +125,7 @@
         border: none;
         border-radius: 4px;
         background-color: var(--purple-primary);
-        color: #fff;
+        color: var(--white);
         cursor: pointer;
         font-size: 1.125rem;
         line-height: 1;
@@ -166,9 +166,9 @@
         }
 
         &--selected {
-            color: var(--wts-accent, #685fff);
+            color: var(--wts-accent, var(--accent-color));
             font-weight: 500;
-            border-color: var(--wts-accent, #685fff);
+            border-color: var(--wts-accent, var(--accent-color));
         }
 
         &--disabled {

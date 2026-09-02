@@ -11,8 +11,8 @@
     background-color: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
     min-width: 150px;
     box-shadow:
-        0 2px 3px 0 rgba(0, 0, 0, 0.3),
-        0 6px 10px 4px rgba(0, 0, 0, 0.15);
+        0 2px 3px 0 var(--black-alpha-30),
+        0 6px 10px 4px var(--black-alpha-15);
 
     &--expanded {
         background-color: transparent;
@@ -39,7 +39,7 @@
     min-width: 0;
 
     .surface-card--expanded & {
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
     }
 }
 
@@ -195,7 +195,7 @@
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
     border-radius: 8px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+    box-shadow: 0 6px 16px var(--black-alpha-24);
 }
 
 .surface-card__menu-item {
@@ -226,7 +226,7 @@
         left: 0;
         right: 0;
         height: 1px;
-        background-color: rgba(43, 45, 48, 1);
+        background-color: var(--graphite-750);
     }
 
     &--no-divider::before {
@@ -337,7 +337,7 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #685fff;
+    color: var(--accent-color);
     font-size: 0.875rem;
     font-weight: 500;
     white-space: nowrap;
@@ -411,7 +411,7 @@
     justify-content: space-between;
     height: 32px;
     padding: 0 0 0 0.75rem;
-    box-shadow: inset 0 -4px 0 rgba(43, 45, 48, 1);
+    box-shadow: inset 0 -4px 0 var(--graphite-750);
     color: var(--color-text-secondary);
     font-size: 0.75rem;
     font-weight: 500;
@@ -451,7 +451,7 @@
         transform: translateY(-50%);
         width: 1px;
         height: 100%;
-        background-color: rgba(43, 45, 48, 1);
+        background-color: var(--graphite-750);
     }
 
     &:hover {
@@ -464,8 +464,8 @@
     align-items: center;
     height: 28px;
     padding: 0 0 0 0.75rem;
-    background-color: rgba(21, 21, 21, 0.28);
-    box-shadow: inset 0 -1px 0 rgba(43, 45, 48, 1);
+    background-color: var(--color-ks-transparent-black-28);
+    box-shadow: inset 0 -1px 0 var(--graphite-750);
     cursor: default;
 
     &:last-child {
@@ -473,7 +473,7 @@
     }
 
     &:hover {
-        background-color: color-mix(in srgb, rgba(21, 21, 21, 0.28) 88%, white);
+        background-color: color-mix(in srgb, var(--color-ks-transparent-black-28) 88%, var(--white));
     }
 }
 
@@ -550,7 +550,7 @@
         transform: translateY(-50%);
         width: 1px;
         height: 100%;
-        background-color: rgba(43, 45, 48, 1);
+        background-color: var(--graphite-750);
     }
 
     &:hover {
@@ -629,7 +629,7 @@ $remove-col: 28px;
     color: var(--color-text-primary);
     font-size: 0.75rem;
     font-weight: 500;
-    box-shadow: inset 0 -4px 0 rgba(43, 45, 48, 1);
+    box-shadow: inset 0 -4px 0 var(--graphite-750);
 }
 
 .file-table__col-perm,
@@ -638,7 +638,7 @@ $remove-col: 28px;
     align-items: center;
     justify-content: center;
     height: 100%;
-    box-shadow: inset 1px 0 0 rgba(43, 45, 48, 1);
+    box-shadow: inset 1px 0 0 var(--graphite-750);
 }
 
 .file-table__col-perm {
@@ -657,7 +657,7 @@ $remove-col: 28px;
     }
 
     &:not(:disabled):hover {
-        color: #fff;
+        color: var(--white);
     }
 
     &.file-table__col-perm--allow {
@@ -665,7 +665,7 @@ $remove-col: 28px;
     }
 
     &.file-table__col-perm--deny {
-        color: #e5484d;
+        color: var(--red-490);
     }
 }
 
@@ -674,7 +674,7 @@ $remove-col: 28px;
     align-items: center;
     justify-content: center;
     height: 100%;
-    box-shadow: inset 1px 0 0 rgba(43, 45, 48, 1);
+    box-shadow: inset 1px 0 0 var(--graphite-750);
     color: var(--color-text-secondary);
 }
 
@@ -701,7 +701,7 @@ $remove-col: 28px;
     min-height: 28px;
 
     &--folder {
-        border-bottom: 1px solid rgba(43, 45, 48, 1);
+        border-bottom: 1px solid var(--graphite-750);
         box-shadow: none;
 
         .file-row__name {
@@ -710,15 +710,15 @@ $remove-col: 28px;
     }
 
     &--file {
-        background-color: rgba(21, 21, 21, 0.28);
-        box-shadow: inset 0 -1px 0 rgba(43, 45, 48, 1);
+        background-color: var(--color-ks-transparent-black-28);
+        box-shadow: inset 0 -1px 0 var(--graphite-750);
 
         &:last-child {
             box-shadow: none;
         }
 
         &:hover {
-            background-color: color-mix(in srgb, rgba(21, 21, 21, 0.28) 88%, white);
+            background-color: color-mix(in srgb, var(--color-ks-transparent-black-28) 88%, var(--white));
         }
     }
 }
@@ -799,8 +799,8 @@ $remove-col: 28px;
     }
 
     &--deny {
-        background-color: #e5484d;
-        border-color: #e5484d;
+        background-color: var(--red-490);
+        border-color: var(--red-490);
     }
 }
 
@@ -809,7 +809,7 @@ $remove-col: 28px;
     align-items: center;
     justify-content: center;
     height: 100%;
-    box-shadow: inset 1px 0 0 rgba(43, 45, 48, 1);
+    box-shadow: inset 1px 0 0 var(--graphite-750);
 }
 
 .file-row__remove-btn {

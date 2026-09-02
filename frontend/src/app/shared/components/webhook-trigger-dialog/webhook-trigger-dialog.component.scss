@@ -18,7 +18,7 @@
     }
 
     &__error-message {
-        background-color: rgba(255, 77, 79, 0.1);
+        background-color: var(--red-450-alpha-10);
         color: var(--color-error, #ff4d4f);
         padding: 0.75rem;
         border-radius: 4px;

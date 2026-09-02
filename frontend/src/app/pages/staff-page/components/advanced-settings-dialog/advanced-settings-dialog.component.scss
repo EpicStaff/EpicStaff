@@ -10,8 +10,8 @@
     max-height: 90vh;
     height: 100%;
     box-shadow:
-        0 12px 28px rgba(0, 0, 0, 0.4),
-        0 4px 8px rgba(0, 0, 0, 0.2);
+        0 12px 28px var(--black-alpha-40),
+        0 4px 8px var(--black-alpha-20);
     transform: none !important;
 }
 
@@ -110,7 +110,7 @@
         &.btn-save {
             background-color: var(--accent-color);
             border: 1px solid var(--accent-color);
-            color: white;
+            color: var(--white);
 
             &:hover {
                 filter: brightness(1.1);

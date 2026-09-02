@@ -31,7 +31,7 @@
         }
 
         &--error {
-            border-color: #ef4444;
+            border-color: var(--crimson-500);
         }
 
         &--disabled {
@@ -95,7 +95,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 4px 10px var(--black-alpha-12);
         overflow: hidden;
     }
 
@@ -146,7 +146,7 @@
     }
 
     &__error {
-        color: #ef4444;
+        color: var(--crimson-500);
         font-size: 12px;
         margin-top: 4px;
         line-height: 1.4;

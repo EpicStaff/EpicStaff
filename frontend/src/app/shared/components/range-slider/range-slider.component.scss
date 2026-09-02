@@ -3,7 +3,7 @@
         display: block;
         margin-bottom: 8px;
         font-size: 14px;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--color-text-subtle);
     }
 
     input[type='range'] {
@@ -23,7 +23,7 @@
             border-radius: 50%;
             background-color: var(--accent-color, #685fff);
             cursor: pointer;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 1px 3px var(--black-alpha-30);
         }
 
         &::-moz-range-thumb {
@@ -32,7 +32,7 @@
             border-radius: 50%;
             background-color: var(--accent-color, #685fff);
             cursor: pointer;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 1px 3px var(--black-alpha-30);
             border: none;
         }
     }

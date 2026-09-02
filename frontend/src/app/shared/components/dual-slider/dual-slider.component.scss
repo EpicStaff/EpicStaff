@@ -56,7 +56,7 @@
             font-family: 'Inter', sans-serif;
             font-weight: 400;
             font-size: 0.625rem;
-            color: #ffffff;
+            color: var(--white);
         }
     }
 
@@ -92,7 +92,7 @@
             border-radius: 50%;
             border: 2px solid var(--color-background-body, #212325);
             cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 2px 4px var(--black-alpha-30);
         }
 
         &::-moz-range-thumb {
@@ -102,7 +102,7 @@
             border-radius: 50%;
             border: 2px solid var(--color-background-body, #212325);
             cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 2px 4px var(--black-alpha-30);
         }
 
         &:disabled {
@@ -114,18 +114,18 @@
     .left-slider {
         background: linear-gradient(
             to right,
-            #00dddd 0%,
-            #00dddd var(--slider-percentage, 0%),
-            rgba(217, 217, 222, 0.2) var(--slider-percentage, 0%),
-            rgba(217, 217, 222, 0.2) 100%
+            var(--cyan-500) 0%,
+            var(--cyan-500) var(--slider-percentage, 0%),
+            var(--fog-alpha-20) var(--slider-percentage, 0%),
+            var(--fog-alpha-20) 100%
         );
 
         &::-webkit-slider-thumb {
-            background: #00dddd;
+            background: var(--cyan-500);
         }
 
         &::-moz-range-thumb {
-            background: #00dddd;
+            background: var(--cyan-500);
         }
     }
 
@@ -133,26 +133,26 @@
         transform: rotate(180deg);
         background: linear-gradient(
             to right,
-            #8b5cf6 0%,
-            #8b5cf6 var(--slider-percentage, 0%),
-            rgba(217, 217, 222, 0.2) var(--slider-percentage, 0%),
-            rgba(217, 217, 222, 0.2) 100%
+            var(--violet-500) 0%,
+            var(--violet-500) var(--slider-percentage, 0%),
+            var(--fog-alpha-20) var(--slider-percentage, 0%),
+            var(--fog-alpha-20) 100%
         );
 
         &::-webkit-slider-thumb {
-            background: #8b5cf6;
+            background: var(--violet-500);
         }
 
         &::-moz-range-thumb {
-            background: #8b5cf6;
+            background: var(--violet-500);
         }
     }
 }
 
 .dual-slider__range:first-child::-webkit-slider-thumb {
-    color: #00d4ff;
+    color: var(--cyan-460);
 }
 
 .dual-slider__range:last-child::-webkit-slider-thumb {
-    color: #8b5cf6;
+    color: var(--violet-500);
 }

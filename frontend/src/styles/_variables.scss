@@ -1,151 +1,570 @@
+// ============================================================================
+// Design tokens
+// Two layers:
+//   1. PRIMITIVES  — raw palette values. Never use directly in components.
+//   2. SEMANTIC    — role-based tokens that reference primitives.
+//                    Components must only use semantic tokens.
+// See frontend/THEME_TOKENS_AUDIT.md for the full architecture rationale.
+// ============================================================================
+
 :root {
-    //colors
-    --color-sidenav-background: #222225;
-    --color-background-body: #212325;
-    --color-flow-card-bg: #2b2d30;
-    --color-white: #ffffff;
+    // ------------------------------------------------------------------
+    // PRIMITIVES — colors
+    // ------------------------------------------------------------------
 
-    --accent-color: #685fff;
-    --accent-color-hover: #574fd6;
-    --accent-color-active: #473fb3;
-    --color-required-asterisk: var(--accent-color);
-    --color-text-primary: #d9d9de;
-    --color-text-secondary: #c8ceda99;
-    --color-text-primary-hover: #ececf3;
-    --color-secondary-btn-background: #27272b;
-    --color-secondary-btn-background-hover: #ffffff17;
-    --color-ghost-btn-hover: rgba(104, 95, 255, 0.08);
-    --color-ghost-btn-active: rgba(104, 95, 255, 0.15);
-    --color-input-text-placeholder: #c8ceda4d;
-    --color-input-background: #27272b;
-    --color-input-border: #c8ceda24;
-    --color-modals-background: #222225;
-    --color-drag-drop-active: rgba(15, 15, 15, 0.28);
-    --color-nodes-flow-link: #00bfa5;
-    --color-nodes-flow-link-hover-bg: rgba(0, 191, 165, 0.08);
+    // Brand purple
+    --iris-500: #5856d6; // distinct purple used for "active" tint backgrounds (tools/flows/files lists)
+    --iris-alpha-8: rgba(88, 86, 214, 0.08);
+    --purple-300: #8c7fff;
+    --purple-400: #7a70ff;
+    --purple-500: #685fff;
+    --purple-600: #574fd6;
+    --purple-700: #473fb3;
+    --purple-rgb: 104, 95, 255;
+    --purple-alpha-5: rgba(104, 95, 255, 0.05);
+    --purple-alpha-6: rgba(104, 95, 255, 0.06);
+    --purple-alpha-7: rgba(104, 95, 255, 0.07);
+    --purple-alpha-8: rgba(104, 95, 255, 0.08);
+    --purple-alpha-10: rgba(104, 95, 255, 0.1);
+    --purple-alpha-12: rgba(104, 95, 255, 0.12);
+    --purple-alpha-15: rgba(104, 95, 255, 0.15);
+    --purple-alpha-20: rgba(104, 95, 255, 0.2);
+    --purple-alpha-25: rgba(104, 95, 255, 0.25);
+    --purple-alpha-30: rgba(104, 95, 255, 0.3);
+    --purple-alpha-35: rgba(104, 95, 255, 0.35);
+    --purple-alpha-40: rgba(104, 95, 255, 0.4);
+    --purple-alpha-45: rgba(104, 95, 255, 0.45);
+    --purple-alpha-50: rgba(104, 95, 255, 0.5);
+    --purple-alpha-60: rgba(104, 95, 255, 0.6);
+    --purple-alpha-70: rgba(104, 95, 255, 0.7);
+    --purple-alpha-75: rgba(104, 95, 255, 0.75);
+    --purple-alpha-80: rgba(104, 95, 255, 0.8);
+    --purple-alpha-85: rgba(104, 95, 255, 0.85);
+    --purple-alpha-90: rgba(104, 95, 255, 0.9);
 
-    //border colors
-    --color-components-card-border: #ffffff08;
-    --color-divider-regular: #c8ceda24;
-    --color-divider-subtle: #c8ceda14;
+    // Graphite — dark surfaces
+    --graphite-1000: #121212;
+    --graphite-1000-alpha-70: rgba(18, 18, 18, 0.7); // staff-page loading overlay
+    --graphite-950: #1a1a1c;
+    --graphite-900: #212325;
+    --graphite-875: #1e1e1e;
+    --graphite-850: #222225;
+    --graphite-885: #1e1e2e; // dynamic-table drag-preview background
+    --graphite-895: #22222b; // chunk-preview "odd" badge background
+    --graphite-890: #1e1e1f; // ag-grid context menu background
+    --graphite-880: #1e1e22; // round-button tooltip background
+    --graphite-870: #272836; // session/date-range filter dropdown background (used across flows too)
+    --graphite-825: #232323;
+    --graphite-810: #25262a; // onboarding choice-card hover
+    --graphite-800: #27272b;
+    --graphite-780: #2a2a2a;
+    --graphite-750: #2b2d30;
+    --graphite-720: #2d2d2d;
+    --graphite-790: #292a2f; // ag-grid context menu item hover
+    --graphite-700: #2c2c2e;
+    --graphite-670: #333741; // ag-grid context menu border/divider
+    --graphite-660: #3a3d40; // confirmation-dialog cancel-button hover border
+    --graphite-650: #3a3e48;
+    --graphite-640: #333333;
+    --graphite-600: #3a3a3a;
+    --graphite-alpha-50: rgba(43, 45, 48, 0.5);
 
-    //scrollbar colors
-    --color-scrollbar-thumb: rgba(217, 217, 227, 0.16);
-    --color-scrollbar-thumb-hover: rgba(217, 217, 227, 0.24);
-    --color-scrollbar-track: transparent;
-
+    // Gray scale
+    --white: #ffffff;
+    --black: #000000;
     --gray-50: #f9f9f9;
+    --gray-105: #f5f5f5; // llm/tool selector popups primary text
     --gray-100: #ececec;
+    --gray-220: #e1e4e9; // ag-grid context menu item text
     --gray-200: #e3e3e3;
     --gray-300: #cdcdcd;
     --gray-400: #b4b4b4;
+    --gray-450: #aaaaaa;
+    --gray-455: #acacac; // llm-model-selector secondary text
+    --gray-475: #b1b1b1; // agents-table action-icon
+    --gray-490: #a0a0a0; // llm/tool selector popups secondary text
     --gray-500: #9b9b9b;
+    --gray-550: #777777; // llm/tool selector popups tertiary text
     --gray-600: #676767;
+    --gray-405: #404040; // llm/tool selector popups item border
+    --gray-440: #444444; // agents-table tag hover border
     --gray-700: #424242;
     --gray-750: #2f2f2f;
     --gray-800: #212121;
+    --gray-810: #202020; // active-state text on accent bg / json-editor row hover
+    --gray-820: #2b2b2b; // json-editor header/resize-handle chrome
+    --gray-830: #1b1b1b; // json-editor editor background
+    --gray-830-alpha-90: rgba(27, 27, 27, 0.9); // json-editor loading overlay
+    --gray-460: #969696; // json-editor copy-btn hover
+    --gray-215: #e0e0e0; // json-editor text (recurs in ~9 other files)
+    --gray-215-alpha-30: rgba(224, 224, 224, 0.3); // json-editor spinner track
+    --gray-110: #ededed; // voice/language/transcription selector text
+    --gray-118: #e6e6e6; // agents-table tag text
+    --gray-222: #dedede; // agents-table large-text-input text
+    --gray-240: #f0f0f0; // agents-table tools-cell text/icon
     --gray-850: #1a1a1a;
     --gray-900: #171717;
     --gray-950: #0d0d0d;
 
-    //nodes
-    --color-nodes-background: #27272b;
+    // Slate — spinner track/arc (select component)
+    --slate-400: #b0b8c1;
+    --slate-700: #44474f;
+
+    // Steel — cool border/muted base (#c8ceda + alpha)
+    --steel-alpha-8: #c8ceda14;
+    --steel-alpha-14: #c8ceda24;
+    --steel-alpha-18: #c8ceda2e;
+    --steel-alpha-30: #c8ceda4d;
+
+    // Fog — light text base (#d9d9de + alpha)
+    --fog-100: #ececf3;
+    --fog-200: #d9d9de;
+    --fog-alpha-85: rgba(217, 217, 222, 0.85);
+    --fog-alpha-80: rgba(217, 217, 222, 0.8);
+    --fog-alpha-70: rgba(217, 217, 222, 0.7);
+    --fog-alpha-60: rgba(217, 217, 222, 0.6);
+    --fog-alpha-50: rgba(217, 217, 222, 0.5);
+    --fog-alpha-40: rgba(217, 217, 222, 0.4);
+    --fog-alpha-35: rgba(217, 217, 222, 0.35);
+    --fog-alpha-30: rgba(217, 217, 222, 0.3);
+    --fog-alpha-28: rgba(217, 217, 222, 0.28);
+    --fog-alpha-25: rgba(217, 217, 222, 0.25);
+    --fog-alpha-22: rgba(217, 217, 222, 0.22);
+    --fog-alpha-20: rgba(217, 217, 222, 0.2);
+    --fog-alpha-16: rgba(217, 217, 222, 0.16);
+    --fog-alpha-14: rgba(217, 217, 222, 0.14);
+    --fog-alpha-8: rgba(217, 217, 222, 0.08);
+    --fog-alpha-6: rgba(217, 217, 222, 0.06);
+
+    // White / black washes
+    --white-alpha-2: rgba(255, 255, 255, 0.02);
+    --white-alpha-3: #ffffff08;
+    --white-alpha-3-flat: rgba(
+        255,
+        255,
+        255,
+        0.03
+    ); // distinct literal value from --white-alpha-3 (#ffffff08 ≈ 0.0314), dynamic-table row hover
+    --white-alpha-4: rgba(255, 255, 255, 0.04);
+    --white-alpha-5: rgba(255, 255, 255, 0.05);
+    --white-alpha-6: rgba(255, 255, 255, 0.06);
+    --white-alpha-7: rgba(255, 255, 255, 0.07);
+    --white-alpha-8: rgba(255, 255, 255, 0.08);
+    --white-alpha-9: #ffffff17;
+    --white-alpha-10: rgba(255, 255, 255, 0.1);
+    --white-alpha-12: rgba(255, 255, 255, 0.12);
+    --white-alpha-15: rgba(255, 255, 255, 0.15);
+    --white-alpha-20: rgba(255, 255, 255, 0.2);
+    --white-alpha-25: rgba(255, 255, 255, 0.25);
+    --white-alpha-30: rgba(255, 255, 255, 0.3);
+    --white-alpha-35: rgba(255, 255, 255, 0.35);
+    --white-alpha-40: rgba(255, 255, 255, 0.4);
+    --white-alpha-45: rgba(255, 255, 255, 0.45);
+    --white-alpha-50: rgba(255, 255, 255, 0.5);
+    --white-alpha-55: rgba(255, 255, 255, 0.55);
+    --white-alpha-60: rgba(255, 255, 255, 0.6);
+    --white-alpha-65: rgba(255, 255, 255, 0.65);
+    --white-alpha-70: rgba(255, 255, 255, 0.7);
+    --white-alpha-75: rgba(255, 255, 255, 0.75);
+    --white-alpha-80: rgba(255, 255, 255, 0.8);
+    --white-alpha-85: rgba(255, 255, 255, 0.85);
+    --white-alpha-90: rgba(255, 255, 255, 0.9);
+    --black-alpha-5: rgba(0, 0, 0, 0.05);
+    --black-alpha-6: rgba(0, 0, 0, 0.06);
+    --black-alpha-8: rgba(0, 0, 0, 0.08);
+    --black-alpha-10: rgba(0, 0, 0, 0.1);
+    --black-alpha-12: rgba(0, 0, 0, 0.12);
+    --black-alpha-15: rgba(0, 0, 0, 0.15);
+    --black-alpha-16: rgba(0, 0, 0, 0.16);
+    --black-alpha-18: rgba(0, 0, 0, 0.18);
+    --black-alpha-20: rgba(0, 0, 0, 0.2);
+    --black-alpha-24: rgba(0, 0, 0, 0.24);
+    --black-alpha-25: rgba(0, 0, 0, 0.25);
+    --black-alpha-28: rgba(15, 15, 15, 0.28);
+    --black-alpha-30: rgba(0, 0, 0, 0.3);
+    --black-alpha-32: rgba(0, 0, 0, 0.32);
+    --black-alpha-35: rgba(0, 0, 0, 0.35);
+    --black-alpha-40: rgba(0, 0, 0, 0.4);
+    --black-alpha-50: rgba(0, 0, 0, 0.5);
+    --black-alpha-55: rgba(0, 0, 0, 0.55);
+    --black-alpha-60: rgba(0, 0, 0, 0.6);
+    --black-alpha-70: rgba(0, 0, 0, 0.7);
+    --black-alpha-80: rgba(0, 0, 0, 0.8);
+    --black-alpha-85: rgba(0, 0, 0, 0.85);
+    --black-alpha-90: rgba(0, 0, 0, 0.9);
+    --black-alpha-95: rgba(0, 0, 0, 0.95);
+
+    // Status / feedback
+    --green-400: #4caf82;
+    --green-450: #2ecc71; // surface-usage-dialog status dot
+    --green-500: #2aba6b;
+    --green-alpha-8: rgba(42, 186, 107, 0.08);
+    --green-alpha-18: rgba(42, 186, 107, 0.18);
+    --yellow-500: #ffcf00;
+    --yellow-alpha-6: rgba(255, 207, 0, 0.06);
+    --yellow-alpha-30: rgba(255, 207, 0, 0.3);
+    --amber-400: #e0a83a;
+    --amber-450: #ffb400; // unsaved-changes-dialog warning icon
+    --gold-500: #e6bf3f; // json-editor key/icon highlight
+    --amber-500: #f5a623;
+    --amber-alpha-6: rgba(245, 166, 35, 0.06);
+    --amber-alpha-8: rgba(245, 166, 35, 0.08);
+    --amber-alpha-10: rgba(245, 166, 35, 0.1);
+    --amber-alpha-12: rgba(245, 166, 35, 0.12);
+    --amber-alpha-15: rgba(245, 166, 35, 0.15);
+    --amber-alpha-18: rgba(245, 166, 35, 0.18);
+    --amber-alpha-20: rgba(245, 166, 35, 0.2);
+    --amber-alpha-30: rgba(245, 166, 35, 0.3);
+    --amber-alpha-40: rgba(245, 166, 35, 0.4);
+    --amber-alpha-60: rgba(245, 166, 35, 0.6);
+    --amber-alpha-70: rgba(245, 166, 35, 0.7);
+    --orange-500: #ff8f3f;
+    --orange-alpha-8: rgba(255, 143, 63, 0.08);
+    --crimson-500: #ef4444; // distinct "danger" red used across error/validation states
+    --red-400: #ff6b6b;
+    --red-450: #ff4d4f;
+    --red-450-alpha-10: rgba(255, 77, 79, 0.1);
+    --red-450-alpha-35: rgba(255, 77, 79, 0.35);
+    --red-450-alpha-95: rgba(255, 77, 79, 0.95);
+    --red-490: #e5484d; // agent surfaces panel / webhook-trigger-select error accent
+    --red-500: #f54242;
+    --scarlet-500: #f44336; // Material red 500 — unsaved-changes-dialog "danger" button
+    --scarlet-700: #d32f2f; // Material red 700 — its hover state
+    --red-420: #ff8a8a; // json-editor error list item text
+    --red-425: #ff7a7a; // ag-grid context menu delete-hover icon
+    --red-430: #ff8383; // ag-grid context menu delete-hover text
+    --red-950: #542326; // ag-grid context menu delete-hover background
+    --red-460: #ff5555; // json-editor validation error text
+    --red-460-alpha-6: rgba(255, 85, 85, 0.06);
+    --red-460-alpha-40: rgba(255, 85, 85, 0.4);
+    --red-540: #e53935; // textarea invalid border
+    --red-580: #e0575b; // date-range-picker / session status error variant
+    --red-550: #e63838; // danger hover
+    --red-600: #dc5b60;
+    --red-700: #b32b36;
+    --red-alpha-6: rgba(245, 66, 66, 0.06);
+    --red-alpha-8: rgba(245, 66, 66, 0.08);
+    --red-alpha-10: rgba(245, 66, 66, 0.1);
+    --red-alpha-12: rgba(245, 66, 66, 0.12);
+    --red-alpha-15: rgba(245, 66, 66, 0.15);
+    --red-alpha-20: rgba(245, 66, 66, 0.2);
+    --red-alpha-25: rgba(245, 66, 66, 0.25);
+    --red-alpha-30: rgba(245, 66, 66, 0.3);
+    --red-alpha-35: rgba(245, 66, 66, 0.35);
+    --red-alpha-40: rgba(245, 66, 66, 0.4);
+    --red-alpha-50: rgba(245, 66, 66, 0.5);
+    --red-alpha-95: rgba(245, 66, 66, 0.95);
+    --red-400-alpha-5: rgba(255, 107, 107, 0.05);
+    --red-400-alpha-10: rgba(255, 107, 107, 0.1);
+    --red-400-alpha-15: rgba(255, 107, 107, 0.15);
+    --red-400-alpha-60: rgba(255, 107, 107, 0.6);
+    --red-400-alpha-80: rgba(255, 107, 107, 0.8);
+    --red-600-alpha-6: rgba(220, 91, 96, 0.06);
+    --red-600-alpha-12: rgba(220, 91, 96, 0.12);
+    --red-600-alpha-18: rgba(220, 91, 96, 0.18);
+    --red-600-alpha-30: rgba(220, 91, 96, 0.3);
+    --sky-500: #48cbff;
+    --sky-950: #20282b; // chunk-preview "even" badge background
+    --sky-alpha-6: rgba(72, 203, 255, 0.06);
+    --sky-alpha-12: rgba(72, 203, 255, 0.12);
+    --teal-500: #00bfa5;
+    --teal-rgb: 0, 191, 165;
+    --teal-alpha-8: rgba(0, 191, 165, 0.08);
+    --blue-400: #5e9eff;
+    --blue-450: #1e72e6; // voice/language/transcription selector "selected" state
+    --azure-500: #2196f3; // info icon color (confirm-dialog, toast, flow nodes)
+    --blue-500: #5672cd;
+    --blue-600: #3e63dd;
+    --indigo-500: #6366f1; // llm/tool selector popups accent (hover)
+    --indigo-600: #4f46e5; // llm/tool selector popups accent
+    --indigo-600-alpha-15: rgba(79, 70, 229, 0.15);
+    --indigo-600-alpha-40: rgba(79, 70, 229, 0.4);
+    --indigo-600-alpha-80: rgba(79, 70, 229, 0.8);
+    --cyan-460: #00d4ff; // dual-slider thumb color (first handle)
+    --cyan-500: #00dddd; // dual range slider min, decorative
+    --violet-500: #8b5cf6; // dual range slider max, filter/sort accent
+    --lavender-500: #bb86fc; // json-editor resize-handle hover accent
+    --blue-alpha-10: rgba(94, 158, 255, 0.1);
+    --blue-alpha-15: rgba(94, 158, 255, 0.15);
+    --blue-alpha-18: rgba(94, 158, 255, 0.18);
+    --mauve-alpha-10: rgba(154, 115, 175, 0.1); // unsaved-changes indicator
+    --mauve-alpha-20: rgba(154, 115, 175, 0.2);
+    --indigo-alpha-30: rgba(101, 98, 245, 0.3); // auth spinner ring
+    --gray-alpha-10: rgba(128, 128, 128, 0.1);
+    --gray-alpha-18: rgba(136, 136, 136, 0.18);
+    --stone-950-alpha-35: rgba(3, 3, 5, 0.35); // agents-table / tools-list wrapper shadow
+    --sky-600: #3498db; // agents-table action-icon hover (Flat UI "Peter River")
+    --indigo-650: #6562f5; // agents-table accent (popup-open border, llm-config badge) — used in 10 files
+    --orange-600: #ffa500; // literal CSS "orange" keyword, distinct from the legacy --orange token
+    --orange-600-alpha-60: rgba(255, 165, 0, 0.6);
+    --amber-600: #ffb300; // graph-rag-configuration warning accent
+    --amber-600-alpha-8: rgba(255, 179, 0, 0.08);
+    --amber-600-alpha-30: rgba(255, 179, 0, 0.3);
+
+    // ------------------------------------------------------------------
+    // PRIMITIVES — border radius
+    // ------------------------------------------------------------------
+    --radius-xs: 2px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 10px;
+    --radius-2xl: 12px;
+    --radius-3xl: 16px;
+    --radius-full: 999px;
+
+    // ------------------------------------------------------------------
+    // PRIMITIVES — spacing (gap, padding, margin)
+    // ------------------------------------------------------------------
+    --space-3xs: 2px;
+    --space-2xs: 4px;
+    --space-xs: 6px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 20px;
+    --space-2xl: 24px;
+    --space-3xl: 32px;
+    --space-4xl: 40px;
+    --space-5xl: 48px;
+
+    // ------------------------------------------------------------------
+    // PRIMITIVES — typography
+    // ------------------------------------------------------------------
+    --font-family-base: 'Inter', 'Roboto', 'Helvetica Neue', sans-serif;
+    --font-family-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+    --font-size-2xs: 0.625rem; // 10px
+    --font-size-xs: 0.75rem; // 12px
+    --font-size-sm: 0.8125rem; // 13px
+    --font-size-md: 0.875rem; // 14px
+    --font-size-lg: 1rem; // 16px
+    --font-size-xl: 1.125rem; // 18px
+    --font-size-2xl: 1.25rem; // 20px
+    --font-size-3xl: 1.5rem; // 24px
+    --font-size-4xl: 1.75rem; // 28px
+    --font-size-5xl: 2rem; // 32px — page/display titles
+
+    --font-weight-light: 300;
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    --line-height-tight: 1.2;
+    --line-height-base: 1.5;
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — surfaces
+    // ------------------------------------------------------------------
+    --color-background-body: var(--graphite-900);
+    --color-sidenav-background: var(--graphite-850);
+    --color-modals-background: var(--graphite-850);
+    --color-backdrop: rgba(30, 30, 30, 0.6); // dialog/overlay dim layer
+    --color-flow-card-bg: var(--graphite-750);
+    --color-surface-card: var(--graphite-825);
+    --color-drag-drop-active: var(--black-alpha-28);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — interactive (accent, buttons)
+    // ------------------------------------------------------------------
+    --accent-color: var(--purple-500);
+    --accent-color-hover: var(--purple-600);
+    --accent-color-active: var(--purple-700);
+    --active-color: var(--accent-color);
+    --color-required-asterisk: var(--accent-color);
+    --color-secondary-btn-background: var(--graphite-800);
+    --color-secondary-btn-background-hover: var(--white-alpha-9);
+    --color-ghost-btn-hover: var(--purple-alpha-8);
+    --color-ghost-btn-active: var(--purple-alpha-15);
+    --color-action-btn-background: var(--graphite-800);
+    --color-action-btn-background-hover: var(--white-alpha-9);
+    --focus-ring: 0 0 0 2px var(--purple-alpha-40);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — text
+    // ------------------------------------------------------------------
+    --color-text-primary: var(--fog-200);
+    --color-text-secondary: var(--fog-alpha-60);
+    --color-text-tertiary: var(--fog-alpha-40);
+    --color-text-subtle: rgba(255, 255, 255, 0.7);
+    --color-text-primary-hover: var(--fog-100);
+    --color-text-disabled: var(--gray-600);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — forms
+    // ------------------------------------------------------------------
+    --color-input-background: var(--graphite-800);
+    --color-input-background-hover: var(--white-alpha-6);
+    --color-input-border: var(--steel-alpha-14);
+    --color-input-text-placeholder: var(--steel-alpha-30);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — borders & dividers (independent from form borders)
+    // ------------------------------------------------------------------
+    --color-components-card-border: var(--white-alpha-3);
+    --color-components-card-border-disabled: var(--white-alpha-3);
+    --color-border: var(--color-input-border);
+    --color-border-disabled: var(--gray-600);
+    --color-divider: var(--color-divider-regular);
+    --color-divider-regular: var(--steel-alpha-14);
+    --color-divider-subtle: var(--steel-alpha-8);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — statuses & feedback (independent from buttons)
+    // ------------------------------------------------------------------
+    --success-color: var(--green-500);
+    --color-warning: var(--amber-500);
+    --color-status-error: var(--red-500);
+    --color-status-error-subtle: var(--red-alpha-15);
+    --color-status-error-hover: var(--red-alpha-25);
+    --transparent-white-8: var(--fog-alpha-8);
+    --transparent-white-4: rgba(255, 255, 255, 0.04);
+    --transparent-green-8: var(--green-alpha-8);
+    --transparent-orange-8: var(--orange-alpha-8);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — scrollbar
+    // ------------------------------------------------------------------
+    --color-scrollbar-thumb: rgba(217, 217, 227, 0.16);
+    --color-scrollbar-thumb-hover: rgba(217, 217, 227, 0.24);
+    --color-scrollbar-track: transparent;
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — visual programming nodes
+    // ------------------------------------------------------------------
+    --color-nodes-background: var(--graphite-800);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — extended surfaces & text
+    // ------------------------------------------------------------------
+    --color-text-muted: #666666;
+    --color-card-background: #1e1e1e;
+    --color-line: var(--graphite-700);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — status indicators (info/warning/processing/failed)
+    // ------------------------------------------------------------------
+    --color-status-info: var(--sky-500);
+    --color-status-warning: var(--yellow-500);
+    --color-status-processing: var(--orange-500);
+    --color-status-failed: var(--red-600);
+
+    // ------------------------------------------------------------------
+    // LEGACY — restored for backward compatibility (still referenced by
+    // pages not yet migrated). Values are copied verbatim from the old
+    // token file. Migrate/remove each one when its owning page is done —
+    // see frontend/STYLE_REFACTOR_PLAN.md.
+    // ------------------------------------------------------------------
+    --color-white: #ffffff;
+    --color-nodes-flow-link: #00bfa5;
+    --color-nodes-flow-link-hover-bg: rgba(0, 191, 165, 0.08);
     --color-nodes-actionbar-bg: #222225;
-    --color-nodes-actionbar-border: #c8ceda14;
     --color-nodes-sidepanel-bg: #222225;
 
-    //knowledge-sources
     --color-ks-primary: #0a0a0a;
     --color-ks-secondary: #666666;
-    --color-ks-tetriary: #cccccc;
-    --color-ks-quarternary: #f5f5f5;
     --color-ks-white: #ffffff;
-
     --color-ks-card-background: #1e1e1e;
     --color-ks-background: #212325;
     --color-ks-text: #d9d9de;
     --color-ks-button-activated: #685fff;
     --color-ks-line: #2c2c2e;
     --color-ks-hover-row: #3a3e48;
-
     --color-ks-transparent-black-72: rgba(21, 21, 21, 0.72);
     --color-ks-transparent-black-60: rgba(21, 21, 21, 0.6);
     --color-ks-transparent-black-28: rgba(21, 21, 21, 0.28);
     --color-ks-transparent-text-80: rgba(217, 217, 222, 0.8);
     --color-ks-transparent-text-60: rgba(217, 217, 222, 0.6);
     --color-ks-transparent-text-20: rgba(217, 217, 222, 0.2);
-    --color-ks-transparent-blue: rgba(72, 203, 255, 0.06);
     --color-ks-transparent-purple: rgba(104, 95, 255, 0.06);
     --color-ks-transparent-yellow: rgba(255, 207, 0, 0.06);
     --color-ks-transparent-red: rgba(220, 91, 96, 0.06);
-
     --color-ks-status-blue: #48cbff;
     --color-ks-status-completed: #685fff;
     --color-ks-status-new: #2aba6b;
     --color-ks-status-warning: #ffcf00;
     --color-ks-status-processing: #ff8f3f;
     --color-ks-status-failed: #dc5b60;
+
     --color-error: #f54242;
     --color-findings: #f5a623;
-
-    //elevation
     --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
-
-    //ui-kit colors
     --orange: rgba(255, 143, 63, 1);
     --red: rgba(245, 66, 66, 1);
     --inactive-purple: rgba(104, 95, 255, 0.4);
     --purple-primary: rgba(104, 95, 255, 1);
-    --transparent-white-8: rgba(217, 217, 222, 0.08);
-    --transparent-white-4: rgba(217, 217, 222, 0.04);
     --transparent-white-16: rgba(217, 217, 222, 0.16);
-    --transparent-green-8: rgba(42, 186, 107, 0.08);
-    --transparent-orange-8: rgba(255, 143, 63, 0.08);
-    --transparent-red-8: rgba(245, 66, 66, 0.08);
-
     --text: rgba(217, 217, 222, 1);
     --text-secondary-60: rgba(217, 217, 222, 0.6);
-
-    //storage
     --color-storage-icon: rgba(230, 230, 230, 1);
 }
 
-// palette is incomplete and inactive, requires improvement in case of use
+// ============================================================================
+// Light theme — overrides primitives (semantic tokens follow automatically)
+// plus a few explicit semantic exceptions.
+// ============================================================================
 .my-app-light {
-    //colors
-    --color-sidenav-background: #ffffff;
-    --color-background-body: #f8fafc;
-    --color-white: #ffffff;
+    // Surface primitives flip to a light slate ramp
+    --graphite-1000: #e2e8f0;
+    --graphite-950: #e2e8f0;
+    --graphite-900: #f8fafc;
+    --graphite-875: #ffffff;
+    --graphite-850: #ffffff;
+    --graphite-825: #ffffff;
+    --graphite-800: #ffffff;
+    --graphite-780: #f1f5f9;
+    --graphite-750: #f1f5f9;
+    --graphite-720: #ffffff;
+    --graphite-700: #e2e8f0;
+    --graphite-650: #e2e8f0;
+    --graphite-640: #e2e8f0;
+    --graphite-600: #e2e8f0;
 
-    --accent-color: #685fff;
-    --accent-color-hover: #574fd6;
-    --accent-color-active: #473fb3;
-    --color-required-asterisk: var(--accent-color);
-    --color-text-primary: #1e293b;
+    // Gray ramp inverts (dark greys become light surfaces, light greys become dark text)
+    --gray-50: #0f172a;
+    --gray-100: #1e293b;
+    --gray-200: #334155;
+    --gray-300: #475569;
+    --gray-400: #64748b;
+    --gray-500: #94a3b8;
+    --gray-600: #cbd5e1;
+    --gray-700: #e2e8f0;
+    --gray-750: #e2e8f0;
+    --gray-800: #ffffff;
+    --gray-850: #f8fafc;
+    --gray-900: #f1f5f9;
+    --gray-950: #e2e8f0;
+
+    // Text primitives flip to dark slate
+    --fog-100: #0f172a;
+    --fog-200: #1e293b;
+    --fog-alpha-80: rgba(30, 41, 59, 0.8);
+    --fog-alpha-60: rgba(30, 41, 59, 0.6);
+    --fog-alpha-40: rgba(30, 41, 59, 0.4);
+    --fog-alpha-20: rgba(30, 41, 59, 0.2);
+    --fog-alpha-8: rgba(30, 41, 59, 0.08);
+
+    // Border / wash primitives
+    --steel-alpha-8: #f1f5f9;
+    --steel-alpha-14: #e2e8f0;
+    --steel-alpha-30: #94a3b8;
+    --white-alpha-3: #e2e8f0;
+    --white-alpha-6: rgba(15, 23, 42, 0.06);
+    --white-alpha-9: #e2e8f0;
+    --white-alpha-10: rgba(15, 23, 42, 0.1);
+
+    // Explicit semantic exceptions
     --color-text-secondary: #64748b;
-    --color-text-primary-hover: #0f172a;
-    --color-secondary-btn-background: #f1f5f9;
-    --color-secondary-btn-background-hover: #e2e8f0;
-    --color-ghost-btn-hover: rgba(104, 95, 255, 0.08);
-    --color-ghost-btn-active: rgba(104, 95, 255, 0.15);
+    --color-text-subtle: rgba(15, 23, 42, 0.7);
     --color-input-text-placeholder: #94a3b8;
-    --color-input-background: #ffffff;
-    --color-input-border: #e2e8f0;
-    --color-modals-background: #ffffff;
-
-    //border colors
-    --color-components-card-border: #e2e8f0;
-    --color-divider-regular: #e2e8f0;
-    --color-divider-subtle: #f1f5f9;
-
-    //scrollbar colors
     --color-scrollbar-thumb: rgba(71, 85, 105, 0.2);
     --color-scrollbar-thumb-hover: rgba(71, 85, 105, 0.3);
     --color-scrollbar-track: transparent;
+    --color-drag-drop-active: rgba(15, 15, 15, 0.12);
+    --color-card-background: #ffffff;
 
-    //nodes
-    --color-nodes-background: #ffffff;
+    // LEGACY overrides — see :root block above
     --color-nodes-actionbar-bg: #f8fafc;
-    --color-nodes-actionbar-border: #e2e8f0;
     --color-nodes-sidepanel-bg: #ffffff;
 }

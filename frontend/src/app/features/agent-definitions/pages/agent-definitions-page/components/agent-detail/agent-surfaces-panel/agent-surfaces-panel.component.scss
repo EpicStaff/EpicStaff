@@ -187,7 +187,7 @@
     box-sizing: border-box;
     border-radius: 10px;
     background-color: var(--color-input-background);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.32);
+    box-shadow: 0 6px 16px var(--black-alpha-32);
 }
 
 .cdk-drag-placeholder {
@@ -214,7 +214,7 @@
 
     &--expanded {
         border-radius: 10px;
-        border: 1px solid #2b2d30;
+        border: 1px solid var(--graphite-750);
     }
 }
 
@@ -228,7 +228,7 @@
     min-width: 0;
 
     .surface-item--expanded & {
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
     }
 }
 
@@ -239,7 +239,7 @@
     flex-shrink: 0;
     width: 16px;
     height: 40px;
-    color: #d9d9de;
+    color: var(--color-text-primary);
     cursor: grab;
 
     &:active {
@@ -369,14 +369,14 @@
     &--primary {
         background-color: var(--accent-color);
         border: 1px solid var(--accent-color);
-        color: #fff;
+        color: var(--white);
 
         app-svg-icon {
-            color: #fff;
+            color: var(--white);
         }
 
         &:hover {
-            background-color: color-mix(in srgb, var(--accent-color) 85%, white);
+            background-color: color-mix(in srgb, var(--accent-color) 85%, var(--white));
         }
     }
 }
@@ -450,7 +450,7 @@
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
     border-radius: 8px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+    box-shadow: 0 6px 16px var(--black-alpha-24);
 }
 
 .surface-menu__item {

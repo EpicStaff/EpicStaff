@@ -1,17 +1,3 @@
-@use 'sass:color';
-
-$bg-dark: #121212;
-$bg-card: #1e1e1e;
-$bg-input: #2d2d2d;
-$bg-item: #2a2a2a;
-$bg-item-hover: #333333;
-$accent-blue: #4f46e5;
-$accent-hover: #6366f1;
-$text-primary: #f5f5f5;
-$text-secondary: #a0a0a0;
-$text-tertiary: #777777;
-$border-color: rgba(255, 255, 255, 0.1);
-$shadow-color: rgba(0, 0, 0, 0.5);
 $transition-default: all 0.2s ease;
 
 @keyframes fadeIn {
@@ -39,12 +25,12 @@ $transition-default: all 0.2s ease;
 }
 
 .llm-list-container {
-    background-color: $bg-card;
+    background-color: var(--graphite-875);
     border-radius: 8px;
     width: 480px;
-    color: $text-primary;
-    box-shadow: 0 10px 40px $shadow-color;
-    border: 1px solid $border-color;
+    color: var(--gray-105);
+    box-shadow: 0 10px 40px var(--black-alpha-50);
+    border: 1px solid var(--white-alpha-10);
     animation: fadeIn 0.3s ease;
     max-height: 500px;
     display: flex;
@@ -67,20 +53,20 @@ $transition-default: all 0.2s ease;
                 flex: 1;
                 padding: 7px 14px;
                 border-radius: 6px;
-                background-color: $bg-input;
-                color: $text-primary;
+                background-color: var(--graphite-720);
+                color: var(--gray-105);
                 font-size: 13px;
-                border: 1px solid $border-color;
+                border: 1px solid var(--white-alpha-10);
                 transition: $transition-default;
                 outline: none;
 
                 &::placeholder {
-                    color: $text-tertiary;
+                    color: var(--gray-550);
                 }
 
                 &:focus {
-                    border-color: $accent-blue;
-                    box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
+                    border-color: var(--indigo-600);
+                    box-shadow: 0 0 0 2px var(--indigo-600-alpha-15);
                 }
             }
 
@@ -89,8 +75,8 @@ $transition-default: all 0.2s ease;
                 align-items: center;
                 gap: 8px;
                 padding: 8px 12px;
-                background-color: $bg-input;
-                color: $text-secondary;
+                background-color: var(--graphite-720);
+                color: var(--gray-490);
                 border-radius: 6px;
                 cursor: pointer;
                 font-size: 13px;
@@ -106,8 +92,8 @@ $transition-default: all 0.2s ease;
                 }
 
                 &:hover {
-                    background-color: color.adjust($bg-input, $lightness: 5%);
-                    color: $text-primary;
+                    background-color: color-mix(in srgb, var(--graphite-720) 95%, var(--white));
+                    color: var(--gray-105);
                 }
             }
         }
@@ -118,7 +104,7 @@ $transition-default: all 0.2s ease;
         justify-content: flex-end;
         padding: 0;
         margin-bottom: 8px;
-        border-bottom: 1px solid $border-color;
+        border-bottom: 1px solid var(--white-alpha-10);
         gap: 10px;
 
         .menu-tabs {
@@ -129,7 +115,7 @@ $transition-default: all 0.2s ease;
             button {
                 background: transparent;
                 border: none;
-                color: $text-secondary;
+                color: var(--gray-490);
                 font-size: 13px;
                 padding: 8px 16px;
                 cursor: pointer;
@@ -141,12 +127,12 @@ $transition-default: all 0.2s ease;
                 margin-bottom: -1px;
 
                 &:hover {
-                    color: $text-primary;
+                    color: var(--gray-105);
                 }
 
                 &.active {
-                    color: $accent-blue;
-                    border-bottom: 2px solid $accent-blue;
+                    color: var(--indigo-600);
+                    border-bottom: 2px solid var(--indigo-600);
                 }
             }
         }
@@ -184,7 +170,7 @@ $transition-default: all 0.2s ease;
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background-color: $accent-blue;
+        background-color: var(--indigo-600);
         animation: dot-animation 1.5s infinite ease-in-out;
     }
 
@@ -213,7 +199,7 @@ $transition-default: all 0.2s ease;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                color: $text-secondary;
+                color: var(--gray-490);
 
                 i {
                     font-size: 24px;
@@ -233,7 +219,7 @@ $transition-default: all 0.2s ease;
         display: flex;
         justify-content: flex-end;
         padding: 12px;
-        border-top: 1px solid $border-color;
+        border-top: 1px solid var(--white-alpha-10);
         gap: 8px;
     }
 }

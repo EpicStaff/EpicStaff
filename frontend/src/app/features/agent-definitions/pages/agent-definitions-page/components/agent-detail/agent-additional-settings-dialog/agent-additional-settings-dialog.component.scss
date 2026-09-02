@@ -10,8 +10,8 @@
     max-width: 90vw;
     height: min(720px, 90vh);
     box-shadow:
-        0 12px 28px rgba(0, 0, 0, 0.4),
-        0 4px 8px rgba(0, 0, 0, 0.2);
+        0 12px 28px var(--black-alpha-40),
+        0 4px 8px var(--black-alpha-20);
 }
 
 .header {

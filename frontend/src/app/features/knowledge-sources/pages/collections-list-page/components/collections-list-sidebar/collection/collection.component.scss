@@ -1,10 +1,10 @@
 .collection {
     border-radius: 10px;
-    background-color: var(--color-ks-card-background);
+    background-color: var(--color-card-background);
     padding: 0.75rem 1rem;
 
     &--selected {
-        border: 1px solid var(--color-ks-button-activated);
+        border: 1px solid var(--accent-color);
     }
 
     &__header {
@@ -21,7 +21,7 @@
         white-space: nowrap;
         text-overflow: ellipsis;
         font-size: 1.125rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__rag-type {
@@ -32,7 +32,7 @@
         white-space: nowrap;
         text-overflow: ellipsis;
         font-size: 1rem;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__status {
@@ -43,23 +43,23 @@
         column-gap: 0.5rem;
         min-width: 0;
         &--completed {
-            color: var(--color-ks-status-completed);
+            color: var(--accent-color);
         }
 
         &--empty {
-            color: var(--color-ks-status-new);
+            color: var(--success-color);
         }
 
         &--warning {
-            color: var(--color-ks-status-warning);
+            color: var(--color-status-warning);
         }
 
         &--uploading {
-            color: var(--color-ks-status-processing);
+            color: var(--color-status-processing);
         }
 
         &--failed {
-            color: var(--color-ks-status-failed);
+            color: var(--color-status-failed);
         }
     }
 

@@ -31,7 +31,7 @@
         }
 
         &--error {
-            border-color: #ef4444;
+            border-color: var(--crimson-500);
         }
 
         &--disabled {
@@ -82,9 +82,9 @@
     &__dropdown {
         border-radius: 10px;
         border: 1px solid var(--color-input-border);
-        background-color: rgb(33, 35, 37);
+        background-color: var(--graphite-900);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 10px var(--black-alpha-15);
         overflow: hidden;
     }
 
@@ -194,7 +194,7 @@
     }
 
     &__error {
-        color: #ef4444;
+        color: var(--crimson-500);
         font-size: 12px;
         margin-top: 4px;
         line-height: 1.4;

@@ -3,7 +3,7 @@
     display: flex;
     flex-grow: 1;
     overflow: hidden;
-    background-color: var(--color-ks-card-background);
+    background-color: var(--color-card-background);
     border-radius: 0 0 10px 10px;
     padding: 0.5rem 0;
     position: relative;
@@ -58,13 +58,13 @@
         border-radius: 6px;
 
         &--even {
-            color: var(--color-ks-status-blue);
-            background-color: rgb(32, 40, 43);
+            color: var(--color-status-info);
+            background-color: var(--sky-950);
         }
 
         &--odd {
-            color: var(--color-ks-status-completed);
-            background-color: rgb(34, 34, 43);
+            color: var(--accent-color);
+            background-color: var(--graphite-895);
         }
 
         &--clickable {
@@ -117,15 +117,15 @@
         }
 
         &--even {
-            color: var(--color-ks-status-blue);
+            color: var(--color-status-info);
         }
 
         &--odd {
-            color: var(--color-ks-status-completed);
+            color: var(--accent-color);
         }
 
         &--overlap {
-            color: #ffcf00;
+            color: var(--yellow-500);
         }
 
         &--blurred {
@@ -137,13 +137,13 @@
     // ::ng-deep needed because highlights are injected via [innerHTML]
     // and don't receive Angular's encapsulation attributes
     &__item ::ng-deep .chunk__highlight {
-        background-color: rgba(255, 207, 0, 0.3);
+        background-color: var(--yellow-alpha-30);
         color: inherit;
         border-radius: 2px;
         padding: 0 1px;
 
         &--active {
-            background-color: rgba(255, 165, 0, 0.6);
+            background-color: var(--orange-600-alpha-60);
         }
     }
 }

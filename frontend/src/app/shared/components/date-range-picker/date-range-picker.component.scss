@@ -7,7 +7,7 @@
     border: 1px solid var(--color-input-border);
     background-color: var(--color-background-body);
     color: var(--color-text-primary);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 10px var(--black-alpha-15);
 
     &_manual {
         display: grid;
@@ -126,7 +126,7 @@
         background: var(--color-background-body);
         border: 1px solid var(--color-input-border);
         border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 8px 20px var(--black-alpha-35);
 
         &--years {
             grid-template-columns: repeat(4, 1fr);
@@ -136,7 +136,7 @@
 
     &_picker-option {
         padding: 8px 6px;
-        border: 1px solid rgba(43, 45, 48, 1);
+        border: 1px solid var(--graphite-750);
         border-radius: 4px;
         background: transparent;
         color: var(--color-text-primary);
@@ -196,13 +196,13 @@
         }
 
         &--in-range {
-            background: rgb(39, 40, 54);
+            background: var(--graphite-870);
             border-radius: 0;
             color: var(--color-text-secondary);
         }
 
         &--edge {
-            background: rgb(104, 95, 255);
+            background: var(--purple-500);
             color: var(--color-white);
             font-weight: 500;
             border-radius: 4px;
@@ -266,8 +266,8 @@
         cursor: pointer;
 
         &:hover {
-            border-color: #e0575b;
-            color: #e0575b;
+            border-color: var(--red-580);
+            color: var(--red-580);
         }
     }
 

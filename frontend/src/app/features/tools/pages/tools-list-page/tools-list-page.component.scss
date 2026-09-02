@@ -8,7 +8,7 @@
     height: 100%;
     overflow: auto;
     box-sizing: border-box;
-    color: #fff;
+    color: var(--white);
 
     .sticky-header {
         position: sticky;
@@ -136,7 +136,7 @@
                     &.active {
                         color: var(--accent-color);
                         border-color: var(--accent-color);
-                        background: rgba(88, 86, 214, 0.08);
+                        background: var(--iris-alpha-8);
                     }
                 }
 

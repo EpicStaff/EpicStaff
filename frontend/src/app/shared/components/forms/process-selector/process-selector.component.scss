@@ -22,13 +22,13 @@
     transition: all 0.2s ease;
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.05);
+        background-color: var(--white-alpha-5);
     }
 
     &.active {
         background-color: var(--accent-color);
-        color: #202020;
-        box-shadow: 0 2px 8px rgba(104, 95, 255, 0.3);
+        color: var(--gray-810);
+        box-shadow: 0 2px 8px var(--purple-alpha-30);
     }
 
     .option-icon {

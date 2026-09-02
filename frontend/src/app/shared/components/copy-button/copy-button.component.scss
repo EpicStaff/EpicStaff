@@ -29,7 +29,7 @@ button {
         color 0.15s ease;
 
     &:hover {
-        background: var(--copy-btn-hover-bg, rgba(255, 255, 255, 0.08));
+        background: var(--copy-btn-hover-bg, var(--white-alpha-8));
         color: var(--copy-btn-hover-color, var(--gray-100));
     }
 }

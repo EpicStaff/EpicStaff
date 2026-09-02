@@ -27,7 +27,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 4px 10px var(--black-alpha-12);
         z-index: 1005;
         // height:100% instead of auto — when the CDK overlay pane is height-constrained
         // (flexibleDimensions, not enough room below the trigger) this fills exactly that
@@ -52,7 +52,7 @@
 
         &:focus {
             outline: none;
-            border-color: rgba(104, 95, 255, 0.5);
+            border-color: var(--purple-alpha-50);
         }
     }
 
@@ -156,8 +156,8 @@
         }
 
         &--selected {
-            border-color: rgba(104, 95, 255, 0.6);
-            background: rgba(104, 95, 255, 0.12);
+            border-color: var(--purple-alpha-60);
+            background: var(--purple-alpha-12);
         }
 
         &--checkbox-left {
@@ -176,17 +176,17 @@
         // White checkbox override: border and check mark become white
         &--checkbox-white {
             ::ng-deep app-checkbox input[type='checkbox'] {
-                border-color: rgba(255, 255, 255, 0.6);
+                border-color: var(--white-alpha-60);
                 background: transparent;
             }
 
             ::ng-deep app-checkbox input[type='checkbox']:checked {
-                background: #ffffff;
-                border-color: #ffffff;
+                background: var(--white);
+                border-color: var(--white);
             }
 
             ::ng-deep app-checkbox input[type='checkbox']:checked::after {
-                border-color: #1e1e1e;
+                border-color: var(--graphite-875);
             }
         }
     }

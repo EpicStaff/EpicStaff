@@ -75,8 +75,8 @@
     }
 
     &__spinner {
-        border: 4px solid #44474f;
-        border-top: 4px solid #b0b8c1;
+        border: 4px solid var(--slate-700);
+        border-top: 4px solid var(--slate-400);
         border-radius: 50%;
         animation: spin 1s linear infinite;
 
@@ -120,7 +120,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        box-shadow: 0 8px 24px var(--black-alpha-24);
         z-index: 1005;
         max-height: 240px;
         overflow-y: auto;
