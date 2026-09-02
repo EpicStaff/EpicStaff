@@ -174,7 +174,7 @@ async def _resolve_durations(
     events_by_parent: dict[str, list[SessionAuditEvent]] = {pid: [] for pid in parent_ids}
     cursor: str | None = None
     while True:
-        page, cursor = await repository.query_ast(query, cursor=cursor, size=1000)
+        page, cursor = await repository.query(query, cursor=cursor, size=1000)
         for event in page:
             events_by_parent.setdefault(event.parent_id, []).append(event)
         if cursor is None or not page:
@@ -218,7 +218,7 @@ async def apply_duration_filter(
 
     while len(kept) < size and rounds < MAX_OVERFETCH_ROUNDS:
         rounds += 1
-        page, page_cursor = await repository.query_ast(base_query, cursor=next_cursor, size=size * OVERFETCH_FACTOR)
+        page, page_cursor = await repository.query(base_query, cursor=next_cursor, size=size * OVERFETCH_FACTOR)
         if not page:
             exhausted = True
             next_cursor = None

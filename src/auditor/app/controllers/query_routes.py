@@ -28,7 +28,9 @@ class SessionSearchRequest(BaseModel):
 
     filters: dict | None = Field(default=None, description=FILTERS_FIELD_DESCRIPTION)
     query: str | None = Field(default=None, description=QUERY_FIELD_DESCRIPTION)
-    match_scope: MatchScope = Field(default_factory=MatchScope, description=MATCH_SCOPE_FIELD_DESCRIPTION)
+    match_scope: MatchScope = Field(
+        default_factory=MatchScope, description=MATCH_SCOPE_FIELD_DESCRIPTION
+    )
     cursor: str | None = Field(default=None, description=CURSOR_FIELD_DESCRIPTION)
     size: int = Field(default=50, le=1000, description=SIZE_FIELD_DESCRIPTION)
 
@@ -40,7 +42,9 @@ class SessionSearchRequest(BaseModel):
     @model_validator(mode="after")
     def _filters_xor_query(self):
         if self.filters is not None and self.query is not None:
-            raise ValueError("'filters' and 'query' are mutually exclusive - send exactly one")
+            raise ValueError(
+                "'filters' and 'query' are mutually exclusive - send exactly one"
+            )
         return self
 
     def resolve_filter_node(self) -> FilterNode | None:
@@ -77,11 +81,16 @@ async def _run_search(
 
     remainder_node, duration_cond = split_duration_filter(filter_node)
     compiled = compile_filters(
-        remainder_node, org_id=org_id, retention_days=retention_days, extra_filters=extra_filters
+        remainder_node,
+        org_id=org_id,
+        retention_days=retention_days,
+        extra_filters=extra_filters,
     )
 
     if duration_cond is None:
-        events, next_cursor = await repository.query_ast(compiled, cursor=body.cursor, size=body.size)
+        events, next_cursor = await repository.query(
+            compiled, cursor=body.cursor, size=body.size
+        )
         partial = False
     else:
         events, next_cursor, partial = await apply_duration_filter(
@@ -96,7 +105,11 @@ async def _run_search(
 
     if not body.match_scope.is_noop():
         events = await expand_matches(
-            repository, events, body.match_scope, org_id=org_id, retention_days=retention_days
+            repository,
+            events,
+            body.match_scope,
+            org_id=org_id,
+            retention_days=retention_days,
         )
 
     return SessionSearchResponse(
@@ -115,28 +128,34 @@ async def search_sessions(
     return await _run_search(request, body, claims)
 
 
-@router.get("/api/audit/sessions/{session_id}/tree", description=GET_SESSION_TREE_DESCRIPTION)
+@router.get(
+    "/api/audit/sessions/{session_id}/tree", description=GET_SESSION_TREE_DESCRIPTION
+)
 async def get_session_tree(
-    session_id: int, request: Request, claims: dict = Depends(require_audit_action("read"))
+    session_id: int,
+    request: Request,
+    claims: dict = Depends(require_audit_action("read")),
 ):
     repository = request.app.state.session_audit_repository
-    events, _ = await repository.query(
-        filters={
-            "org_id": claims["org_id"],
-            "session_id": session_id,
-            "retention_days": claims.get("retention_days", 0),
-        },
-        cursor=None,
-        size=1000,  # one session's full tree - not expected to paginate
+    compiled = compile_filters(
+        None,
+        org_id=claims["org_id"],
+        retention_days=claims.get("retention_days", 0),
+        extra_filters=[{"term": {"session_id": session_id}}],
     )
+    events, _ = await repository.query(compiled, cursor=None, size=1000)
     return {"items": [e.model_dump(mode="json") for e in events]}
 
 
-@router.post("/api/audit/sessions/{session_id}/tree", description=SEARCH_SESSION_TREE_DESCRIPTION)
+@router.post(
+    "/api/audit/sessions/{session_id}/tree", description=SEARCH_SESSION_TREE_DESCRIPTION
+)
 async def search_session_tree(
     session_id: int,
     request: Request,
-    body: SessionSearchRequest | None = Body(default=None, openapi_examples=SEARCH_REQUEST_EXAMPLES),
+    body: SessionSearchRequest | None = Body(
+        default=None, openapi_examples=SEARCH_REQUEST_EXAMPLES
+    ),
     claims: dict = Depends(require_audit_action("read")),
 ) -> SessionSearchResponse:
     if body is None:

@@ -59,62 +59,6 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
 
     async def query(
         self,
-        filters: dict[str, Any],
-        cursor: str | None = None,
-        size: int = 50,
-    ) -> tuple[list[SessionAuditEvent], str | None]:
-        """
-        filters keys: org_id (required - always scoped to the caller's org),
-        kind (optional), session_id (optional, for tree expansion),
-        retention_days (optional, 0/absent = unlimited), search (optional
-        free-text term over name/node_type/flow_name).
-        """
-        must: list[dict] = [{"term": {"org_id": filters["org_id"]}}]
-
-        if filters.get("kind"):
-            must.append({"term": {"kind": filters["kind"]}})
-        if filters.get("session_id") is not None:
-            must.append({"term": {"session_id": filters["session_id"]}})
-
-        retention_days = filters.get("retention_days") or 0
-        if retention_days > 0:
-            must.append({"range": {"event_time": {"gte": f"now-{retention_days}d"}}})
-
-        if filters.get("search"):
-            term = filters["search"]
-            must.append(
-                {
-                    "bool": {
-                        "should": [
-                            {
-                                "wildcard": {
-                                    field: {
-                                        "value": f"*{term}*",
-                                        "case_insensitive": True,
-                                    }
-                                }
-                            }
-                            for field in ("name", "node_type", "flow_name")
-                        ]
-                        + [
-                            {
-                                "query_string": {
-                                    "query": term,
-                                    "fields": ["input.*", "output.*", "details.*"],
-                                    "default_operator": "AND",
-                                    "lenient": True,
-                                }
-                            }
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                }
-            )
-
-        return await self._execute({"bool": {"must": must}}, cursor=cursor, size=size)
-
-    async def query_ast(
-        self,
         query: dict[str, Any],
         cursor: str | None = None,
         size: int = 50,

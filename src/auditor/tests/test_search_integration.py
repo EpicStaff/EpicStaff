@@ -67,14 +67,21 @@ async def test_mixed_query_scopes_by_org_and_sorts_fixed(repository, opensearch_
     now = datetime.now(timezone.utc)
     node_id = str(uuid.uuid4())
     fixtures = [
-        _event(kind="node", id=node_id, org_id=ORG_A, name="WebSearchNode", status=None, event_time=now),
+        _event(
+            kind="node",
+            id=node_id,
+            org_id=ORG_A,
+            name="WebSearchNode",
+            status=None,
+            event_time=now,
+        ),
         _event(
             org_id=ORG_A,
             parent_id=node_id,
             name="WebSearchNode",
             status="failed",
             details={"message_type": "error", "tool": "Web Search Tool"},
-            error='litellm.AuthenticationError: OpenAIException',
+            error="litellm.AuthenticationError: OpenAIException",
             event_time=now + timedelta(seconds=1),
         ),
         _event(org_id=ORG_B, name="OtherOrgNode", status="failed", event_time=now),
@@ -84,7 +91,7 @@ async def test_mixed_query_scopes_by_org_and_sorts_fixed(repository, opensearch_
 
     ast = parse_query('status = "failed" and Error : "AuthenticationError"')
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
-    events, _ = await repository.query_ast(query, cursor=None, size=50)
+    events, _ = await repository.query(query, cursor=None, size=50)
 
     assert all(e.org_id == ORG_A for e in events)
     assert any(e.status == "failed" for e in events)
@@ -94,12 +101,27 @@ async def test_mixed_query_scopes_by_org_and_sorts_fixed(repository, opensearch_
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_duration_filter_includes_and_excludes_correctly(repository, opensearch_client):
+async def test_duration_filter_includes_and_excludes_correctly(
+    repository, opensearch_client
+):
     node_id = str(uuid.uuid4())
     start_time = datetime.now(timezone.utc)
     fixtures = [
-        _event(kind="node", id=node_id, org_id=ORG_A, name="SlowNode", status=None, event_time=start_time),
-        _event(org_id=ORG_A, parent_id=node_id, name="SlowNode", details={"message_type": "start"}, event_time=start_time),
+        _event(
+            kind="node",
+            id=node_id,
+            org_id=ORG_A,
+            name="SlowNode",
+            status=None,
+            event_time=start_time,
+        ),
+        _event(
+            org_id=ORG_A,
+            parent_id=node_id,
+            name="SlowNode",
+            details={"message_type": "start"},
+            event_time=start_time,
+        ),
         _event(
             org_id=ORG_A,
             parent_id=node_id,
@@ -115,7 +137,13 @@ async def test_duration_filter_includes_and_excludes_correctly(repository, opens
     remainder, duration_cond = split_duration_filter(ast)
     query = compile_filters(remainder, org_id=ORG_A, retention_days=0)
     events, _, partial = await apply_duration_filter(
-        repository, query, duration_cond, org_id=ORG_A, retention_days=0, size=50, cursor=None
+        repository,
+        query,
+        duration_cond,
+        org_id=ORG_A,
+        retention_days=0,
+        size=50,
+        cursor=None,
     )
     assert any(e.id == node_id for e in events)
     assert not partial
@@ -124,7 +152,13 @@ async def test_duration_filter_includes_and_excludes_correctly(repository, opens
     remainder2, duration_cond2 = split_duration_filter(ast_excl)
     query2 = compile_filters(remainder2, org_id=ORG_A, retention_days=0)
     events2, _, _ = await apply_duration_filter(
-        repository, query2, duration_cond2, org_id=ORG_A, retention_days=0, size=50, cursor=None
+        repository,
+        query2,
+        duration_cond2,
+        org_id=ORG_A,
+        retention_days=0,
+        size=50,
+        cursor=None,
     )
     assert node_id not in {e.id for e in events2}
 
@@ -141,5 +175,5 @@ async def test_client_cannot_widen_org_scope(repository, opensearch_client):
     # were bypassed.
     crafted = {"field": "org_id", "op": "equals", "value": ORG_B}
     query = compile_filters(crafted, org_id=ORG_A, retention_days=0)
-    events, _ = await repository.query_ast(query, cursor=None, size=50)
+    events, _ = await repository.query(query, cursor=None, size=50)
     assert all(e.org_id == ORG_A for e in events)

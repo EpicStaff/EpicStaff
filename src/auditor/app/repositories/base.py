@@ -34,47 +34,20 @@ class SessionAuditRepository(ABC):
     @abstractmethod
     async def query(
         self,
-        filters: dict[str, Any],
-        cursor: str | None = None,
-        size: int = 50,
-    ) -> tuple[list[SessionAuditEvent], str | None]:
-        """
-        Query session-audit events matching the given filters, paginated.
-
-        Args:
-            filters: Backend-agnostic filter keys (e.g. org_id, session_id,
-                kind, status, event_time range, free-text search term).
-            cursor: Opaque pagination cursor from a previous call, or None
-                to start from the beginning.
-            size: Maximum number of events to return in this page.
-
-        Returns:
-            A tuple of (matching events for this page, next cursor or None
-            if there are no more pages).
-        """
-        pass
-
-    @abstractmethod
-    async def query_ast(
-        self,
         query: dict[str, Any],
         cursor: str | None = None,
         size: int = 50,
     ) -> tuple[list[SessionAuditEvent], str | None]:
         """
         Query session-audit events using a fully-compiled, backend-native
-        query clause (see repositories/opensearch_query_compiler.py for the
-        OpenSearch case) - the output of compiling a FilterNode AST plus the
-        always-injected org_id/retention_days clauses.
+        query clause (see repositories/opensearch_query_compiler.py) - the
+        output of compiling a FilterNode AST plus the always-injected
+        org_id/retention_days clauses (extra_filters covers simple fixed
+        lookups like a single session_id, so every caller goes through
+        compile() - there is no separate flat-filters-dict path anymore).
 
-        A separate method from `query()` rather than a signature change: the
-        existing `filters: dict` shape stays exactly as-is for
-        get_session_tree and export_routes.py's current calls, which don't
-        need the AST/query-language machinery at all. `query_ast()` is the
-        new path used only by the AST-aware search route.
-
-        Same pagination/idempotency contract as `query()`: paginated by
-        `cursor`/`size`, returns (events for this page, next cursor or None).
+        Paginated by cursor/size: returns (events for this page, next
+        cursor or None if there are no more pages).
         """
         pass
 

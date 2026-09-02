@@ -41,7 +41,12 @@ class MatchScope(BaseModel):
     )
 
     def is_noop(self) -> bool:
-        return not (self.ancestors or self.children or self.rows_before or self.full_session_history)
+        return not (
+            self.ancestors
+            or self.children
+            or self.rows_before
+            or self.full_session_history
+        )
 
 
 def _dedupe_and_sort(events: list[SessionAuditEvent]) -> list[SessionAuditEvent]:
@@ -65,7 +70,9 @@ async def _fetch_all(
     cursor: str | None = None
     query = scoped_query(clauses, org_id=org_id, retention_days=retention_days)
     while True:
-        page, cursor = await repository.query_ast(query, cursor=cursor, size=_FETCH_PAGE_SIZE)
+        page, cursor = await repository.query(
+            query, cursor=cursor, size=_FETCH_PAGE_SIZE
+        )
         events.extend(page)
         if cursor is None or not page:
             break
@@ -83,7 +90,10 @@ async def _expand_full_session_history(
     if not session_ids:
         return matched_events
     return await _fetch_all(
-        repository, [{"terms": {"session_id": session_ids}}], org_id=org_id, retention_days=retention_days
+        repository,
+        [{"terms": {"session_id": session_ids}}],
+        org_id=org_id,
+        retention_days=retention_days,
     )
 
 
@@ -100,11 +110,19 @@ async def _expand_ancestors(
     if not parent_ids:
         return []
     wrappers = await _fetch_all(
-        repository, [{"terms": {"id": parent_ids}}], org_id=org_id, retention_days=retention_days
+        repository,
+        [{"terms": {"id": parent_ids}}],
+        org_id=org_id,
+        retention_days=retention_days,
     )
     grandparent_ids = sorted({w.parent_id for w in wrappers if w.parent_id})
     grandparents = (
-        await _fetch_all(repository, [{"terms": {"id": grandparent_ids}}], org_id=org_id, retention_days=retention_days)
+        await _fetch_all(
+            repository,
+            [{"terms": {"id": grandparent_ids}}],
+            org_id=org_id,
+            retention_days=retention_days,
+        )
         if grandparent_ids
         else []
     )
@@ -128,14 +146,24 @@ async def _expand_children(
     if session_matches:
         session_ids = sorted({e.session_id for e in session_matches})
         extra.extend(
-            await _fetch_all(repository, [{"terms": {"session_id": session_ids}}], org_id=org_id, retention_days=retention_days)
+            await _fetch_all(
+                repository,
+                [{"terms": {"session_id": session_ids}}],
+                org_id=org_id,
+                retention_days=retention_days,
+            )
         )
 
     node_matches = [e for e in matched_events if e.kind == "node"]
     if node_matches:
         node_ids = sorted({e.id for e in node_matches})
         extra.extend(
-            await _fetch_all(repository, [{"terms": {"parent_id": node_ids}}], org_id=org_id, retention_days=retention_days)
+            await _fetch_all(
+                repository,
+                [{"terms": {"parent_id": node_ids}}],
+                org_id=org_id,
+                retention_days=retention_days,
+            )
         )
 
     return extra
@@ -162,7 +190,7 @@ async def _expand_rows_before(
             {"range": {"event_time": {"lte": event.event_time.isoformat()}}},
         ]
         query = scoped_query(clauses, org_id=org_id, retention_days=retention_days)
-        page, _ = await repository.query_ast(query, cursor=None, size=rows_before + 1)
+        page, _ = await repository.query(query, cursor=None, size=rows_before + 1)
         extra.extend(row for row in page if row.id != event.id)
     return extra
 
@@ -191,16 +219,24 @@ async def expand_matches(
     extra: list[SessionAuditEvent] = []
     if match_scope.ancestors:
         extra.extend(
-            await _expand_ancestors(repository, matched_events, org_id=org_id, retention_days=retention_days)
+            await _expand_ancestors(
+                repository, matched_events, org_id=org_id, retention_days=retention_days
+            )
         )
     if match_scope.children:
         extra.extend(
-            await _expand_children(repository, matched_events, org_id=org_id, retention_days=retention_days)
+            await _expand_children(
+                repository, matched_events, org_id=org_id, retention_days=retention_days
+            )
         )
     if match_scope.rows_before > 0:
         extra.extend(
             await _expand_rows_before(
-                repository, matched_events, match_scope.rows_before, org_id=org_id, retention_days=retention_days
+                repository,
+                matched_events,
+                match_scope.rows_before,
+                org_id=org_id,
+                retention_days=retention_days,
             )
         )
 
