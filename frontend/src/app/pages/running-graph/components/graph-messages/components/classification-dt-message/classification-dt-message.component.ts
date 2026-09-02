@@ -4,6 +4,7 @@ import { Component, Input } from '@angular/core';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import {
     ClassificationPromptMessageData,
+    ClassificationTokenUsage,
     ConditionGroupManipulationMessageData,
     ConditionGroupMessageData,
     GraphMessage,
@@ -144,11 +145,38 @@ import {
                         </div>
 
                         <!-- Usage -->
-                        @if (getPromptData()?.usage) {
+                        @if (usage) {
                             <div class="detail-row">
                                 <span class="detail-label">Tokens</span>
-                                <span class="detail-value">{{ getPromptData()?.usage?.['total_tokens'] || 0 }}</span>
+                                <span class="detail-value">
+                                    {{ usage.total_tokens || 0 }}
+                                    @if (usage.prompt_tokens || usage.completion_tokens) {
+                                        <span class="usage-breakdown">
+                                            prompt {{ usage.prompt_tokens || 0 }} · completion
+                                            {{ usage.completion_tokens || 0 }}
+                                        </span>
+                                    }
+                                </span>
                             </div>
+                            @if (usage.cached_prompt_tokens && usage.cached_prompt_tokens > 0) {
+                                <div class="detail-row">
+                                    <span
+                                        class="detail-label"
+                                        title="Subset of prompt tokens — not added to the total."
+                                        >Cached tokens</span
+                                    >
+                                    <span class="detail-value">
+                                        {{ usage.cached_prompt_tokens }}
+                                        <span class="usage-breakdown">included in prompt tokens</span>
+                                    </span>
+                                </div>
+                            }
+                            @if (usage.total_cost_usd !== undefined && usage.total_cost_usd !== null) {
+                                <div class="detail-row">
+                                    <span class="detail-label">Cost</span>
+                                    <span class="detail-value">{{ formatCost(usage.total_cost_usd) }}</span>
+                                </div>
+                            }
                         }
                     </div>
                 </div>
@@ -346,6 +374,12 @@ import {
                 font-style: italic;
             }
 
+            .usage-breakdown {
+                color: var(--gray-500);
+                font-size: 0.8rem;
+                margin-left: 8px;
+            }
+
             .detail-section {
                 margin-bottom: 0.75rem;
             }
@@ -427,6 +461,10 @@ export class ClassificationDtMessageComponent {
         return null;
     }
 
+    get usage(): ClassificationTokenUsage | null {
+        return this.getPromptData()?.usage ?? null;
+    }
+
     getManipulationData(): ConditionGroupManipulationMessageData | null {
         if (this.isManipulation()) {
             return this.message.message_data as ConditionGroupManipulationMessageData;
@@ -462,5 +500,14 @@ export class ClassificationDtMessageComponent {
         } else if (section === 'response') {
             this.isResponseExpanded = !this.isResponseExpanded;
         }
+    }
+
+    formatCost(cost: number): string {
+        if (!Number.isFinite(cost)) return '—';
+        const formatted = new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 20,
+        }).format(cost);
+        return `$${formatted}`;
     }
 }
