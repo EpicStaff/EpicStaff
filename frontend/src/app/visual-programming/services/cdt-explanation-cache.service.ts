@@ -1,11 +1,6 @@
 import { Injectable } from '@angular/core';
 
-export interface CdtCachedExplanation {
-    readonly text: string;
-    readonly generatedBy: string;
-    /** The step's fingerprint when this text was generated. Differs → outdated. */
-    readonly fingerprint: string;
-}
+import { CdtExplanation } from '../core/models/classification-decision-table.model';
 
 /** Bumped when the key scheme changes; older entries can never match again. */
 const STORAGE_PREFIX = 'cdt-explanation:v2:';
@@ -13,10 +8,13 @@ const LEGACY_PREFIXES = ['cdt-explanation:'];
 const MAX_ENTRIES = 200;
 
 /**
- * Remembers generated explanations, and what each was generated from.
+ * The local half of `CdtExplanationStoreService` — a session `Map` over
+ * `localStorage`. Not injected anywhere else; go through the store.
  *
- * The endpoint stores nothing, so this is the only place an explanation survives:
- * a Map for the session and `localStorage` so a reload does not lose the work.
+ * Explanations live on the node's `metadata` and so reach the server only on save.
+ * This layer covers what that leaves open: a generation the user never saved, an
+ * undo that rolled the canvas back over one, and a rule hidden and later shown
+ * again. Written through on every generation, read only when the node has nothing.
  *
  * Keys are step identities, not step content — see `buildExplainStepKeys`. That is
  * what lets an edited step show its old explanation marked outdated instead of
@@ -24,13 +22,13 @@ const MAX_ENTRIES = 200;
  */
 @Injectable({ providedIn: 'root' })
 export class CdtExplanationCacheService {
-    private readonly memory = new Map<string, CdtCachedExplanation>();
+    private readonly memory = new Map<string, CdtExplanation>();
 
     constructor() {
         this.dropStalePrefixes();
     }
 
-    public get(key: string): CdtCachedExplanation | null {
+    public get(key: string): CdtExplanation | null {
         const local = this.memory.get(key);
         if (local) return local;
 
@@ -39,7 +37,7 @@ export class CdtExplanationCacheService {
         return stored;
     }
 
-    public set(key: string, value: CdtCachedExplanation): void {
+    public set(key: string, value: CdtExplanation): void {
         this.memory.set(key, value);
         this.writeStorage(key, value);
     }
@@ -49,7 +47,7 @@ export class CdtExplanationCacheService {
      * mode, blocked site data, some webviews — and an explanation is a convenience
      * that must never break the dialog.
      */
-    private readStorage(key: string): CdtCachedExplanation | null {
+    private readStorage(key: string): CdtExplanation | null {
         try {
             const raw = localStorage.getItem(STORAGE_PREFIX + key);
             if (!raw) return null;
@@ -72,7 +70,7 @@ export class CdtExplanationCacheService {
         }
     }
 
-    private writeStorage(key: string, value: CdtCachedExplanation): void {
+    private writeStorage(key: string, value: CdtExplanation): void {
         try {
             localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
         } catch {

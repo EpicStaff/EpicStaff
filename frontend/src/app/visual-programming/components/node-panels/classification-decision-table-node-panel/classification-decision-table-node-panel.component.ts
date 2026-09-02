@@ -705,9 +705,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     /**
      * Opens the read-only flowchart of this table.
      *
-     * Deliberately does not touch node state: no `createUpdatedNode`, no
-     * `notifyExternalChange`, no `triggerAutosave`. Opening a viewer must never
-     * mark the canvas dirty, so the dialog is handed a snapshot and nothing else.
+     * Opening it touches no node state: no `createUpdatedNode`, no
+     * `notifyExternalChange`, no `triggerAutosave` — the dialog is handed a snapshot
+     * and nothing else, so looking at the diagram never marks the canvas dirty.
+     *
+     * Generating an explanation inside it does, by design: the dialog writes to the
+     * node's metadata through `CdtExplanationStoreService`, bypassing this panel's
+     * form, and the next save carries it.
      */
     public openDecisionTree(): void {
         this.dialog.open(CdtDecisionTreeDialogComponent, {

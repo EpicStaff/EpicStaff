@@ -19,6 +19,7 @@ import {
     NodeModel,
     ScheduleTriggerNodeModel,
 } from '../../core/models/node.model';
+import { toStoredCdtExplanations } from '../cdt-explanations';
 import { hasPersistedWaypoints, mergeWaypointsIntoMetadata } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
@@ -259,7 +260,9 @@ function buildCdtNodePayload(
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
         ...(errorRef.tempId != null ? { next_error_node_temp_id: errorRef.tempId } : {}),
         condition_groups: conditionGroups,
-        metadata: toNodeMetadata(node),
+        // Built in the same order as `toCdtComparable`, so what the diff compared is
+        // what the server receives.
+        metadata: { ...toNodeMetadata(node), explanations: toStoredCdtExplanations(node.explanations) },
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
 }
 

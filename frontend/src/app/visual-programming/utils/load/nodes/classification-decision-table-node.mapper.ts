@@ -3,6 +3,7 @@ import { generateUuid } from '@shared/utils';
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
+import { readCdtExplanations } from '../../cdt-explanations';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapClassificationDecisionTableNodeToModel(
@@ -79,5 +80,6 @@ export function mapClassificationDecisionTableNodeToModel(
         input_map: {},
         output_variable_path: null,
         size: ui.size,
+        explanations: readCdtExplanations(n.metadata as Record<string, unknown> | undefined),
     };
 }
