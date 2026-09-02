@@ -22,6 +22,7 @@ from src.shared.models import (
     EndNodeData,
     FileExtractorNodeData,
     GraphRagSearchConfig,
+    KnowledgeNodeData,
     LLMConfigData,
     LLMData,
     McpToolData,
@@ -75,6 +76,7 @@ from tables.models.graph_models import (
     FileExtractorNode,
     Graph,
     GraphStorageFile,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     SubGraphNode,
@@ -105,6 +107,8 @@ from utils.graph_utils import (
 )
 from utils.singleton_meta import SingletonMeta
 from tables.services.rag_assignment_service import SearchConfigService
+from tables.services.rag_registry import resolve_rag_in_collection
+
 from tables.models.embedding_models import EmbeddingConfig
 
 
@@ -156,6 +160,48 @@ class ConverterService(metaclass=SingletonMeta):
             )
 
         return None
+
+    def convert_knowledge_node_to_pydantic(
+        self, knowledge_node: KnowledgeNode, resolver
+    ) -> KnowledgeNodeData:
+        collection_id = knowledge_node.source_collection_id
+
+        # rag_type ("naive"/"graph") and rag_id are stored verbatim; the knowledge
+        # service resolves the RAG by (collection, rag_id, rag_type), same as the agent.
+        rag_type_id = (
+            f"{knowledge_node.rag_type}:{knowledge_node.rag_id}"
+            if knowledge_node.rag_type and knowledge_node.rag_id
+            else None
+        )
+        all_search_configs = SearchConfigService.get_node_search_configs(knowledge_node)
+        rag_search_config = self.build_rag_search_config(
+            rag_type_id, all_search_configs
+        )
+        embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
+        return KnowledgeNodeData(
+            node_name=resolver(knowledge_node.id),
+            collection_id=collection_id,
+            rag_type_id=rag_type_id,
+            query=knowledge_node.query,
+            rag_search_config=rag_search_config,
+            input_map=knowledge_node.input_map,
+            output_variable_path=knowledge_node.output_variable_path,
+            embedder_api_key_secret_id=embedder_api_key_secret_id,
+        )
+
+    @staticmethod
+    def _node_rag_embedder_secret_id(knowledge_node: KnowledgeNode) -> int | None:
+        """Secret id of the node's RAG embedder, resolved by the same (collection,
+        rag_id, rag_type) coordinates the knowledge service searches by."""
+        if not (knowledge_node.rag_type and knowledge_node.rag_id):
+            return None
+        rag = resolve_rag_in_collection(
+            knowledge_node.rag_type,
+            knowledge_node.rag_id,
+            knowledge_node.source_collection,
+        )
+        embedder = rag.embedder
+        return embedder.api_key_secret_id if embedder else None
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
@@ -247,9 +293,9 @@ class ConverterService(metaclass=SingletonMeta):
                 task=task, graph_id=graph_id, session_id=session_id
             )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (crew.process == "sequential" and task.agent is None), (
-                f"Task {task.name} has no agent, but it's required for sequential process."
-            )
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
 
             task_data_list.append(
                 TaskData(
@@ -530,6 +576,7 @@ class ConverterService(metaclass=SingletonMeta):
         # Resolve provider-specific fields from the active config FK snapshot
         rt_model_name = None
         rt_api_key_secret_id = None
+        rt_base_url = None
         rt_provider = None
         transcript_model_name = None
         transcript_api_key_secret_id = None
@@ -539,6 +586,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider = "openai"
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
+            rt_base_url = cfg.base_url
             transcript_model_name = cfg.transcription_model_name
             transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
         elif rt_agent_chat.elevenlabs_config_id is not None:
@@ -552,11 +600,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if (
-            rt_provider is None
-            or rt_model_name is None
-            or rt_api_key_secret_id is None
-        ):
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
@@ -581,6 +625,7 @@ class ConverterService(metaclass=SingletonMeta):
             tools=self._get_agent_base_tools(agent=agent),
             rt_model_name=rt_model_name,
             rt_api_key_secret_id=rt_api_key_secret_id,
+            rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=agent.default_temperature,
@@ -607,6 +652,7 @@ class ConverterService(metaclass=SingletonMeta):
         # Resolve provider-specific fields from the active config FK snapshot
         rt_model_name = None
         rt_api_key_secret_id = None
+        rt_base_url = None
         rt_provider = None
         transcript_model_name = None
         transcript_api_key_secret_id = None
@@ -616,6 +662,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider = "openai"
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
+            rt_base_url = cfg.base_url
             transcript_model_name = cfg.transcription_model_name
             transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
         elif rt_agent_chat.elevenlabs_config_id is not None:
@@ -629,11 +676,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if (
-            rt_provider is None
-            or rt_model_name is None
-            or rt_api_key_secret_id is None
-        ):
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
@@ -658,6 +701,7 @@ class ConverterService(metaclass=SingletonMeta):
             tools=surface_resolution.tools,
             rt_model_name=rt_model_name,
             rt_api_key_secret_id=rt_api_key_secret_id,
+            rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=ad.default_temperature,
@@ -785,9 +829,9 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(python_configuration, dict), (
-            "Error reading python tool configuration. How did you even pass validation?"
-        )
+        assert isinstance(
+            python_configuration, dict
+        ), "Error reading python tool configuration. How did you even pass validation?"
 
         storage_allowed_paths = None
         storage_org_prefix = None

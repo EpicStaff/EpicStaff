@@ -147,3 +147,21 @@ async def test_update_session_explicit_voice_override_is_used(client):
 
     event = client.send_server.await_args[0][0]
     assert event["session"]["audio"]["output"]["voice"] == "coral"
+
+
+def test_base_url_defaults_to_hardcoded_openai_endpoint():
+    """No override must reproduce today's exact literal."""
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+    )
+    assert c.base_url == "wss://api.openai.com/v1/realtime"
+
+
+def test_base_url_uses_custom_override():
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+        base_url="https://my-proxy.internal",
+    )
+    assert c.base_url == "wss://my-proxy.internal/v1/realtime"

@@ -194,6 +194,9 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
     schedule_trigger_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
+    knowledge_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
     agent_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
@@ -239,6 +242,10 @@ class ImportRequestSerializer(serializers.Serializer):
                 }
             )
         return attrs
+
+
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

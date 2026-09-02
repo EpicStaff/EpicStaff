@@ -11,6 +11,7 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -28,6 +29,7 @@ from tables.serializers.graph_bulk_save_serializers import (
     EndNodeBulkSerializer,
     FileExtractorNodeBulkSerializer,
     GraphNoteBulkSerializer,
+    KnowledgeNodeBulkSerializer,
     PythonNodeBulkSerializer,
     ScheduleTriggerNodeBulkSerializer,
     StartNodeBulkSerializer,
@@ -40,6 +42,7 @@ from tables.services.graph_bulk_save_service.factories import (
     ClassificationDecisionTableNodeSaveableFactory,
     DefaultNodeSaveableFactory,
     DecisionTableNodeSaveableFactory,
+    KnowledgeNodeSaveableFactory,
     NodeSaveableFactory,
 )
 
@@ -48,6 +51,7 @@ from tables.services.graph_bulk_save_service.factories import (
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()
 _CLASSIFICATION_DT_FACTORY = ClassificationDecisionTableNodeSaveableFactory()
 _DECISION_TABLE_FACTORY = DecisionTableNodeSaveableFactory()
+_KNOWLEDGE_FACTORY = KnowledgeNodeSaveableFactory()
 
 
 @dataclass
@@ -145,6 +149,13 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "graph_note_ids",
         GraphNote,
         GraphNoteBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "knowledge_node_list",
+        "knowledge_node_ids",
+        KnowledgeNode,
+        KnowledgeNodeBulkSerializer,
+        saveable_factory=_KNOWLEDGE_FACTORY,
     ),
     NodeTypeConfig(
         "webhook_trigger_node_list",

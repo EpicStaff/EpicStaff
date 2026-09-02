@@ -359,6 +359,34 @@ def test_agent_create_nested_realtime_agent_accepts_same_org_config(
     assert agent.realtime_agent.openai_config_id == config.pk
 
 
+# ---------------------------------------------------------------------------
+# OpenAIRealtimeConfig.base_url override
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_openai_config_create_accepts_base_url(auth_client, default_org):
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(
+        url,
+        {"custom_name": "openai-cfg", "base_url": "https://my-proxy.internal"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["base_url"] == "https://my-proxy.internal"
+
+    instance = OpenAIRealtimeConfig.objects.get(pk=resp.data["id"])
+    assert instance.base_url == "https://my-proxy.internal"
+
+
+@pytest.mark.django_db
+def test_openai_config_base_url_defaults_to_null(auth_client, default_org):
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(url, {"custom_name": "openai-cfg"}, format="json")
+    assert resp.status_code == 201, resp.data
+    assert resp.data["base_url"] is None
+
+
 @pytest.mark.django_db
 def test_agent_create_nested_realtime_agent_rejects_cross_org_config(
     auth_client, org_b
