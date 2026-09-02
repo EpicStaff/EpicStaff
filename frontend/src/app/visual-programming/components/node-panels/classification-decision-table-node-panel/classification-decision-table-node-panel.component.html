@@ -19,7 +19,10 @@
                 <!-- Sticky header: node fields + tab row -->
                 <div class="panel-sticky-header">
                     <!-- Header fields row -->
-                    <div class="panel-node-header">
+                    <div
+                        class="panel-node-header"
+                        [class.panel-node-header--collapsed]="headerCollapsed()"
+                    >
                         <div class="header-field">
                             <label class="header-label"
                                 >Name
@@ -105,7 +108,10 @@
 
                 <!-- Decision Table Tab -->
                 @if (activeTab() === 'table') {
-                    <div class="grid-section">
+                    <div
+                        class="grid-section"
+                        (scroll)="onGridSectionScroll($event)"
+                    >
                         <app-classification-decision-table-grid
                             [conditionGroups]="conditionGroups()"
                             [sections]="sections()"

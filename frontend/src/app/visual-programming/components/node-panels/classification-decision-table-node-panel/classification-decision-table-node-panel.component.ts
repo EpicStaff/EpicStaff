@@ -47,6 +47,7 @@ import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { CDT_HEADER_COLLAPSE_AT, CDT_HEADER_COLLAPSE_MIN_SCROLLABLE, CDT_HEADER_EXPAND_AT } from './cdt.constants';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -96,6 +97,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private sanitizer = inject(DomSanitizer);
 
     public activeTab = signal<TabType>('table');
+    public headerCollapsed = signal<boolean>(false);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public sections = signal<CdtSection[]>([]);
@@ -332,6 +334,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.prompts.set({ ...(tableData.prompts || {}) });
 
         this.activeTab.set('table');
+        this.headerCollapsed.set(false);
 
         return form;
     }
@@ -414,6 +417,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             this.editingPromptId.set(event.promptId);
             this.pendingPromptName.set(event.promptId);
         }
+    }
+
+    public onGridSectionScroll(event: Event): void {
+        const el = event.target as HTMLElement;
+        const scrollable = el.scrollHeight - el.clientHeight;
+        const collapsed = this.headerCollapsed();
+        if (!collapsed && scrollable < CDT_HEADER_COLLAPSE_MIN_SCROLLABLE) return;
+
+        const next = collapsed ? el.scrollTop > CDT_HEADER_EXPAND_AT : el.scrollTop > CDT_HEADER_COLLAPSE_AT;
+        if (next === collapsed) return;
+        this.headerCollapsed.set(next);
+        this.cdr.markForCheck();
     }
 
     public onConditionGroupsChange(groups: ConditionGroup[]): void {

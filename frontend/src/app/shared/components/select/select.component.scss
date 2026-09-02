@@ -166,11 +166,14 @@
     }
 
     &__list {
-        scrollbar-gutter: stable;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
         overflow-y: auto;
+    }
+
+    &__dropdown--boxed &__list {
+        scrollbar-gutter: stable;
     }
 
     &__option-body {

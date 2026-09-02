@@ -46,6 +46,21 @@
     gap: 1rem;
     padding: 20px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+    max-height: 160px;
+    transition:
+        max-height 0.2s ease,
+        padding 0.2s ease,
+        opacity 0.15s ease;
+
+    &--collapsed {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        opacity: 0;
+        border-bottom-color: transparent;
+        pointer-events: none;
+    }
 }
 
 .header-field {

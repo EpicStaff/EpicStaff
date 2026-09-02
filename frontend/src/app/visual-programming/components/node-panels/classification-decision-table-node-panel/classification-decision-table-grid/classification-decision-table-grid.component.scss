@@ -1,3 +1,6 @@
+$grid-header-height: 40px;
+$grid-header-gap: 1rem;
+
 :host {
     display: block;
 }
@@ -13,8 +16,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 0.5rem;
+    padding: 0 1.5rem;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 26;
+    background: var(--color-nodes-sidepanel-bg);
+    box-shadow: 0 $grid-header-gap 0 0 var(--color-nodes-sidepanel-bg);
 
     h3 {
         margin: 0;
@@ -701,7 +709,7 @@ $group-gutter-width: 28px;
             border-top-left-radius: 8px;
             border-top-right-radius: 8px;
             position: sticky;
-            top: 0;
+            top: calc(#{$grid-header-height} + #{$grid-header-gap});
             z-index: 10;
         }
 
