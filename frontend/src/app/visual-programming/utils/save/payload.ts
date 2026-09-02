@@ -215,33 +215,35 @@ export function buildCdtNodePayload(
     const defaultRef = resolveNodeRef(defaultTargetUuid, allNodes, idMap);
     const errorRef = resolveNodeRef(errorTargetUuid, allNodes, idMap);
 
-    const preSecretIds = preComp.secret_ids || [];
-    const postSecretIds = postComp.secret_ids || [];
+    const preSecretIds = preComp.secret_ids;
+    const postSecretIds = postComp.secret_ids;
+    const preSecretsField = preSecretIds !== undefined ? { secret_ids: preSecretIds } : {};
+    const postSecretsField = postSecretIds !== undefined ? { secret_ids: postSecretIds } : {};
 
     return {
         graph: graphId,
         node_name: node.node_name,
         pre_python_code:
-            preCodeValue.trim() === '' && (preComp.libraries || []).length === 0 && !preSecretIds.length
+            preCodeValue.trim() === '' && (preComp.libraries || []).length === 0 && !preSecretIds?.length
                 ? null
                 : {
                       code: preCodeValue,
                       libraries: preComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
-                      secret_ids: preSecretIds,
+                      ...preSecretsField,
                   },
         pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
         post_python_code:
-            postCodeValue.trim() === '' && (postComp.libraries || []).length === 0 && !postSecretIds.length
+            postCodeValue.trim() === '' && (postComp.libraries || []).length === 0 && !postSecretIds?.length
                 ? null
                 : {
                       code: postCodeValue,
                       libraries: postComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
-                      secret_ids: postSecretIds,
+                      ...postSecretsField,
                   },
         post_input_map: postComp.input_map || tableData?.post_input_map || {},
         post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,

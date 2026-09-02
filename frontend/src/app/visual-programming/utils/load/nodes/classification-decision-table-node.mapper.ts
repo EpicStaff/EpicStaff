@@ -48,12 +48,18 @@ export function mapClassificationDecisionTableNodeToModel(
                     input_map: n.pre_input_map ?? {},
                     output_variable_path: n.pre_output_variable_path ?? null,
                     libraries: n.pre_python_code?.libraries ?? [],
+                    ...(n.pre_python_code?.secret_ids !== undefined
+                        ? { secret_ids: n.pre_python_code.secret_ids }
+                        : {}),
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
                     input_map: n.post_input_map ?? {},
                     output_variable_path: n.post_output_variable_path ?? null,
                     libraries: n.post_python_code?.libraries ?? [],
+                    ...(n.post_python_code?.secret_ids !== undefined
+                        ? { secret_ids: n.post_python_code.secret_ids }
+                        : {}),
                 },
                 condition_groups: n.condition_groups.map((g) => ({
                     group_name: g.group_name,

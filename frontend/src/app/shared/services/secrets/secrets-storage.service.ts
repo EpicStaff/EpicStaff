@@ -15,6 +15,8 @@ export class SecretsStorageService implements StorageService {
     private secretsSignal = signal<Secret[]>([]);
     public readonly secrets = this.secretsSignal.asReadonly();
     public secretsLoaded = signal<boolean>(false);
+    private readonly readForbiddenSignal = signal<boolean>(false);
+    public readonly readForbidden = this.readForbiddenSignal.asReadonly();
     // Every node-secrets-field, config dialog, and SecretDeclarationIndexService independently
     // calls getSecrets() on their own mount/build — without sharing the in-flight request, opening
     // e.g. a CDT panel (pre + post secrets fields mounting at once) fires one duplicate GET
@@ -32,7 +34,11 @@ export class SecretsStorageService implements StorageService {
                 // by-design restriction (see SKIP_FORBIDDEN_RELOAD on this request), not a
                 // failure worth surfacing as an error toast to every secrets consumer.
                 // Cache it as "loaded, zero secrets" instead of rethrowing.
-                catchError((err: HttpErrorResponse) => (err.status === 403 ? of([]) : throwError(() => err))),
+                catchError((err: HttpErrorResponse) => {
+                    if (err.status !== 403) return throwError(() => err);
+                    this.readForbiddenSignal.set(true);
+                    return of([]);
+                }),
                 tap((secrets) => this.createSecretsInCache(secrets)),
                 finalize(() => (this.pendingRequest$ = null)),
                 shareReplay({ bufferSize: 1, refCount: false })

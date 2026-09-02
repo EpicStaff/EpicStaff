@@ -1,8 +1,7 @@
-import { stableNodeId } from '../../stable-node-id';
-
 import { PythonNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
@@ -21,6 +20,7 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
             code: pn.python_code.code,
             entrypoint: pn.python_code.entrypoint,
             use_storage: pn.use_storage ?? false,
+            ...(pn.python_code.secret_ids !== undefined ? { secret_ids: pn.python_code.secret_ids } : {}),
         },
         position: ui.position,
         ports: null,

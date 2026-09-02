@@ -10,7 +10,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { SecretsStorageService } from '@shared/services';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -30,6 +30,7 @@ import { SelectItem } from '../../../shared/components/select/select.component';
 })
 export class NodeSecretsFieldComponent {
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly toastService = inject(ToastService);
 
@@ -53,7 +54,20 @@ export class NodeSecretsFieldComponent {
         }))
     );
 
+    public readonly readForbidden = computed(() => this.secretsStorageService.readForbidden());
+
+    public readonly selectionUnknown = computed(
+        () => !this.readForbidden() && this.secretDeclarationIndexService.indexUnavailable()
+    );
+
     public readonly triggerLabel = computed(() => {
+        if (this.readForbidden()) {
+            const declared = this.value().length;
+            return declared > 0 ? `${declared} selected — no access` : 'No access to secrets';
+        }
+        if (this.selectionUnknown() && this.value().length === 0) {
+            return 'Selection hidden — pick to overwrite';
+        }
         // Count only ids that still resolve to an existing secret — a since-deleted secret's id
         // can still be sitting in value() (nothing prunes it), and counting it here would show a
         // number the dropdown's checked rows can't match.
@@ -72,6 +86,7 @@ export class NodeSecretsFieldComponent {
     }
 
     public openDropdown(): void {
+        if (this.readForbidden()) return;
         const el = this.trigger()?.nativeElement;
         if (!el) return;
         this.multiSelectRef()?.openAt(el, this.value());

@@ -19,6 +19,7 @@ import { NodeType } from '../../../core/enums/node-type';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
+import { SidePanelService } from '../../../services/side-panel.service';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 
@@ -46,6 +47,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly clipboard = inject(Clipboard);
     private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly sidePanelService = inject(SidePanelService);
     private secretsRestoredForNodeId: string | null = null;
 
     public override readonly isExpanded = input<boolean>(false);
@@ -146,6 +148,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     onSecretsChange(values: number[]): void {
         this.selectedSecretIds.set(values);
         this.notifyExternalChange();
+        this.sidePanelService.triggerAutosave();
     }
 
     onWebhookAuthToggle(enabled: boolean): void {

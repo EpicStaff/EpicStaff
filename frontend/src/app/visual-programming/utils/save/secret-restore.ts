@@ -15,6 +15,8 @@ function restoreNodeSecretIds(
     index: Map<string, number[]>,
     service: SecretDeclarationIndexService
 ): NodeModel {
+    if (service.readForbidden()) return node;
+
     switch (node.type) {
         case NodeType.PYTHON: {
             const pyNode = node as PythonNodeModel;

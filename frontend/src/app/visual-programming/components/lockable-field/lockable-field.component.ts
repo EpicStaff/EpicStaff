@@ -150,6 +150,7 @@ export class LockableFieldComponent implements OnDestroy {
         if (!this.isLockedByMe()) return;
         const target = event.target as Node | null;
         if (target && this.el.nativeElement.contains(target)) return;
+        if (this.isInsideOverlay(target)) return;
         this.wsService.sendNodeUnlocked(this.nodeId(), this.fieldId());
     }
 
@@ -157,13 +158,25 @@ export class LockableFieldComponent implements OnDestroy {
     onFocusOut(event: FocusEvent): void {
         const relatedTarget = event.relatedTarget as Node | null;
         if (relatedTarget && (event.currentTarget as HTMLElement).contains(relatedTarget)) return;
+        if (this.isInsideOverlay(relatedTarget)) return;
         this.sidePanelService.triggerAutosave();
         setTimeout(() => {
             if (!document.hasFocus()) return;
+            if (this.isOverlayOpen() || this.isInsideOverlay(document.activeElement)) return;
             if (this.isLockedByMe()) {
                 this.wsService.sendNodeUnlocked(this.nodeId(), this.fieldId());
             }
         }, 0);
+    }
+
+    private isInsideOverlay(target: Node | null): boolean {
+        if (!target) return false;
+        const element = target instanceof Element ? target : target.parentElement;
+        return !!element?.closest('.cdk-overlay-container');
+    }
+
+    private isOverlayOpen(): boolean {
+        return !!document.querySelector('.cdk-overlay-container .cdk-overlay-pane');
     }
 
     @HostListener('window:focus')

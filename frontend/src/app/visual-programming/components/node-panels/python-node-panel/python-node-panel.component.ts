@@ -106,12 +106,17 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 </div>
                             </app-lockable-field>
 
-                            <app-node-secrets-field
-                                [activeColor]="activeColor"
-                                [value]="selectedSecretIds()"
-                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-                                (valueChange)="onSecretsChange($event)"
-                            />
+                            <app-lockable-field
+                                fieldId="secret_ids"
+                                [nodeId]="node().id"
+                            >
+                                <app-node-secrets-field
+                                    [activeColor]="activeColor"
+                                    [value]="selectedSecretIds()"
+                                    tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                    (valueChange)="onSecretsChange($event)"
+                                />
+                            </app-lockable-field>
 
                             <app-lockable-field
                                 fieldId="output_variable_path"

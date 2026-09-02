@@ -65,12 +65,17 @@
                         <div class="webhook-warning">Webhook is not registered. Check the trigger configuration.</div>
                     }
 
-                    <app-node-secrets-field
-                        [activeColor]="activeColor"
-                        [value]="selectedSecretIds()"
-                        tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-                        (valueChange)="onSecretsChange($event)"
-                    />
+                    <app-lockable-field
+                        fieldId="secret_ids"
+                        [nodeId]="node().id"
+                    >
+                        <app-node-secrets-field
+                            [activeColor]="activeColor"
+                            [value]="selectedSecretIds()"
+                            tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                            (valueChange)="onSecretsChange($event)"
+                        />
+                    </app-lockable-field>
 
                     <app-lockable-field
                         fieldId="libraries"

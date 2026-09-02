@@ -11,6 +11,15 @@ export class SecretDeclarationIndexService {
     private readonly secretsStorageService = inject(SecretsStorageService);
 
     private index$: Observable<Map<string, number[]>> | null = null;
+    private usageUnavailable = false;
+
+    public indexUnavailable(): boolean {
+        return this.secretsStorageService.readForbidden() || this.usageUnavailable;
+    }
+
+    public readForbidden(): boolean {
+        return this.indexUnavailable();
+    }
 
     getIndex(): Observable<Map<string, number[]>> {
         if (!this.index$) {
@@ -55,6 +64,7 @@ export class SecretDeclarationIndexService {
     }
 
     private buildIndex(): Observable<Map<string, number[]>> {
+        this.usageUnavailable = false;
         return this.secretsStorageService.getSecrets().pipe(
             switchMap((secrets) =>
                 secrets.length
@@ -68,9 +78,13 @@ export class SecretDeclarationIndexService {
                                   // that secret rather than erroring the entire forkJoin, which
                                   // would leave every other secret's restoration silently broken
                                   // for the rest of the session.
-                                  catchError(() =>
-                                      of({ secretId: secret.id, categories: [] as SecretUsageCategoryDto[] })
-                                  )
+                                  catchError(() => {
+                                      this.usageUnavailable = true;
+                                      return of({
+                                          secretId: secret.id,
+                                          categories: [] as SecretUsageCategoryDto[],
+                                      });
+                                  })
                               )
                           )
                       )

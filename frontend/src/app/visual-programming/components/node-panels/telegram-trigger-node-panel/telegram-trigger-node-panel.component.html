@@ -37,14 +37,14 @@
                                     label="Telegram bot key"
                                     variant="boxed"
                                     tooltipText="The stored secret holding this bot's Telegram API key"
-                                    placeholder="Select a secret"
+                                    [placeholder]="secretPlaceholder()"
                                     [required]="true"
                                     [items]="secretItems()"
                                     [showSearch]="true"
                                     searchPlaceholder="Search a secret..."
                                     (changed)="notifyExternalChange()"
                                 />
-                                @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
+                                @if (!form.get('telegram_bot_api_key_secret_id')?.value && !secretsReadForbidden()) {
                                     <app-hint-message>
                                         Choose an existing secret. To add a new one, go to the
                                         <strong>Secrets tab</strong>.

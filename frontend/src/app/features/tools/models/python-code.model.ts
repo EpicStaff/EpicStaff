@@ -3,6 +3,7 @@ export interface GetPythonCodeRequest {
     libraries: string[];
     code: string;
     entrypoint: string;
+    secret_ids?: number[];
 }
 
 export interface CreatePythonCodeRequest {

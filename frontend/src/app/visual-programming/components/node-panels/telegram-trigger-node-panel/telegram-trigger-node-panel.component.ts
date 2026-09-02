@@ -88,6 +88,15 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
         }))
     );
 
+    readonly secretsReadForbidden = computed(() => this.secretsStorageService.readForbidden());
+
+    secretPlaceholder(): string {
+        if (!this.secretsReadForbidden()) return 'Select a secret';
+        return this.form?.get('telegram_bot_api_key_secret_id')?.value
+            ? 'Secret set — no access'
+            : 'No access to secrets';
+    }
+
     editorOptions: Record<string, unknown> = {
         lineNumbers: 'off',
         theme: 'vs-dark',
