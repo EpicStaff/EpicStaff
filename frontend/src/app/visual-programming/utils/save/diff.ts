@@ -240,7 +240,6 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
-        webhook_node_auth: { enabled: node.data.webhook_node_auth?.enabled ?? false },
         metadata: toNodeMetadata(node),
     };
 }

@@ -24,6 +24,8 @@ import {
 
 import {
     WebhookProviderType,
+    WebhookTriggerAuth,
+    WebhookTriggerAuthKind,
     WebhookTriggerModel,
     WebhookTriggerWrite,
 } from '../../../visual-programming/core/models/webhook-trigger.model';
@@ -43,6 +45,12 @@ export const WEBHOOK_REGION_ITEMS: SelectItem[] = [
     { name: 'Europe (eu)', value: 'eu' },
     { name: 'United States (us)', value: 'us' },
     { name: 'Asia/Pacific (ap)', value: 'ap' },
+];
+
+export const WEBHOOK_AUTH_KIND_ITEMS: SelectItem[] = [
+    { name: 'Webhook Node', value: 'webhook' },
+    { name: 'Telegram Node', value: 'telegram' },
+    { name: 'Twilio', value: 'twilio' },
 ];
 
 type Mode = 'existing' | 'new';
@@ -71,6 +79,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     pathRequired = input<boolean>(true);
     /** Allow the localhost provider. Off for Twilio (it can't reach localhost webhooks). */
     allowLocalhost = input<boolean>(true);
+    showAuth = input<boolean>(true);
     activeColor = input<string>('#685fff');
 
     /** Emits the resolved trigger model (the picked existing one, or the inline draft). */
@@ -78,11 +87,13 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
 
     mode = signal<Mode>('new');
     providerType = signal<WebhookProviderType | null>(null);
+    authKindValue = signal<WebhookTriggerAuthKind | null>(null);
     triggers = signal<WebhookTriggerModel[]>([]);
     private triggersLoaded = signal(false);
     selectedExistingId = signal<number | null>(null);
     private editingId: number | undefined;
     private disabled = signal(false);
+    existingAuth = signal<WebhookTriggerAuth | null>(null);
 
     providerItems = computed<SelectItem[]>(() =>
         this.allowLocalhost() ? WEBHOOK_PROVIDER_ITEMS : WEBHOOK_PROVIDER_ITEMS.filter((i) => i.value !== 'localhost')
@@ -95,6 +106,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         }))
     );
     readonly regionItems = WEBHOOK_REGION_ITEMS;
+    readonly authKindItems: SelectItem[] = WEBHOOK_AUTH_KIND_ITEMS;
     readonly modeItems: SelectItem[] = [
         { name: 'Create new', value: 'new' },
         { name: 'Use existing', value: 'existing' },
@@ -108,6 +120,8 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         ngrok_domain: [''],
         ngrok_region: ['eu'],
         localhost_name: [''],
+        auth_kind: [null as WebhookTriggerAuthKind | null],
+        auth_secret_id: [null as number | null],
     });
 
     existingItems = computed<SelectItem[]>(() => {
@@ -139,8 +153,12 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         this.form.controls.provider_type.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((pt) => this.applyProviderValidators((pt as WebhookProviderType | null) ?? null));
+        this.form.controls.auth_kind.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.form.controls.auth_secret_id.setValue(null, { emitEvent: false });
+        });
         this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.providerType.set((this.form.value.provider_type as WebhookProviderType | null) ?? null);
+            this.authKindValue.set((this.form.value.auth_kind as WebhookTriggerAuthKind | null) ?? null);
             if (this.mode() === 'new') this.emit();
         });
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -174,6 +192,10 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         ngrokToken.updateValueAndValidity({ emitEvent: false });
         localhostName.updateValueAndValidity({ emitEvent: false });
         this.onValidatorChange();
+    }
+
+    authKindLabel(kind: WebhookTriggerAuthKind): string {
+        return this.authKindItems.find((i) => i.value === kind)?.name ?? kind;
     }
 
     private triggerName(t: WebhookTriggerModel): string {
@@ -249,7 +271,35 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                       }
                     : null,
             localhost_config: provider === 'localhost' ? { name: v.localhost_name ?? '' } : null,
+            ...this.buildAuthPayload(v.auth_kind as WebhookTriggerAuthKind | null, v.auth_secret_id ?? null),
         };
+    }
+
+    private buildAuthPayload(
+        authKind: WebhookTriggerAuthKind | null,
+        authSecretId: number | null
+    ): Pick<WebhookTriggerModel, 'auth_kind' | 'auth_secret_id'> {
+        if (!this.showAuth()) return {};
+        const existing = this.existingAuth();
+
+        // New trigger (nothing to preserve): include whatever the user picked.
+        if (!existing) {
+            if (authKind == null) return {};
+            return {
+                auth_kind: authKind,
+                ...(authKind !== 'twilio' && authSecretId != null ? { auth_secret_id: authSecretId } : {}),
+            };
+        }
+
+        // Existing trigger: only send a key if the user changed it this session.
+        const payload: Pick<WebhookTriggerModel, 'auth_kind' | 'auth_secret_id'> = {};
+        if (authKind != null && authKind !== existing.kind) {
+            payload.auth_kind = authKind;
+        }
+        if (authKind !== 'twilio' && authSecretId != null) {
+            payload.auth_secret_id = authSecretId;
+        }
+        return payload;
     }
 
     private resolvedModel(value: WebhookTriggerWrite | null): WebhookTriggerModel | null {
@@ -269,6 +319,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         if (value && typeof value === 'object') {
             this.mode.set('new');
             this.editingId = value.id;
+            this.existingAuth.set(value.auth ?? null);
             this.form.patchValue(
                 {
                     path: value.path ?? '',
@@ -278,17 +329,22 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                     ngrok_domain: value.ngrok_config?.domain ?? '',
                     ngrok_region: value.ngrok_config?.region ?? 'eu',
                     localhost_name: value.localhost_config?.name ?? '',
+                    auth_kind: null,
+                    auth_secret_id: null,
                 },
                 { emitEvent: false }
             );
             this.providerType.set(value.provider_type ?? null);
+            this.authKindValue.set(null);
             this.applyProviderValidators(value.provider_type ?? null);
             return;
         }
         this.mode.set('new');
         this.editingId = undefined;
+        this.existingAuth.set(null);
         this.form.reset({ provider_type: null, ngrok_region: 'eu' }, { emitEvent: false });
         this.providerType.set(null);
+        this.authKindValue.set(null);
         this.applyProviderValidators(null);
     }
 

@@ -20,7 +20,11 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
-import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
+import {
+    WebhookProviderType,
+    WebhookTriggerAuthKind,
+    WebhookTriggerModel,
+} from '../../../visual-programming/core/models/webhook-trigger.model';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 import {
@@ -55,9 +59,8 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     required = input<boolean>(false);
     tooltipText = input<string>('Pick an existing webhook trigger, or create a new one.');
     placeholder = input<string>('Select a trigger');
-    /** Allow the localhost provider. Off for Telegram (bot API can't reach localhost webhooks). */
-    allowLocalhost = input<boolean>(true);
-    /** Message shown when the currently selected trigger uses a disallowed provider. */
+    disallowedProviderTypes = input<WebhookProviderType[]>([]);
+    disallowedAuthKinds = input<WebhookTriggerAuthKind[]>([]);
     disallowedProviderMessage = input<string>('This provider is not supported here.');
 
     /** Emits the resolved trigger model (or null when cleared). */
@@ -76,8 +79,13 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         return this.triggers().find((t) => t.id === id) ?? null;
     });
 
-    isTriggerDisallowed = (t: WebhookTriggerModel): boolean =>
-        !this.allowLocalhost() && t.provider_type === 'localhost';
+    isTriggerDisallowed = (t: WebhookTriggerModel): boolean => {
+        const authKind = t.auth?.kind ?? t.auth_kind;
+        return (
+            (t.provider_type != null && this.disallowedProviderTypes().includes(t.provider_type)) ||
+            (authKind != null && this.disallowedAuthKinds().includes(authKind))
+        );
+    };
 
     selectedIsDisallowed = computed<boolean>(() => {
         const t = this.selectedTrigger();

@@ -86,6 +86,7 @@
             formControlName="webhook_trigger"
             [pathRequired]="false"
             [allowLocalhost]="false"
+            [showAuth]="false"
             (triggerResolved)="onTriggerResolved($event)"
         ></app-webhook-trigger-field>
     </form>
