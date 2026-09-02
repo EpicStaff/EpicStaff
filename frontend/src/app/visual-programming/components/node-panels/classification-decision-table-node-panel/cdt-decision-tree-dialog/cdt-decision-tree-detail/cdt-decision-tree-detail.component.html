@@ -1,0 +1,174 @@
+<div class="cdt-tree-detail">
+    <header class="cdt-tree-detail__header">
+        <!--
+            The name and the staleness marker travel together, so the marker reads
+            as belonging to the name rather than to whatever sits at the far edge.
+            The marker belongs to the window, not to the Explanation section: it
+            says the explanation no longer matches the rule, which is true whether
+            or not that section happens to be open.
+        -->
+        <div class="cdt-tree-detail__heading-group">
+            <h3
+                class="cdt-tree-detail__title"
+                [title]="block().title"
+            >
+                {{ block().title }}
+            </h3>
+
+            @if (outdated() && explanationReady()) {
+                <span
+                    class="cdt-tree-detail__outdated"
+                    [matTooltip]="copy.outdatedTooltip"
+                >
+                    <app-svg-icon
+                        icon="clock"
+                        size="10px"
+                    />
+                    {{ copy.outdatedBadge }}
+                </span>
+            }
+        </div>
+
+        <!--
+            A split control: two buttons rather than one with a menu, so the common
+            action stays one click and `aria-haspopup` sits only on the half that
+            opens something.
+        -->
+        <div class="cdt-tree-detail__explain-group">
+            <button
+                class="cdt-tree-detail__explain"
+                type="button"
+                [disabled]="!explainAvailable() || explanationLoading()"
+                [attr.aria-busy]="explanationLoading()"
+                (click)="explainRequested.emit()"
+            >
+                <app-svg-icon
+                    icon="sparkles"
+                    size="12px"
+                />
+                {{ copy.explainStep }}
+            </button>
+
+            <span class="cdt-tree-detail__explain-divider"></span>
+
+            <button
+                class="cdt-tree-detail__explain-menu"
+                type="button"
+                aria-haspopup="menu"
+                [attr.aria-label]="copy.explainMenuLabel"
+                [attr.aria-expanded]="explainMenuOpen()"
+                (click)="onMenuClick($event)"
+            >
+                <app-svg-icon
+                    icon="chevron-down"
+                    size="0.8rem"
+                />
+            </button>
+        </div>
+
+        <button
+            class="cdt-tree-detail__close"
+            type="button"
+            aria-label="Close details"
+            (click)="closed.emit()"
+        >
+            <app-svg-icon icon="x" />
+        </button>
+    </header>
+
+    <div class="cdt-tree-detail__body">
+        <section class="cdt-tree-detail__section">
+            <!--
+                No `aria-controls` on either section header: the body it would name
+                only exists while the section is open, and the collapse animates on
+                `:enter`/`:leave`, so it cannot stay mounted. `aria-expanded` alone
+                is valid and carries the state.
+            -->
+            <h4 class="cdt-tree-detail__section-heading">
+                <button
+                    class="cdt-tree-detail__section-header"
+                    type="button"
+                    [attr.aria-expanded]="explanationOpen()"
+                    (click)="toggleExplanation()"
+                >
+                    <app-svg-icon
+                        class="cdt-tree-detail__caret"
+                        icon="caret-down-filled"
+                        size="0.7rem"
+                        [class.cdt-tree-detail__caret--collapsed]="!explanationOpen()"
+                    />
+                    <span class="cdt-tree-detail__section-title">{{ copy.explanationHeading }}</span>
+                </button>
+            </h4>
+
+            @if (explanationOpen()) {
+                <!-- `aria-live` here: the text arrives into an open, unfocused section. -->
+                <div
+                    class="cdt-tree-detail__section-body"
+                    aria-live="polite"
+                    [@sectionExpand]
+                >
+                    @if (explanationReady(); as ready) {
+                        <p class="cdt-tree-detail__explanation">{{ ready.text }}</p>
+                        <p class="cdt-tree-detail__generated">
+                            {{ copy.generatedByLabel }}
+                            <span class="cdt-tree-detail__generated-model">{{ ready.generatedBy }}</span>
+                        </p>
+                    } @else if (explanationError()) {
+                        <p class="cdt-tree-detail__explanation cdt-tree-detail__explanation--error">
+                            {{ explanationError() }}
+                        </p>
+                    } @else if (explanationLoading()) {
+                        <p class="cdt-tree-detail__explanation cdt-tree-detail__explanation--muted">
+                            {{ copy.explanationLoading }}
+                        </p>
+                    } @else {
+                        <p class="cdt-tree-detail__explanation cdt-tree-detail__explanation--muted">
+                            {{ copy.explanationEmpty }}
+                        </p>
+                    }
+                </div>
+            }
+        </section>
+
+        @if (block().detail; as detail) {
+            <section class="cdt-tree-detail__section">
+                <div class="cdt-tree-detail__section-row">
+                    <h4 class="cdt-tree-detail__section-heading">
+                        <button
+                            class="cdt-tree-detail__section-header"
+                            type="button"
+                            [attr.aria-expanded]="dataOpen()"
+                            (click)="toggleData()"
+                        >
+                            <app-svg-icon
+                                class="cdt-tree-detail__caret"
+                                icon="caret-down-filled"
+                                size="0.7rem"
+                                [class.cdt-tree-detail__caret--collapsed]="!dataOpen()"
+                            />
+                            <span class="cdt-tree-detail__section-title">{{ detail.heading }}</span>
+                        </button>
+                    </h4>
+
+                    <app-copy-button
+                        [text]="detail.body"
+                        [ariaLabel]="'Copy ' + detail.heading"
+                    />
+                </div>
+
+                @if (dataOpen()) {
+                    <div
+                        class="cdt-tree-detail__section-body"
+                        [@sectionExpand]
+                    >
+                        <app-cdt-decision-tree-code
+                            [body]="detail.body"
+                            [language]="detail.language"
+                        />
+                    </div>
+                }
+            </section>
+        }
+    </div>
+</div>

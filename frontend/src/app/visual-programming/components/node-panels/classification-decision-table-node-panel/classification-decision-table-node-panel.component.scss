@@ -255,6 +255,44 @@
     display: none;
 }
 
+// Decision Tree button, rendered next to Export in the panel shell header.
+// Must stay at the top level of this stylesheet: the template that holds it is
+// declared here but projected into the shell's DOM, so a selector nested under
+// a panel-internal ancestor would never match.
+.cdt-tree-button {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+    justify-content: center;
+    width: 119px;
+    height: 28px;
+    padding: 3px 10px;
+    font-size: 0.8em;
+    font-weight: 500;
+    // The label is Text Primary; the ring is the card surface (#2b2d30), whose
+    // token is dark-only, hence the fallback chain.
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--color-flow-card-bg, var(--color-nodes-background));
+    border-radius: 6px;
+    transition:
+        background 0.18s,
+        border-color 0.18s,
+        color 0.18s;
+
+    &:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.32);
+    }
+}
+
+.cdt-tree-button__label {
+    line-height: 1;
+}
+
 // Grid section
 .grid-section {
     display: flex;

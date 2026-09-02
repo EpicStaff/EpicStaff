@@ -1,0 +1,80 @@
+// Local palette rather than theme tokens, on purpose: Monaco colours the code
+// with `vs-dark`, so this block stays dark in the light theme too — as the grid's
+// code cells already do — and a text colour that flipped with the theme would put
+// near-black on it.
+:host {
+    // The design's #15151599.
+    --cdt-code-surface: #15151599;
+
+    // The same wash, flattened. The gutter is `position: sticky` and has to hide
+    // the code sliding under it; translucent, long lines read through the numbers.
+    --cdt-code-gutter-bg: color-mix(in srgb, #151515 60%, var(--cdt-tree-surface, var(--color-background-body)));
+
+    --cdt-code-ink: #d9d9de;
+    --cdt-code-ink-dim: #8a8f9c;
+
+    display: block;
+    min-width: 0;
+}
+
+.cdt-tree-code {
+    // Code is never wrapped — a rewrapped line no longer matches its number, and
+    // the design draws long lines running past the edge. So the block scrolls
+    // sideways inside itself and the panel around it never does.
+    overflow-x: auto;
+    padding: 0.6rem 0;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    background: var(--cdt-code-surface);
+    border-radius: 6px;
+
+    // The block is a tab stop (see the template), so the ring has to be visible —
+    // inset, because the block is flush with its section's padding.
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
+    &--prose {
+        // Prose has no line numbers, so it has no gutter to keep aligned and can
+        // wrap like ordinary text.
+        margin: 0;
+        padding: 0.7rem 0.85rem;
+        overflow-x: visible;
+        font-family: inherit;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+}
+
+.cdt-tree-code__row {
+    display: flex;
+    gap: 0.85rem;
+    align-items: baseline;
+    // The row has to be at least as wide as the block so the sticky gutter has
+    // something to stay pinned against while the content scrolls under it.
+    min-width: max-content;
+}
+
+.cdt-tree-code__gutter {
+    // Pinned so the numbers stay readable while a long line is scrolled sideways.
+    position: sticky;
+    left: 0;
+    flex: 0 0 auto;
+    min-width: 2.6rem;
+    padding-left: 0.85rem;
+    color: var(--cdt-code-ink-dim);
+    text-align: right;
+    background: var(--cdt-code-gutter-bg);
+    user-select: none;
+}
+
+.cdt-tree-code__line {
+    flex: 1 1 auto;
+    padding-right: 0.85rem;
+    color: var(--cdt-code-ink);
+    white-space: pre;
+}

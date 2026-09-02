@@ -1,0 +1,643 @@
+:host {
+    // Modal chrome and canvas share the page surface; blocks and controls sit one
+    // step above it, on the token the real canvas nodes use. The detail window
+    // inherits both — it is in this template rather than in an overlay.
+    --cdt-tree-surface: var(--color-background-body);
+    --cdt-tree-raised: var(--color-nodes-background);
+
+    // One red for the whole error path — the rules boundary, the `Error` edge, its
+    // arrowhead and its label. The design's #f5424266 is `--color-error` at 40%,
+    // mixed rather than written out so it keeps tracking the token.
+    --cdt-tree-error: color-mix(in srgb, var(--color-error) 40%, transparent);
+
+    // The design's #EFD616. Not in the palette; the nearest token belongs to
+    // knowledge sources, so it is named here instead.
+    --cdt-tree-outdated: #efd616;
+
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.cdt-tree {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    background: var(--cdt-tree-surface);
+    border-radius: 10px;
+}
+
+// ---------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------
+
+.cdt-tree__header {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.75rem;
+    align-items: center;
+    // 32px / 40px per the design. The header spans the whole modal; only the
+    // toolbar, canvas and legend give way to the detail window.
+    padding: 2rem 2.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree__title {
+    margin: 0;
+    // 20px / 500 / 100% Inter per the design. Inter is opted into per component,
+    // the body font being Roboto; `--color-text-primary` is the design's #D9D9DE in
+    // the dark theme and flips with the light one, where a literal would not.
+    font-family: Inter, Roboto, sans-serif;
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-text-primary);
+}
+
+// The app's default dialog close: the `close` glyph inside an accent ring, as
+// the Settings dialog draws it. A real button rather than a clickable icon, so it
+// keeps its place in the tab order and answers Enter and Space.
+.cdt-tree__close {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-left: auto;
+    color: var(--accent-color);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    border-radius: 20px;
+
+    &:hover {
+        background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar
+// ---------------------------------------------------------------------------
+
+.cdt-tree__toolbar {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.6rem;
+    align-items: center;
+    // The row is squeezed hard once the 600px detail window is docked, and
+    // `.cdt-tree` clips rather than scrolls — so anything that cannot shrink is
+    // silently cut off instead of being laid out. Only the search box gives way;
+    // see `.cdt-tree__search`.
+    // Lifted out of the column so the canvas runs the full height of the stage and
+    // its grid shows behind the controls. No surface of its own: each control
+    // carries its own background.
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 2;
+    min-width: 0;
+    padding: 0.6rem 1.25rem;
+    // The bar spans the canvas, so left interactive it would swallow every pan and
+    // click along the top strip — the same trap the rules outline fell into. Only
+    // the controls themselves take events.
+    pointer-events: none;
+
+    > * {
+        pointer-events: auto;
+    }
+}
+
+.cdt-tree__zoom {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    background: var(--cdt-tree-raised);
+    border-radius: 6px;
+}
+
+.cdt-tree__zoom-btn,
+.cdt-tree__zoom-value,
+.cdt-tree__fit,
+.cdt-tree__search-step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 2rem;
+    padding: 0 0.6rem;
+    font-size: 0.8rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+
+    &:hover:not(:disabled) {
+        background: var(--color-secondary-btn-background-hover);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.4;
+    }
+}
+
+// The two keys and the readout between them are deliberately not the same: the
+// keys are cards (#2b2d30, the design's token), the readout stays on the page
+// surface so it reads as a display rather than a third button.
+.cdt-tree__zoom-btn {
+    background: var(--color-flow-card-bg, var(--cdt-tree-raised, var(--color-nodes-background)));
+}
+
+.cdt-tree__zoom-value {
+    min-width: 3.5rem;
+    background: var(--cdt-tree-surface);
+}
+
+// The design's 47x28. `min-width` rather than `width`: 47 is what 16px of padding
+// either side plus a 15px "Fit" measures to, so it is the natural width already —
+// pinned as a floor it survives a wider glyph instead of clipping it.
+.cdt-tree__fit {
+    gap: 4px;
+    min-width: 47px;
+    height: 28px;
+    padding: 0 16px;
+    background: var(--cdt-tree-raised);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 4px;
+}
+
+// 28x28 per the design, and the only search affordance until it is pressed. Goes
+// accent while the box beside it is showing, which is the design's pressed state.
+.cdt-tree__search-toggle {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    background: var(--color-background-body);
+    // The design's #2B2D30 is `--color-flow-card-bg`, which has no light-theme
+    // value and would draw a near-black hairline on a white toolbar.
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 4px;
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+
+    &--active {
+        color: var(--color-text-primary);
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+}
+
+// 364x28 per the design. Same two colours as the toggle, so the pair reads as one
+// control even though only one of them is ever the accent.
+//
+// 364px is the preferred width, not a fixed one: it is the widest thing in the
+// toolbar, so with the detail window docked on a laptop it is what has to give.
+// Shrinking eats the text field, which has `min-width: 0`, and leaves the match
+// counter and the step buttons — the parts that are useless once clipped — alone.
+.cdt-tree__search {
+    display: flex;
+    flex: 0 1 22.75rem;
+    gap: 0.5rem;
+    align-items: center;
+    min-width: 8rem;
+    height: 1.75rem;
+    padding: 0 0.75rem;
+    color: var(--color-text-secondary);
+    background: var(--color-background-body);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 4px;
+}
+
+.cdt-tree__search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: Inter, Roboto, sans-serif;
+    font-size: 0.8rem;
+    color: var(--color-text-primary);
+    background: transparent;
+    border: none;
+    outline: none;
+}
+
+.cdt-tree__search-count {
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
+// Overrides the height it inherits from the zoom controls above: those are 32px
+// tall, and these sit inside the 28px box.
+.cdt-tree__search-step {
+    flex-shrink: 0;
+    height: 1.25rem;
+    padding: 0 0.25rem;
+}
+
+// Owns the `auto` margin, so its children compete with each other rather than
+// with the search box for the toolbar's right edge.
+.cdt-tree__toolbar-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.6rem;
+    align-items: center;
+    margin-left: auto;
+    min-width: 0;
+}
+
+// Gives way before the button does: the count is useful, the button is the action.
+.cdt-tree__hidden-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.15rem 0.55rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 999px;
+}
+
+// The same frame-around-a-pair as the detail window's Explain Step control:
+// deliberately the same control at two scopes.
+.cdt-tree__explain-all {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: stretch;
+    overflow: hidden;
+    background: var(--cdt-tree-raised);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
+
+    &:hover:has(button:not(:disabled)) {
+        border-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent);
+    }
+}
+
+.cdt-tree__explain-all-run,
+.cdt-tree__explain-all-menu {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.4rem;
+    align-items: center;
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+
+    &:hover:not(:disabled) {
+        background: var(--color-secondary-btn-background-hover);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.6;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+.cdt-tree__explain-all-run {
+    padding: 0.4rem 0.6rem;
+}
+
+.cdt-tree__explain-all-menu {
+    padding: 0.4rem 0.4rem;
+    color: var(--color-text-secondary);
+}
+
+.cdt-tree__explain-all-divider {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 1px;
+    background: var(--color-divider-regular);
+}
+
+// The first thing to give way when the toolbar runs out of room.
+.cdt-tree__explain-all-notice {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree__explain-all-stop {
+    flex-shrink: 0;
+    padding: 0.35rem 0.6rem;
+    font-family: inherit;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Canvas
+// ---------------------------------------------------------------------------
+
+// Everything below the header shares one row with the detail window, so opening
+// the window narrows the diagram instead of covering it.
+.cdt-tree__main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+// Toolbar, canvas and legend, stacked — the part the window pushes. `min-width: 0`
+// here and on the canvas, or they refuse to shrink below their content and push
+// the window off the right edge of the modal.
+.cdt-tree__stage {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cdt-tree__canvas {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    background: var(--cdt-tree-surface);
+}
+
+.cdt-tree__detail {
+    // `flex-basis: auto` on purpose: the slide-in animates `width`, and a flex
+    // basis of its own would win over the animated value and skip the transition.
+    flex: 0 0 auto;
+}
+
+// ---------------------------------------------------------------------------
+// Legend
+// ---------------------------------------------------------------------------
+
+.cdt-tree__legend {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    align-items: center;
+    padding: 0.7rem 1.25rem;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    border-top: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree__legend-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+// A miniature of the block it names. The outline is absolutely positioned by the
+// shape component, so the icon is the only thing in flow and the centring lands
+// on it.
+.cdt-tree__legend-glyph {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 18px;
+
+    // The icons are sized for a full canvas block. Scaling keeps each one's own
+    // proportions; one size for both axes would squash the non-square ones.
+    app-svg-icon {
+        transform: scale(0.62);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Model picker
+//
+// These rules reach the pane because it is rendered from this template, but the
+// custom properties on `:host` do not travel with it — hence global tokens only.
+// ---------------------------------------------------------------------------
+
+// 375px per the design, in px like the search panel beside it: one panel's
+// measurements, not steps on the type scale.
+.cdt-tree-explain-menu {
+    display: flex;
+    flex-direction: column;
+    // Rows are full-bleed: their 16px inline padding is the panel's edge.
+    padding: 4px 0;
+    width: 375px;
+    max-width: 100%;
+    font-family: Inter, Roboto, sans-serif;
+    // The design's #212325.
+    background: var(--color-background-body);
+    border-radius: 8px;
+    // The design's #2B2D30 is `--color-flow-card-bg`, which has no light-theme
+    // value. A ring on the divider token instead: it flips, and keeps 375px exact.
+    box-shadow:
+        0 0 0 1px var(--color-divider-regular),
+        0 2px 3px 0 rgb(0 0 0 / 30%),
+        0 6px 10px 4px rgb(0 0 0 / 15%);
+}
+
+// 40px tall, 8px/16px padding, Inter 400 14px/130% per the design.
+.cdt-tree-explain-menu__item {
+    display: flex;
+    flex-shrink: 0;
+    gap: 8px;
+    align-items: center;
+    min-height: 40px;
+    padding: 8px 16px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.3;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+
+    &:hover:not(:disabled) {
+        background: var(--color-secondary-btn-background-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
+    // Not greyed out fully: the row is the only place saying why it cannot be picked.
+    &:disabled {
+        cursor: default;
+        opacity: 0.6;
+    }
+}
+
+.cdt-tree-explain-menu__logo {
+    flex-shrink: 0;
+}
+
+// The model's name takes the room; the config name beside it gives way first.
+.cdt-tree-explain-menu__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// The design's #D9D9DE99. Mixed rather than `--text-secondary-60`, which holds
+// that exact value but is declared in the dark theme only.
+.cdt-tree-explain-menu__config {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree-explain-menu__check {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--accent-color);
+}
+
+.cdt-tree-explain-menu__note {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: var(--color-error);
+    white-space: nowrap;
+    border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
+    border-radius: 999px;
+}
+
+// An option's row metrics, bordered off: a setting among choices.
+.cdt-tree-explain-menu__toggle {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 40px;
+    margin-top: 4px;
+    padding: 8px 16px;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    border-top: 1px solid var(--color-divider-regular);
+
+    app-checkbox {
+        flex-shrink: 0;
+    }
+}
+
+.cdt-tree-explain-menu__empty {
+    margin: 0;
+    padding: 8px 16px;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+}
+
+// ---------------------------------------------------------------------------
+// Foblex
+//
+// The app never imports Foblex's own stylesheet; the main canvas hand-styles every
+// `.f-*` class the same way. Without the rules below, connections render as
+// filled blobs or as nothing at all.
+// ---------------------------------------------------------------------------
+
+:host ::ng-deep {
+    // A literal: `--color-divider-regular` is a 14%-alpha hairline meant for
+    // borders and is invisible as a connection stroke.
+    --cdt-tree-edge-color: #8a8f9c;
+
+    f-flow {
+        width: 100%;
+        height: 100%;
+    }
+
+    .f-background circle {
+        fill: var(--vp-line-alignment-color);
+    }
+
+    .f-connection {
+        .f-connection-path {
+            fill: none;
+            stroke: var(--cdt-tree-edge-color);
+            stroke-width: 2;
+        }
+
+        .f-connection-selection,
+        .f-connection-drag-handle {
+            fill: none;
+            stroke: transparent;
+            pointer-events: none;
+        }
+
+        .f-connection-waypoints {
+            visibility: hidden;
+        }
+
+        svg.f-marker path {
+            fill: var(--cdt-tree-edge-color);
+        }
+    }
+
+    // Everything on the error path is the one red: the boundary it leaves, the
+    // edge, its arrowhead and its label. Declared after the base rules, which it
+    // ties with on specificity, so source order is what makes it win.
+    .cdt-tree-edge--error {
+        .f-connection-path {
+            stroke: var(--cdt-tree-error);
+            stroke-dasharray: 6 4;
+        }
+
+        svg.f-marker path {
+            fill: var(--cdt-tree-error);
+        }
+
+        .cdt-tree-edge__label {
+            color: var(--cdt-tree-error);
+        }
+    }
+
+    .cdt-tree-edge--continue .f-connection-path {
+        stroke-dasharray: 4 3;
+    }
+
+    .cdt-tree-edge__label {
+        padding: 0.05rem 0.3rem;
+        font-size: 0.7rem;
+        color: var(--color-text-secondary);
+        background: var(--cdt-tree-surface);
+        border-radius: 3px;
+    }
+
+    // Nothing on the canvas is interactive except the block bodies themselves.
+    .f-node {
+        cursor: default;
+    }
+}

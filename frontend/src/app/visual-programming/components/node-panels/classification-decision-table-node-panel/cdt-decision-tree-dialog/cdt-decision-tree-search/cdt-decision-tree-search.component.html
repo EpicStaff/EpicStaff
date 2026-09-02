@@ -1,0 +1,53 @@
+<div
+    class="cdt-tree-search__list"
+    role="group"
+    aria-label="Blocks"
+>
+    @for (group of visibleGroups(); track group.label) {
+        <div class="cdt-tree-search__group-label">{{ group.label }}</div>
+
+        @for (block of group.blocks; track block.id) {
+            <button
+                class="cdt-tree-search__item"
+                type="button"
+                (click)="picked.emit(block.id)"
+            >
+                @if (iconByShape[block.shape]; as glyph) {
+                    <app-svg-icon
+                        [icon]="glyph.name"
+                        [width]="glyph.width"
+                        [height]="glyph.height"
+                    />
+                }
+
+                <span class="cdt-tree-search__item-title">{{ block.title }}</span>
+            </button>
+        }
+    } @empty {
+        <p class="cdt-tree-search__empty">No block matches this search.</p>
+    }
+</div>
+
+<footer class="cdt-tree-search__footer">
+    <app-button
+        type="outline-primary"
+        mod="default"
+        (click)="cleared.emit()"
+        >Clear Filter</app-button
+    >
+
+    <div class="cdt-tree-search__footer-actions">
+        <app-button
+            type="outline-primary"
+            mod="default"
+            (click)="cancelled.emit()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            mod="default"
+            (click)="applied.emit()"
+            >Save</app-button
+        >
+    </div>
+</footer>

@@ -10,7 +10,7 @@ import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-p
 import { TelegramTriggerNodeField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
 import { NodeType } from '../enums/node-type';
-import { ClassificationDecisionTableData } from './classification-decision-table.model';
+import { CdtExplanations, ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
 import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
@@ -133,6 +133,14 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
         name?: string;
         table: ClassificationDecisionTableData;
     };
+    /**
+     * Generated step explanations, persisted in the node's `metadata`.
+     *
+     * At the root and not inside `data` on purpose: the panel's `createUpdatedNode`
+     * rebuilds `data` from the form on every edit, so anything kept there would be
+     * dropped the first time a user touched the grid.
+     */
+    explanations?: CdtExplanations;
 }
 
 export interface EndNodeData {

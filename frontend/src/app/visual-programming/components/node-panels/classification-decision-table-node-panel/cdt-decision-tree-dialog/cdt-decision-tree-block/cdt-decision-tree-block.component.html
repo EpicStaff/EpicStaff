@@ -1,0 +1,83 @@
+<app-cdt-decision-tree-shape
+    [shape]="block().shape"
+    [width]="block().size.width"
+    [height]="block().size.height"
+/>
+
+@for (port of block().outPorts; track port.id) {
+    <div
+        class="cdt-tree-block__connector"
+        [class]="'cdt-tree-block__connector--' + port.side"
+        fNodeOutput
+        fOutputDisabled
+        [fOutputId]="port.id"
+        [fOutputConnectableSide]="port.side"
+    ></div>
+}
+
+@for (port of block().inPorts; track port.id) {
+    <div
+        class="cdt-tree-block__connector"
+        [class]="'cdt-tree-block__connector--' + port.side"
+        fNodeInput
+        fInputDisabled
+        [fInputId]="port.id"
+        [fInputConnectableSide]="port.side"
+    ></div>
+}
+
+<!--
+    A sibling of the body, not a child: the body is the click target and a status
+    must not be part of what you press. On the host, whose box Foblex sizes to the
+    block, so negative offsets reach outside it — nothing in the chain clips.
+-->
+@if (outdated()) {
+    <app-svg-icon
+        class="cdt-tree-block__outdated"
+        icon="clock"
+        size="10px"
+        [ariaLabel]="copy.outdatedBadge"
+        [matTooltip]="copy.outdatedTooltip"
+    />
+}
+
+@if (block().shape !== 'region') {
+    <div
+        class="cdt-tree-block__body"
+        [attr.role]="block().clickable ? 'button' : null"
+        [attr.tabindex]="block().clickable ? 0 : null"
+        (click)="onActivate()"
+        (keydown.enter)="onActivate()"
+        (keydown.space)="onActivate()"
+    >
+        <div class="cdt-tree-block__heading">
+            @if (icon(); as glyph) {
+                <app-svg-icon
+                    [icon]="glyph.name"
+                    [width]="glyph.width"
+                    [height]="glyph.height"
+                />
+            }
+
+            <span class="cdt-tree-block__title">{{ block().title }}</span>
+
+            @if (block().chip) {
+                <span class="cdt-tree-block__chip">{{ block().chip }}</span>
+            }
+
+            @if (block().warning) {
+                <span
+                    class="cdt-tree-block__warning"
+                    [matTooltip]="block().warning!"
+                    matTooltipPosition="above"
+                    aria-label="Warning"
+                    >!</span
+                >
+            }
+        </div>
+
+        @if (block().subtitle) {
+            <span class="cdt-tree-block__subtitle">{{ block().subtitle }}</span>
+        }
+    </div>
+}

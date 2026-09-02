@@ -5,6 +5,7 @@ import { NodeType } from '../../../core/enums/node-type';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
+import { readCdtExplanations } from '../../cdt-explanations';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapClassificationDecisionTableNodeToModel(
@@ -87,5 +88,6 @@ export function mapClassificationDecisionTableNodeToModel(
         input_map: {},
         output_variable_path: null,
         size: ui.size,
+        explanations: readCdtExplanations(n.metadata as Record<string, unknown> | undefined),
     };
 }
