@@ -312,8 +312,10 @@ from tables.services import (
     agent_delete_service,
     crew_delete_service,
     embedding_config_delete_service,
+    embedding_model_delete_service,
     graph_delete_service,
     llm_config_delete_service,
+    llm_model_delete_service,
 )
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
@@ -465,7 +467,7 @@ class LLMModelReadWriteViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -475,13 +477,42 @@ class LLMModelReadWriteViewSet(
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMModelFilter
 
+    def perform_destroy(self, instance):
+        if not instance.predefined:
+            org_id = self.get_active_org_id()
+            effective = PermissionResolver().resolve(self.request.user, org_id)
+            llm_model_delete_service.assert_llm_model_deletable(
+                instance, org_id, effective
+            )
+        super().perform_destroy(instance)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = llm_model_delete_service.bulk_delete_llm_models(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
+
 
 class EmbeddingModelReadWriteViewSet(
     OrgScopedHybridViewSetMixin, BasePredefinedRestrictedViewSet
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -492,6 +523,35 @@ class EmbeddingModelReadWriteViewSet(
     serializer_class = EmbeddingModelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingModelFilter
+
+    def perform_destroy(self, instance):
+        if not instance.predefined:
+            org_id = self.get_active_org_id()
+            effective = PermissionResolver().resolve(self.request.user, org_id)
+            embedding_model_delete_service.assert_embedding_model_deletable(
+                instance, org_id, effective
+            )
+        super().perform_destroy(instance)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = embedding_model_delete_service.bulk_delete_embedding_models(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
 
 
 class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
