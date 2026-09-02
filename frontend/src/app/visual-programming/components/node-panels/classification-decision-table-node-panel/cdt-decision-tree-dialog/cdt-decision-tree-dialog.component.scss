@@ -56,14 +56,6 @@
     color: var(--color-text-primary);
 }
 
-.cdt-tree__node-name {
-    overflow: hidden;
-    font-size: 0.85rem;
-    color: var(--color-text-secondary);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 // The app's default dialog close: the `close` glyph inside an accent ring, as
 // the Settings dialog draws it. A real button rather than a clickable icon, so it
 // keeps its place in the tab order and answers Enter and Space.
