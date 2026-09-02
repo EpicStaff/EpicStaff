@@ -23,6 +23,7 @@ export * from './expand-panel/expand-panel.component';
 export * from './file-uploader/file-uploader.component';
 export * from './filter';
 export * from './filters-list/filters-list.component';
+export * from './flow-node-list';
 export * from './form-controls';
 export * from './llm-dialogs';
 //export * from './form-field-label/form-field-label.component';

@@ -10,11 +10,9 @@ import {
     AppSvgIconComponent,
     ButtonComponent,
     EmbeddingModelConfigDialogComponent,
+    FlowNodeListComponent,
     LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
-    SearchComponent,
-    SelectComponent,
-    SelectItem,
     TranscriptionModelConfigDialogComponent,
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
@@ -36,7 +34,6 @@ import { McpToolsService } from '../../../../features/tools/services/mcp-tools/m
 import { ToastService } from '../../../../services/notifications';
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import { NODE_COLORS, NODE_ICONS } from '../../../../visual-programming/core/enums/node-config';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import {
     SecretUsageFlowItem,
@@ -52,19 +49,12 @@ export interface SecretUsageDialogData {
     secretName: string;
 }
 
-type NodeTypeFilter = NodeType | null;
-
-const NODE_TYPE_FILTER_ITEMS: SelectItem<NodeTypeFilter>[] = [
-    { name: 'All', value: null },
-    { name: 'Python Node', value: NodeType.PYTHON },
-    { name: 'Classification Decision Table', value: NodeType.CLASSIFICATION_TABLE },
-    { name: 'Webhook Node', value: NodeType.WEBHOOK_TRIGGER },
-    { name: 'Telegram Node', value: NodeType.TELEGRAM_TRIGGER },
-];
-
-const NODE_TYPE_LABELS = new Map<NodeType, string>(
-    NODE_TYPE_FILTER_ITEMS.filter((item) => item.value !== null).map((item) => [item.value as NodeType, item.name])
-);
+const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
+    [NodeType.PYTHON]: 'Python Node',
+    [NodeType.CLASSIFICATION_TABLE]: 'Classification Decision Table',
+    [NodeType.WEBHOOK_TRIGGER]: 'Webhook Node',
+    [NodeType.TELEGRAM_TRIGGER]: 'Telegram Node',
+};
 
 const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
     ['llm_config', 'LLM'],
@@ -81,8 +71,7 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
         CommonModule,
         AppSvgIconComponent,
         AppIconComponent,
-        SearchComponent,
-        SelectComponent,
+        FlowNodeListComponent,
         LoadingSpinnerComponent,
         ButtonComponent,
     ],
@@ -111,15 +100,13 @@ export class SecretUsageDialogComponent implements OnInit {
     private readonly customToolsService = inject(CustomToolsService);
 
     public readonly secretName = this.data.secretName;
-    public readonly nodeTypeFilterItems = NODE_TYPE_FILTER_ITEMS;
+    public readonly nodeTypeLabels = NODE_TYPE_LABELS;
 
     public readonly status = signal<LoadingState>(LoadingState.LOADING);
     public readonly errorMessage = signal<string | null>(null);
     public readonly usage = signal<SecretUsageSummary | null>(null);
 
     public readonly expandedFlowName = signal<string | null>(null);
-    public readonly nodeSearchTerm = signal<string>('');
-    public readonly nodeTypeFilter = signal<NodeTypeFilter>(null);
 
     ngOnInit(): void {
         this.loadUsage();
@@ -142,44 +129,12 @@ export class SecretUsageDialogComponent implements OnInit {
             });
     }
 
-    public filteredNodes(flow: SecretUsageFlowItem): SecretUsageFlowNode[] {
-        const term = this.nodeSearchTerm().toLowerCase().trim();
-        const typeFilter = this.nodeTypeFilter();
-        return flow.nodes.filter((node) => {
-            const matchesTerm = !term || node.name.toLowerCase().includes(term);
-            const matchesType = typeFilter === null || node.nodeType === typeFilter;
-            return matchesTerm && matchesType;
-        });
-    }
-
     public toggleFlow(flowName: string): void {
-        if (this.expandedFlowName() === flowName) {
-            this.expandedFlowName.set(null);
-            return;
-        }
-        this.expandedFlowName.set(flowName);
-        this.nodeSearchTerm.set('');
-        this.nodeTypeFilter.set(null);
+        this.expandedFlowName.set(this.expandedFlowName() === flowName ? null : flowName);
     }
 
     public isFlowExpanded(flowName: string): boolean {
         return this.expandedFlowName() === flowName;
-    }
-
-    public onNodeTypeFilterChange(value: unknown): void {
-        this.nodeTypeFilter.set(value as NodeTypeFilter);
-    }
-
-    public nodeIcon(nodeType: NodeType): string {
-        return NODE_ICONS[nodeType];
-    }
-
-    public nodeColor(nodeType: NodeType): string {
-        return NODE_COLORS[nodeType];
-    }
-
-    public nodeTypeLabel(nodeType: NodeType): string {
-        return NODE_TYPE_LABELS.get(nodeType) ?? '';
     }
 
     public configTypeLabel(type: SecretUsageResourceType): string {

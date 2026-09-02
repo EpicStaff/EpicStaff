@@ -2,6 +2,7 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
 
+import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { ToolFilterAdapter } from '../../../../utils/tools-cards.util';
 import { ToolKind } from '../tool-card/tool-card.model';
@@ -37,6 +38,7 @@ export interface ToolsListPort<T extends { id: number; name: string; labels: num
     addFav(id: number): Observable<void>;
     delFav(id: number): Observable<void>;
     importFile(file: File): Observable<unknown>;
+    inspectFile(file: File): Observable<InspectResult>;
     getBulkUsage(ids: number[]): Observable<GetBulkToolUsageItem[]>;
     getUsageDetail(id: number): Observable<GetToolUsage>;
 
