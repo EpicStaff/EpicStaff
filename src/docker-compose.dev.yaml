@@ -53,6 +53,19 @@ services:
       opensearch:
         condition: service_healthy
 
+  auditor:
+    command: >
+      sh -c "python -m app.index_setup.runner &&
+      watchfiles --filter python 'python run.py' /app/src/auditor"
+    ports:
+      - "${AUDITOR_PORT:-8060}:${AUDITOR_PORT:-8060}"
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./auditor/app:/app/src/auditor/app
+      - ./auditor/run.py:/app/src/auditor/run.py
+      - ./shared:/app/src/shared
+
   realtime:
     ports:
       - "${REALTIME_PORT:-8050}:${REALTIME_PORT:-8050}"

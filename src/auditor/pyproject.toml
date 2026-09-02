@@ -12,7 +12,8 @@ dependencies = [
     "loguru (>=0.7.3,<0.8.0)",
     "pydantic-settings (>=2.15.0,<3.0.0)",
     "opensearch-py[async] (>=3.2.0,<4.0.0)",
-    "pyjwt (>=2.13.0,<3.0.0)"
+    "pyjwt (>=2.13.0,<3.0.0)",
+    "watchfiles (>=1.1.1,<2.0.0)"
 ]
 
 

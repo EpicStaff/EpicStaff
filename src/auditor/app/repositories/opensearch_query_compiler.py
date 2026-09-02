@@ -201,15 +201,16 @@ def _compile_flattened_leaf(field: str, op: str, value: Any) -> dict:
 
     if op in ("key_exists", "not_null"):
         return {"exists": {"field": path}}
-    # flat_object cannot distinguish an explicit JSON null from an absent
-    # key - null/not_null are implemented identically to
-    # key_not_exists/key_exists.
     if op in ("key_not_exists", "null"):
         return {"bool": {"must_not": [{"exists": {"field": path}}]}}
     if op in ("equals", "key_equals_value"):
         return {"term": {path: value}}
     if op in ("not_equal", "key_not_equals"):
         return {"bool": {"must_not": [{"term": {path: value}}]}}
+    if op == "in":
+        return {"terms": {path: value}}
+    if op == "not_in":
+        return {"bool": {"must_not": [{"terms": {path: value}}]}}
     if op in ("contains", "not_contains", "starts_with", "ends_with"):
         return _wildcard_clause(path, op, value)
     if op in _PAINLESS_COMPARATORS:

@@ -89,6 +89,52 @@ def test_compile_free_text_uses_wildcard_and_query_string():
     assert any("name" in c.get("wildcard", {}) for c in should)
 
 
+def test_compile_flattened_alias_in_op_uses_terms():
+    node = {"field": "agent", "op": "in", "value": ["some_id"]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {"terms": {"details.agent_id": ["some_id"]}}
+
+
+def test_compile_flattened_alias_not_in_op_uses_must_not_terms():
+    node = {"field": "agent", "op": "not_in", "value": ["some_id", "other_id"]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {
+        "bool": {"must_not": [{"terms": {"details.agent_id": ["some_id", "other_id"]}}]}
+    }
+
+
+def test_compile_tool_alias_in_op_uses_terms():
+    node = {"field": "tool", "op": "in", "value": ["Web Search"]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {"terms": {"details.tool": ["Web Search"]}}
+
+
+def test_compile_tool_alias_not_in_op_uses_must_not_terms():
+    node = {"field": "tool", "op": "not_in", "value": ["Web Search"]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {
+        "bool": {"must_not": [{"terms": {"details.tool": ["Web Search"]}}]}
+    }
+
+
+def test_compile_session_id_in_op_uses_structured_terms():
+    node = {"field": "session_id", "op": "in", "value": [8, 9]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {"terms": {"session_id": [8, 9]}}
+
+
+def test_compile_session_message_id_in_op_uses_structured_terms():
+    node = {"field": "session_message_id", "op": "in", "value": [1, 2, 3]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {"terms": {"session_message_id": [1, 2, 3]}}
+
+
 def test_compile_extra_filters_scopes_session_tree():
     query = compile_filters(
         {"field": "kind", "op": "in", "value": ["event"]},

@@ -62,7 +62,9 @@ _SELECT_OPS = frozenset({"in", "not_in", "equals", "not_equal"})
 
 _RANGE_OPS = frozenset({"equals", "gt", "lt", "gte", "lte"})
 
-_DURATION_OPS = frozenset({"gt", "lt", "gte", "lte", "equals", "is_empty", "is_not_empty"})
+_DURATION_OPS = frozenset(
+    {"gt", "lt", "gte", "lte", "equals", "is_empty", "is_not_empty"}
+)
 
 
 class FieldSpec(NamedTuple):
@@ -74,21 +76,19 @@ class FieldSpec(NamedTuple):
 
 
 KNOWN_FIELDS: dict[str, FieldSpec] = {
-    "kind": FieldSpec(_SELECT_OPS),
+    # main fields
     "id": FieldSpec(_RANGE_OPS | _SELECT_OPS),
+    "session_id": FieldSpec(_SELECT_OPS),
+    "session_message_id": FieldSpec(_SELECT_OPS),
+    "status": FieldSpec(_SELECT_OPS),
+    "kind": FieldSpec(_SELECT_OPS),
     "name": FieldSpec(_TEXT_CONDITION_OPS),
     "flow_name": FieldSpec(_SELECT_OPS),
     "node_type": FieldSpec(_SELECT_OPS),
-    "status": FieldSpec(_SELECT_OPS),
+    "run_type": FieldSpec(_SELECT_OPS),
     "event_time": FieldSpec(_RANGE_OPS),
     "error": FieldSpec(_TEXT_CONDITION_OPS),
-    "run_type": FieldSpec(_SELECT_OPS),
-    # Deep filters sourced from `details` via DEEP_FILTER_ALIASES in the
-    # OpenSearch compiler - agent/tool are a multiselect over an identity
-    # value, task/prompt/message_text/message_thought are free text.
-    # Canonical key is singular "tool" (not "tools") to match the query
-    # language's own examples (`tool in [...]`, `tool = "..."`) - the
-    # "Tools" quick-filter UI label is free to differ from this field key.
+    # additional fields
     "agent": FieldSpec(_SELECT_OPS),
     "tool": FieldSpec(_SELECT_OPS),
     "task": FieldSpec(_TEXT_CONDITION_OPS),
@@ -96,9 +96,7 @@ KNOWN_FIELDS: dict[str, FieldSpec] = {
     "message_text": FieldSpec(_TEXT_CONDITION_OPS),
     "message_thought": FieldSpec(_TEXT_CONDITION_OPS),
     "duration": FieldSpec(_DURATION_OPS, computed=True),
-    # Sentinel used by free-text leaves (bare word / `text:` prefix in the
-    # query language) - reuses the existing wildcard+query_string combo
-    # already built for the plain `search` param.
+    # special fields
     "__text__": FieldSpec(frozenset({"contains"})),
 }
 
@@ -142,23 +140,31 @@ def validate_filter_node(
     has run - defensive, since the splitter is what actually removes them.
     """
     if not isinstance(node, dict):
-        raise FilterValidationError(f"{_path}: expected an object, got {type(node).__name__}")
+        raise FilterValidationError(
+            f"{_path}: expected an object, got {type(node).__name__}"
+        )
 
     op = node.get("op")
 
     if op in ("and", "or"):
         children = node.get("children")
         if not isinstance(children, list) or not children:
-            raise FilterValidationError(f"{_path}: '{op}' requires a non-empty 'children' list")
+            raise FilterValidationError(
+                f"{_path}: '{op}' requires a non-empty 'children' list"
+            )
         for i, child in enumerate(children):
-            validate_filter_node(child, allow_computed=allow_computed, _path=f"{_path}.children[{i}]")
+            validate_filter_node(
+                child, allow_computed=allow_computed, _path=f"{_path}.children[{i}]"
+            )
         return
 
     if op == "not":
         child = node.get("child")
         if child is None:
             raise FilterValidationError(f"{_path}: 'not' requires a 'child'")
-        validate_filter_node(child, allow_computed=allow_computed, _path=f"{_path}.child")
+        validate_filter_node(
+            child, allow_computed=allow_computed, _path=f"{_path}.child"
+        )
         return
 
     field = node.get("field")
