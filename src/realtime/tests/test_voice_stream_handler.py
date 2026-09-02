@@ -1,7 +1,6 @@
 """
 Security regression tests for the previously-unauthenticated Twilio Media
-Stream WebSocket routes (`/voice/{channel_token}/stream` and the legacy
-`/voice/stream`).
+Stream WebSocket route `/voice/{channel_token}/stream`.
 
 Both routes require a short-lived, single-use `stream_token` — minted by the
 paired (signature-validated) TwiML webhook — to be validated via
@@ -298,7 +297,7 @@ async def test_voice_stream_channel_route_rejects_missing_token(monkeypatch):
     from api.main import voice_stream_channel
 
     async def fake_resolve(channel_token):
-        return 42, {}
+        return 42, None, {}
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -316,7 +315,7 @@ async def test_voice_stream_channel_route_accepts_matching_token_from_start_even
     from api.main import voice_stream_channel, stream_token_repository
 
     async def fake_resolve(channel_token):
-        return 42, {}
+        return 42, None, {}
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -340,7 +339,7 @@ async def test_voice_stream_channel_route_rejects_token_minted_for_other_channel
     from api.main import voice_stream_channel, stream_token_repository
 
     async def fake_resolve(channel_token):
-        return 42, {}
+        return 42, None, {}
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -350,67 +349,3 @@ async def test_voice_stream_channel_route_rejects_token_minted_for_other_channel
 
     ws.accept.assert_awaited_once()
     ws.close.assert_awaited_once_with(code=1008)
-
-
-# ---------------------------------------------------------------------------
-# Legacy /voice/stream route wiring — same posture, distinct bound_key
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_legacy_voice_stream_route_rejects_missing_token(monkeypatch):
-    from api.main import voice_stream
-
-    async def fake_get_voice_settings():
-        return {"voice_agent": 7, "voice_agent_definition": None}
-
-    monkeypatch.setattr("api.main.get_voice_settings", fake_get_voice_settings)
-
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=None)])
-    await voice_stream(ws, stream_token=None)
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
-
-
-@pytest.mark.asyncio
-async def test_legacy_voice_stream_route_rejects_channel_bound_token(monkeypatch):
-    """A stream_token minted for the channel-token route must not authenticate
-    the legacy, channel-less global-singleton route."""
-    from api.main import voice_stream, stream_token_repository
-
-    async def fake_get_voice_settings():
-        return {"voice_agent": 7, "voice_agent_definition": None}
-
-    monkeypatch.setattr("api.main.get_voice_settings", fake_get_voice_settings)
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-    await voice_stream(ws, stream_token=None)
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
-
-
-@pytest.mark.asyncio
-async def test_legacy_voice_stream_route_accepts_legacy_bound_token_from_start_event(
-    monkeypatch,
-):
-    from api.main import _LEGACY_STREAM_BOUND_KEY, voice_stream, stream_token_repository
-
-    async def fake_get_voice_settings():
-        return {"voice_agent": 7, "voice_agent_definition": None}
-
-    monkeypatch.setattr("api.main.get_voice_settings", fake_get_voice_settings)
-
-    token = stream_token_repository.mint(bound_key=_LEGACY_STREAM_BOUND_KEY)
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-
-    patcher = _mock_unreachable_django()
-    try:
-        await voice_stream(ws, stream_token=None)
-    finally:
-        patcher.stop()
-
-    ws.accept.assert_awaited_once()
-    _assert_not_auth_rejected(ws)

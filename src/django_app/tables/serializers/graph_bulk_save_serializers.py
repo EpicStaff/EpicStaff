@@ -11,6 +11,7 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphNoteSerializer,
+    KnowledgeNodeSerializer,
     PythonNodeSerializer,
     ScheduleTriggerNodeSerializer,
     StartNodeSerializer,
@@ -106,6 +107,10 @@ class DecisionTableNodeBulkSerializer(BulkSaveEntityMixin, DecisionTableNodeSeri
 
 
 class GraphNoteBulkSerializer(BulkSaveEntityMixin, GraphNoteSerializer):
+    pass
+
+
+class KnowledgeNodeBulkSerializer(BulkSaveEntityMixin, KnowledgeNodeSerializer):
     pass
 
 

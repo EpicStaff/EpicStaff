@@ -2,6 +2,9 @@ from tables.serializers.storage_serializers import (
     _normalize_path,
     StorageBulkDeleteSerializer,
     StorageFilesByIdsQuerySerializer,
+    StorageMoveSerializer,
+    StoragePathQuerySerializer,
+    StorageRemoveFromGraphSerializer,
     StorageRenameSerializer,
     StorageUploadSerializer,
 )
@@ -58,6 +61,49 @@ class TestStorageBulkDeleteSerializer:
     def test_rejects_empty_paths_list(self):
         ser = StorageBulkDeleteSerializer(data={"paths": []})
         assert not ser.is_valid()
+
+
+class TestPathTraversalRejected:
+    def test_storage_path_query_serializer_rejects_traversal(self):
+        ser = StoragePathQuerySerializer(data={"path": "../../../etc/passwd"})
+        assert not ser.is_valid()
+        assert "path" in ser.errors
+
+    def test_storage_move_serializer_rejects_traversal_in_from_path(self):
+        ser = StorageMoveSerializer(
+            data={"from_path": "../../../etc/passwd", "to_path": "docs"}
+        )
+        assert not ser.is_valid()
+        assert "from_path" in ser.errors
+
+    def test_storage_move_serializer_rejects_traversal_in_to_path(self):
+        ser = StorageMoveSerializer(
+            data={"from_path": "docs", "to_path": "../../../etc/passwd"}
+        )
+        assert not ser.is_valid()
+        assert "to_path" in ser.errors
+
+    def test_storage_path_query_serializer_empty_path_still_valid(self):
+        ser = StoragePathQuerySerializer(data={})
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["path"] == ""
+
+
+class TestStorageRemoveFromGraphSerializer:
+    def test_rejects_traversal_path(self):
+        ser = StorageRemoveFromGraphSerializer(
+            data={"paths": ["../../../etc/passwd"], "graph_ids": [1]}
+        )
+        assert not ser.is_valid()
+        assert "paths" in ser.errors
+        assert "escapes the target folder" in str(ser.errors["paths"])
+
+    def test_accepts_valid_paths(self):
+        ser = StorageRemoveFromGraphSerializer(
+            data={"paths": ["docs/report.txt", "images/logo.png"], "graph_ids": [1, 2]}
+        )
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["paths"] == ["docs/report.txt", "images/logo.png"]
 
 
 class TestStorageFilesByIdsQuerySerializer:

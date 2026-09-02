@@ -28,10 +28,6 @@ class Settings(BaseSettings):
     STREAM_TOKEN_TTL_SECONDS: int = 120
     MAX_CALL_DURATION_SECONDS: int = 1800
 
-    # --- Manager Service ---
-    MANAGER_HOST: str
-    MANAGER_PORT: int
-
     # --- Django Auth ---
     DJANGO_AUTH_URL: str
     DJANGO_API_KEY: str
@@ -53,6 +49,17 @@ class Settings(BaseSettings):
     # --- Django (for init-realtime HTTP call) ---
     DJANGO_HOST: str = "django_app"
     DJANGO_PORT: int = 8000
+
+    # --- CORS ---
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.CORS_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
 
     @property
     def DJANGO_API_BASE_URL(self) -> str:

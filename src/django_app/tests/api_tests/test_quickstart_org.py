@@ -59,7 +59,7 @@ def test_quickstart_configs_land_in_active_org(db, django_user_model):
     assert LLMConfig.objects.exists()
     assert LLMConfig.objects.exclude(org=org).count() == 0
     assert EmbeddingConfig.objects.exclude(org=org).count() == 0
-    # EST-3629 follow-up: the provider-specific realtime config (org is now
+    # The provider-specific realtime config (org is now
     # NOT NULL on this model) must also be stamped, not left null -> 500.
     assert OpenAIRealtimeConfig.objects.exists()
     assert OpenAIRealtimeConfig.objects.exclude(org=org).count() == 0

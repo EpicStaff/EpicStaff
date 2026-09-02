@@ -1,0 +1,303 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-container {
+    @include mixins.form-container;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-layout {
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+
+    &.expanded {
+        display: flex;
+        gap: 1rem;
+        height: 100%;
+        width: 100%;
+
+        &.code-editor-fullwidth {
+            .form-fields {
+                display: none;
+            }
+
+            .editor-panel-wrapper {
+                width: 100%;
+            }
+
+            .toggle-icon-button {
+                position: absolute;
+                left: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                z-index: 10;
+                border-width: 1px 1px 1px 0;
+                border-radius: 0 8px 8px 0;
+            }
+        }
+    }
+
+    &.collapsed {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow: visible;
+    }
+}
+
+.form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    flex: 0 0 400px;
+    max-width: 400px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.form-group-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+// ── RAG Search Config collapsible section ──
+
+.search-config-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.search-config-toggle {
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 0.875rem;
+    padding: 0.25rem 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .chevron {
+        display: inline-block;
+        transition: transform 0.15s ease;
+        font-size: 0.7rem;
+        color: var(--text-secondary-60);
+
+        &.open {
+            transform: rotate(90deg);
+        }
+    }
+
+    &:hover {
+        color: #ffffff;
+    }
+}
+
+.search-config-body {
+    display: flex;
+    flex-direction: column;
+    padding-top: 0.25rem;
+}
+
+// ── Code-editor side panel (expanded view) ──
+
+.editor-panel-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 100%;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    .toggle-icon-button {
+        flex-shrink: 0;
+        width: 28px;
+        height: 66px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-width: 1px 0 1px 1px;
+        border-style: solid;
+        border-color: #2c2c2e;
+        background: transparent;
+        cursor: pointer;
+        border-radius: 8px 0 0 8px;
+        transition: all 0.2s ease;
+        padding: 0;
+        color: #d9d9d999;
+
+        svg {
+            transition: transform 0.3s ease;
+        }
+
+        &:hover:not(:disabled) {
+            color: #d9d9d9;
+            background: #2c2c2e;
+        }
+    }
+}
+
+.editor-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+
+    &:hover app-copy-button {
+        opacity: 1;
+    }
+}
+
+.editor-panel-header {
+    display: flex;
+    justify-content: space-between;
+
+    .left {
+        display: flex;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        flex-shrink: 0;
+        font-size: 0.875rem;
+
+        .icon {
+            color: var(--accent-color);
+        }
+
+        .tooltip {
+            font-size: 0.75rem;
+            color: var(--text-secondary-60);
+        }
+    }
+}
+
+.editor-panel-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.code-editor-section {
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    app-code-editor {
+        min-width: 0;
+    }
+}
+
+.template-textarea-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.template-textarea-rounded {
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.inputs-list-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.inputs-list-toggle {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    color: var(--text-secondary-60);
+    font-size: 0.875rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .chevron {
+        display: inline-block;
+        transition: transform 0.15s ease;
+        font-size: 0.5rem;
+
+        &.open {
+            transform: rotate(90deg);
+        }
+    }
+
+    &:hover {
+        color: #ffffff;
+    }
+}
+
+.inputs-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.inputs-chip {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+
+    &:hover {
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+}
+
+.inputs-chip-empty {
+    font-size: 0.75rem;
+    color: var(--text-secondary-60);
+}

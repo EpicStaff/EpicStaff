@@ -80,9 +80,7 @@ services:
       - ./shared:/app/src/shared:cached
 
   manager:
-    command: uvicorn app:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001} --workers 1 --reload
-    ports:
-      - "${MANAGER_PORT:-8001}:${MANAGER_PORT:-8001}"
+    command: sh -c "watchfiles --filter python 'python main.py' ."
     env_file:
       - .dev.env
     environment:

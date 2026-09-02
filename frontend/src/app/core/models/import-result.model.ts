@@ -46,6 +46,7 @@ export interface PythonCodeToolImportResultItem extends ImportResultItem {
 
 export interface MCPToolImportResultItem extends ImportResultItem {
     description?: string | null;
+    transport?: string | null;
 }
 
 export interface RealtimeModelImportResultItem extends ImportResultItem {
@@ -80,6 +81,12 @@ export interface ImportResult {
     RealtimeModel?: EntityTypeResult<RealtimeModelImportResultItem>;
     RealtimeConfig?: EntityTypeResult<RealtimeConfigImportResultItem>;
     [key: string]: EntityTypeResult | undefined;
+}
+
+export interface ImportFlowRequestOptions {
+    preserveUuids: boolean;
+    replaceExisting: boolean;
+    importLabels: boolean;
 }
 
 export interface ImportResultDialogData {

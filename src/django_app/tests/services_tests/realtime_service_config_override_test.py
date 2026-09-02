@@ -1,6 +1,6 @@
 """Unit tests for RealtimeService's config-override whitelist.
 
-Follow-up to the EST-3843 org_id fail-closed guard investigation: the
+Follow-up to the org_id fail-closed guard investigation: the
 `config` dict (from `InitRealtimeSerializer.config`, a bare `DictField`) used
 to be `setattr`'d onto the already pydantic-validated `RealtimeAgentChatData`
 for ANY key matching a field name via `hasattr` -- with zero type/value

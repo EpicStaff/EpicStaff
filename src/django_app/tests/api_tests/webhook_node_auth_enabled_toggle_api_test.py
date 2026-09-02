@@ -2,7 +2,7 @@
 `WebhookTriggerNodeSerializer` -- POST/PATCH accept only `{"enabled": bool}`.
 
 Scope note: a separate, uncommitted `TestWebhookNodeAuthAPI` class already
-exists in `webhook_trigger_api_test.py` describing a much broader EST-3826
+exists in `webhook_trigger_api_test.py` describing a much broader
 design (header_name/timestamp_header_name/tolerance_seconds/secret_id all
 client-writable, explicit `null` hard-deletes the row). That design was never
 implemented (the model has no `secret`/`secret_id` field) and directly

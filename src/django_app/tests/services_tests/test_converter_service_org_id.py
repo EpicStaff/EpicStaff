@@ -1,5 +1,5 @@
 """
-EST-3285: authoritative org_id resolution for sandbox callback tools.
+Authoritative org_id resolution for sandbox callback tools.
 
 main's RBAC merge made org-scoped Django endpoints (e.g. GET /sessions/<id>/,
 /schedule-trigger-nodes/) require X-Organization-Id. Sandbox callback tools

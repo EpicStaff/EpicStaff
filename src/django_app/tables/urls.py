@@ -19,6 +19,7 @@ from tables.views.model_view_sets import (
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
+    KnowledgeNodeViewSet,
     AudioTranscriptionNodeViewSet,
     StartNodeModelViewSet,
     RealtimeConfigModelViewSet,
@@ -52,8 +53,6 @@ from tables.views.model_view_sets import (
     RealtimeVoicesView,
     GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
-    VoiceSettingsView,
-    TwilioPhoneNumbersView,
     TwilioConfigureWebhookView,
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
@@ -163,6 +162,7 @@ router.register(r"graphs", GraphViewSet, basename="graphs")
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
+router.register(r"knowledge-nodes", KnowledgeNodeViewSet)
 router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
@@ -431,16 +431,6 @@ urlpatterns = [
         "realtime-voices/",
         RealtimeVoicesView.as_view(),
         name="realtime-voices",
-    ),
-    path(
-        "voice-settings/",
-        VoiceSettingsView.as_view(),
-        name="voice-settings",
-    ),
-    path(
-        "twilio/phone-numbers/",
-        TwilioPhoneNumbersView.as_view(),
-        name="twilio-phone-numbers",
     ),
     path(
         "twilio/configure-webhook/",
