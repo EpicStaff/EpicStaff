@@ -247,6 +247,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return ids;
     });
 
+    protected readonly frozenConnectionIds = computed<Set<string>>(() => {
+        const ids = new Set<string>();
+
+        for (const conn of this.flowService.connections()) {
+            if (conn.userAdjustedWaypoints) {
+                ids.add(conn.id);
+            }
+        }
+
+        return ids;
+    });
+
     protected readonly sortedConnections = computed(() => {
         const backwardIds = this.backwardConnectionIds();
         const hiddenIds = this.hiddenConnectionIds();
@@ -275,7 +287,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private _importPositionSnapshot: Map<number, { x: number; y: number }> | null = null;
 
     private readonly destroy$ = new Subject<void>();
-    private readonly userAdjustedConnectionIds = new Set<string>();
     private readonly previousBackwardConnectionIds = new Set<string>();
     private draggedNodeIds = new Set<string>();
     private draggingElements = new Set<string>();
@@ -706,18 +717,37 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const newConnectionIds = newConnections.map((conn) => conn.id);
 
         setTimeout(() => {
+            this.rerouteSegmentConnections();
             this.fFlowComponent.select(newNodeIds, newConnectionIds);
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
         }, 0);
     }
 
     public onUndo(): void {
+        if (this.isEditingLocked()) {
+            return;
+        }
+
         const entry = this.undoRedoService.popUndo();
-        if (entry) this.applyUndoEntry(entry, 'undo');
+        if (!entry) return;
+
+        this.hasUnarrangedChanges.set(true);
+        this.applyUndoEntry(entry, 'undo');
+        this.rerouteSegmentConnections();
     }
 
     public onRedo(): void {
+        if (this.isEditingLocked()) {
+            return;
+        }
+
         const entry = this.undoRedoService.popRedo();
-        if (entry) this.applyUndoEntry(entry, 'redo');
+        if (!entry) return;
+
+        this.hasUnarrangedChanges.set(true);
+        this.applyUndoEntry(entry, 'redo');
+        this.rerouteSegmentConnections();
     }
 
     public onDelete(): void {
@@ -761,19 +791,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         const existingCount = connection.waypoints?.length ?? 0;
         if (waypoints.length > existingCount) {
-            this.userAdjustedConnectionIds.add(connectionId);
             this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
             this.wsService.sendConnectionWaypointsUpdated(connection, waypoints, this.getConnectionListKey(connection));
             return;
         }
 
         const normalizedWaypoints = this.normalizeWaypointsForConnection(connection, waypoints);
-
-        if (normalizedWaypoints.length > 0) {
-            this.userAdjustedConnectionIds.add(connectionId);
-        } else {
-            this.userAdjustedConnectionIds.delete(connectionId);
-        }
 
         const isSameElements =
             normalizedWaypoints.length === waypoints.length && normalizedWaypoints.every((p, i) => p === waypoints[i]);
@@ -816,6 +839,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.flowState.nodes,
             this.flowService.connections()
         );
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
     }
 
     public onContextMenu(event: MouseEvent): void {
@@ -847,13 +876,25 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             PointExtensions.initialize(this.contextMenuPosition().x, this.contextMenuPosition().y)
         );
         const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
-        this.flowService.addNode(newNode);
+        const safePosition = this.findNearestFreePosition(
+            { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
+            this.getCollisionBounds(newNode),
+            this.flowService.nodes()
+        );
+        const placedNode = { ...newNode, position: safePosition };
+        this.flowService.addNode(placedNode);
         this.wsService.sendNodeCreated(
-            newNode,
+            placedNode,
             this.currentFlowId!,
             this.flowState.nodes,
             this.flowService.connections()
         );
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
     }
 
     public onOpenNodePanel(node: NodeModel): void {
@@ -1075,9 +1116,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const wasBackward = this.previousBackwardConnectionIds.has(conn.id);
             const isBackward = backwardIds.has(conn.id);
             const changedFromBackwardToForward = wasBackward && !isBackward;
+            const changedFromForwardToBackward = !wasBackward && isBackward;
+            const classificationFlipped = changedFromBackwardToForward || changedFromForwardToBackward;
+            const wasFrozen = this.frozenConnectionIds().has(conn.id);
 
             if (isBackward) {
-                if (this.userAdjustedConnectionIds.has(conn.id)) continue;
+                if (wasFrozen && !classificationFlipped) continue;
 
                 const bwSource = nodes.find((n) => n.id === conn.sourceNodeId);
                 const bwTarget = nodes.find((n) => n.id === conn.targetNodeId);
@@ -1102,14 +1146,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     Math.abs(existing.x - newWaypoint.x) > 0.5;
 
                 if (changed) {
-                    this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint]);
+                    this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint], wasFrozen ? false : undefined);
                     this.bumpConnectionRenderVersion(conn.id);
                 }
 
                 continue;
             }
 
-            if (this.userAdjustedConnectionIds.has(conn.id)) continue;
+            if (wasFrozen && !classificationFlipped) continue;
 
             const MAX_ATTEMPTS = 3;
             let current = this.flowService.connections().find((c) => c.id === conn.id);
@@ -1148,13 +1192,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     const normalizedRestore = this.normalizeWaypointsForConnection(currentConnection, restoreResult);
 
                     if (!waypointsEqual(currentConnection.waypoints ?? [], normalizedRestore)) {
-                        this.flowService.updateConnectionWaypoints(currentConnection.id, normalizedRestore);
+                        this.flowService.updateConnectionWaypoints(
+                            currentConnection.id,
+                            normalizedRestore,
+                            wasFrozen ? false : undefined
+                        );
                         this.bumpConnectionRenderVersion(currentConnection.id);
                     }
+                } else if (changedFromBackwardToForward && (currentConnection.waypoints?.length ?? 0) > 0) {
+                    this.flowService.updateConnectionWaypoints(currentConnection.id, [], wasFrozen ? false : undefined);
+                    this.bumpConnectionRenderVersion(currentConnection.id);
                 }
 
                 continue;
             }
+
+            let clearedStaleFlipWaypoint = false;
 
             for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
                 const waypoints = computeSegmentAvoidanceWaypoints(
@@ -1163,14 +1216,29 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     changedFromBackwardToForward ? undefined : current.waypoints
                 );
 
-                if (waypoints === null) break;
+                if (waypoints === null) {
+                    if (
+                        changedFromBackwardToForward &&
+                        !clearedStaleFlipWaypoint &&
+                        (current.waypoints?.length ?? 0) > 0
+                    ) {
+                        this.flowService.updateConnectionWaypoints(current.id, [], wasFrozen ? false : undefined);
+                        this.bumpConnectionRenderVersion(current.id);
+                    }
+                    break;
+                }
 
                 const normalizedWaypoints = this.normalizeWaypointsForConnection(current, waypoints);
                 if (waypointsEqual(current.waypoints ?? [], normalizedWaypoints)) break;
 
-                this.flowService.updateConnectionWaypoints(current.id, normalizedWaypoints);
+                this.flowService.updateConnectionWaypoints(
+                    current.id,
+                    normalizedWaypoints,
+                    wasFrozen ? false : undefined
+                );
                 this.bumpConnectionRenderVersion(current.id);
                 current = { ...current, waypoints: normalizedWaypoints };
+                clearedStaleFlipWaypoint = true;
             }
         }
 
@@ -1349,14 +1417,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         // Pre-identify non-user-adjusted backward connections for per-frame arc updates.
         const backwardIds = this.backwardConnectionIds();
-        const backwardConns = connections.filter(
-            (c) => backwardIds.has(c.id) && !this.userAdjustedConnectionIds.has(c.id)
-        );
+        const backwardConns = connections.filter((c) => backwardIds.has(c.id) && !c.userAdjustedWaypoints);
 
         // Clear ALL non-user-adjusted waypoints (including backward) so every connection
         // starts from a clean state. Backward arcs are re-computed each frame below.
         for (const conn of connections) {
-            if (conn.waypoints?.length && !this.userAdjustedConnectionIds.has(conn.id)) {
+            if (conn.waypoints?.length && !conn.userAdjustedWaypoints) {
                 this.flowService.updateConnectionWaypoints(conn.id, []);
             }
         }
@@ -1424,7 +1490,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     const finalConnections = this.flowService.connections();
                     const bwIds = this.backwardConnectionIds();
                     for (const conn of finalConnections) {
-                        if (!bwIds.has(conn.id) || this.userAdjustedConnectionIds.has(conn.id)) continue;
+                        if (!bwIds.has(conn.id) || conn.userAdjustedWaypoints) continue;
                         const src = finalNodes.find((n) => n.id === conn.sourceNodeId);
                         const tgt = finalNodes.find((n) => n.id === conn.targetNodeId);
                         if (!src || !tgt) continue;
@@ -1784,7 +1850,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             decision_table_node_list: [],
             classification_decision_table_node_list: [],
             graph_note_list: [],
-            code_agent_node_list: [],
             schedule_trigger_node_list: [],
             edge_list: [],
         };
@@ -1832,9 +1897,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 case NodeType.NOTE:
                     body.graph_note_list.push(id);
                     break;
-                case NodeType.CODE_AGENT:
-                    body.code_agent_node_list.push(id);
-                    break;
                 case NodeType.SCHEDULE_TRIGGER:
                     body.schedule_trigger_node_list.push(id);
                     break;
@@ -1866,13 +1928,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private applyIncomingFlowState(flowState: FlowModel): void {
         const normalizedFlowState = normalizeFlowPorts(flowState);
         this.flowService.setFlow(normalizedFlowState);
-        for (const conn of normalizedFlowState.connections) {
-            if (conn.userAdjustedWaypoints) {
-                this.userAdjustedConnectionIds.add(conn.id);
-            } else {
-                this.userAdjustedConnectionIds.delete(conn.id);
-            }
-        }
+        this.rerouteSegmentConnections();
     }
 
     private _shiftImportedNodes(flowState: FlowModel, preImportIds: Set<number>): FlowModel {

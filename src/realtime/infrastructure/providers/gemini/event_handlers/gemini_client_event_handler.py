@@ -30,7 +30,7 @@ class GeminiClientEventHandler:
             "input_audio_buffer.commit": self._handle_audio_commit,
             "response.create": self._handle_noop,
             "response.cancel": self._handle_response_cancel,
-            "conversation.item.create": self._handle_noop,
+            "conversation.item.create": self._handle_conversation_item_create,
             "conversation.item.truncate": self._handle_noop,  # OpenAI-specific; we use activity signals
             "session.update": self._handle_noop,
         }
@@ -73,6 +73,27 @@ class GeminiClientEventHandler:
 
     async def _handle_audio_commit(self, data: Dict[str, Any]) -> None:
         pass  # Server VAD mode: Gemini detects speech end automatically
+
+    async def _handle_conversation_item_create(self, data: Dict[str, Any]) -> None:
+        """Frontend text-chat path (typed messages, not spoken audio): OpenAI's
+        wire format nests the text under item.content[].text. Gemini has no
+        equivalent passive "create item" call -- send_client_content with
+        turn_complete=True both adds the turn and triggers a response, so this
+        is the one place that actually reaches Gemini for a typed message."""
+        item = data.get("item") or {}
+        if item.get("role") not in (None, "user"):
+            return
+
+        text = "".join(
+            part.get("text", "")
+            for part in item.get("content", [])
+            if isinstance(part, dict) and part.get("type") in ("input_text", "text")
+        )
+        if not text:
+            return
+
+        await self.client.server_event_handler.emit_user_text_item(text)
+        await self.client.send_conversation_item_to_server(text)
 
     async def _handle_response_cancel(self, data: Dict[str, Any]) -> None:
         """Browser signals user interrupted — reset state and stop browser audio playback."""

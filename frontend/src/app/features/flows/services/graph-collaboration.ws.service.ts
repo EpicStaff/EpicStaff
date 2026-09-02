@@ -14,7 +14,6 @@ import {
     AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
-    CodeAgentNodeModel,
     DecisionTableNodeModel,
     EdgeNodeModel,
     EndNodeModel,
@@ -197,8 +196,6 @@ export function nodeTypeToListKey(type: NodeType): string | null {
             return 'telegram_trigger_node_list';
         case NodeType.SCHEDULE_TRIGGER:
             return 'schedule_trigger_node_list';
-        case NodeType.CODE_AGENT:
-            return 'code_agent_node_list';
         case NodeType.EDGE:
             return 'conditional_edge_list';
         default:
@@ -389,33 +386,6 @@ export function buildNodeBackendPayload(
                 graph: graphId,
                 content: nn.data.content,
                 metadata: { ...meta, backgroundColor: nn.data.backgroundColor ?? null },
-            };
-        }
-
-        case NodeType.CODE_AGENT: {
-            const ca = node as CodeAgentNodeModel;
-            return {
-                ...idField,
-                node_name: ca.node_name,
-                graph: graphId,
-                llm_config: ca.data?.llm_config_id ?? null,
-                agent_mode: ca.data?.agent_mode ?? 'code_interpreter',
-                session_id: ca.data?.session_id ?? '',
-                system_prompt: ca.data?.system_prompt ?? '',
-                stream_handler_code: ca.data?.stream_handler_code ?? '',
-                libraries: ca.data?.libraries ?? [],
-                polling_interval_ms: ca.data?.polling_interval_ms ?? 100,
-                silence_indicator_s: ca.data?.silence_indicator_s ?? 3,
-                indicator_repeat_s: ca.data?.indicator_repeat_s ?? 5,
-                chunk_timeout_s: ca.data?.chunk_timeout_s ?? 30,
-                inactivity_timeout_s: ca.data?.inactivity_timeout_s ?? 120,
-                max_wait_s: ca.data?.max_wait_s ?? 300,
-                input_map: ca.input_map,
-                output_variable_path: ca.output_variable_path,
-                stream_config: ca.stream_config ?? {},
-                output_schema: ca.data?.output_schema ?? {},
-                use_storage: ca.data?.use_storage ?? false,
-                metadata: meta,
             };
         }
 

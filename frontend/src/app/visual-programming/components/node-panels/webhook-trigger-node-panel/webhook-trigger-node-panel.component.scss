@@ -1,5 +1,16 @@
 @use '../../../styles/node-panel-mixins.scss' as mixins;
 
+// Match app-select (app-tooltip) labels to the app-custom-input labels — scoped to this panel only.
+// Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
+:host ::ng-deep app-select .tooltip-label {
+    color: var(--color-ks-text);
+    font-weight: 400;
+}
+
+:host ::ng-deep app-select .tooltip-label-container {
+    margin-bottom: 8px;
+}
+
 .panel-container {
     display: flex;
     flex-direction: column;
@@ -13,6 +24,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
 }
 
 .section-header {
@@ -180,7 +192,6 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-top: 6px;
 }
 
 .webhook-url-text {
@@ -193,6 +204,56 @@
 
 .webhook-url-error {
     color: #ef4444;
+}
+
+.webhook-warning {
+    font-size: 13px;
+    color: #ef4444;
+    word-break: break-word;
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 4px;
+    cursor: pointer;
+    transition:
+        color 0.15s ease,
+        background-color 0.15s ease;
+
+    &:hover:not(:disabled) {
+        color: white;
+        background: var(--transparent-white-8);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+}
+
+.webhook-auth-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.webhook-auth-pending {
+    margin: 0;
+    padding: 6px 8px;
+    border-left: 2px solid var(--color-ks-status-warning);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-ks-status-warning);
+    background: var(--color-ks-transparent-yellow);
 }
 
 .copy-button {

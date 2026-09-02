@@ -40,6 +40,8 @@ class RealtimeAgentChatData(BaseModel):
     role: str
     goal: str
     backstory: str
+    org_id: int
+    user_id: int | None = None
     knowledge_collection_id: int | None
     rag_type_id: str | None = None
     rag_search_config: RagSearchConfig | None = None
@@ -49,6 +51,7 @@ class RealtimeAgentChatData(BaseModel):
     rt_model_name: str
     rt_api_key: str | None = None
     rt_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    rt_base_url: str | None = None
     transcript_model_name: str | None = None
     transcript_api_key: str | None = None
     transcript_api_key_secret_id: int | None = Field(default=None, exclude=True)

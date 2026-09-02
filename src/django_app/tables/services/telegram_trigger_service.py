@@ -1,18 +1,24 @@
 import functools
 import time
+import secrets
 
 import requests
+from django.contrib.auth.hashers import make_password
 from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
 
 from tables.exceptions import RegisterTelegramTriggerError
 from tables.models.graph_models import TelegramTriggerNode
-from tables.models.webhook_models import WebhookTrigger
-from tables.services.secrets import secret_encryption
+from tables.models.webhook_models import LOCAL_ONLY_PROVIDERS, WebhookTrigger
+from tables.services.secrets import secret_resolver
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.models.webhook_models import WebhookNodeAuth, WebhookAuthScheme
 from utils.singleton_meta import SingletonMeta
+
+
+TELEGRAM_WEBHOOK_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 
 
 def _retry_on_connection_errors(func):
@@ -60,7 +66,20 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         return data
 
-    def register_telegram_trigger(self, telegram_trigger_instance: TelegramTriggerNode):
+    def register_telegram_trigger(
+        self, telegram_trigger_instance: TelegramTriggerNode, force: bool = False
+    ) -> dict | None:
+        """Register (or resync) this node's Telegram webhook.
+
+        `force=False` skips the outbound `setWebhook` call when a valid
+        registration already exists for BOTH the SAME resolved callback URL
+        AND the SAME bot API key -- compared by their actual values, not by
+        `webhook_trigger` id, since the same `WebhookTrigger` row can
+        resolve to a different tunnel URL over time (e.g. its domain
+        changes), and the same node can be repointed at a different
+        Telegram bot while the trigger/tunnel stays put. Either change must
+        still trigger a real resync.
+        """
         if telegram_trigger_instance.telegram_bot_api_key_secret_id is None:
             logger.warning(
                 f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no bot API key secret set."
@@ -75,14 +94,21 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no webhook_trigger configured."
             )
             return
-        if webhook_trigger.ngrok_webhook_config is None:
+        if webhook_trigger.provider_type is None:
             logger.warning(
-                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: webhook_trigger has no ngrok_webhook_config."
+                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: webhook_trigger has no tunnel config."
             )
             return
+        if webhook_trigger.provider_type in LOCAL_ONLY_PROVIDERS:
+            raise RegisterTelegramTriggerError(
+                "Localhost webhook provider is not reachable by Telegram. "
+                "Use ngrok or a publicly accessible provider."
+            )
         try:
-            webhook_tunnel_url = self.webhook_trigger_service.get_tunnel_url(
-                ngrok_webhook_config=webhook_trigger.ngrok_webhook_config
+            webhook_tunnel_url = (
+                self.webhook_trigger_service.wait_for_tunnel_url_for_trigger(
+                    webhook_trigger
+                )
             )
         except Exception as e:
             raise RegisterTelegramTriggerError(
@@ -95,23 +121,79 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 status_code=503,
             )
 
-        telegram_webhook_url = (
-            f"{webhook_tunnel_url}/webhooks/telegram-trigger/{webhook_trigger.path}/"
+        telegram_webhook_url = f"{webhook_tunnel_url}/webhooks/{webhook_trigger.path}/"
+
+        node_auth: WebhookNodeAuth | None = getattr(
+            telegram_trigger_instance, "webhook_node_auth", None
         )
+        already_registered = (
+            not force
+            and node_auth is not None
+            and node_auth.enabled
+            and bool(node_auth.secret_hash)
+            and node_auth.registered_webhook_url == telegram_webhook_url
+            and node_auth.registered_bot_api_key_secret_id
+            == telegram_trigger_instance.telegram_bot_api_key_secret_id
+        )
+        if already_registered:
+            logger.info(
+                f"[TelegramTrigger] Skipping resync for node {telegram_trigger_instance.pk}: "
+                "already registered for this webhook_trigger, no rotation needed."
+            )
+            return None
+
+        raw_secret_token = secrets.token_urlsafe(32)
+        created = node_auth is None
+        if created:
+            node_auth = WebhookNodeAuth.objects.create(
+                telegram_trigger_node=telegram_trigger_instance,
+                enabled=True,
+                scheme=WebhookAuthScheme.STATIC_HEADER,
+                header_name=TELEGRAM_WEBHOOK_HEADER,
+            )
+        else:
+            node_auth.scheme = WebhookAuthScheme.STATIC_HEADER
+            node_auth.header_name = TELEGRAM_WEBHOOK_HEADER
+            node_auth.save(update_fields=["scheme", "header_name"])
 
         try:
-            return self._call_telegram_api(
+            result = self._call_telegram_api(
                 method="POST",
-                api_key=secret_encryption.decrypt(
-                    encryptedtext=telegram_trigger_instance.telegram_bot_api_key_secret.value
+                api_key=secret_resolver.resolve(
+                    # webhook_trigger is confirmed non-None above (return-early
+                    # guard); it carries the same org as the node's graph and is
+                    # available here without requiring a saved/loaded graph.
+                    secret_id=telegram_trigger_instance.telegram_bot_api_key_secret_id,
+                    org_id=webhook_trigger.org_id,
+                    context="TelegramTriggerNode.telegram_bot_api_key",
                 ),
                 endpoint="setWebhook",
-                params={"url": telegram_webhook_url},
+                params={
+                    "url": telegram_webhook_url,
+                    "secret_token": raw_secret_token,
+                },
             )
         except Exception as e:
+            if created:
+                node_auth.delete()
             raise RegisterTelegramTriggerError(
                 f"Failed to register Telegram webhook after retries: {str(e)}"
             )
+
+        node_auth.secret_hash = make_password(raw_secret_token)
+        node_auth.registered_webhook_url = telegram_webhook_url
+        node_auth.registered_bot_api_key_secret_id = (
+            telegram_trigger_instance.telegram_bot_api_key_secret_id
+        )
+        node_auth.save(
+            update_fields=[
+                "secret_hash",
+                "registered_webhook_url",
+                "registered_bot_api_key_secret_id",
+            ]
+        )
+
+        return result
 
     def unregister_telegram_trigger(self, telegram_bot_api_key: str):
         try:
@@ -122,11 +204,35 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             return {"ok": False, "description": "Unregistration failed"}
 
     def handle_telegram_trigger(
-        self, url_path: str, payload: dict, config_id: str | None = None
+        self,
+        path: str,
+        payload: dict,
+        config_id: str | None = None,
+        node_id: int | None = None,
+        unauthenticated_only: bool = False,
     ) -> None:
+        """`node_id`, when set, restricts dispatch to that single node --
+        used by `RedisPubSub.webhook_events_handler` when the inbound
+        request matched a credential scoped to one specific node (see
+        `WebhookEventData.auth_principal`). `None` preserves the
+        unrestricted fan-out to every `TelegramTriggerNode` on this path.
+
+        `unauthenticated_only` is always a no-op here: Telegram auth is
+        mandatory and unconditional, so an unauthenticated
+        (`UNAUTHENTICATED_FALLBACK_PRINCIPAL`) event must never drive a
+        Telegram node, even if it shares a path with an auth-free generic
+        webhook node.
+        """
+        if unauthenticated_only:
+            return
+
         filters = self.webhook_trigger_service.get_trigger_filters(
-            path=url_path, config_id=config_id
+            path=path, config_id=config_id
         )
+        if filters is None:
+            return
+        if node_id is not None:
+            filters["id"] = node_id
 
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 

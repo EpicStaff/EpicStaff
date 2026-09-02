@@ -1,0 +1,418 @@
+<div class="dialog">
+    <div class="header">
+        <h2 class="title">Add Configuration</h2>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            (onClick)="dialogRef.close()"
+        />
+    </div>
+
+    <div class="tabs">
+        <button
+            class="tab"
+            [class.active]="activeTab() === 'llm'"
+            (click)="setActiveTab('llm')"
+            type="button"
+        >
+            LLM
+        </button>
+        <span class="tab-divider">/</span>
+        <button
+            class="tab"
+            [class.active]="activeTab() === 'realtime'"
+            (click)="setActiveTab('realtime')"
+            type="button"
+        >
+            Realtime
+        </button>
+    </div>
+
+    @if (activeTab() === 'llm') {
+        <form
+            class="form"
+            [formGroup]="llmForm"
+        >
+            <section class="section">
+                <h3 class="section-title">MODEL INFORMATION</h3>
+                <div>
+                    <app-llm-model-selector
+                        formControlName="model"
+                        label="Provider"
+                        placeholder="Select provider"
+                        tooltipText="The AI provider and model this configuration will use"
+                        [provider]="ModelTypes.LLM"
+                        [required]="true"
+                        (modelChanged)="onModelChanged($event)"
+                    />
+                    <app-validation-errors [control]="llmForm.get('model')!" />
+                </div>
+                <div>
+                    <app-custom-input
+                        formControlName="api_key"
+                        label="API Key"
+                        placeholder="Enter provider's API key"
+                        tooltipText="Your secret API key from the provider's dashboard"
+                        type="password"
+                    />
+                </div>
+                <div>
+                    <app-custom-input
+                        formControlName="custom_name"
+                        label="Configuration Name"
+                        placeholder="Enter a custom name"
+                        tooltipText="A friendly name to identify this configuration across the app"
+                        [required]="true"
+                    />
+                    <app-validation-errors [control]="llmForm.get('custom_name')!" />
+                </div>
+            </section>
+
+            <section class="section">
+                <h3 class="section-title">API CONFIGURATION</h3>
+                <app-key-value-list
+                    formControlName="headers"
+                    label="Header Configuration"
+                    tooltipText="Custom HTTP headers sent with every API request"
+                    namePlaceholder="Header name"
+                    valuePlaceholder="Header value"
+                />
+            </section>
+
+            <section class="section">
+                <h3 class="section-title">GENERATION PARAMETERS</h3>
+                <div>
+                    <app-slider-with-stepper
+                        formControlName="temperature"
+                        [min]="0"
+                        [max]="1"
+                        [step]="0.1"
+                        label="Temperature"
+                        tooltipText="Controls randomness. Lower = more deterministic, higher = more creative."
+                    />
+                    <app-validation-errors [control]="llmForm.get('temperature')!" />
+                </div>
+                <div>
+                    <app-slider-with-stepper
+                        formControlName="top_p"
+                        [min]="0.1"
+                        [max]="1"
+                        [step]="0.1"
+                        label="Top P"
+                        tooltipText="Nucleus sampling threshold."
+                    />
+                    <app-validation-errors [control]="llmForm.get('top_p')!" />
+                </div>
+                <div>
+                    <app-slider-with-stepper
+                        formControlName="presence_penalty"
+                        label="Presence Penalty"
+                        tooltipText="Penalises tokens that have already appeared."
+                    />
+                </div>
+                <div>
+                    <app-slider-with-stepper
+                        formControlName="frequency_penalty"
+                        label="Frequency Penalty"
+                        tooltipText="Penalises tokens proportionally to how often they appear."
+                    />
+                </div>
+            </section>
+
+            <section class="section">
+                <h3 class="section-title">TOKEN LIMITS & COMPLETION</h3>
+                <div>
+                    <app-input-number
+                        formControlName="max_tokens"
+                        [min]="500"
+                        [max]="2147483647"
+                        [stepSize]="100"
+                        label="Max Tokens"
+                        tooltipText="Maximum tokens the model may generate in a single response"
+                        [alwaysShowSteps]="true"
+                    />
+                    <app-validation-errors [control]="llmForm.get('max_tokens')!" />
+                </div>
+                <div>
+                    <app-input-number
+                        formControlName="timeout"
+                        [min]="1"
+                        [max]="600"
+                        [stepSize]="DEFAULT_STEP_SIZE"
+                        label="Timeout (seconds)"
+                        tooltipText="How long to wait for the model to respond"
+                        [alwaysShowSteps]="true"
+                    />
+                    <app-validation-errors [control]="llmForm.get('timeout')!" />
+                </div>
+            </section>
+
+            <section class="section">
+                <h3 class="section-title">ADVANCED PARAMETERS</h3>
+                <div>
+                    <app-input-number
+                        formControlName="seed"
+                        placeholder="random"
+                        [stepSize]="DEFAULT_STEP_SIZE"
+                        label="Seed"
+                        tooltipText="Fixed seed for reproducible outputs. Leave empty for random."
+                        [alwaysShowSteps]="true"
+                    />
+                    <app-validation-errors [control]="llmForm.get('seed')!" />
+                </div>
+                <app-json-editor-form-field
+                    formControlName="logit_bias"
+                    label="Logit Bias (JSON)"
+                    tooltipText="JSON map of token IDs to bias values"
+                    [writeValueAsJSON]="false"
+                />
+            </section>
+        </form>
+    }
+
+    @if (activeTab() === 'realtime') {
+        <div class="provider-section">
+            <div class="provider-label">
+                Realtime Provider
+                <app-help-tooltip
+                    text="Select the realtime voice provider this configuration will use"
+                    position="right"
+                />
+            </div>
+            <div class="provider-buttons">
+                @for (p of realtimeProviders; track p.key) {
+                    <button
+                        type="button"
+                        class="provider-btn"
+                        [class.active]="selectedProvider() === p.key"
+                        (click)="selectProvider(p.key)"
+                    >
+                        {{ p.label }}
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (selectedProvider() === 'openai') {
+            <form
+                class="form"
+                [formGroup]="openaiForm"
+            >
+                <div
+                    *ngIf="errorMessage()"
+                    class="error"
+                >
+                    <p>{{ errorMessage() }}</p>
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Name"
+                        formControlName="custom_name"
+                        [required]="true"
+                        placeholder="e.g. My OpenAI Config"
+                        tooltipText="A descriptive name for this configuration"
+                    />
+                    <app-validation-errors [control]="openaiForm.get('custom_name')!" />
+                </div>
+                <div>
+                    <app-select
+                        formControlName="api_key_secret_id"
+                        label="API Key"
+                        variant="boxed"
+                        tooltipText="OpenAI API key (leave blank to use default)"
+                        placeholder="Select a secret"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
+                    />
+                    @if (!openaiForm.get('api_key_secret_id')?.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Model Name"
+                        formControlName="model_name"
+                        [required]="true"
+                        placeholder="gpt-realtime-1.5"
+                        tooltipText="The realtime model to use"
+                    />
+                    <app-validation-errors [control]="openaiForm.get('model_name')!" />
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Transcription Model"
+                        formControlName="transcription_model_name"
+                        placeholder="whisper-1"
+                        tooltipText="Model used for speech-to-text transcription"
+                    />
+                </div>
+                <div>
+                    <app-select
+                        formControlName="transcription_api_key_secret_id"
+                        label="Transcription API Key"
+                        variant="boxed"
+                        tooltipText="Separate API key for transcription (optional)"
+                        placeholder="Select a secret"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
+                    />
+                    @if (!openaiForm.get('transcription_api_key_secret_id')?.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Voice Recognition Prompt"
+                        formControlName="voice_recognition_prompt"
+                        placeholder="Optional system prompt for voice recognition"
+                        tooltipText="Optional context prompt for speech recognition"
+                    />
+                </div>
+            </form>
+        }
+
+        @if (selectedProvider() === 'elevenlabs') {
+            <form
+                class="form"
+                [formGroup]="elevenLabsForm"
+            >
+                <div
+                    *ngIf="errorMessage()"
+                    class="error"
+                >
+                    <p>{{ errorMessage() }}</p>
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Name"
+                        formControlName="custom_name"
+                        [required]="true"
+                        placeholder="e.g. My Elevenlabs Config"
+                        tooltipText="A descriptive name for this configuration"
+                    />
+                    <app-validation-errors [control]="elevenLabsForm.get('custom_name')!" />
+                </div>
+                <div>
+                    <app-select
+                        formControlName="api_key_secret_id"
+                        label="API Key"
+                        variant="boxed"
+                        tooltipText="ElevenLabs API key"
+                        placeholder="Select a secret"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
+                    />
+                    @if (!elevenLabsForm.get('api_key_secret_id')?.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Model Name"
+                        formControlName="model_name"
+                        [required]="true"
+                        placeholder="eleven_turbo_v2_5"
+                        tooltipText="The ElevenLabs model to use"
+                    />
+                    <app-validation-errors [control]="elevenLabsForm.get('model_name')!" />
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Language"
+                        formControlName="language"
+                        placeholder="English"
+                        tooltipText="ISO-639-1 language code (optional, e.g. 'en', 'de', 'fr')"
+                    />
+                </div>
+            </form>
+        }
+
+        @if (selectedProvider() === 'gemini') {
+            <form
+                class="form"
+                [formGroup]="geminiForm"
+            >
+                <div
+                    *ngIf="errorMessage()"
+                    class="error"
+                >
+                    <p>{{ errorMessage() }}</p>
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Name"
+                        formControlName="custom_name"
+                        [required]="true"
+                        placeholder="e.g. My Gemini Config"
+                        tooltipText="A descriptive name for this configuration"
+                    />
+                    <app-validation-errors [control]="geminiForm.get('custom_name')!" />
+                </div>
+                <div>
+                    <app-select
+                        formControlName="api_key_secret_id"
+                        label="API Key"
+                        variant="boxed"
+                        tooltipText="Google Gemini API key"
+                        placeholder="Select a secret"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
+                    />
+                    @if (!geminiForm.get('api_key_secret_id')?.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Model Name"
+                        formControlName="model_name"
+                        [required]="true"
+                        placeholder="gemini-3.1-flash-live-preview"
+                        tooltipText="The Gemini live model to use"
+                    />
+                    <app-validation-errors [control]="geminiForm.get('model_name')!" />
+                </div>
+                <div>
+                    <app-custom-input
+                        label="Voice Recognition Prompt"
+                        formControlName="voice_recognition_prompt"
+                        placeholder="Optional context for voice recognition"
+                        tooltipText="Optional prompt to guide speech recognition"
+                    />
+                </div>
+            </form>
+        }
+    }
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="isSubmitting()"
+        >
+            @if (isSubmitting()) {
+                Creating…
+            } @else {
+                {{ activeTab() === 'llm' ? 'Add LLM' : 'Create Realtime' }}
+            }
+        </app-button>
+    </div>
+</div>

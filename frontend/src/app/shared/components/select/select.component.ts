@@ -68,6 +68,8 @@ export class SelectComponent implements ControlValueAccessor {
     searchPlaceholder = input<string>('Search...');
 
     changed = output<unknown>();
+    opened = output<void>();
+
     selectedValue = model<unknown | null>(null);
 
     open = signal(false);
@@ -110,9 +112,10 @@ export class SelectComponent implements ControlValueAccessor {
         this.openAt(this.triggerBtn.nativeElement);
     }
 
-    /** Opens the dropdown anchored to `originElement`. Useful with `hideTrigger` + a projected trigger. */
+    /** Opens the dropdown anchored to originElement. Useful with hideTrigger + a projected trigger. */
     openAt(originElement: HTMLElement, minWidth = 160) {
         if (this.isDisabled()) return;
+        this.opened.emit();
         this.search.set('');
 
         const positionStrategy = this.overlayPositionBuilder

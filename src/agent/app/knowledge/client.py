@@ -95,6 +95,7 @@ class KnowledgeClient:
             uuid=search_uuid,
             query=query,
             rag_search_config=target.search_config,
+            embedder_api_key=target.embedder_api_key,
         )
 
         loop = asyncio.get_running_loop()

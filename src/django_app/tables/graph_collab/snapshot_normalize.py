@@ -69,6 +69,12 @@ def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
             if isinstance(end, dict) and end.get("type") is None:
                 end["type"] = "never"
 
+    for node in snapshot.get("webhook_trigger_node_list", []):
+        if node is None:
+            continue
+        if node.get("webhook_node_auth") is None:
+            node.pop("webhook_node_auth", None)
+
     return snapshot
 
 

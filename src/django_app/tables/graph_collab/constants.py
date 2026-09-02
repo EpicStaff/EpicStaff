@@ -95,7 +95,6 @@ _LIST_KEY_TO_DELETE_KEY: dict[str, str] = {
     "webhook_trigger_node_list": "webhook_trigger_node_ids",
     "telegram_trigger_node_list": "telegram_trigger_node_ids",
     "schedule_trigger_node_list": "schedule_trigger_node_ids",
-    "code_agent_node_list": "code_agent_node_ids",
     "classification_decision_table_node_list": "classification_decision_table_node_ids",
     "edge_list": "edge_ids",
     "conditional_edge_list": "conditional_edge_ids",

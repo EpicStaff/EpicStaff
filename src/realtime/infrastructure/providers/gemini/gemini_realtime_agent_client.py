@@ -43,14 +43,27 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         voice: str = "Puck",
         instructions: str = "You are a helpful assistant",
         temperature: float = 1.0,
+        org_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ):
         super().__init__(
             api_key=api_key,
             connection_key=connection_key,
             on_server_event=on_server_event,
+            org_id=org_id,
+            user_id=user_id,
         )
 
-        _VALID_GEMINI_VOICES = {"Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"}
+        _VALID_GEMINI_VOICES = {
+            "Puck",
+            "Charon",
+            "Kore",
+            "Fenrir",
+            "Aoede",
+            "Leda",
+            "Orus",
+            "Zephyr",
+        }
         self.tool_manager_service = tool_manager_service
         self.model = model
         self.voice = voice if voice in _VALID_GEMINI_VOICES else "Puck"
@@ -68,7 +81,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         self._close_lock = asyncio.Lock()
 
         # Stateful resampling state for Twilio paths
-        self._resample_state_in = None   # µ-law 8kHz → PCM 16kHz
+        self._resample_state_in = None  # µ-law 8kHz → PCM 16kHz
         self._resample_state_out = None  # PCM 24kHz → µ-law 8kHz
 
         # Rolling buffer: always keeps the last _ROLLING_BUFFER_SECS seconds of user audio.
@@ -190,13 +203,23 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             try:
                 async for response in self._session.receive():
                     msg_count += 1
-                    active_fields = [
-                        f for f in ("setup_complete", "server_content", "tool_call", "go_away", "session_resumption_update")
+
+                    signal_fields = [
+                        f
+                        for f in (
+                            "setup_complete",
+                            "tool_call",
+                            "go_away",
+                            "session_resumption_update",
+                        )
                         if getattr(response, f, None) is not None
                     ]
-                    logger.debug(f"Gemini msg #{msg_count}: {active_fields or ['(empty)']}")
+                    if signal_fields:
+                        logger.debug(f"Gemini msg #{msg_count}: {signal_fields}")
                     if getattr(response, "go_away", None) is not None:
-                        logger.warning(f"Gemini: go_away — time_left={getattr(response.go_away, 'time_left', '?')}")
+                        logger.warning(
+                            f"Gemini: go_away — time_left={getattr(response.go_away, 'time_left', '?')}"
+                        )
                     try:
                         await self.server_event_handler.handle_event(response)
                     except Exception as e:
@@ -206,10 +229,14 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
                     f"Gemini: receive() loop ended after {msg_count} messages — server closed connection, reconnecting"
                 )
             except asyncio.CancelledError:
-                logger.info(f"Gemini: handle_messages cancelled after {msg_count} messages")
+                logger.info(
+                    f"Gemini: handle_messages cancelled after {msg_count} messages"
+                )
                 break
             except Exception as e:
-                logger.exception(f"Gemini: handle_messages error after {msg_count} messages: {e}")
+                logger.exception(
+                    f"Gemini: handle_messages error after {msg_count} messages: {e}"
+                )
                 break
 
             try:
@@ -244,15 +271,21 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             audio=types.Blob(data=pcm_16k, mime_type="audio/pcm;rate=16000")
         )
 
-    async def process_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def process_message(
+        self, message: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Process incoming message from the frontend WebSocket."""
         return await self.client_event_handler.handle_event(data=message)
 
     async def send_conversation_item_to_server(self, text: str) -> None:
-        """Send a user text message to Gemini (used in LISTEN wake-word mode)."""
+        """Send a user text message to Gemini (used in LISTEN wake-word mode and
+        the frontend's typed-message path, see GeminiClientEventHandler)."""
         if self._session is None:
             logger.warning("Gemini: session is closed, dropping text message")
             return
+        # Audio turns get this from input transcription (server_event_handler);
+        # a typed turn has no audio, so record it here for reconnect context.
+        self._conversation_history.append({"role": "user", "text": text})
         await self._session.send_client_content(
             turns=types.Content(
                 role="user",
@@ -279,7 +312,9 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         if not self._audio_rolling_buffer or self._session is None:
             return
         chunks = [chunk for _, chunk in self._audio_rolling_buffer]
-        logger.info(f"Gemini: replaying {len(chunks)} buffered audio chunks to new session")
+        logger.info(
+            f"Gemini: replaying {len(chunks)} buffered audio chunks to new session"
+        )
         for chunk in chunks:
             await self._session.send_realtime_input(
                 audio=types.Blob(data=chunk, mime_type="audio/pcm;rate=16000")
@@ -308,10 +343,12 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             result_str = f"Error: {e}"
 
         # Save to history so context survives reconnects regardless of outcome
-        self._conversation_history.append({
-            "role": "model",
-            "text": f"[Tool {tool_name}({tool_arguments}) → {result_str[:300]}]",
-        })
+        self._conversation_history.append(
+            {
+                "role": "model",
+                "text": f"[Tool {tool_name}({tool_arguments}) → {result_str[:300]}]",
+            }
+        )
 
         if self._session is None:
             logger.warning(

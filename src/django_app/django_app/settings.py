@@ -178,18 +178,41 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # One reverse proxy (nginx) sits in front of Django. Without this, DRF
+    # keys throttles on the whole X-Forwarded-For chain, whose left-hand side
+    # the client controls - so any throttle could be bypassed by varying the
+    # header. With 1, only the entry nginx itself appended is used.
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_RATES": {
         "login": os.getenv("LOGIN_THROTTLE_RATE", "5/min"),
         "password_reset_request": os.getenv(
             "PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"
         ),
+        "password_reset_confirm": os.getenv(
+            "PASSWORD_RESET_CONFIRM_THROTTLE_RATE", "10/hour"
+        ),
+        "token_refresh": os.getenv("TOKEN_REFRESH_THROTTLE_RATE", "30/min"),
         "notify_email": os.getenv("NOTIFY_EMAIL_THROTTLE_RATE", "10/hour"),
     },
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL").rstrip("/")
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip().split(",")
+    if origin.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "dnt",
+    "origin",
+    "accept-encoding",
+    "x-twilio-account-sid",
+    "x-twilio-auth-token",
+    "x-organization-id",
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 
@@ -366,7 +389,6 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:4200").rstrip("/")
 FRONTEND_PASSWORD_RESET_PATH = os.getenv(
     "FRONTEND_PASSWORD_RESET_PATH", "/reset-password"
 )
@@ -436,8 +458,13 @@ WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
 STORAGE_MUTATION_CHANNEL = os.environ.get(
     "STORAGE_MUTATION_CHANNEL", "storage_mutations"
 )
-TELEGRAM_TRIGGER_PREFIX = "telegram-trigger/"
 SCHEDULE_CHANNEL = os.environ.get("SCHEDULE_CHANNEL", "schedule_channel")
+
+SCHEDULE_MIN_INTERVAL_SECONDS = int(os.environ.get("SCHEDULE_MIN_INTERVAL_SECONDS", 60))
+
+SCHEDULE_MAX_CONCURRENT_SESSIONS_PER_ORG = int(
+    os.environ.get("SCHEDULE_MAX_CONCURRENT_SESSIONS_PER_ORG", 20)
+)
 
 
 WEBHOOK_HOST_NAME = os.getenv("WEBHOOK_HOST_NAME", "localhost")
@@ -447,6 +474,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "EpicStaff API",
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },

@@ -1,0 +1,146 @@
+<div class="tool-usage-dialog">
+    <header class="dialog-header">
+        <h2 class="dialog-title">Tool Usage</h2>
+        <button
+            type="button"
+            class="close-btn"
+            aria-label="Close"
+            matTooltip="Close"
+            matTooltipPosition="below"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1.5rem"
+            />
+        </button>
+    </header>
+
+    <div class="dialog-content">
+        <div class="summary-section">
+            <h3 class="section-title">
+                Summary
+                <span class="section-count">{{ totalCount }}</span>
+            </h3>
+
+            @if (hasAny()) {
+                <div class="summary-chips">
+                    @if (agentCount > 0) {
+                        <div
+                            class="summary-chip"
+                            (click)="scrollToSection('agent')"
+                        >
+                            <app-svg-icon
+                                icon="agent"
+                                size="1.25rem"
+                            />
+                            <span>
+                                <span class="chip-count">{{ agentCount }}</span>
+                                agent{{ agentCount === 1 ? '' : 's' }}
+                            </span>
+                        </div>
+                    }
+                    @if (projectCount > 0) {
+                        <div
+                            class="summary-chip"
+                            (click)="scrollToSection('project')"
+                        >
+                            <app-svg-icon
+                                icon="project"
+                                size="1.25rem"
+                            />
+                            <span>
+                                <span class="chip-count">{{ projectCount }}</span>
+                                project{{ projectCount === 1 ? '' : 's' }}
+                            </span>
+                        </div>
+                    }
+                </div>
+            } @else {
+                <div class="empty-state">This tool isn't used by any agents or projects yet.</div>
+            }
+        </div>
+
+        @if (agentCount > 0) {
+            <section
+                class="usage-section"
+                #agentSection
+            >
+                <h4 class="usage-section-title">
+                    <app-svg-icon
+                        icon="agent"
+                        size="1.125rem"
+                        class="section-icon"
+                    />
+                    <span>Agent</span>
+                    <span class="section-count">{{ agentCount }}</span>
+                </h4>
+                <div class="usage-list">
+                    @for (item of agents; track item.id) {
+                        <div class="usage-row">
+                            <span
+                                class="usage-name"
+                                [title]="item.role"
+                                >{{ item.role }}</span
+                            >
+                            <button
+                                type="button"
+                                class="nav-btn"
+                                aria-label="Open agent"
+                                matTooltip="Open agent"
+                                matTooltipPosition="above"
+                                (click)="openAgent()"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-up-right"
+                                    size="1rem"
+                                />
+                            </button>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (projectCount > 0) {
+            <section
+                class="usage-section"
+                #projectSection
+            >
+                <h4 class="usage-section-title">
+                    <app-svg-icon
+                        icon="project"
+                        size="1.125rem"
+                        class="section-icon"
+                    />
+                    <span>Project</span>
+                    <span class="section-count">{{ projectCount }}</span>
+                </h4>
+                <div class="usage-list">
+                    @for (item of projects; track item.id) {
+                        <div class="usage-row">
+                            <span
+                                class="usage-name"
+                                [title]="item.name"
+                                >{{ item.name }}</span
+                            >
+                            <button
+                                type="button"
+                                class="nav-btn"
+                                aria-label="Open project"
+                                matTooltip="Open project"
+                                matTooltipPosition="above"
+                                (click)="openProject(item.id)"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-up-right"
+                                    size="1rem"
+                                />
+                            </button>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</div>

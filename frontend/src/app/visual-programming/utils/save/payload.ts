@@ -367,7 +367,6 @@ export function buildBulkSavePayload(
             .map((n) => n.backendId!)
             .filter((id) => id != null),
         graph_note_ids: nodeDiff.noteNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        code_agent_node_ids: nodeDiff.codeAgentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         classification_decision_table_node_ids: nodeDiff.classificationDecisionTableNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
@@ -471,6 +470,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            webhook_node_auth: { enabled: n.data.webhook_node_auth?.enabled ?? false },
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
@@ -496,28 +496,6 @@ export function buildBulkSavePayload(
             graph: graphId,
             content: n.data.content,
             metadata: { ...toNodeMetadata(n), backgroundColor: n.data.backgroundColor ?? null },
-        })),
-        code_agent_node_list: nodeItems(nodeDiff.codeAgentNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            llm_config: n.data?.llm_config_id ?? null,
-            agent_mode: n.data?.agent_mode ?? 'code_interpreter',
-            session_id: n.data?.session_id ?? '',
-            system_prompt: n.data?.system_prompt ?? '',
-            stream_handler_code: n.data?.stream_handler_code ?? '',
-            libraries: n.data?.libraries ?? [],
-            polling_interval_ms: n.data?.polling_interval_ms ?? 100,
-            silence_indicator_s: n.data?.silence_indicator_s ?? 3,
-            indicator_repeat_s: n.data?.indicator_repeat_s ?? 5,
-            chunk_timeout_s: n.data?.chunk_timeout_s ?? 30,
-            inactivity_timeout_s: n.data?.inactivity_timeout_s ?? 120,
-            max_wait_s: n.data?.max_wait_s ?? 300,
-            input_map: n.input_map,
-            output_variable_path: n.output_variable_path,
-            stream_config: n.stream_config ?? {},
-            output_schema: n.data?.output_schema ?? {},
-            use_storage: n.data?.use_storage ?? false,
-            metadata: toNodeMetadata(n),
         })),
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)

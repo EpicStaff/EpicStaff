@@ -8,7 +8,6 @@ import { mapEdgesToConnections } from './connections/plain-edge.mapper';
 import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
-import { mapCodeAgentNodeToModel } from './nodes/code-agent-node.mapper';
 import { mapCrewNodeToModel } from './nodes/crew-node.mapper';
 import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper';
 import { mapEndNodeToModel } from './nodes/end-node.mapper';
@@ -77,7 +76,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const telegramTriggerNodes = mapList(graph.telegram_trigger_node_list, mapTelegramTriggerNodeToModel);
     const scheduleTriggerNodes = mapList(graph.schedule_trigger_node_list, mapScheduleTriggerNodeToModel);
     const endNodes = mapList(graph.end_node_list, mapEndNodeToModel);
-    const codeAgentNodes = mapList(graph.code_agent_node_list, mapCodeAgentNodeToModel);
     const decisionTableNodes = mapList(graph.decision_table_node_list, mapDecisionTableNodeToModel);
     const classificationDecisionTableNodes = mapList(
         graph.classification_decision_table_node_list,
@@ -100,7 +98,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...telegramTriggerNodes,
         ...scheduleTriggerNodes,
         ...endNodes,
-        ...codeAgentNodes,
         ...decisionTableNodes,
         ...classificationDecisionTableNodes,
     ];

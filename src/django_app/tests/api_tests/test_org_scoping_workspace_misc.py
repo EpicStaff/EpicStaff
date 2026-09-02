@@ -2,7 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Label
-from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+from tables.models.webhook_models import WebhookTrigger
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
@@ -77,29 +77,31 @@ def test_two_orgs_reuse_top_level_label_name(client_member, org_b):
     assert resp.status_code == 201
 
 
-# ---- WebhookTrigger (FLOWS, transitive via trigger nodes) ----
+# ---- WebhookTrigger (top-level org-owned resource, own `org` FK) ----
 
 
 @pytest.mark.django_db
-def test_webhook_trigger_unattached_is_hidden(client_member):
-    # No trigger node references it -> not visible (accepted trade-off, like PythonCode).
-    WebhookTrigger.objects.create(path="orphanpath")
+def test_webhook_trigger_unattached_is_visible_in_own_org(client_member, org_a):
+    # WebhookTrigger now owns `org` directly (like Graph) rather than being
+    # scoped transitively through a trigger node, so an org's own trigger is
+    # visible regardless of whether any node references it yet.
+    WebhookTrigger.objects.create(path="orphanpath", org=org_a)
+    results = _results(client_member.get("/api/webhook-triggers/"))
+    assert len(results) == 1
+
+
+@pytest.mark.django_db
+def test_webhook_trigger_of_another_org_is_hidden(client_member, org_b):
+    WebhookTrigger.objects.create(path="otherorgpath", org=org_b)
     results = _results(client_member.get("/api/webhook-triggers/"))
     assert len(results) == 0
 
-
-# ---- NgrokWebhookConfig (global infra; superadmin write) ----
-
-
-@pytest.mark.django_db
-def test_ngrok_read_allowed_for_member(client_member):
-    NgrokWebhookConfig.objects.create(name="n", auth_token="t")
-    assert client_member.get("/api/ngrok-config/").status_code == 200
-
-
-@pytest.mark.django_db
-def test_ngrok_write_denied_for_member(client_member):
-    resp = client_member.post(
-        "/api/ngrok-config/", {"name": "n2", "auth_token": "t2"}, format="json"
-    )
-    assert resp.status_code == 403  # global infra: superadmin write only
+# NOTE: the standalone /api/ngrok-config/ endpoint
+# (NgrokWebhookConfigViewSet) never had a live route registered in
+# tables/urls.py and NgrokWebhookConfig.trigger is a required OneToOneField,
+# so the two tests that used to live here (`test_ngrok_read_allowed_for_member`,
+# `test_ngrok_write_denied_for_member`) were already exercising a dead route
+# against an uncreatable row. They have been removed as part of formally
+# deleting NgrokWebhookConfigViewSet / NgrokWebhookConfigModelSerializer.
+# ngrok_config is now written only via the nested WebhookTrigger payload,
+# scoped by WebhookTrigger.org (see webhook_trigger_api_test.py).

@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, input, OnChanges, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -12,10 +12,9 @@ import {
     SelectComponent,
     SelectItem,
     ValidationErrorsComponent,
+    WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
-import { NgrokConfigStorageService, SecretsStorageService } from '@shared/services';
-import { startWith } from 'rxjs';
+import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
 import {
@@ -29,9 +28,9 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
-import { WEBHOOK_NAME_PATTERN } from '../webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { WebhookStatus } from './webhook-status.model';
 
 @Component({
@@ -44,49 +43,33 @@ import { WebhookStatus } from './webhook-status.model';
         ButtonComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
-        MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent,
         LockableFieldComponent,
         ValidationErrorsComponent,
         HintMessageComponent,
+        WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TelegramTriggerNodePanelComponent
-    extends BaseSidePanel<TelegramTriggerNodeModel>
-    implements OnInit, OnChanges
-{
+export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> implements OnInit {
     public override readonly isExpanded = input<boolean>(false);
+    public readonly graphId = input<number | null>(null);
 
     private dialog = inject(Dialog);
-    private toastService = inject(ToastService);
     private profileService = inject(ProfileService);
-    private ngrokStorageService = inject(NgrokConfigStorageService);
     private secretsStorageService = inject(SecretsStorageService);
+    private toastService = inject(ToastService);
 
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
-    ngrokConfigs = this.ngrokStorageService.configs;
-    ngrokConfigsLoading = signal<boolean>(false);
-    ngrokConfigId = signal<number | null | undefined>(null);
     selectedFields = signal<DisplayedTelegramField[]>([]);
-    webhookPath = signal<string | null>(null);
+    webhookRegistered = signal<boolean>(false);
 
-    selectedNgrokConfigValid = computed<boolean>(() => {
-        const config = this.ngrokConfigs().find((c) => c.id === this.ngrokConfigId());
-
-        if (!config || !config.webhook_full_url) return false;
-
-        return true;
-    });
-    webhookStatusDisplay = computed<WebhookStatus>(() => {
-        const configValid = this.selectedNgrokConfigValid();
-        const path = this.webhookPath();
-        if (!configValid || !path) return WebhookStatus.FAIL;
-        return WebhookStatus.SUCCESS;
-    });
+    webhookStatusDisplay = computed<WebhookStatus>(() =>
+        this.webhookRegistered() ? WebhookStatus.SUCCESS : WebhookStatus.FAIL
+    );
 
     jsonValues = computed(() => {
         const checkedItemsObj = this.selectedFields().reduce<Record<string, unknown>>((acc, field) => {
@@ -96,9 +79,7 @@ export class TelegramTriggerNodePanelComponent
 
         return JSON.stringify(checkedItemsObj, null, 2);
     });
-    ngrokConfigSelectItems = computed<SelectItem[]>(() => {
-        return this.ngrokStorageService.configs().map((c) => ({ name: c.name, value: c.id }));
-    });
+
     secretItems = computed<SelectItem[]>(() =>
         this.secretsStorageService.secrets().map((secret) => ({
             name: secret.name,
@@ -127,29 +108,11 @@ export class TelegramTriggerNodePanelComponent
     }
 
     ngOnInit() {
-        this.getNgrokConfigs();
         this.secretsStorageService
             .getSecrets()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 error: () => this.toastService.error('Failed to load secrets.'),
-            });
-    }
-
-    ngOnChanges() {
-        const id = this.node().data.webhook_trigger?.ngrok_webhook_config;
-        this.ngrokConfigId.set(id);
-    }
-
-    private getNgrokConfigs(): void {
-        this.ngrokConfigsLoading.set(true);
-        this.ngrokStorageService
-            .getConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => {},
-                error: () => this.toastService.error('Failed to load Ngrok configs.'),
-                complete: () => this.ngrokConfigsLoading.set(false),
             });
     }
 
@@ -170,41 +133,18 @@ export class TelegramTriggerNodePanelComponent
 
     initializeForm(): FormGroup {
         this.setSelectedFields(this.node().data.fields);
-        const form = this.fb.group({
+        return this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             telegram_bot_api_key_secret_id: [
                 this.node().data.telegram_bot_api_key_secret_id ?? null,
                 Validators.required,
             ],
-            webhook_trigger_path: [
-                this.node().data.webhook_trigger?.path || null,
-                [Validators.required, Validators.pattern(WEBHOOK_NAME_PATTERN)],
-            ],
-            ngrok_webhook_config: [this.node().data.webhook_trigger?.ngrok_webhook_config || null],
+            webhook_trigger: [this.node().data.webhook_trigger ?? null],
             fields: [this.node().data.fields || []],
         });
-        form.get('webhook_trigger_path')
-            ?.valueChanges.pipe(
-                startWith(form.get('webhook_trigger_path')?.value ?? ''),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((value: string | null) => {
-                this.webhookPath.set(value);
-            });
-
-        return form;
     }
 
     createUpdatedNode(): TelegramTriggerNodeModel {
-        const webhookTriggerPath = this.form.value.webhook_trigger_path;
-
-        const webhook_trigger = webhookTriggerPath
-            ? {
-                  path: webhookTriggerPath,
-                  ngrok_webhook_config: this.form.value.ngrok_webhook_config,
-              }
-            : null;
-
         return {
             ...this.node(),
             node_name: this.form.value.node_name,
@@ -212,7 +152,7 @@ export class TelegramTriggerNodePanelComponent
             data: {
                 ...this.node().data,
                 telegram_bot_api_key_secret_id: this.form.value.telegram_bot_api_key_secret_id,
-                webhook_trigger,
+                webhook_trigger: this.form.value.webhook_trigger ?? null,
                 fields: this.form.value.fields,
             },
         };
@@ -255,19 +195,13 @@ export class TelegramTriggerNodePanelComponent
             .subscribe();
     }
 
+    onTriggerResolved(trigger: WebhookTriggerModel | null): void {
+        this.webhookRegistered.set(!!trigger?.live_url);
+    }
+
     private updateFieldsControl(items: TelegramTriggerNodeField[]) {
         const control = this.form.get('fields');
         control?.setValue(items);
-    }
-
-    onNgrokConfigChanged(value: unknown): void {
-        if (value == null) {
-            this.ngrokConfigId.set(null);
-            return;
-        }
-
-        const numericValue = typeof value === 'number' ? value : Number(value);
-        this.ngrokConfigId.set(Number.isFinite(numericValue) ? numericValue : null);
     }
 
     get activeColor(): string {

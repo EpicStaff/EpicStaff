@@ -121,7 +121,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         display: none;
                     }
                     background-color: var(--color-input-background);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border: 1px solid var(--color-input-border);
                     border-radius: 6px;
                     color: var(--color-text-primary);
                     font-size: 14px;

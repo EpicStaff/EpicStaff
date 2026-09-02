@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from tables.models import LLMConfig, Provider
 from tables.models.embedding_models import EmbeddingConfig
+from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.quickstart_service import QuickstartService
@@ -58,6 +59,35 @@ def test_quickstart_configs_land_in_active_org(db, django_user_model):
     assert LLMConfig.objects.exists()
     assert LLMConfig.objects.exclude(org=org).count() == 0
     assert EmbeddingConfig.objects.exclude(org=org).count() == 0
+    # The provider-specific realtime config (org is now
+    # NOT NULL on this model) must also be stamped, not left null -> 500.
+    assert OpenAIRealtimeConfig.objects.exists()
+    assert OpenAIRealtimeConfig.objects.exclude(org=org).count() == 0
+
+
+@pytest.mark.django_db
+def test_quickstart_gemini_realtime_config_lands_in_active_org(db, django_user_model):
+    org = Organization.objects.create(name="Org A")
+    role = Role.objects.get(
+        name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="qa-gemini@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    Provider.objects.create(name="gemini")
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+
+    resp = client.post(
+        "/api/quickstart/", {"provider": "gemini", "api_key": "sk-test"}, format="json"
+    )
+    assert resp.status_code == 200, resp.data
+
+    assert GeminiRealtimeConfig.objects.exists()
+    assert GeminiRealtimeConfig.objects.exclude(org=org).count() == 0
 
 
 @pytest.mark.django_db

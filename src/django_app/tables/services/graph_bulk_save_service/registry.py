@@ -8,7 +8,6 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    CodeAgentNode,
     ConditionalEdge,
     CrewNode,
     DecisionTableNode,
@@ -32,7 +31,6 @@ from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
     ClassificationDecisionTableNodeBulkSerializer,
-    CodeAgentNodeBulkSerializer,
     CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
@@ -148,15 +146,6 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
-    NodeTypeConfig(
-        "code_agent_node_list",
-        "code_agent_node_ids",
-        CodeAgentNode,
-        CodeAgentNodeBulkSerializer,
-        external_ref_fields=(
-            ExternalRefField("llm_config", "llm_config", LLMConfig, "org_id"),
-        ),
-    ),
     NodeTypeConfig(
         "crew_node_list",
         "crew_node_ids",

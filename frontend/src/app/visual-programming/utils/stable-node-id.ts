@@ -15,7 +15,6 @@ const NODE_TYPE_INDEX: Record<string, number> = {
     subgraph: 14,
     'audio-to-text-node': 15,
     'schedule-trigger': 16,
-    'code-agent': 17,
     agent: 18,
     'classification-decision-table': 19,
 };

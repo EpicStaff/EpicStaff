@@ -53,44 +53,20 @@
                                 <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
                             </div>
                         </app-lockable-field>
-
-                        <app-lockable-field
-                            fieldId="webhook_trigger_path"
-                            [nodeId]="node().id"
-                        >
-                            <app-custom-input
-                                label="Webhook trigger path"
-                                tooltipText="Path"
-                                formControlName="webhook_trigger_path"
-                                placeholder="Enter webhook path"
-                                [required]="true"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-                        </app-lockable-field>
-
-                        <app-lockable-field
-                            fieldId="ngrok_webhook_config"
-                            [nodeId]="node().id"
-                        >
-                            <app-select
-                                [loading]="ngrokConfigsLoading()"
-                                label="Select Ngrok config"
-                                tooltipText="Select the ngrok config. Full URL is shown below."
-                                formControlName="ngrok_webhook_config"
-                                [items]="ngrokConfigSelectItems()"
-                                (changed)="onNgrokConfigChanged($event)"
-                            />
-                        </app-lockable-field>
                     </div>
 
                     <div class="webhook-section">
-                        <div class="webhook-section__label-container">
-                            <label>Webhook</label>
-                            <app-help-tooltip
-                                text="Ngrok tunnel"
-                                position="right"
-                            />
-                        </div>
+                        <app-lockable-field
+                            fieldId="webhook_trigger"
+                            [nodeId]="node().id"
+                        >
+                            <app-webhook-trigger-select
+                                formControlName="webhook_trigger"
+                                [allowLocalhost]="false"
+                                disallowedProviderMessage="Localhost webhooks are not supported for Telegram. Use ngrok or a publicly reachable provider."
+                                (triggerResolved)="onTriggerResolved($event)"
+                            ></app-webhook-trigger-select>
+                        </app-lockable-field>
 
                         <div class="webhook-status__container">
                             @switch (webhookStatusDisplay()) {

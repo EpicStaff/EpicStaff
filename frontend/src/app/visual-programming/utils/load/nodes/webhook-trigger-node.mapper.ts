@@ -15,6 +15,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
         nodeNumber: ui.nodeNumber,
         data: {
             webhook_trigger: wn.webhook_trigger,
+            webhook_node_auth: wn.webhook_node_auth ?? null,
             python_code: {
                 name: wn.node_name,
                 libraries: wn.python_code.libraries,
