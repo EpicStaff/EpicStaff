@@ -3,7 +3,14 @@ from django.db import transaction, models
 from django.db.models import Prefetch, Count, Avg
 from loguru import logger
 
+from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
+from tables.clients import KnowledgeClient
+from tables.clients.errors import (
+    ClientBadGatewayError,
+    ClientNotAvailableError,
+    ClientTimeoutError,
+)
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
 from tables.models.knowledge_models import BaseRagType, NaiveRag, GraphRag
 from tables.models.knowledge_models.naive_rag_models import (
@@ -14,8 +21,12 @@ from tables.exceptions import (
     CollectionNotFoundException,
     NoGraphRagForCollectionException,
     GraphRagIndexNotReadyException,
+    GraphRagMetricsUnavailableException,
+    NoNaiveRagForCollectionException,
+    NaiveRagIndexNotReadyException,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
 
 class CollectionManagementService:
@@ -59,6 +70,11 @@ class CollectionManagementService:
 
     @staticmethod
     def _get_naive_metrics(collection_id: int) -> SuggestedCollectionMetrics:
+        naive_rag = NaiveRagService.get_or_none_naive_rag_by_collection(collection_id)
+        if naive_rag is None:
+            raise NoNaiveRagForCollectionException(collection_id)
+        if naive_rag.rag_status != NaiveRag.NaiveRagStatus.COMPLETED:
+            raise NaiveRagIndexNotReadyException(collection_id)
         chunk_agg = NaiveRagChunk.objects.filter(
             naive_rag_document_config__naive_rag__base_rag_type__source_collection_id=collection_id,
         ).aggregate(total=Count("chunk_id"), avg=Avg("token_count"))
@@ -78,13 +94,19 @@ class CollectionManagementService:
             raise NoGraphRagForCollectionException(collection_id)
         if graph_rag.rag_status != GraphRag.GraphRagStatus.COMPLETED:
             raise GraphRagIndexNotReadyException(collection_id)
-        # TODO(EST-3482): chunk-level metrics come from the graph output parquet
-        # (text_units), whose storage backend (local disk vs MinIO) is undecided.
-        # Stub total_chunks/avg_chunk_size until then; this is the single swap point.
+        try:
+            with KnowledgeClient() as client:
+                metrics = client.metrics(RAGStrategy.GRAPH, graph_rag.graph_rag_id)
+        except (
+            ClientNotAvailableError,
+            ClientTimeoutError,
+            ClientBadGatewayError,
+        ) as e:
+            raise GraphRagMetricsUnavailableException(collection_id) from e
         return SuggestedCollectionMetrics(
             total_documents=graph_rag.graph_rag_documents.count(),
-            total_chunks=0,
-            avg_chunk_size=0.0,
+            total_chunks=metrics["total_chunks"],
+            avg_chunk_size=metrics["avg_chunk_size"],
         )
 
     @staticmethod

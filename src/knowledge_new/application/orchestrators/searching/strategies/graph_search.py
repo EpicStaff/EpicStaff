@@ -170,5 +170,14 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         reader = DataReader(table_provider)
         files = {n: await getattr(reader, n)() for n in required_files}
         if optional_files:
-            files.update({n: await getattr(reader, n, None)() for n in optional_files})
+            for n in optional_files:
+                reader_fn = getattr(reader, n, None)
+                if reader_fn is None:
+                    files[n] = None
+                    continue
+                try:
+                    files[n] = await reader_fn()
+                except (ValueError, FileNotFoundError):
+                    # optional layer (e.g. covariates) absent from this index
+                    files[n] = None
         return files

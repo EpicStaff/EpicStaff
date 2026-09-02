@@ -1,5 +1,6 @@
 from .rag import (
     IndexInputSchema,
+    MetricsOutputSchema,
     PrechunkInputSchema,
     PrechunkOutputSchema,
     SearchInputSchema,
@@ -8,6 +9,7 @@ from .rag import (
 
 __all__ = [
     "IndexInputSchema",
+    "MetricsOutputSchema",
     "PrechunkInputSchema",
     "PrechunkOutputSchema",
     "SearchInputSchema",

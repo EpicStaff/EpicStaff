@@ -28,3 +28,8 @@ class SearchInputSchema(BaseSchema):
 
 class SearchOutputSchema(BaseSchema):
     result: list[FoundChunk] | str
+
+
+class MetricsOutputSchema(BaseSchema):
+    total_chunks: int
+    avg_chunk_size: float

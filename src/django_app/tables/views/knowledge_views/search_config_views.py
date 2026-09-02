@@ -14,7 +14,9 @@ from tables.exceptions import (
     CollectionNotFoundException,
     GraphRagIndexNotReadyException,
     LLMConfigNotFoundException,
+    NaiveRagIndexNotReadyException,
     NoGraphRagForCollectionException,
+    NoNaiveRagForCollectionException,
 )
 from tables.models.llm_models import LLMConfig
 from tables.serializers.search_config_serializers import (
@@ -120,7 +122,12 @@ class NaiveRagSuggestParamsView(APIView):
             return _build_response(
                 metrics, ctx, llm_name, warning, suggested, clamped, is_trusted
             )
-        except (CollectionNotFoundException, LLMConfigNotFoundException) as exc:
+        except (
+            CollectionNotFoundException,
+            LLMConfigNotFoundException,
+            NoNaiveRagForCollectionException,
+            NaiveRagIndexNotReadyException,
+        ) as exc:
             return Response({"error": str(exc)}, status=exc.status_code)
         except Exception:
             # No 5xx on the wire: log the traceback and defer to the project's

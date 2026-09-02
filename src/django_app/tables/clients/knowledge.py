@@ -69,18 +69,26 @@ class KnowledgeClient:
         rag_id: int,
         operation: Literal["index", "prechunk"],
     ) -> None:
-        self._request(method="delete", url=f"rags/{strategy}/{rag_id}/cancel/{operation}/")
+        self._request(
+            method="delete", url=f"rags/{strategy}/{rag_id}/cancel/{operation}/"
+        )
 
     def delete(self, strategy: RAGStrategy, rag_id: int):
         self._request(method="delete", url=f"rags/{strategy}/{rag_id}/")
 
-    def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
+    def metrics(self, strategy: RAGStrategy, rag_id: int) -> dict:
+        response = self._request(method="get", url=f"rags/{strategy}/{rag_id}/metrics/")
+        return response.json()
+
+    def _request(
+        self, method: str, url: str, *, json: dict | None = None
+    ) -> httpx.Response:
         try:
             response = self._client.request(method, url, json=json)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:
-            logger.exception('KNOWLEDGE CLIENT ERROR: {}', e)
+            logger.exception("KNOWLEDGE CLIENT ERROR: {}", e)
             raise ClientNotAvailableError("Knowledge service is unreachable.") from e
 
         try:

@@ -4,6 +4,7 @@ from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "GetMetrics",
     "RemoveRag",
     "RunIndex",
     "RunPrechunk",
@@ -42,4 +43,9 @@ class RunPrechunk(Command):
 
 @dataclass(frozen=True)
 class RemoveRag(Command):
+    rag_id: int
+
+
+@dataclass(frozen=True)
+class GetMetrics(Command):
     rag_id: int
