@@ -59,6 +59,11 @@ class FileNodeValidationError(CustomAPIExeption):
     default_detail = "FileExtractorNode requires input arguments"
 
 
+class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "KnowledgeNode is not fully configured to run"
+
+
 class InvalidTaskOrderError(CustomAPIExeption):
     status_code = 409
     default_detail = "A task cannot be placed before its context dependency. Please reorder the tasks or delete context."
@@ -339,6 +344,14 @@ class UnknownRagTypeException(RagException):
     def __init__(self, rag_type):
         self.rag_type = rag_type
         super().__init__(f"Unknown RAG type: '{rag_type}'")
+
+
+class KnowledgeNodeConfigurationError(RagException):
+    """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
+    or the rag_type has no built implementation to search."""
+
+    status_code = 400
+    default_code = "knowledge_node_misconfigured"
 
 
 class ScheduleTriggerValidationError(CustomAPIExeption):

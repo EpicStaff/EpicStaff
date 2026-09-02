@@ -58,7 +58,7 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     onSliderChange(event: Event) {
         const target = event.target as HTMLInputElement;
         const newValue = parseFloat(target.value);
-        this.updateValue(newValue);
+        this.updateValue(this.roundToDecimals(newValue));
     }
 
     onStepDown() {
@@ -71,6 +71,26 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         const current = this.value() ?? this.min();
         const newValue = Math.min(this.max(), current + this.step());
         this.updateValue(this.roundToDecimals(newValue));
+    }
+
+    onValueInputKeydown(event: Event) {
+        (event.target as HTMLInputElement).blur();
+    }
+
+    onValueInputChange(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const raw = target.value.trim();
+        const parsed = parseFloat(raw);
+
+        if (raw === '' || isNaN(parsed)) {
+            target.value = this.displayValue();
+            return;
+        }
+
+        const clamped = Math.min(this.max(), Math.max(this.min(), parsed));
+        this.updateValue(this.roundToDecimals(clamped));
+        target.value = this.displayValue();
+        this.onTouched();
     }
 
     onToggle(checked: boolean) {

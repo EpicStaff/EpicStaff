@@ -128,9 +128,7 @@ class IsSystemApiKeyAuthenticated(BasePermission):
     is scoped to its owner's own org's RBAC but this permission class runs
     before, and instead of, any org check — e.g.
     `RealtimeChannelViewSet.lookup_by_token`, restricted to the trusted
-    `realtime`/`voice_app` services (EST-3633 second regression: a USER key
-    passing the old `IsApiKeyAuthenticated` check here could read any org's
-    `TwilioChannel.auth_token`).
+    `realtime`/`voice_app` services.
     """
 
     message = "This endpoint requires system API key authentication."

@@ -2,6 +2,8 @@ import { generateUuid } from '@shared/utils';
 
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
+import { PromptConfig } from '../../../core/models/classification-decision-table.model';
+import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { readCdtExplanations } from '../../cdt-explanations';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -13,6 +15,38 @@ export function mapClassificationDecisionTableNodeToModel(
         n.metadata as Record<string, unknown> | undefined,
         NodeType.CLASSIFICATION_TABLE
     );
+
+    const prompts: Record<string, PromptConfig> = {};
+    for (const p of n.prompt_configs ?? []) {
+        prompts[p.prompt_key] = {
+            backendId: p.id,
+            prompt_text: p.prompt_text ?? '',
+            llm_config: p.llm_config ?? null,
+            output_schema: p.output_schema ?? null,
+            result_variable: p.result_variable ?? '',
+            variable_mappings: p.variable_mappings ?? {},
+        };
+    }
+
+    const conditionGroups: ConditionGroup[] = n.condition_groups.map((g) => ({
+        group_name: g.group_name,
+        // CDT groups don't semantically use group_type/conditions, but the shared
+        // ConditionGroup shape requires them. Provide safe defaults.
+        group_type: 'simple',
+        conditions: [],
+        order: g.order,
+        expression: g.expression,
+        prompt_id: n.prompt_configs.find((p) => p.id === g.prompt)?.prompt_key ?? null,
+        manipulation: g.manipulation,
+        continue_flag: g.continue_flag,
+        route_code: g.route_code ?? null,
+        dock_visible: g.dock_visible,
+        field_expressions: g.field_expressions ?? {},
+        field_manipulations: g.field_manipulations ?? {},
+        section: g.section ?? null,
+        next_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
+    }));
+
     return {
         id: generateUuid(),
         backendId: n.id,
@@ -28,20 +62,7 @@ export function mapClassificationDecisionTableNodeToModel(
                 post_computation_code: n.post_python_code?.code ?? null,
                 post_input_map: n.post_input_map ?? {},
                 post_output_variable_path: n.post_output_variable_path,
-                prompts: (() => {
-                    const dict: Record<string, unknown> = {};
-                    for (const p of n.prompt_configs ?? []) {
-                        dict[p.prompt_key] = {
-                            backendId: p.id,
-                            prompt_text: p.prompt_text ?? '',
-                            llm_config: p.llm_config ?? null,
-                            output_schema: p.output_schema ?? null,
-                            result_variable: p.result_variable ?? '',
-                            variable_mappings: p.variable_mappings ?? {},
-                        };
-                    }
-                    return dict;
-                })(),
+                prompts,
                 default_llm_config: n.default_llm_config ?? null,
                 default_next_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
                 next_error_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
@@ -57,20 +78,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     output_variable_path: n.post_output_variable_path ?? null,
                     libraries: n.post_python_code?.libraries ?? [],
                 },
-                condition_groups: n.condition_groups.map((g) => ({
-                    group_name: g.group_name,
-                    order: g.order,
-                    expression: g.expression,
-                    prompt_id: n.prompt_configs.find((p) => p.id === g.prompt)?.prompt_key ?? null,
-                    manipulation: g.manipulation,
-                    continue_flag: g.continue_flag,
-                    route_code: g.route_code ?? null,
-                    dock_visible: g.dock_visible,
-                    field_expressions: g.field_expressions ?? {},
-                    field_manipulations: g.field_manipulations ?? {},
-                    section: g.section ?? null,
-                    next_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
-                })),
+                condition_groups: conditionGroups,
             },
         },
         position: ui.position,

@@ -66,6 +66,7 @@ export * from './stepper/step-config.interface';
 export * from './stepper/stepper.component';
 export * from './tab-button/tab-button.component';
 export * from './table';
+export * from './template-textarea/template-textarea.component';
 export * from './textarea/textarea.component';
 export * from './time-picker/time-picker.component';
 export * from './timezone-selector/timezone-selector.component';

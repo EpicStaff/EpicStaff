@@ -22,6 +22,7 @@ export interface PartialExportRequest {
     graph_note_list: number[];
     schedule_trigger_node_list: number[];
     edge_list: number[];
+    knowledge_node_list: number[];
 }
 
 export interface ImportFlowRequestOptions {

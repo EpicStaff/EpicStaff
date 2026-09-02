@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     LOCALHOST_TARGET_HOST: str = "localhost"
     LOCALHOST_TARGET_PORT: int = 8009
 
+    # --- CORS ---
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+
     model_config = SettingsConfigDict(**config_dict)
 
 

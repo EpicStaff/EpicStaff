@@ -14,7 +14,6 @@ All commands must be run from the **project root directory** (where `Makefile` l
 - [Utilities](#utilities)
 - [Local Django Development](#local-django-development)
 - [Local Crew Development](#local-crew-development)
-- [Integration Tests](#integration-tests)
 - [Typical Workflows](#typical-workflows)
 
 ---
@@ -129,7 +128,86 @@ make rebuild-dev
 
 ## Production Environment
 
-Uses `docker-compose.yaml` + `docker-compose.override.yaml` with env file `.env`.
+Uses `docker-compose.yaml` + `docker-compose.override.yaml` with a single env
+file, `src/.env`. There is no separate production env file — `src/.env` is the
+whole environment, edited by hand on the deployment host. It is gitignored and
+never committed.
+
+### Setting up `src/.env`
+
+Copy the template and fill it in:
+
+```bash
+cp src/.env.example src/.env
+```
+
+`src/.env.example` is generated from `src/env.yaml` and is a **ready-to-go local
+setup**: everything not marked `CHANGE ME` already holds a working value serving
+`localhost` over plain HTTP. Fill in the ten `CHANGE ME` lines and the stack
+runs.
+
+The README quick-start generates only `SECRET_KEY` and `JWT_SECRET` (with
+`openssl`) and rewrites `CREW_SAVEFILES_PATH`. The remaining `CHANGE ME` lines
+are yours to fill.
+
+> **Blank does not always fail loudly.** Only `SECRET_KEY`, `JWT_SECRET`,
+> `FRONTEND_BASE_URL` and `CORS_ALLOWED_ORIGINS` are declared `${VAR:?...}` in
+> `src/docker-compose.yaml`, so compose refuses to start when they are empty.
+> The rest degrade quietly if you skip them:
+>
+> | Left blank | What actually happens |
+> |---|---|
+> | `POSTGRES_PASSWORD` | compose substitutes `postgres` (`docker-compose.yaml:35`) |
+> | `STORAGE_SECRET_KEY` | compose substitutes `minioadmin_secret` (`:51`), paired with the shipped `STORAGE_ACCESS_KEY=minioadmin` |
+> | `REDIS_PASSWORD` | `--requirepass` is never passed (`:207-210`) — Redis accepts unauthenticated connections |
+> | `DB_*_PASSWORD` (×4) | passed through empty; fails at connection time, not at startup |
+>
+> So fill in all ten `CHANGE ME` lines. A stack running on the first three of
+> those is running on credentials published in this repository.
+
+### What to change for a public deployment
+
+Once `src/.env` works locally, these are the values a real deployment has to
+change by hand.
+
+| Variable | Local default | Set it to |
+|---|---|---|
+| `DOMAIN_NAME` | `localhost` | your domain, e.g. `epicstaff.example.com` |
+| `API_URL` | `http://localhost/api/` | `https://<your-domain>/api/` |
+| `REALTIME_API_URL` | `http://localhost/realtime/` | `https://<your-domain>/realtime/` |
+| `FRONTEND_BASE_URL` | `http://localhost:4200` | `https://<your-domain>` — password-reset emails link here |
+| `ALLOWED_HOSTS` | `0.0.0.0,127.0.0.1,localhost,django_app` | add your domain |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:4200,...` | your real origin(s) — see [setup/cors.md](setup/cors.md) |
+| `SSL_ENABLE` | `#` (off) | empty string turns SSL **on** in nginx |
+| `CREW_SAVEFILES_PATH` | `/c/savefiles` | a real path on the host (that default is a Docker Desktop path, not a Linux one) |
+| `EMAIL_HOST` / `EMAIL_PORT` | `mailpit` / `1025` | your real SMTP server — see [rbac/password_recovery.md](rbac/password_recovery.md) |
+
+The `EMAIL_HOST` default deserves a second look: `mailpit` is a development mail
+catcher declared in `src/docker-compose.yaml` with **no profile**, publishing a
+web UI on port 8025. Left as shipped, a public deployment sends its
+password-reset tokens into that UI instead of to users.
+
+`DEBUG` and `LOAD_DEBUG_ENV` are already `False` in `src/.env.example` — those
+are only turned on in the generated dev files, so there is nothing to change.
+
+Optional, only if you use those features: `NGROK_AUTHTOKEN` / `NGROK_DOMAIN` for
+tunnelling, and `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `VOICE_AGENT_ID` /
+`VOICE_STREAM_URL` for voice calls.
+
+### Upgrading from `prod/prod.env`
+
+Earlier versions layered a second env file, `prod/prod.env`, over `src/.env`,
+filled in by a `make prod-setup` command. Both are gone: `prod/prod.env` is no
+longer read, even if the file is still sitting on the host.
+
+If you are upgrading such a host, before the next `make prod`:
+
+1. Copy every value from `prod/prod.env` into `src/.env`.
+2. Pay particular attention to the passwords — if `prod/prod.env` set a database
+   password that `src/.env` does not, the services will fail to authenticate
+   against a data volume that was initialised with the old value.
+3. Run `make prod-build` and check the config resolves before `make prod-up`.
+4. Delete `prod/` once you have confirmed the deployment is healthy.
 
 ### `make prod` / `make start-prod`
 
@@ -229,6 +307,29 @@ make apply-backup
 `src/env.yaml` is the single source of truth for all three env files. Edit it,
 then regenerate. Never hand-edit the generated files — `--check` will catch drift.
 
+| Generated file | Env id | Role |
+|---|---|---|
+| `src/.dev.env` | `dev` | development stack (`make dev`) |
+| `src/.debug.env` | `debug` | services on the host, deps in Docker |
+| `src/.env.example` | `example` | template the operator copies to `src/.env` for a real install |
+
+There is no generated production file. Production runs on `src/.env`, which the
+operator creates from `src/.env.example` and edits by hand — see
+[Production Environment](#production-environment).
+
+A variable with an `envs:` list appears only in those envs; a variable without
+one appears in all of them. Secrets carry an `example:` block that blanks the
+value and adds a `CHANGE ME` note, so the committed template never ships a
+working credential:
+
+```yaml
+DB_CREW_PASSWORD:
+  default: crew_password_v104
+  example:
+    value: ""
+    comment: "CHANGE ME (postgres role password for crew service)"
+```
+
 ### `make gen-env`
 
 Regenerate `src/.dev.env`, `src/.debug.env`, and `src/.env.example` from `src/env.yaml`.
@@ -243,6 +344,10 @@ Compare the three env files on disk to what `src/env.yaml` would generate. Exits
 unified diff if any file has drifted; exits 0 if all files are clean. Use in CI or as a
 pre-commit check. `make check-env` always checks all three files; to check a single file
 use the CLI directly (`python scripts/generate_env.py --check --env debug`).
+
+Note that `src/.dev.env` and `src/.debug.env` are gitignored, so on a fresh
+clone `--check` reports them `MISSING` and exits 1 before any real drift is
+involved. Only `src/.env.example` is committed.
 
 ```bash
 make check-env
@@ -385,28 +490,6 @@ Run the crew service test suite with `pytest`, using the crew venv
 make crew-tests
 make crew-tests ARGS="-k my_test"
 ```
-
----
-
-## Integration Tests
-
-### `make integration-test`
-
-Install integration test deps and run the suite in `integration_tests/` against a
-running stack (`DJANGO_URL` defaults to `http://127.0.0.1:8000/api`).
-
-| Parameter | Description |
-|-----------|-------------|
-| `f` | Run a specific test file (default: all) |
-| `k` | Filter tests by keyword (`-k`) |
-| `ARGS` | Extra pytest flags (e.g. `ARGS="-s --tb=short"`) |
-
-```bash
-make integration-test
-make integration-test f=tests/test_flows.py k=create
-```
-
----
 
 ---
 
