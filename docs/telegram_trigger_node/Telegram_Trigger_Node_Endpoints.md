@@ -75,10 +75,7 @@ the Webhook Developer Guide's "Webhook Inbound Authentication
 2. Register Webhooks (Global Sync)
 ----------------------------------
 
-There is no HTTP endpoint for this anymore -- `/api/register-webhooks/` and
-`/api/register-telegram-trigger/` were removed (no real callers existed
-beyond the tests written for a since-abandoned auth-gating fix). Webhook/
-tunnel registration still happens automatically:
+Webhook/tunnel registration happens automatically:
 
 - **Automatically**: `NgrokWebhookConfig` save/delete signals
   (`webhook_signals.py`) call `WebhookTriggerService().register_webhooks()`

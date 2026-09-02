@@ -2139,7 +2139,14 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         return Response({"results": numbers})
 
 
-class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class ConversationRecordingViewSet(
+    OrgScopedChildViewSetMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     """
     Scoped through the recording's chat -> realtime agent to its agent's org
     (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
