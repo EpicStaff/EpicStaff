@@ -1638,7 +1638,17 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     ).all()
     serializer_class = RealtimeChannelSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["realtime_agent", "channel_type", "is_active", "token"]
+    filterset_fields = [
+        # realtime_agent is read-only for writes (serializer), but stays
+        # filterable so a stranded legacy row can still be located, and so an
+        # existing `?realtime_agent=` caller keeps getting a filtered result
+        # instead of the whole org's channels.
+        "realtime_agent",
+        "realtime_agent_definition",
+        "channel_type",
+        "is_active",
+        "token",
+    ]
 
     @extend_schema(**REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET)
     @action(

@@ -246,12 +246,13 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
     twilio = _TwilioChannelReadSerializer(read_only=True)
-    realtime_agent = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeAgent.objects.all(),
-        org_lookup="agent__org_id",
-        required=False,
-        allow_null=True,
-    )
+    # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).
+    # Kept read-only, never writable: the only supported destination going
+    # forward is `realtime_agent_definition`. It stays in the response so
+    # operators can see which rows on this org are still stranded on the old
+    # destination. It cannot be dropped from the model because migrations are
+    # frozen on this branch.
+    realtime_agent = serializers.PrimaryKeyRelatedField(read_only=True)
     realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=RealtimeAgentDefinition.objects.all(),
         org_lookup="agent_definition__organization_id",
@@ -265,19 +266,14 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
     def validate(self, attrs):
-        realtime_agent = attrs.get(
-            "realtime_agent", getattr(self.instance, "realtime_agent", None)
-        )
-        realtime_agent_definition = attrs.get(
-            "realtime_agent_definition",
-            getattr(self.instance, "realtime_agent_definition", None),
-        )
-
-        if realtime_agent is not None and realtime_agent_definition is not None:
-            raise serializers.ValidationError(
-                "A RealtimeChannel may have at most one destination set "
-                "(realtime_agent or realtime_agent_definition)."
-            )
+        # `realtime_agent` is read-only, so a caller can no longer set both
+        # destinations at once. But a row created on `main` before this field
+        # existed may already carry a legacy `realtime_agent` in the DB — for
+        # such a stranded row, setting `realtime_agent_definition` is the fix,
+        # not a conflict. Let the new destination win and clear the dead
+        # pointer, rather than rejecting the very repair the caller is making.
+        if "realtime_agent_definition" in attrs:
+            attrs["realtime_agent"] = None
 
         return attrs
 
