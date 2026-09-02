@@ -28,8 +28,8 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             '# Replace this comment with your implementation.\n' +
             '#\n' +
             '# Purpose   : <describe the transformation or processing this node performs>\n' +
-            '# Inputs    : <name, type, and meaning of each parameter main() should take>\n' +
-            '# Output    : <what the returned value should contain>\n' +
+            '# Inputs    : key = parameter name in main(), value = path to the domain variable - set via Input List\n' +
+            "# Output    : <what the returned value should contain> - written as-is to this node's Output Variable Path\n" +
             '# Libraries : list any pip packages this code needs in the Libraries field\n' +
             "# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')\n" +
             '#\n' +

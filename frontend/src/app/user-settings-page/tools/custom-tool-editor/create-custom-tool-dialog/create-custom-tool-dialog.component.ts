@@ -79,7 +79,7 @@ const SAVE_FAILURE_MESSAGES: Record<SaveAction, string> = {
 
 const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
 #
-# Purpose   : <what the code should do, and any external services/APIs it calls>
+# Logic     : <how it should work - algorithm steps, external services/APIs it calls>
 # Inputs    : defined via this dialog's Parameters fields
 # Output    : <what the return value should contain>
 # Library   : list any pip packages this code needs in the Library field
