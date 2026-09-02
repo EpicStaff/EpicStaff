@@ -170,6 +170,13 @@
         overflow: hidden;
     }
 
+    &__drop-wrapper {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+    }
+
     &__file-list {
         display: flex;
         flex-direction: column;

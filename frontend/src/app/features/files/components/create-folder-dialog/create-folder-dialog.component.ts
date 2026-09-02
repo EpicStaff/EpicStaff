@@ -12,6 +12,7 @@ import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DragDropAreaComponent } from '../../../../shared/components/drag-drop-area/drag-drop-area.component';
 import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
+import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageApiService } from '../../services/storage-api.service';
 
 export interface CreateFolderDialogData {
@@ -55,6 +56,7 @@ export interface FolderNode {
         OverlayModule,
         FileUploaderComponent,
         DragDropAreaComponent,
+        FileSizePipe,
     ],
     templateUrl: './create-folder-dialog.component.html',
     styleUrls: ['./create-folder-dialog.component.scss'],
@@ -158,7 +160,7 @@ export class CreateFolderDialogComponent {
     readonly isValid = computed(
         () => !this.hasBlockedFiles() && (this.files().length > 0 || this.folderName().trim().length > 0)
     );
-    readonly totalSize = computed(() => this.formatSize(this.files().reduce((sum, f) => sum + f.size, 0)));
+    readonly totalSizeBytes = computed(() => this.files().reduce((sum, f) => sum + f.size, 0));
 
     ngOnInit(): void {
         if (this.data.folderPath) {
@@ -247,12 +249,6 @@ export class CreateFolderDialogComponent {
 
     getFileError(file: File): string | null {
         return this.fileServerErrors().get(file.name) ?? null;
-    }
-
-    formatSize(bytes: number): string {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
     onConfirm(): void {

@@ -5,6 +5,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
+import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 
@@ -15,7 +16,7 @@ interface StorageDetailsDialogData extends StorageItemInfo {
 @Component({
     selector: 'app-storage-details-dialog',
     standalone: true,
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule, FileSizePipe],
     templateUrl: './storage-details-dialog.component.html',
     styleUrls: ['./storage-details-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -49,15 +50,8 @@ export class StorageDetailsDialogComponent {
         return ext || 'file';
     }
 
-    get sizeLabel(): string {
-        const size = this.data.size ?? 0;
-        if (size >= 1024 * 1024) {
-            return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-        }
-        if (size >= 1024) {
-            return `${Math.round(size / 1024)} KB`;
-        }
-        return `${size} B`;
+    get sizeBytes(): number {
+        return this.data.size ?? 0;
     }
 
     get storagePath(): string {

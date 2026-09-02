@@ -3,12 +3,14 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { forkJoin } from 'rxjs';
+import { EMPTY, forkJoin, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
+import { DragDropAreaComponent } from '../../../../shared/components/drag-drop-area/drag-drop-area.component';
 import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
+import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { GraphFileRecord, StorageTreeNode } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { getFileExtension } from '../../utils/storage-file.utils';
@@ -39,7 +41,14 @@ interface TreeNode {
 
 @Component({
     selector: 'app-select-storage-files-dialog',
-    imports: [FormsModule, AppSvgIconComponent, Spinner2Component, MatTooltipModule],
+    imports: [
+        FormsModule,
+        AppSvgIconComponent,
+        Spinner2Component,
+        MatTooltipModule,
+        FileSizePipe,
+        DragDropAreaComponent,
+    ],
     templateUrl: './select-storage-files-dialog.component.html',
     styleUrls: ['./select-storage-files-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -80,6 +89,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     readonly rootNodes = signal<TreeNode[]>([]);
     readonly isLoadingRoot = signal(true);
     readonly isSaving = signal(false);
+    readonly isUploading = signal(false);
 
     readonly selectedFilePaths = signal<Set<string>>(new Set());
 
@@ -114,7 +124,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
         return false;
     });
 
-    readonly selectedSizeLabel = computed(() => {
+    readonly selectedSizeBytes = computed(() => {
         const selectedFiles = this.selectedFilePaths();
         const selectedFolders = this.selectedFolderPaths();
         const all = this.allNodes();
@@ -126,14 +136,8 @@ export class SelectStorageFilesDialogComponent implements OnInit {
                 totalBytes += n.size;
             }
         }
-        return this.formatSize(totalBytes);
+        return totalBytes;
     });
-
-    formatSize(bytes: number): string {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
 
     ngOnInit(): void {
         this.loadAttachedFiles(() => {
@@ -436,6 +440,41 @@ export class SelectStorageFilesDialogComponent implements OnInit {
             if (!result) return;
             this.reloadTree();
         });
+    }
+
+    onFilesDropped(dropped: FileList): void {
+        if (this.isUploading() || dropped.length === 0) return;
+        const files = Array.from(dropped);
+
+        this.isUploading.set(true);
+        this.storageApiService
+            .confirmOverwrite('', files)
+            .pipe(
+                switchMap((confirmed) => {
+                    if (!confirmed) return EMPTY;
+                    return this.storageApiService.handleAddFilesResult({
+                        targetPath: '',
+                        files,
+                        mkdirOnly: false,
+                    });
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (res) => {
+                    if (res?.type === 'upload') {
+                        this.toastService.success(
+                            res.count === 1 ? 'File uploaded successfully' : `${res.count} files uploaded successfully`
+                        );
+                    }
+                    this.reloadTree();
+                },
+                error: () => {
+                    this.toastService.error('Failed to upload files');
+                    this.isUploading.set(false);
+                },
+                complete: () => this.isUploading.set(false),
+            });
     }
 
     private reloadTree(): void {

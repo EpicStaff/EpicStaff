@@ -113,7 +113,7 @@
                         >
 
                         @if (node.type === 'file' && node.size != null) {
-                            <span class="files-dialog__item-size">({{ formatSize(node.size) }})</span>
+                            <span class="files-dialog__item-size">({{ node.size | fileSize: 'auto' }})</span>
                         }
 
                         <button

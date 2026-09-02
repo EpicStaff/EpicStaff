@@ -186,7 +186,8 @@
                 >
                     <div class="create-folder-dialog__file-list-header">
                         <label class="create-folder-dialog__label">
-                            Selected Files: <span class="create-folder-dialog__count">({{ totalSize() }})</span>
+                            Selected Files:
+                            <span class="create-folder-dialog__count">({{ totalSizeBytes() | fileSize: 'auto' }})</span>
                         </label>
                         @if (hasBlockedFiles()) {
                             <span class="create-folder-dialog__file-validation-error">File validation errors</span>
@@ -238,7 +239,7 @@
                                         >
                                     }
                                 </div>
-                                <span class="create-folder-dialog__file-size">{{ formatSize(file.size) }}</span>
+                                <span class="create-folder-dialog__file-size">{{ file.size | fileSize: 'auto' }}</span>
                                 <button
                                     class="create-folder-dialog__file-remove"
                                     aria-label="Remove file"
