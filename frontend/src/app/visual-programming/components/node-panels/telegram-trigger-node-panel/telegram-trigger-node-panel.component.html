@@ -42,6 +42,7 @@
                                     [items]="secretItems()"
                                     [showSearch]="true"
                                     searchPlaceholder="Search a secret..."
+                                    (opened)="refreshSecrets()"
                                     (changed)="notifyExternalChange()"
                                 />
                                 @if (!form.get('telegram_bot_api_key_secret_id')?.value && !secretsReadForbidden()) {

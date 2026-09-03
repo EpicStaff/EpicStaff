@@ -20,6 +20,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+import { ToastService } from '../../../services/notifications';
 import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -44,6 +45,7 @@ import {
 })
 export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnInit {
     private service = inject(WebhookTriggerService);
+    private toastService = inject(ToastService);
     private dialog = inject(Dialog);
     private overlay = inject(Overlay);
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
@@ -128,6 +130,11 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
                     if (id != null && !triggers.some((t) => t.id === id)) {
                         this.selectedId.set(null);
                         this.onChange(null);
+                        this.toastService.error(
+                            'The selected webhook trigger no longer exists — pick another one.',
+                            5000,
+                            'bottom-right'
+                        );
                     }
                     this.triggerResolved.emit(this.selectedTrigger());
                 },
@@ -144,6 +151,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     openDropdown(): void {
+        this.loadTriggers();
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
                 .flexibleConnectedTo(this.triggerBtn)

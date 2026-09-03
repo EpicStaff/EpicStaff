@@ -117,12 +117,27 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     ngOnInit() {
+        this.refreshSecrets();
+    }
+
+    refreshSecrets(): void {
         this.secretsStorageService
-            .getSecrets()
+            .getSecrets(true)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
+                next: () => this.clearDeletedSecret(),
                 error: () => this.toastService.error('Failed to load secrets.'),
             });
+    }
+
+    private clearDeletedSecret(): void {
+        if (this.secretsReadForbidden()) return;
+        const control = this.form?.get('telegram_bot_api_key_secret_id');
+        const id = control?.value;
+        if (id == null) return;
+        if (this.secretsStorageService.secrets().some((secret) => secret.id === id)) return;
+        control?.setValue(null);
+        this.toastService.error('The selected secret no longer exists — pick another one.', 5000, 'bottom-right');
     }
 
     private setSelectedFields(nodeFields: TelegramTriggerNodeField[]): void {

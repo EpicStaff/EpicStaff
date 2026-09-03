@@ -77,19 +77,24 @@ export class NodeSecretsFieldComponent {
     });
 
     constructor() {
-        this.secretsStorageService
-            .getSecrets()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                error: () => this.toastService.error('Failed to load secrets.'),
-            });
+        this.loadSecrets();
     }
 
     public openDropdown(): void {
         if (this.readForbidden()) return;
         const el = this.trigger()?.nativeElement;
         if (!el) return;
+        this.loadSecrets();
         this.multiSelectRef()?.openAt(el, this.value());
+    }
+
+    private loadSecrets(): void {
+        this.secretsStorageService
+            .getSecrets(true)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toastService.error('Failed to load secrets.'),
+            });
     }
 
     public onSelectionChange(values: unknown[]): void {
