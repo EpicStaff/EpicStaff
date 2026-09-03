@@ -2,1321 +2,2086 @@
 
 import django.db.models.manager
 from django.db import migrations, models
+from django.utils import timezone
+
+
+def copy_graphversion_deleted_state(apps, schema_editor):
+    now = timezone.now()
+    GraphVersion = apps.get_model("tables", "GraphVersion")
+
+    GraphVersion._base_manager.filter(is_active=False).update(
+        is_soft_deleted=True,
+        soft_deleted_at=models.functions.Coalesce(models.F("deleted_at"), now),
+    )
+    GraphVersion._base_manager.filter(
+        deleted_at__isnull=False, is_soft_deleted=False
+    ).update(is_soft_deleted=True, soft_deleted_at=models.F("deleted_at"))
+
+
+def reverse_graphversion_deleted_state(apps, schema_editor):
+    GraphVersion = apps.get_model("tables", "GraphVersion")
+
+    GraphVersion._base_manager.filter(is_soft_deleted=True).update(
+        is_active=False,
+        deleted_at=models.F("soft_deleted_at"),
+    )
+    GraphVersion._base_manager.filter(is_soft_deleted=False).update(
+        is_active=True,
+        deleted_at=None,
+    )
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('agents', '0005_alter_agentinlinesurface_options_and_more'),
-        ('tables', '0234_merge_knowledge_node_and_agent_node_migrations'),
+        ("agents", "0005_alter_agentinlinesurface_options_and_more"),
+        ("tables", "0234_merge_knowledge_node_and_agent_node_migrations"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='agentgraphrag',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="agentgraphrag",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='agentnaiverag',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="agentnaiverag",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='agentnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="agentnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='agentnodetask',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['order']},
+            name="agentnodetask",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["order"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='agentpythoncodetoolconfigs',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="agentpythoncodetoolconfigs",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='agentpythoncodetools',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="agentpythoncodetools",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='audiotranscriptionnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="audiotranscriptionnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='baseragtype',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="baseragtype",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='classificationconditiongroup',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['order']},
+            name="classificationconditiongroup",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["order"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='classificationdecisiontablenode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="classificationdecisiontablenode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='classificationdecisiontableprompt',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="classificationdecisiontableprompt",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='condition',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['order']},
+            name="condition",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["order"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='conditionaledge',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="conditionaledge",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='conditiongroup',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['order']},
+            name="conditiongroup",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["order"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='crewnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="crewnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='decisiontablenode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="decisiontablenode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='documentmetadata',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="documentmetadata",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='edge',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="edge",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='endnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="endnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='fileextractornode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="fileextractornode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='flowassistant',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="flowassistant",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='flowassistantconversation',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['-started_at']},
+            name="flowassistantconversation",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["-started_at"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='flowassistantmessage',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['message_index']},
+            name="flowassistantmessage",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["message_index"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='graph',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graph",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphnote',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graphnote",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphorganization',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graphorganization",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphorganizationuser',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graphorganizationuser",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphrag',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graphrag",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphragdocument',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graphragdocument",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphstoragefile',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="graphstoragefile",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='graphversion',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['-created_at']},
+            name="graphversion",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["-created_at"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='knowledgenode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="knowledgenode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='naiverag',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="naiverag",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='naiveragchunk',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['chunk_index']},
+            name="naiveragchunk",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["chunk_index"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='naiveragdocumentconfig',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="naiveragdocumentconfig",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='naiveragembedding',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="naiveragembedding",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='naiveragpreviewchunk',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['chunk_index']},
+            name="naiveragpreviewchunk",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+                "ordering": ["chunk_index"],
+            },
         ),
         migrations.AlterModelOptions(
-            name='pythoncodetool',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="pythoncodetool",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='pythoncodetoolconfig',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="pythoncodetoolconfig",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='pythonnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="pythonnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='scheduletriggernode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="scheduletriggernode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='sourcecollection',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="sourcecollection",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='startnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="startnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='subgraphnode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="subgraphnode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='tasknode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="tasknode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='taskpythoncodetoolconfigs',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="taskpythoncodetoolconfigs",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='taskpythoncodetools',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="taskpythoncodetools",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='telegramtriggernode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="telegramtriggernode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='telegramtriggernodefield',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="telegramtriggernodefield",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='webhooknodeauth',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="webhooknodeauth",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelOptions(
-            name='webhooktriggernode',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
+            name="webhooktriggernode",
+            options={
+                "base_manager_name": "all_objects",
+                "default_manager_name": "objects",
+            },
         ),
         migrations.AlterModelManagers(
-            name='agentgraphrag',
+            name="agentgraphrag",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='agentnaiverag',
+            name="agentnaiverag",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='agentnode',
+            name="agentnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='agentnodetask',
+            name="agentnodetask",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='agentpythoncodetoolconfigs',
+            name="agentpythoncodetoolconfigs",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='agentpythoncodetools',
+            name="agentpythoncodetools",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='audiotranscriptionnode',
+            name="audiotranscriptionnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='baseragtype',
+            name="baseragtype",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='classificationconditiongroup',
+            name="classificationconditiongroup",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='classificationdecisiontablenode',
+            name="classificationdecisiontablenode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='classificationdecisiontableprompt',
+            name="classificationdecisiontableprompt",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='condition',
+            name="condition",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='conditionaledge',
+            name="conditionaledge",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='conditiongroup',
+            name="conditiongroup",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='crewnode',
+            name="crewnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='decisiontablenode',
+            name="decisiontablenode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='documentmetadata',
+            name="documentmetadata",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='edge',
+            name="edge",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='endnode',
+            name="endnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='fileextractornode',
+            name="fileextractornode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='flowassistant',
+            name="flowassistant",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='flowassistantconversation',
+            name="flowassistantconversation",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='flowassistantmessage',
+            name="flowassistantmessage",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graph',
+            name="graph",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphnote',
+            name="graphnote",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphorganization',
+            name="graphorganization",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphorganizationuser',
+            name="graphorganizationuser",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphrag',
+            name="graphrag",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphragdocument',
+            name="graphragdocument",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphstoragefile',
+            name="graphstoragefile",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='graphversion',
+            name="graphversion",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='knowledgenode',
+            name="knowledgenode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='naiverag',
+            name="naiverag",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='naiveragchunk',
+            name="naiveragchunk",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='naiveragdocumentconfig',
+            name="naiveragdocumentconfig",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='naiveragembedding',
+            name="naiveragembedding",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='naiveragpreviewchunk',
+            name="naiveragpreviewchunk",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='pythoncodetool',
+            name="pythoncodetool",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='pythoncodetoolconfig',
+            name="pythoncodetoolconfig",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='pythonnode',
+            name="pythonnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='scheduletriggernode',
+            name="scheduletriggernode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='sourcecollection',
+            name="sourcecollection",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='startnode',
+            name="startnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='subgraphnode',
+            name="subgraphnode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='tasknode',
+            name="tasknode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='taskpythoncodetoolconfigs',
+            name="taskpythoncodetoolconfigs",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='taskpythoncodetools',
+            name="taskpythoncodetools",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='telegramtriggernode',
+            name="telegramtriggernode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='telegramtriggernodefield',
+            name="telegramtriggernodefield",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='webhooknodeauth',
+            name="webhooknodeauth",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.AlterModelManagers(
-            name='webhooktriggernode',
+            name="webhooktriggernode",
             managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
+                ("objects", django.db.models.manager.Manager()),
+                ("all_objects", django.db.models.manager.Manager()),
             ],
         ),
         migrations.RemoveConstraint(
-            model_name='graph',
-            name='unique_graph_name_per_org',
+            model_name="graph",
+            name="unique_graph_name_per_org",
         ),
         migrations.RemoveConstraint(
-            model_name='pythoncodetool',
-            name='unique_pythoncodetool_name_per_org',
+            model_name="pythoncodetool",
+            name="unique_pythoncodetool_name_per_org",
         ),
         migrations.RemoveConstraint(
-            model_name='sourcecollection',
-            name='unique_collection_name_per_org',
+            model_name="sourcecollection",
+            name="unique_collection_name_per_org",
+        ),
+        migrations.AddField(
+            model_name="agentgraphrag",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="agentgraphrag",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="agentnaiverag",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="agentnaiverag",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="agentnode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="agentnode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="agentnodetask",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="agentnodetask",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="agentpythoncodetoolconfigs",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="agentpythoncodetoolconfigs",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="agentpythoncodetools",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="agentpythoncodetools",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="audiotranscriptionnode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="audiotranscriptionnode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="baseragtype",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="baseragtype",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="classificationconditiongroup",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="classificationconditiongroup",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="classificationdecisiontablenode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="classificationdecisiontablenode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="classificationdecisiontableprompt",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="classificationdecisiontableprompt",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="condition",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="condition",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="conditionaledge",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="conditionaledge",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="conditiongroup",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="conditiongroup",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="crewnode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="crewnode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="decisiontablenode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="decisiontablenode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="documentmetadata",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="documentmetadata",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="edge",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="edge",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="endnode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="endnode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="fileextractornode",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="fileextractornode",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="flowassistant",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="flowassistant",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="flowassistantconversation",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="flowassistantconversation",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="flowassistantmessage",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="flowassistantmessage",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graph",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graph",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphnote",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphnote",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphorganization",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphorganization",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphorganizationuser",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphorganizationuser",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphrag",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphrag",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphragdocument",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphragdocument",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphstoragefile",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphstoragefile",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="graphversion",
+            name="is_soft_deleted",
+            field=models.BooleanField(db_default=False, default=False),
+        ),
+        migrations.AddField(
+            model_name="graphversion",
+            name="soft_deleted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.RunPython(
+            copy_graphversion_deleted_state,
+            reverse_code=reverse_graphversion_deleted_state,
         ),
         migrations.RemoveField(
-            model_name='graphversion',
-            name='deleted_at',
+            model_name="graphversion",
+            name="deleted_at",
         ),
         migrations.RemoveField(
-            model_name='graphversion',
-            name='is_active',
+            model_name="graphversion",
+            name="is_active",
         ),
         migrations.AddField(
-            model_name='agentgraphrag',
-            name='is_soft_deleted',
+            model_name="knowledgenode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='agentgraphrag',
-            name='soft_deleted_at',
+            model_name="knowledgenode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='agentnaiverag',
-            name='is_soft_deleted',
+            model_name="naiverag",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='agentnaiverag',
-            name='soft_deleted_at',
+            model_name="naiverag",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='agentnode',
-            name='is_soft_deleted',
+            model_name="naiveragchunk",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='agentnode',
-            name='soft_deleted_at',
+            model_name="naiveragchunk",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='agentnodetask',
-            name='is_soft_deleted',
+            model_name="naiveragdocumentconfig",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='agentnodetask',
-            name='soft_deleted_at',
+            model_name="naiveragdocumentconfig",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='agentpythoncodetoolconfigs',
-            name='is_soft_deleted',
+            model_name="naiveragembedding",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='agentpythoncodetoolconfigs',
-            name='soft_deleted_at',
+            model_name="naiveragembedding",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='agentpythoncodetools',
-            name='is_soft_deleted',
+            model_name="naiveragpreviewchunk",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='agentpythoncodetools',
-            name='soft_deleted_at',
+            model_name="naiveragpreviewchunk",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='audiotranscriptionnode',
-            name='is_soft_deleted',
+            model_name="pythoncodetool",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='audiotranscriptionnode',
-            name='soft_deleted_at',
+            model_name="pythoncodetool",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='baseragtype',
-            name='is_soft_deleted',
+            model_name="pythoncodetoolconfig",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='baseragtype',
-            name='soft_deleted_at',
+            model_name="pythoncodetoolconfig",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='classificationconditiongroup',
-            name='is_soft_deleted',
+            model_name="pythonnode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='classificationconditiongroup',
-            name='soft_deleted_at',
+            model_name="pythonnode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='classificationdecisiontablenode',
-            name='is_soft_deleted',
+            model_name="scheduletriggernode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='classificationdecisiontablenode',
-            name='soft_deleted_at',
+            model_name="scheduletriggernode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='classificationdecisiontableprompt',
-            name='is_soft_deleted',
+            model_name="sourcecollection",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='classificationdecisiontableprompt',
-            name='soft_deleted_at',
+            model_name="sourcecollection",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='condition',
-            name='is_soft_deleted',
+            model_name="startnode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='condition',
-            name='soft_deleted_at',
+            model_name="startnode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='conditionaledge',
-            name='is_soft_deleted',
+            model_name="subgraphnode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='conditionaledge',
-            name='soft_deleted_at',
+            model_name="subgraphnode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='conditiongroup',
-            name='is_soft_deleted',
+            model_name="tasknode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='conditiongroup',
-            name='soft_deleted_at',
+            model_name="tasknode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='crewnode',
-            name='is_soft_deleted',
+            model_name="taskpythoncodetoolconfigs",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='crewnode',
-            name='soft_deleted_at',
+            model_name="taskpythoncodetoolconfigs",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='decisiontablenode',
-            name='is_soft_deleted',
+            model_name="taskpythoncodetools",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='decisiontablenode',
-            name='soft_deleted_at',
+            model_name="taskpythoncodetools",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='documentmetadata',
-            name='is_soft_deleted',
+            model_name="telegramtriggernode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='documentmetadata',
-            name='soft_deleted_at',
+            model_name="telegramtriggernode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='edge',
-            name='is_soft_deleted',
+            model_name="telegramtriggernodefield",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='edge',
-            name='soft_deleted_at',
+            model_name="telegramtriggernodefield",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='endnode',
-            name='is_soft_deleted',
+            model_name="webhooknodeauth",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='endnode',
-            name='soft_deleted_at',
+            model_name="webhooknodeauth",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='fileextractornode',
-            name='is_soft_deleted',
+            model_name="webhooktriggernode",
+            name="is_soft_deleted",
             field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
-            model_name='fileextractornode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='flowassistant',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='flowassistant',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='flowassistantconversation',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='flowassistantconversation',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='flowassistantmessage',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='flowassistantmessage',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graph',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graph',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphnote',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphnote',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphorganization',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphorganization',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphorganizationuser',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphorganizationuser',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphrag',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphrag',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphragdocument',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphragdocument',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphstoragefile',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphstoragefile',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='graphversion',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='graphversion',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='knowledgenode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='knowledgenode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='naiverag',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='naiverag',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='naiveragchunk',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='naiveragchunk',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='naiveragdocumentconfig',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='naiveragdocumentconfig',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='naiveragembedding',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='naiveragembedding',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='naiveragpreviewchunk',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='naiveragpreviewchunk',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='pythoncodetool',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='pythoncodetool',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='pythoncodetoolconfig',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='pythoncodetoolconfig',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='pythonnode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='pythonnode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='scheduletriggernode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='scheduletriggernode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='sourcecollection',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='sourcecollection',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='startnode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='startnode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='subgraphnode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='subgraphnode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='tasknode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='tasknode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='taskpythoncodetoolconfigs',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='taskpythoncodetoolconfigs',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='taskpythoncodetools',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='taskpythoncodetools',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='telegramtriggernode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='telegramtriggernode',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='telegramtriggernodefield',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='telegramtriggernodefield',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='webhooknodeauth',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='webhooknodeauth',
-            name='soft_deleted_at',
-            field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='webhooktriggernode',
-            name='is_soft_deleted',
-            field=models.BooleanField(db_default=False, default=False),
-        ),
-        migrations.AddField(
-            model_name='webhooktriggernode',
-            name='soft_deleted_at',
+            model_name="webhooktriggernode",
+            name="soft_deleted_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddConstraint(
-            model_name='agentgraphrag',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_agentgraphrag_soft_delete_consistency'),
+            model_name="agentgraphrag",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_agentgraphrag_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='agentnaiverag',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_agentnaiverag_soft_delete_consistency'),
+            model_name="agentnaiverag",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_agentnaiverag_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='agentnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_agentnode_soft_delete_consistency'),
+            model_name="agentnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_agentnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='agentnodetask',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_agentnodetask_soft_delete_consistency'),
+            model_name="agentnodetask",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_agentnodetask_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='agentpythoncodetoolconfigs',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_agentpythoncodetoolconfigs_soft_delete_consistency'),
+            model_name="agentpythoncodetoolconfigs",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_agentpythoncodetoolconfigs_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='agentpythoncodetools',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_agentpythoncodetools_soft_delete_consistency'),
+            model_name="agentpythoncodetools",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_agentpythoncodetools_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='audiotranscriptionnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_audiotranscriptionnode_soft_delete_consistency'),
+            model_name="audiotranscriptionnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_audiotranscriptionnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='baseragtype',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_baseragtype_soft_delete_consistency'),
+            model_name="baseragtype",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_baseragtype_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='classificationconditiongroup',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_classificationconditiongroup_soft_delete_consistency'),
+            model_name="classificationconditiongroup",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_classificationconditiongroup_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='classificationdecisiontablenode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_classificationdecisiontablenode_soft_delete_consistency'),
+            model_name="classificationdecisiontablenode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_classificationdecisiontablenode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='classificationdecisiontableprompt',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_classificationdecisiontableprompt_soft_delete_consistency'),
+            model_name="classificationdecisiontableprompt",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_classificationdecisiontableprompt_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='condition',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_condition_soft_delete_consistency'),
+            model_name="condition",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_condition_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='conditionaledge',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_conditionaledge_soft_delete_consistency'),
+            model_name="conditionaledge",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_conditionaledge_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='conditiongroup',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_conditiongroup_soft_delete_consistency'),
+            model_name="conditiongroup",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_conditiongroup_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='crewnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_crewnode_soft_delete_consistency'),
+            model_name="crewnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_crewnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='decisiontablenode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_decisiontablenode_soft_delete_consistency'),
+            model_name="decisiontablenode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_decisiontablenode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='documentmetadata',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_documentmetadata_soft_delete_consistency'),
+            model_name="documentmetadata",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_documentmetadata_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='edge',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_edge_soft_delete_consistency'),
+            model_name="edge",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_edge_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='endnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_endnode_soft_delete_consistency'),
+            model_name="endnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_endnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='fileextractornode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_fileextractornode_soft_delete_consistency'),
+            model_name="fileextractornode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_fileextractornode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='flowassistant',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_flowassistant_soft_delete_consistency'),
+            model_name="flowassistant",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_flowassistant_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='flowassistantconversation',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_flowassistantconversation_soft_delete_consistency'),
+            model_name="flowassistantconversation",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_flowassistantconversation_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='flowassistantmessage',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_flowassistantmessage_soft_delete_consistency'),
+            model_name="flowassistantmessage",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_flowassistantmessage_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graph',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graph_soft_delete_consistency'),
+            model_name="graph",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graph_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graph',
-            constraint=models.UniqueConstraint(condition=models.Q(('is_soft_deleted', False)), fields=('org', 'name'), name='unique_graph_name_per_org'),
+            model_name="graph",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("is_soft_deleted", False)),
+                fields=("org", "name"),
+                name="unique_graph_name_per_org",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphnote',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphnote_soft_delete_consistency'),
+            model_name="graphnote",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphnote_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphorganization',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphorganization_soft_delete_consistency'),
+            model_name="graphorganization",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphorganization_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphorganizationuser',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphorganizationuser_soft_delete_consistency'),
+            model_name="graphorganizationuser",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphorganizationuser_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphrag',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphrag_soft_delete_consistency'),
+            model_name="graphrag",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphrag_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphragdocument',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphragdocument_soft_delete_consistency'),
+            model_name="graphragdocument",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphragdocument_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphstoragefile',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphstoragefile_soft_delete_consistency'),
+            model_name="graphstoragefile",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphstoragefile_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='graphversion',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_graphversion_soft_delete_consistency'),
+            model_name="graphversion",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_graphversion_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='knowledgenode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_knowledgenode_soft_delete_consistency'),
+            model_name="knowledgenode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_knowledgenode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='naiverag',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_naiverag_soft_delete_consistency'),
+            model_name="naiverag",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_naiverag_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='naiveragchunk',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_naiveragchunk_soft_delete_consistency'),
+            model_name="naiveragchunk",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_naiveragchunk_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='naiveragdocumentconfig',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_naiveragdocumentconfig_soft_delete_consistency'),
+            model_name="naiveragdocumentconfig",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_naiveragdocumentconfig_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='naiveragembedding',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_naiveragembedding_soft_delete_consistency'),
+            model_name="naiveragembedding",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_naiveragembedding_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='naiveragpreviewchunk',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_naiveragpreviewchunk_soft_delete_consistency'),
+            model_name="naiveragpreviewchunk",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_naiveragpreviewchunk_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='pythoncodetool',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_pythoncodetool_soft_delete_consistency'),
+            model_name="pythoncodetool",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_pythoncodetool_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='pythoncodetool',
-            constraint=models.UniqueConstraint(condition=models.Q(('is_soft_deleted', False)), fields=('org', 'name'), name='unique_pythoncodetool_name_per_org'),
+            model_name="pythoncodetool",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("is_soft_deleted", False)),
+                fields=("org", "name"),
+                name="unique_pythoncodetool_name_per_org",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='pythoncodetoolconfig',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_pythoncodetoolconfig_soft_delete_consistency'),
+            model_name="pythoncodetoolconfig",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_pythoncodetoolconfig_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='pythonnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_pythonnode_soft_delete_consistency'),
+            model_name="pythonnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_pythonnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='scheduletriggernode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_scheduletriggernode_soft_delete_consistency'),
+            model_name="scheduletriggernode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_scheduletriggernode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='sourcecollection',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_sourcecollection_soft_delete_consistency'),
+            model_name="sourcecollection",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_sourcecollection_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='sourcecollection',
-            constraint=models.UniqueConstraint(condition=models.Q(('is_soft_deleted', False)), fields=('org', 'collection_name'), name='unique_collection_name_per_org'),
+            model_name="sourcecollection",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("is_soft_deleted", False)),
+                fields=("org", "collection_name"),
+                name="unique_collection_name_per_org",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='startnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_startnode_soft_delete_consistency'),
+            model_name="startnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_startnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='subgraphnode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_subgraphnode_soft_delete_consistency'),
+            model_name="subgraphnode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_subgraphnode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='tasknode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_tasknode_soft_delete_consistency'),
+            model_name="tasknode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_tasknode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='taskpythoncodetoolconfigs',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_taskpythoncodetoolconfigs_soft_delete_consistency'),
+            model_name="taskpythoncodetoolconfigs",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_taskpythoncodetoolconfigs_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='taskpythoncodetools',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_taskpythoncodetools_soft_delete_consistency'),
+            model_name="taskpythoncodetools",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_taskpythoncodetools_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='telegramtriggernode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_telegramtriggernode_soft_delete_consistency'),
+            model_name="telegramtriggernode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_telegramtriggernode_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='telegramtriggernodefield',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_telegramtriggernodefield_soft_delete_consistency'),
+            model_name="telegramtriggernodefield",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_telegramtriggernodefield_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='webhooknodeauth',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_webhooknodeauth_soft_delete_consistency'),
+            model_name="webhooknodeauth",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_webhooknodeauth_soft_delete_consistency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='webhooktriggernode',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('is_soft_deleted', False), ('soft_deleted_at__isnull', True)), models.Q(('is_soft_deleted', True), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_webhooktriggernode_soft_delete_consistency'),
+            model_name="webhooktriggernode",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(
+                        ("is_soft_deleted", False), ("soft_deleted_at__isnull", True)
+                    ),
+                    models.Q(
+                        ("is_soft_deleted", True), ("soft_deleted_at__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="tables_webhooktriggernode_soft_delete_consistency",
+            ),
         ),
     ]
