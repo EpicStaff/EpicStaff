@@ -879,7 +879,14 @@ export class AgentsTableComponent {
             data: {
                 id: agentData.id,
                 role: agentData.role,
+                goal: agentData.goal,
+                backstory: agentData.backstory,
+                llm_config: agentData.llm_config,
                 fcm_llm_config: agentData.fcm_llm_config,
+                allow_delegation: agentData.allow_delegation ?? true,
+                python_code_tools: agentData.python_code_tools ?? [],
+                mcp_tools: agentData.mcp_tools ?? [],
+                mergedTools: agentData.mergedTools ?? [],
                 max_iter: agentData.max_iter ?? 20,
                 max_rpm: agentData.max_rpm ?? 10,
                 max_execution_time: agentData.max_execution_time ?? 60,
@@ -2016,7 +2023,14 @@ export class AgentsTableComponent {
     private normalizeAdvancedSettings(input: TableFullAgent): Record<string, unknown> {
         const rawInput = input as TableFullAgent & Record<string, unknown>;
         return {
+            role: input?.role ?? '',
+            goal: input?.goal ?? '',
+            backstory: input?.backstory ?? '',
+            llm_config: input?.llm_config ?? null,
             fcm_llm_config_id: input?.fcm_llm_config ?? input?.fullFcmLlmConfig?.id ?? null,
+            allow_delegation: !!input?.allow_delegation,
+            python_code_tools: JSON.stringify([...(input?.python_code_tools ?? [])].sort()),
+            mcp_tools: JSON.stringify([...(input?.mcp_tools ?? [])].sort()),
             knowledge_collection: input?.knowledge_collection ?? rawInput['selected_knowledge_source'] ?? null,
             rag_id: input?.rag?.rag_id ?? rawInput['rag_id'] ?? null,
             rag_type: input?.rag?.rag_type ?? null,
