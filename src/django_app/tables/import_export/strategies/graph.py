@@ -161,8 +161,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 # instead so SoftDeleteMixin.delete() (and thus DeleteService) fires.
                 for existing_graph in Graph.objects.filter(uuid=imported_uuid):
                     existing_graph.delete()
-            else:
-                Graph.objects.filter(uuid=imported_uuid).update(uuid=uuid.uuid4())
+            Graph.all_objects.filter(uuid=imported_uuid).update(uuid=uuid.uuid4())
             import_data["uuid"] = imported_uuid
 
         nodes_data = import_data.pop("nodes", [])

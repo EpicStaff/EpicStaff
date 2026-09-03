@@ -7,6 +7,7 @@ from tables.models.base_models import (
     ContentHashMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
+    soft_delete_consistency_constraint,
 )
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
@@ -37,7 +38,10 @@ class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
     )
 
     class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
                 condition=models.Q(is_soft_deleted=False),
@@ -46,12 +50,15 @@ class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
         ]
 
 
-class PythonCodeToolConfig(OrgScopedModel, SoftDeleteFields, models.Model):
+class PythonCodeToolConfig(OrgScopedModel, SoftDeleteFields):
     name = models.CharField(blank=False, null=False, max_length=255)
     tool = models.ForeignKey("PythonCodeTool", on_delete=models.CASCADE)
     configuration = models.JSONField(default=dict)
 
     class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         unique_together = (
             "org",
             "tool",

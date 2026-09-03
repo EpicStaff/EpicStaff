@@ -2,7 +2,7 @@ from django.db import models
 from ..crew_models import Task
 
 
-from ..base_models import SoftDeleteFields
+from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
 from ..embedding_models import EmbeddingConfig
 from ..llm_models import LLMConfig
 from .collection_models import BaseRagType, DocumentMetadata
@@ -69,6 +69,9 @@ class GraphRag(SoftDeleteFields, models.Model):
 
     class Meta:
         db_table = "graph_rag"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def update_rag_status(self: "GraphRag"):
         """Update status based on document states."""
@@ -115,6 +118,9 @@ class AgentGraphRag(SoftDeleteFields, models.Model):
 
     class Meta:
         db_table = "agent_graph_rag"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     @classmethod
     def check(cls, **kwargs):
@@ -150,11 +156,14 @@ class GraphRagDocument(SoftDeleteFields, models.Model):
 
     class Meta:
         db_table = "graph_rag_document"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["graph_rag", "document"],
                 name="unique_graph_rag_document",
-            )
+            ),
         ]
 
     def __str__(self):

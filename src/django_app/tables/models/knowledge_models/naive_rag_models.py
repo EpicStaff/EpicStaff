@@ -4,7 +4,7 @@ import uuid
 from pgvector.django import VectorField
 
 
-from ..base_models import SoftDeleteFields
+from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
 from ..embedding_models import EmbeddingConfig
 from .collection_models import BaseRagType, DocumentMetadata
 from ..crew_models import Agent
@@ -164,6 +164,8 @@ class NaiveRagDocumentConfig(SoftDeleteFields, models.Model):
         return self.embeddings.count()
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         indexes = [
             models.Index(fields=["naive_rag", "status"]),
             models.Index(fields=["document"]),
@@ -171,10 +173,11 @@ class NaiveRagDocumentConfig(SoftDeleteFields, models.Model):
         # support only one configuration of document per one naive rag implementation
         # (could be many implementations per collection)
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["naive_rag", "document"],
                 name="unique_document_per_naive_rag",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -210,15 +213,18 @@ class NaiveRagChunk(SoftDeleteFields, models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         ordering = ["chunk_index"]
         indexes = [
             models.Index(fields=["naive_rag_document_config", "chunk_index"]),
         ]
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["naive_rag_document_config", "chunk_index"],
                 name="unique_chunk_index_per_naive_rag_document_config",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -254,6 +260,9 @@ class NaiveRagEmbedding(SoftDeleteFields, models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         indexes = [models.Index(fields=["naive_rag_document_config"])]
 
     def __str__(self):
@@ -372,6 +381,9 @@ class NaiveRagPreviewChunk(SoftDeleteFields, models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         ordering = ["chunk_index"]
         indexes = [
             models.Index(fields=["naive_rag_document_config", "chunk_index"]),

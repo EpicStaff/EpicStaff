@@ -15,30 +15,38 @@ Covers, per root and per mechanism rule:
 - The PROTECT/RESTRICT/DO_NOTHING guards in `_DeleteContext._process_related_object`.
 """
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
-from django.db import models
+from django.db import connection, models
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.core.exceptions import ImproperlyConfigured
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from agents.models import InlineSurface, InlineSurfaceKnowledge
+from django_app.settings import SCHEDULE_CHANNEL
 from tables.models import (
     BaseRagType,
     DocumentContent,
     DocumentMetadata,
     Graph,
+    GraphNote,
     GraphVersion,
+    KnowledgeNode,
     PythonCode,
     PythonNode,
     ScheduleTriggerNode,
     Session,
     SourceCollection,
     TaskNode,
+    WebhookTriggerNode,
 )
 from tables.models.base_models import SoftDeleteFields
+from tables.models.session_models import SessionTrigger
+from tables.models.webhook_models import WebhookNodeAuth
 from tables.models.knowledge_models.graphrag_models import (
     GraphRag,
     GraphRagDocument,
@@ -130,6 +138,23 @@ class TestFullCascadePerRoot:
         assert python_code_tool.soft_deleted_at is not None
         assert python_code_tool_config.is_soft_deleted is True
         assert python_code_tool_config.soft_deleted_at is not None
+
+    def test_graph_cascades_through_knowledge_node(self, graph):
+        """EST-3788 review item 6: KnowledgeNode previously lacked
+        SoftDeleteFields entirely, so its sole reverse-CASCADE handling
+        fell through to `_hard_delete` — a graph soft-delete would
+        permanently destroy its KnowledgeNode children while every other
+        node type on the graph survived as a soft-deleted row. KnowledgeNode
+        now carries SoftDeleteFields like the other node types, so it must
+        soft-delete and remain queryable via `all_objects`."""
+        knowledge_node = KnowledgeNode.objects.create(graph=graph)
+
+        graph.delete()
+
+        knowledge_node.refresh_from_db()
+        assert knowledge_node.is_soft_deleted is True
+        assert knowledge_node.soft_deleted_at is not None
+        assert KnowledgeNode.all_objects.filter(pk=knowledge_node.pk).exists()
 
     def test_graph_version_soft_deletes(self, graph):
         """GraphVersion has no reverse-relation descendants of its own — the
@@ -304,6 +329,97 @@ class TestScheduleTriggerNodeIsActiveUntouched:
         assert node.soft_deleted_at is not None
 
 
+@pytest.mark.django_db
+class TestHiddenReverseRelationSetNull:
+    """Item 9 (EST-3788 review): related_name="+" reverse relations are
+    hidden from Model._meta.get_fields() by default, so
+    SessionTrigger.schedule_trigger_node (SET_NULL) was previously invisible
+    to the cascade walker — the FK never got nulled out when its
+    ScheduleTriggerNode was soft-deleted. _get_reverse_relations now passes
+    include_hidden=True and _get_related_objects fetches hidden relations
+    via a direct queryset filter (no reverse accessor exists for them).
+
+    ScheduleTriggerNode only has `SoftDeleteFields` (no `SoftDeleteMixin`),
+    so a direct `.delete()` on it is always a hard delete (see
+    TestDirectDeleteOnGroup2OnlyModel). To exercise the cascade path we
+    soft-delete via the graph root, exactly like
+    TestScheduleTriggerNodeIsActiveUntouched does."""
+
+    def test_schedule_trigger_node_soft_delete_nulls_session_trigger_fk(self, graph):
+        node = ScheduleTriggerNode.objects.create(
+            graph=graph, node_name="trigger_node", is_active=True
+        )
+        session = Session.objects.create(
+            status=Session.SessionStatus.PENDING,
+            status_updated_at=timezone.now(),
+        )
+        trigger = SessionTrigger.objects.create(
+            session=session,
+            trigger_type=SessionTrigger.TriggerType.SCHEDULE,
+            schedule_trigger_node=node,
+        )
+
+        graph.delete()
+
+        node.refresh_from_db()
+        assert node.is_soft_deleted is True
+        assert node.soft_deleted_at is not None
+
+        trigger.refresh_from_db()
+        assert trigger.schedule_trigger_node_id is None
+
+        session.refresh_from_db()
+        assert SessionTrigger.objects.filter(pk=trigger.pk).exists()
+        assert Session.objects.filter(pk=session.pk).exists()
+
+    def test_webhook_trigger_node_soft_delete_nulls_session_trigger_fk(self, graph):
+        python_code = PythonCode.objects.create(
+            code="def main(): return 1", entrypoint="main"
+        )
+        node = WebhookTriggerNode.objects.create(
+            graph=graph, node_name="trigger_node", python_code=python_code
+        )
+        # WebhookTriggerNode's post_save signal (tables/signals/webhook_signals.py)
+        # auto-creates a WebhookNodeAuth row pointing at this node.
+        node_auth = WebhookNodeAuth.objects.get(webhook_trigger_node=node)
+        session = Session.objects.create(
+            status=Session.SessionStatus.PENDING,
+            status_updated_at=timezone.now(),
+        )
+        trigger = SessionTrigger.objects.create(
+            session=session,
+            trigger_type=SessionTrigger.TriggerType.WEBHOOK,
+            webhook_trigger_node=node,
+        )
+
+        graph.delete()
+
+        node.refresh_from_db()
+        assert node.is_soft_deleted is True
+        assert node.soft_deleted_at is not None
+
+        trigger.refresh_from_db()
+        assert trigger.webhook_trigger_node_id is None
+
+        session.refresh_from_db()
+        assert SessionTrigger.objects.filter(pk=trigger.pk).exists()
+        assert Session.objects.filter(pk=session.pk).exists()
+
+        # WebhookNodeAuth previously lacked SoftDeleteFields, so this reverse
+        # relation fell through to DeleteService's nullable-CASCADE fallback,
+        # which tried to null webhook_trigger_node while telegram_trigger_node
+        # was also null -- violating the webhook_node_auth_exactly_one_node
+        # check constraint with an IntegrityError. Now that WebhookNodeAuth
+        # carries SoftDeleteFields, this relation is handled by the batched
+        # soft-delete cascade instead: it must soft-delete cleanly and remain
+        # queryable via all_objects, with its FK to the node left untouched.
+        node_auth.refresh_from_db()
+        assert node_auth.is_soft_deleted is True
+        assert node_auth.soft_deleted_at is not None
+        assert WebhookNodeAuth.all_objects.filter(pk=node_auth.pk).exists()
+        assert node_auth.webhook_trigger_node_id == node.pk
+
+
 class TestProtectRestrictDoNothingGuards:
     """Item 8: the project has no real PROTECT/RESTRICT/DO_NOTHING relation
     anywhere in its schema today (verified by grep), and adding one would
@@ -377,3 +493,100 @@ class TestProtectRestrictDoNothingGuards:
         graph.refresh_from_db()
         assert graph.is_soft_deleted is False
         assert graph.soft_deleted_at is None
+
+
+@pytest.mark.django_db
+class TestPostSaveListenerModelsBypassBatching:
+    """A reverse relation to a model with a post_save receiver must never be
+    routed through `_batch_soft_delete_cascade`'s `QuerySet.update()`, since
+    that call never fires `post_save`. `ScheduleTriggerNode`,
+    `WebhookTriggerNode` and `TelegramTriggerNode` publish a Redis event for
+    the Manager service on every save via such a receiver
+    (`tables/signals/schedule_signals.py`,
+    `tables/signals/webhook_signals.py`,
+    `tables/signals/telegram_signals.py`). `_is_soft_delete_cascade_relation`
+    now returns False for these, sending them through the per-object
+    `_process_related_object` -> `_handle_cascade` -> `DeleteService.delete`
+    path instead, whose `_soft_delete` calls `obj.save()` and therefore
+    still triggers the signal."""
+
+    def test_schedule_trigger_node_post_save_signal_fires_on_cascaded_soft_delete(
+        self, graph, redis_client_mock
+    ):
+        node = ScheduleTriggerNode.objects.create(
+            graph=graph, node_name="trigger_node", is_active=True
+        )
+        # Drop the "create" publish call triggered by objects.create() above,
+        # so only the cascade's own publish call is asserted below.
+        redis_client_mock.publish.reset_mock()
+
+        graph.delete()
+
+        node.refresh_from_db()
+        assert node.is_soft_deleted is True
+        assert node.soft_deleted_at is not None
+
+        assert redis_client_mock.publish.called
+        channel, payload = redis_client_mock.publish.call_args.args
+        assert channel == SCHEDULE_CHANNEL
+
+        message = json.loads(payload)
+        assert message["data"]["action"] == "update"
+        assert message["data"]["node"]["id"] == node.pk
+
+    def test_webhook_trigger_node_soft_delete_still_soft_deletes_on_cascade(
+        self, graph, redis_client_mock
+    ):
+        """webhook_signals' post_save handler talks to the `webhook` service
+        over HTTP rather than Redis, so it isn't asserted directly here (that
+        would require mocking an HTTP client, duplicating
+        TestHiddenReverseRelationSetNull's coverage of the same signal's
+        side effect via WebhookNodeAuth auto-creation). This test instead
+        locks in the outcome that matters for this change: the node is still
+        soft-deleted correctly now that it takes the per-object path instead
+        of the batched UPDATE."""
+        python_code = PythonCode.objects.create(
+            code="def main(): return 1", entrypoint="main"
+        )
+        node = WebhookTriggerNode.objects.create(
+            graph=graph, node_name="trigger_node", python_code=python_code
+        )
+
+        graph.delete()
+
+        node.refresh_from_db()
+        assert node.is_soft_deleted is True
+        assert node.soft_deleted_at is not None
+
+
+@pytest.mark.django_db
+class TestBatchedCascadeQueryCountDoesNotGrowWithChildCount:
+    """The batched-UPDATE optimization in `_batch_soft_delete_cascade` must
+    keep issuing a single UPDATE per model regardless of how many children
+    are soft-deleted through it. Compares total query count for a small vs.
+    a large batch of plain (no post_save receiver, no M2M or reverse-relation
+    descendants of its own) `GraphNote` children of the same `Graph` root —
+    no growth confirms the batch path, not one `.save()` per object, is
+    still in effect. `TaskNode` is deliberately avoided here: it carries its
+    own M2M field (`surface_list`), whose clearing is legitimately done
+    per-object regardless of batching, which would make query count grow
+    with child count for reasons unrelated to what this test checks."""
+
+    def test_graph_note_cascade_query_count_is_flat(self, default_org):
+        small_graph = Graph.objects.create(name="small-batch-graph", org=default_org)
+        for index in range(2):
+            GraphNote.objects.create(graph=small_graph, content=f"note_{index}")
+
+        with CaptureQueriesContext(connection) as few:
+            small_graph.delete()
+
+        large_graph = Graph.objects.create(name="large-batch-graph", org=default_org)
+        for index in range(20):
+            GraphNote.objects.create(graph=large_graph, content=f"note_{index}")
+
+        with CaptureQueriesContext(connection) as many:
+            large_graph.delete()
+
+        assert len(many) == len(few), "\n".join(
+            query["sql"] for query in many.captured_queries
+        )

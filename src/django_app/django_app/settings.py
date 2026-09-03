@@ -34,7 +34,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes", "on")
 
 # Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
-SOFT_DELETE = os.getenv("SOFT_DELETE", "True").lower() in ("true", "1", "yes", "on")
+SOFT_DELETE = os.getenv("SOFT_DELETE", "False").lower() in ("true", "1", "yes", "on")
 
 
 def _require_env(name: str) -> str:

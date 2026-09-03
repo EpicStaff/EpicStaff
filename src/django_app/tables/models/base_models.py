@@ -144,6 +144,25 @@ class ActiveManager(models.Manager):
         )
 
 
+def soft_delete_consistency_constraint() -> models.CheckConstraint:
+    """
+    Reject any row where is_soft_deleted/soft_deleted_at disagree.
+
+    Django does not merge Meta options (constraints included) from more
+    than one abstract base class onto a concrete model that has its own
+    Meta — confirmed empirically. Every concrete SoftDeleteFields
+    model must therefore call this in its own Meta.constraints; it
+    cannot be relied on from SoftDeleteFields.Meta alone.
+    """
+    return models.CheckConstraint(
+        check=(
+            models.Q(is_soft_deleted=False, soft_deleted_at__isnull=True)
+            | models.Q(is_soft_deleted=True, soft_deleted_at__isnull=False)
+        ),
+        name="%(app_label)s_%(class)s_soft_delete_consistency",
+    )
+
+
 class SoftDeleteFields(models.Model):
     """
     Only the fields required for soft deletion. No delete() override —
@@ -151,16 +170,17 @@ class SoftDeleteFields(models.Model):
     performs a normal, unconditional Django hard delete.
     """
 
-    is_soft_deleted = models.BooleanField(
-        default=False, db_default=False, db_index=True
-    )
-    soft_deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    is_soft_deleted = models.BooleanField(default=False, db_default=False)
+    soft_deleted_at = models.DateTimeField(null=True, blank=True)
 
     objects = ActiveManager()
     all_objects = models.Manager()
 
     class Meta:
         abstract = True
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class SoftDeleteMixin(SoftDeleteFields):
@@ -309,7 +329,7 @@ class BaseGlobalNode(models.Model):
         return node_models
 
     @classmethod
-    def find_globally(cls, node_id) -> Self:
+    def find_globally(cls, node_id) -> Self | None:
         """
         Executes a single SQL UNION query to find which table contains the given ID
         and returns the actual model instance.
@@ -334,6 +354,6 @@ class BaseGlobalNode(models.Model):
         if row:
             table_name = row[0]
             target_model = table_to_model[table_name]
-            return target_model.objects.get(id=node_id)
+            return target_model.objects.filter(id=node_id).first()
 
         return None
