@@ -1,4 +1,3 @@
-import os
 import json
 import time
 from uuid import uuid4
@@ -6,28 +5,16 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from langgraph.types import StreamWriter
 
+import settings
 from models.graph_models import GraphMessage
 from services.graph.events import StopEvent
 from services.redis_service import RedisService, SyncPubsubSubscriber
-from constants.constants import (
-    NAIVE_RAG_SEARCH_TIMEOUT,
-    GRAPH_RAG_SEARCH_TIMEOUT,
-    DEFAULT_RAG_SEARCH_TIMEOUT,
-)
 from src.shared.models import (
     RagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
     BaseKnowledgeSearchMessage,
     BaseKnowledgeSearchMessageResponse,
-)
-
-
-knowledge_search_get_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_GET_CHANNEL", "knowledge:search:get"
-)
-knowledge_search_response_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
 )
 
 
@@ -42,8 +29,8 @@ class RagSearchConfigFactory:
     }
 
     _timeouts = {
-        "naive": NAIVE_RAG_SEARCH_TIMEOUT,
-        "graph": GRAPH_RAG_SEARCH_TIMEOUT,
+        "naive": settings.NAIVE_RAG_SEARCH_TIMEOUT,
+        "graph": settings.GRAPH_RAG_SEARCH_TIMEOUT,
     }
 
     @classmethod
@@ -141,7 +128,7 @@ class KnowledgeSearchService:
         )
         subscriber = SyncPubsubSubscriber(knowledge_callback_receiver.callback)
         self.redis_service.subscribe(
-            channels=knowledge_search_response_channel,
+            channels=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
             subscriber=subscriber,
         )
 
@@ -161,7 +148,7 @@ class KnowledgeSearchService:
         )
 
         self.redis_service.publish(
-            channel=knowledge_search_get_channel,
+            channel=settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL,
             message=execution_message.model_dump(),
         )
 
@@ -175,7 +162,7 @@ class KnowledgeSearchService:
                     f"Sender: {sender}"
                 )
                 self.redis_service.unsubscribe(
-                    channel=knowledge_search_response_channel,
+                    channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
                     subscriber=subscriber,
                 )
 
@@ -193,7 +180,7 @@ class KnowledgeSearchService:
 
         # Cleanup
         self.redis_service.unsubscribe(
-            channel=knowledge_search_response_channel,
+            channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
             subscriber=subscriber,
         )
         logger.error(f"Search failed: No response received within {timeout}s")

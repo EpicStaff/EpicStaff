@@ -1,8 +1,9 @@
 import hashlib
-import os
 from collections import OrderedDict
 from typing import Optional
 from loguru import logger
+
+import settings
 
 from services.cancellation_token import CancellationToken
 
@@ -362,7 +363,7 @@ class NaiveRAGStrategy(BaseRAGStrategy):
     def _create_default_embedding_function(self):
         """Create default OpenAI embedder."""
         return OpenAIEmbedder(
-            api_key=os.getenv("OPENAI_API_KEY"), model_name="text-embedding-3-small"
+            api_key=settings.OPENAI_API_KEY, model_name="text-embedding-3-small"
         )
 
     def _set_embedder_config(self, embedder_config):

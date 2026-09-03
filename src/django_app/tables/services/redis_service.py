@@ -8,12 +8,7 @@ from redis.backoff import ExponentialBackoff
 from redis.retry import Retry
 from threading import Lock
 
-from django_app.settings import (
-    KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL,
-    KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE,
-    KNOWLEDGE_INDEXING_CHANNEL,
-    STOP_SESSION_CHANNEL,
-)
+from django.conf import settings
 from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
@@ -34,9 +29,9 @@ class RedisService(metaclass=SingletonMeta):
         self._redis_client = None
         self._pubsub = None
         self._async_redis_client = None
-        self._redis_host = os.getenv("REDIS_HOST", "localhost")
-        self._redis_port = int(os.getenv("REDIS_PORT", 6379))
-        self._redis_password = os.getenv("REDIS_PASSWORD")
+        self._redis_host = settings.REDIS_HOST
+        self._redis_port = settings.REDIS_PORT
+        self._redis_password = settings.REDIS_PASSWORD
         self._retry = Retry(backoff=ExponentialBackoff(cap=3), retries=10)
 
     def _initialize_redis(self):
@@ -84,7 +79,10 @@ class RedisService(metaclass=SingletonMeta):
         # Resolve here, not upstream: the caller's object is what gets persisted
         # to Session.graph_schema, so plaintext must exist only on this copy.
         resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
-        return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
+        return self.redis_client.publish(
+            settings.SESSION_SCHEMA_CHANNEL,
+            resolved.model_dump_json(),
+        )
 
     def send_user_input(
         self,
@@ -134,11 +132,11 @@ class RedisService(metaclass=SingletonMeta):
         )
         resolved = secret_resolver.resolve_payload(payload=message, org_id=org_id)
         self.redis_client.publish(
-            channel=KNOWLEDGE_INDEXING_CHANNEL, message=resolved.model_dump_json()
+            channel=settings.KNOWLEDGE_INDEXING_CHANNEL, message=resolved.model_dump_json()
         )
         logger.info(
             "Sent RAG indexing request to {}: rag_type={}, rag_id={}, collection_id={}",
-            KNOWLEDGE_INDEXING_CHANNEL,
+            settings.KNOWLEDGE_INDEXING_CHANNEL,
             rag_type,
             rag_id,
             collection_id,
@@ -160,7 +158,7 @@ class RedisService(metaclass=SingletonMeta):
             resolved.connection_key,
             resolved.org_id,
         )
-        self.redis_client.publish("realtime_agents:schema", resolved.model_dump_json())
+        self.redis_client.publish(settings.REALTIME_AGENTS_SCHEMA_CHANNEL, resolved.model_dump_json())
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
         # Deliberately dumps the UNRESOLVED original: logging `resolved` would
         # write plaintext credentials into the log stream.
@@ -242,7 +240,7 @@ class RedisService(metaclass=SingletonMeta):
         Raises:
             asyncio.TimeoutError: If no response within timeout
         """
-        response_channel = KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE
+        response_channel = settings.KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL
 
         # Create pubsub and subscribe BEFORE publishing
         pubsub = self.async_redis_client.pubsub()
@@ -256,7 +254,7 @@ class RedisService(metaclass=SingletonMeta):
                 document_config_id=document_config_id,
             )
             await self.async_redis_client.publish(
-                KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL,
+                settings.KNOWLEDGE_DOCUMENT_CHUNK_REQUEST_CHANNEL,
                 message.model_dump_json(),
             )
             logger.info(
@@ -290,5 +288,5 @@ class RedisService(metaclass=SingletonMeta):
     def publish_stop_session(self, session_id) -> int:
         message = StopSessionMessage(session_id=session_id)
         return self.redis_client.publish(
-            STOP_SESSION_CHANNEL, json.dumps(message.model_dump())
+            settings.STOP_SESSION_CHANNEL, json.dumps(message.model_dump())
         )

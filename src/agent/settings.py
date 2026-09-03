@@ -1,54 +1,35 @@
-import os
-from dataclasses import dataclass
+from pathlib import Path
 
+from shared.envtools import Env
 
-@dataclass(frozen=True)
-class Settings:
-    redis_host: str
-    redis_port: int
-    redis_password: str | None
-    agent_request_stream: str
-    agent_result_stream: str
-    agent_consumer_group: str
-    log_level: str
-    agent_default_max_retries: int
-    agent_default_max_iter: int
-    agent_schema_max_retries: int
-    sandbox_request_channel: str
-    sandbox_result_channel: str
-    agent_drop_unsupported_llm_params: bool
-    agent_context_warning_ratio: float
-    knowledge_search_request_channel: str
-    knowledge_search_response_channel: str
+BASE_DIR = Path(__file__).resolve().parent
 
+env = Env()
+if not env.bool("RUN_IN_DOCKER", False):
+    env.read_env(BASE_DIR / "../.env")
 
-def load_settings() -> Settings:
-    return Settings(
-        redis_host=os.environ.get("REDIS_HOST", "127.0.0.1"),
-        redis_port=int(os.environ.get("REDIS_PORT", "6379")),
-        redis_password=os.environ.get("REDIS_PASSWORD") or None,
-        agent_request_stream=os.environ.get("AGENT_REQUEST_STREAM", "agent.requests"),
-        agent_result_stream=os.environ.get("AGENT_RESULT_STREAM", "agent.results"),
-        agent_consumer_group=os.environ.get("AGENT_CONSUMER_GROUP", "agent-executors"),
-        log_level=os.environ.get("AGENT_LOG_LEVEL", "INFO"),
-        agent_default_max_retries=int(os.environ.get("AGENT_DEFAULT_MAX_RETRIES", "5")),
-        agent_default_max_iter=int(os.environ.get("AGENT_DEFAULT_MAX_ITER", "25")),
-        agent_schema_max_retries=int(os.environ.get("AGENT_SCHEMA_MAX_RETRIES", "2")),
-        sandbox_request_channel=os.environ.get(
-            "SANDBOX_REQUEST_CHANNEL", "code_exec_tasks"
-        ),
-        sandbox_result_channel=os.environ.get("SANDBOX_RESULT_CHANNEL", "code_results"),
-        agent_drop_unsupported_llm_params=os.environ.get(
-            "AGENT_DROP_UNSUPPORTED_LLM_PARAMS", "true"
-        ).lower()
-        in {"1", "true", "yes"},
-        agent_context_warning_ratio=float(
-            os.environ.get("AGENT_CONTEXT_WARNING_RATIO", "0.8")
-        ),
-        knowledge_search_request_channel=os.environ.get(
-            "KNOWLEDGE_SEARCH_GET_CHANNEL", "knowledge:search:get"
-        ),
-        knowledge_search_response_channel=os.environ.get(
-            "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
-        ),
-    )
+LOG_LEVEL = env.str("AGENT_LOG_LEVEL")
+
+REDIS_HOST = env.str("REDIS_HOST")
+REDIS_PORT = env.int("REDIS_PORT")
+REDIS_USER = env.str("REDIS_USER")
+REDIS_PASSWORD = env.str("REDIS_PASSWORD")
+
+AGENT_REQUEST_STREAM = env.str("AGENT_REQUEST_STREAM")
+AGENT_RESULT_STREAM = env.str("AGENT_RESULT_STREAM")
+AGENT_CONSUMER_GROUP = env.str("AGENT_CONSUMER_GROUP")
+
+AGENT_DEFAULT_MAX_RETRIES = env.int("AGENT_DEFAULT_MAX_RETRIES")
+AGENT_DEFAULT_MAX_ITER = env.int("AGENT_DEFAULT_MAX_ITER")
+AGENT_SCHEMA_MAX_RETRIES = env.int("AGENT_SCHEMA_MAX_RETRIES")
+
+CODE_EXEC_CHANNEL = env.str("CODE_EXEC_CHANNEL")
+CODE_RESULT_CHANNEL = env.str("CODE_RESULT_CHANNEL")
+
+AGENT_DROP_UNSUPPORTED_LLM_PARAMS = env.ыек("AGENT_DROP_UNSUPPORTED_LLM_PARAMS")
+AGENT_CONTEXT_WARNING_RATIO = env.float("AGENT_CONTEXT_WARNING_RATIO")
+
+KNOWLEDGE_SEARCH_REQUEST_CHANNEL = env.str("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
+KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = env.str("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")
+NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")
+GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")

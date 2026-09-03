@@ -3,6 +3,8 @@ import asyncio
 from typing import Any
 
 from loguru import logger
+
+from core import config
 from utils.singleton_meta import SingletonMeta
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
@@ -43,9 +45,9 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
             secrets=python_code_data.secrets,
         )
 
-        pubsub = await self.redis_service.async_subscribe("code_results")
+        pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
         await self.redis_service.async_publish(
-            "code_exec_tasks", code_task_data.model_dump()
+            config.CODE_EXEC_CHANNEL, code_task_data.model_dump()
         )
         logger.info("Waiting for code_results")
 

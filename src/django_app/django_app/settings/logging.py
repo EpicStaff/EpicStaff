@@ -1,12 +1,12 @@
-import os
-
 import sys
 from loguru import logger
+
+from django_app.settings import env
 
 
 def _resolve_log_level() -> str:
     """Resolve the stdlib root log level from DJANGO_LOG_LEVEL, falling back to WARNING on an invalid/missing value."""
-    raw_level = os.getenv("DJANGO_LOG_LEVEL", "WARNING").strip().upper()
+    raw_level = env.str("DJANGO_LOG_LEVEL", "WARNING").upper()
     if raw_level not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"}:
         logger.warning(
             "Ignoring invalid DJANGO_LOG_LEVEL={!r}; falling back to WARNING.",

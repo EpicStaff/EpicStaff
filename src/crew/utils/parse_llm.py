@@ -5,6 +5,8 @@ import os
 from src.shared.models import LLMData
 from src.crew.utils.llm_wrapper import PatchedLLM, _NO_TEMPERATURE_PATTERNS
 
+import settings
+
 
 def _strip_unsupported_params(llm_config: dict) -> dict:
     model = (llm_config.get("model") or "").lower()
@@ -31,7 +33,7 @@ def parse_llm(llm: LLMData, **kwargs):
     llm_config["model"] = _qualify_model(llm.provider, llm_config.get("model"))
 
     # EpicFLow Patch
-    raw_headers = os.environ.get("LLM_HEADERS")
+    raw_headers = settings.LLM_HEADERS
     if raw_headers:
         extra_headers = json.loads(raw_headers)
         existing = llm_config.get("extra_headers") or {}

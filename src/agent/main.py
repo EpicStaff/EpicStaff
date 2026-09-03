@@ -21,54 +21,53 @@ from app.runners.deps import RunnerDependencies
 from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
 from app.sandbox.client import SandboxClient
-from settings import load_settings
+import settings
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 
 async def main() -> None:
-    settings = load_settings()
-    configure_litellm(settings.agent_drop_unsupported_llm_params)
+    configure_litellm(settings.AGENT_DROP_UNSUPPORTED_LLM_PARAMS)
 
     logger.remove()
-    logger.add(sys.stderr, level=settings.log_level, backtrace=True, diagnose=False)
+    logger.add(sys.stderr, level=settings.LOG_LEVEL, backtrace=True, diagnose=False)
 
     consumer_name = f"{socket.gethostname()}-{uuid4().hex[:8]}"
 
     client = RedisStreamClient(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password,
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD,
     )
     await client.connect()
     await client.ensure_group(
-        stream=settings.agent_request_stream,
-        group=settings.agent_consumer_group,
+        stream=settings.AGENT_REQUEST_STREAM,
+        group=settings.AGENT_CONSUMER_GROUP,
         start_id="0",
         mkstream=True,
     )
 
     sandbox_client = SandboxClient(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password,
-        request_channel=settings.sandbox_request_channel,
-        result_channel=settings.sandbox_result_channel,
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD,
+        request_channel=settings.CODE_EXEC_CHANNEL,
+        result_channel=settings.CODE_RESULT_CHANNEL,
     )
     await sandbox_client.start()
 
     knowledge_client = KnowledgeClient(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password,
-        request_channel=settings.knowledge_search_request_channel,
-        response_channel=settings.knowledge_search_response_channel,
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD,
+        request_channel=settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL,
+        response_channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
     )
     await knowledge_client.start()
 
     loader = DataLoader(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password,
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD,
     )
     await loader.connect()
 
@@ -76,7 +75,7 @@ async def main() -> None:
     mcp_gateway = McpToolGateway(FastMCPClientFactory())
     deps = RunnerDependencies(
         resolver=AgentResolver(sandbox_client, mcp_gateway, knowledge_client),
-        loop=DefaultAgentLoop(llm, settings.agent_context_warning_ratio),
+        loop=DefaultAgentLoop(llm, settings.AGENT_CONTEXT_WARNING_RATIO),
     )
     factory = RunnerFactory(deps)
     factory.register(RunType.SINGLE_TASK, SingleTaskRunner)
@@ -86,9 +85,9 @@ async def main() -> None:
         loader=loader,
         factory=factory,
         redis_client=client,
-        result_stream=settings.agent_result_stream,
-        request_stream=settings.agent_request_stream,
-        consumer_group=settings.agent_consumer_group,
+        result_stream=settings.AGENT_RESULT_STREAM,
+        request_stream=settings.AGENT_REQUEST_STREAM,
+        consumer_group=settings.AGENT_CONSUMER_GROUP,
     )
 
     stop = asyncio.Event()
@@ -108,8 +107,8 @@ async def main() -> None:
 
     while not stop.is_set():
         messages = await client.read(
-            streams={settings.agent_request_stream: ">"},
-            group=settings.agent_consumer_group,
+            streams={settings.AGENT_REQUEST_STREAM: ">"},
+            group=settings.AGENT_CONSUMER_GROUP,
             consumer=consumer_name,
             count=10,
             block_ms=5000,
@@ -126,8 +125,8 @@ async def main() -> None:
                     parse_error,
                 )
                 await client.ack(
-                    settings.agent_request_stream,
-                    settings.agent_consumer_group,
+                    settings.AGENT_REQUEST_STREAM,
+                    settings.AGENT_CONSUMER_GROUP,
                     message.message_id,
                 )
                 continue

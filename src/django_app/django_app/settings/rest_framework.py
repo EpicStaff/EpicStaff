@@ -18,16 +18,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    # One reverse proxy (nginx) sits in front of Django. Without this, DRF
-    # keys throttles on the whole X-Forwarded-For chain, whose left-hand side
-    # the client controls - so any throttle could be bypassed by varying the
-    # header. With 1, only the entry nginx itself appended is used.
     "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_RATES": {
-        "login": env.str("LOGIN_THROTTLE_RATE", "5/min"),
-        "password_reset_request": env.str("PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"),
-        "password_reset_confirm": env.str("PASSWORD_RESET_CONFIRM_THROTTLE_RATE", "10/hour"),
-        "token_refresh": env.str("TOKEN_REFRESH_THROTTLE_RATE", "30/min"),
-        "notify_email": env.str("NOTIFY_EMAIL_THROTTLE_RATE", "10/hour"),
+        "login": env.str("DJANGO_LOGIN_THROTTLE_RATE"),
+        "password_reset_request": env.str("DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE"),
+        "password_reset_confirm": env.str("DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE"),
+        "token_refresh": env.str("DJANGO_TOKEN_REFRESH_THROTTLE_RATE"),
+        "notify_email": env.str("DJANGO_NOTIFY_EMAIL_THROTTLE_RATE"),
     },
 }

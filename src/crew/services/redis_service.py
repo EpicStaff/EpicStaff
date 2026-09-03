@@ -11,11 +11,8 @@ from redis.client import PubSub
 from redis.retry import Retry
 from redis.backoff import ExponentialBackoff
 
+import settings
 from utils.singleton_meta import SingletonMeta
-
-SESSION_STATUS_CHANNEL = os.environ.get(
-    "SESSION_STATUS_CHANNEL", "sessions:session_status"
-)
 
 import asyncio
 
@@ -151,9 +148,10 @@ class SyncPubSubGroup:
 
 
 class RedisService(metaclass=SingletonMeta):
-    def __init__(self, host: str, port: int, password: str):
+    def __init__(self, host: str, port: int, user: str, password: str):
         self.host = host
         self.port = port
+        self.user = user
         self.password = password
 
         self.aioredis_client: aioredis.Redis | None = None
@@ -178,12 +176,14 @@ class RedisService(metaclass=SingletonMeta):
         try:
             self.aioredis_client = await aioredis.from_url(
                 f"redis://{self.host}:{self.port}",
+                username=self.user,
                 password=self.password,
                 decode_responses=True,
                 retry=self._retry,
             )
             self.sync_redis_client = Redis.from_url(
                 f"redis://{self.host}:{self.port}",
+                username=self.user,
                 password=self.password,
                 decode_responses=True,
                 retry=self._retry,
@@ -253,7 +253,7 @@ class RedisService(metaclass=SingletonMeta):
             "status": status,
             "status_data": kwargs,
         }
-        await self.apublish(SESSION_STATUS_CHANNEL, message)
+        await self.apublish(settings.SESSION_STATUS_CHANNEL, message)
 
     def update_session_status(self, session_id: int, status: str, **kwargs):
         message = {
@@ -262,7 +262,7 @@ class RedisService(metaclass=SingletonMeta):
             "status_data": kwargs,
         }
 
-        self.publish(channel=SESSION_STATUS_CHANNEL, message=message)
+        self.publish(channel=settings.SESSION_STATUS_CHANNEL, message=message)
 
     def unsubscribe(
         self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber

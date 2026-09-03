@@ -45,10 +45,10 @@ class TicketService:
 
 ws_ticket_service = TicketService(
     prefix="rbac:ws_ticket:",
-    ttl_seconds=settings.GRAPH_WS_TICKET_TTL_SECONDS,
+    ttl_seconds=settings.GRAPH_WS_TICKET_TTL,
 )
 
 sse_ticket_service = TicketService(
     prefix="rbac:sse_ticket:",
-    ttl_seconds=settings.SSE_TICKET_TTL_SECONDS,
+    ttl_seconds=settings.SSE_TICKET_TTL,
 )

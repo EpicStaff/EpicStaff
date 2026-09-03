@@ -1,13 +1,14 @@
-import os
 from .base_embedder import BaseEmbedder
 from openai import OpenAI
+
+import settings
 
 
 class OpenAIEmbedder(BaseEmbedder):
     def __init__(self, api_key, model_name):
         self.model_name = model_name or "text-embedding-3-small"
 
-        api_key = api_key or os.getenv("OPENAI_API_KEY")
+        api_key = api_key or settings.OPENAI_API_KEY
         self.client = OpenAI(api_key=api_key)
 
     def embed(self, text: str) -> dict:
