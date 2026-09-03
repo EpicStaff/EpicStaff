@@ -57,6 +57,7 @@ class TablesConfig(AppConfig):
             end_node,
             note_node,
             schedule_trigger_node,
+            knowledge_node,
             agent_node,
             task_node,
         )
@@ -132,3 +133,4 @@ class TablesConfig(AppConfig):
         entity_registry.register(schedule_trigger_node.ScheduleTriggerNodeStrategy())
         entity_registry.register(agent_node.AgentNodeStrategy())
         entity_registry.register(task_node.TaskNodeStrategy())
+        entity_registry.register(knowledge_node.KnowledgeNodeStrategy())

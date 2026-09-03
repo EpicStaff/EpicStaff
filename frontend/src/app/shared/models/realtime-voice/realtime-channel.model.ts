@@ -14,6 +14,7 @@ export interface RealtimeChannel {
     channel_type: 'twilio';
     token: string;
     realtime_agent: number | null;
+    realtime_agent_definition: number | null;
     is_active: boolean;
     twilio?: TwilioChannel;
 }
@@ -22,6 +23,7 @@ export interface CreateRealtimeChannelRequest {
     name: string;
     channel_type: 'twilio';
     realtime_agent?: number | null;
+    realtime_agent_definition?: number | null;
     is_active?: boolean;
 }
 
@@ -29,6 +31,7 @@ export interface UpdateRealtimeChannelRequest {
     id: number;
     name?: string;
     realtime_agent?: number | null;
+    realtime_agent_definition?: number | null;
     is_active?: boolean;
 }
 

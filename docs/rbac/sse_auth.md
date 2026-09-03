@@ -2,7 +2,6 @@
 
 **Audience:** frontend developers.
 **Scope:** all `text/event-stream` (SSE) endpoints — `run-session` live stream, filtered external stream, and any future SSE route.
-**Status:** required from the moment Story 2 ships. There is **no backwards compatibility**; old direct-connect URLs without a ticket will receive `401 invalid_sse_ticket`.
 
 ---
 
@@ -131,5 +130,5 @@ The `text/event-stream` handshake never starts when the ticket is rejected; you 
 |---|---|---|
 | `SSE_TICKET_TTL_SECONDS` | `30` (hardcoded in `settings.py`) | How long a freshly issued ticket is valid before consume. |
 
-Tickets are stored in Redis via the raw `django_redis` client under the `rbac:sse_ticket:<token>` key. Consume uses `GETDEL` (Redis 6.2+) so get-and-delete is atomic — two simultaneous consumers cannot both succeed. They are not persisted to the database.
+Tickets are stored in Redis via the raw `django_redis` client under the `rbac:sse_ticket:<sha256-of-token>` key. Redis holds only the SHA-256 digest of the ticket, never the ticket itself, so read access to Redis yields no replayable credential. Consume hashes the incoming ticket and uses `GETDEL` (Redis 6.2+) so get-and-delete is atomic — two simultaneous consumers cannot both succeed. They are not persisted to the database.
 

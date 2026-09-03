@@ -44,7 +44,7 @@ DEFAULT_RAG_SEARCH_TIMEOUT = env.time("DEFAULT_RAG_SEARCH_TIMEOUT")
 NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")
 GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 
-# EST-3285 4.2c: optional run-level token budget hard stop.
+# optional run-level token budget hard stop.
 # Global fallback used when a session does not carry a per-run override
 # (see GraphSessionManagerService.run_session / SessionData.initial_state
 # reserved key "__token_budget__"). None (default) means "no limit" —

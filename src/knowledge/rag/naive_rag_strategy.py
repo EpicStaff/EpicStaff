@@ -52,6 +52,16 @@ class _LRUCache(OrderedDict):
             del self[oldest_key]
 
 
+class EmbedderConfigurationError(RuntimeError):
+    """Raised when the resolved embedder config cannot build a working embedder.
+
+    Previously this branch swallowed any construction error and silently fell
+    back to a default OpenAI embedder built from the container's ambient
+    OPENAI_API_KEY -- the exact failure mode credential_mapper.MissingCredentialError
+    was introduced one layer earlier to prevent. Raising here keeps it visible.
+    """
+
+
 _embedder_cache = _LRUCache(maxsize=50)
 
 
@@ -199,13 +209,13 @@ class NaiveRAGStrategy(BaseRAGStrategy):
         """
         naive_rag_id = rag_id
 
-        embedder = self._get_cached_embedder(
-            naive_rag_id=naive_rag_id,
-            embedder_api_key=(credentials or RagCredentials()).embedder_api_key,
-        )
         uow = UnitOfWork()
 
         try:
+            embedder = self._get_cached_embedder(
+                naive_rag_id=naive_rag_id,
+                embedder_api_key=(credentials or RagCredentials()).embedder_api_key,
+            )
             with uow.start() as uow_ctx:
                 # Update RAG status to PROCESSING
                 uow_ctx.naive_rag_storage.update_rag_status(
@@ -399,15 +409,23 @@ class NaiveRAGStrategy(BaseRAGStrategy):
 
             logger.info(f"Embedder class: {embedder_class.__name__}")
 
+            if embedder_class is OpenAIEmbedder:
+                return embedder_class(
+                    api_key=embedder_config["api_key"],
+                    model_name=embedder_config["model_name"],
+                    base_url=embedder_config.get("base_url"),
+                )
+
             return embedder_class(
                 api_key=embedder_config["api_key"],
                 model_name=embedder_config["model_name"],
             )
         except Exception as e:
-            logger.info(
-                f"Failed to set custom embedder. Using default embedder. Error: {e}"
-            )
-            return self._create_default_embedding_function()
+            provider_label = embedder_config.get("provider") or "<missing 'provider' key>"
+            raise EmbedderConfigurationError(
+                f"Failed to configure embedder for provider "
+                f"'{provider_label}' (rag_type=naive): {e}"
+            ) from e
 
     # ==================== Preview Chunking ====================
 

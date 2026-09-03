@@ -3,6 +3,7 @@ import time
 from uuid import uuid4
 from typing import Dict, Any, Optional
 from loguru import logger
+from pydantic import ValidationError
 from langgraph.types import StreamWriter
 
 import settings
@@ -15,6 +16,7 @@ from src.shared.models import (
     GraphRagSearchConfig,
     BaseKnowledgeSearchMessage,
     BaseKnowledgeSearchMessageResponse,
+    KnowledgeStatus,
 )
 
 
@@ -99,7 +101,68 @@ class KnowledgeSearchService:
         rag_embedder_api_key: str | None = None,
     ) -> list[str]:
         """
-        Search knowledge using specified RAG implementation.
+        Search knowledge and return result strings (agent path).
+
+        When this service was constructed with a stream writer, also emits an
+        `extracted_chunks` graph message. For the node path, which needs the full
+        response and adds its own message fields, use `search_knowledges_detailed`.
+
+        Returns:
+            List of knowledge results (strings)
+        """
+        response, token_usage = self._search(
+            sender=sender,
+            knowledge_collection_id=knowledge_collection_id,
+            rag_type_id=rag_type_id,
+            query=query,
+            rag_search_config=rag_search_config,
+            stop_event=stop_event,
+            timeout=timeout,
+            rag_embedder_api_key=rag_embedder_api_key,
+        )
+
+        if self.writer is not None:
+            self._add_knowledges_to_graph_message(
+                knowledge_results=response,
+                token_usage=token_usage,
+            )
+        return response.results
+
+    def search_knowledges_detailed(
+        self,
+        sender: str,
+        knowledge_collection_id: int,
+        rag_type_id: str,
+        query: str,
+        rag_search_config: Dict[str, Any],
+        stop_event: Optional[StopEvent] = None,
+        timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
+    ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
+        return self._search(
+            sender=sender,
+            knowledge_collection_id=knowledge_collection_id,
+            rag_type_id=rag_type_id,
+            query=query,
+            rag_search_config=rag_search_config,
+            stop_event=stop_event,
+            timeout=timeout,
+            rag_embedder_api_key=rag_embedder_api_key,
+        )
+
+    def _search(
+        self,
+        sender: str,
+        knowledge_collection_id: int,
+        rag_type_id: str,
+        query: str,
+        rag_search_config: Dict[str, Any],
+        stop_event: Optional[StopEvent] = None,
+        timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
+    ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
+        """
+        Publish a search request over Redis and block until the response arrives.
 
         Args:
             sender: Identifier of the sender
@@ -166,12 +229,13 @@ class KnowledgeSearchService:
                     subscriber=subscriber,
                 )
 
-                if self.writer is not None:
-                    self._add_knowledges_to_graph_message(
-                        knowledge_results=knowledge_callback_receiver.results,
-                        token_usage=knowledge_callback_receiver.token_usage,
+                results = knowledge_callback_receiver.results
+                if results.status == KnowledgeStatus.FAILED:
+                    raise RuntimeError(
+                        f"Knowledge search failed for {rag_type_id}: {results.message}"
                     )
-                return knowledge_callback_receiver.results.results
+
+                return results, knowledge_callback_receiver.token_usage
 
             if stop_event is not None:
                 stop_event.check_stop()
@@ -267,5 +331,5 @@ class KnowledgeSearchReceiver:
                 logger.debug(f"Results: {self._results.results}")
                 self._token_usage = data.get("token_usage", {})
                 logger.info(f"Tokens used for knowledge retrieval: {self._token_usage}")
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, ValidationError) as e:
             logger.error(f"Error parsing search results: {e}")

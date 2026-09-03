@@ -42,6 +42,9 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 **additional_global_kwargs,
             },
             use_storage=python_code_data.use_storage,
+            storage_allowed_paths=python_code_data.storage_allowed_paths,
+            storage_org_prefix=python_code_data.storage_org_prefix,
+            org_id=python_code_data.org_id,
             secrets=python_code_data.secrets,
         )
 

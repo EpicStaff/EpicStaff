@@ -6,29 +6,27 @@ logger = logging.getLogger(__name__)
 
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
-    CharFilter,
     DjangoFilterBackend,
     FilterSet,
+    CharFilter,
     NumberFilter,
 )
-from rest_framework import filters as drf_filters
-from rest_framework import generics, mixins, status, viewsets, serializers
+from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    NotFound,
-    PermissionDenied,
     ValidationError as DRFValidationError,
+    PermissionDenied,
+    NotFound,
 )
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -37,19 +35,10 @@ from tables.serializers.model_serializers.embedding_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
-    RealtimeConfigSerializer,
-    RealtimeModelSerializer,
-    RealtimeTranscriptionConfigSerializer,
-    RealtimeTranscriptionModelSerializer,
-)
-from tables.serializers.model_serializers.provider_serializers import (
-    ProviderSerializer,
 )
 from tables.exceptions import (
-    AgentSerializerError,
     BuiltInToolModificationError,
     BulkSaveValidationError,
-    TaskSerializerError,
 )
 from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
@@ -85,7 +74,6 @@ from tables.models import (
     LLMConfig,
     LLMModel,
     Provider,
-    PythonCode,
     PythonCodeResult,
     PythonCodeTool,
     PythonNode,
@@ -108,11 +96,6 @@ from tables.models.crew_models import (
 from tables.exceptions import (
     TaskSerializerError,
     AgentSerializerError,
-)
-from tables.models.llm_models import (
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-    RealtimeTranscriptionModel,
 )
 from drf_spectacular.utils import (
     extend_schema,
@@ -163,6 +146,7 @@ from tables.models.graph_models import (
     ConditionGroup,
     DecisionTableNode,
     EndNode,
+    KnowledgeNode,
     GraphOrganization,
     GraphOrganizationUser,
     GraphNote,
@@ -216,6 +200,7 @@ from tables.services.copy_services import (
 )
 from tables.views.mixins import (
     CopyActionMixin,
+    InspectActionMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
@@ -223,9 +208,8 @@ from tables.views.mixins import (
     ToolUsageActionsMixin,
 )
 from tables.models.rbac_models import ApiKey, Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permissions import (
-    HasOrgPermission,
     IsSuperadmin,
     IsSystemApiKeyAuthenticated,
     DenyApiKeyAuth,
@@ -235,9 +219,6 @@ from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
-from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
-    validate_classification_condition_group_names,
-)
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
     AgentNodeSerializer,
@@ -261,6 +242,9 @@ from tables.serializers.model_serializers import (
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
+    KnowledgeNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    KnowledgeNodeWriteSerializer,
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
@@ -317,6 +301,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.classification_decision_table_node_service import (
     ClassificationDecisionTableNodeService,
 )
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
@@ -329,8 +314,8 @@ from tables.swagger_schemas.webhook_schemas import (
     WEBHOOK_TRIGGER_NODE_UPDATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
 )
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.services.rbac.org_context_service import OrgContextService
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -813,6 +798,7 @@ class ContentHashPreconditionMixin:
 class PythonCodeToolViewSet(
     OrgScopedHybridViewSetMixin,
     CopyActionMixin,
+    InspectActionMixin,
     ToolUsageActionsMixin,
     viewsets.ModelViewSet,
 ):
@@ -834,6 +820,7 @@ class PythonCodeToolViewSet(
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
     }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
@@ -994,7 +981,7 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1004,6 +991,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         "bulk_export": Permission.EXPORT,
         "partial_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
     }
@@ -1100,6 +1088,15 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                 ),
                 "start_node_list",
                 Prefetch("graph_note_list", queryset=GraphNote.objects.all()),
+                Prefetch(
+                    "knowledge_node_list",
+                    queryset=KnowledgeNode.objects.select_related(
+                        "source_collection",
+                        "naive_search_config",
+                        "graph_basic_search_config",
+                        "graph_local_search_config",
+                    ),
+                ),
             )
             .all()
         )
@@ -1524,6 +1521,36 @@ class FileExtractorNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = FileExtractorNode.objects.all()
     serializer_class = FileExtractorNodeSerializer
+
+
+class KnowledgeNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = KnowledgeNode.objects.select_related(
+        "naive_search_config",
+        "graph_basic_search_config",
+        "graph_local_search_config",
+    )
+    serializer_class = KnowledgeNodeWriteSerializer
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return KnowledgeNodeReadSerializer
+        return KnowledgeNodeWriteSerializer
+
+    def perform_create(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_update(serializer)
 
 
 class AudioTranscriptionNodeViewSet(
@@ -2442,7 +2469,11 @@ class ClassificationDecisionTableNodeModelViewSet(
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class McpToolViewSet(
-    OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
@@ -2456,6 +2487,7 @@ class McpToolViewSet(
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
     }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
@@ -2858,7 +2890,7 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is enforced in two
+    OrgScopedModel) — org isolation is enforced in two
     layers here: `HasOrgPermission` checks that the caller's role has
     VOICE:UPDATE permission in their active org (a generic role-bit check,
     with no knowledge of this specific channel), and the manual

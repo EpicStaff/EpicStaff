@@ -47,7 +47,7 @@
                             tooltipText="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
                             [min]="1"
                             [max]="1000"
-                            [step]="1"
+                            [step]="DEFAULT_STEP_SIZE"
                             [decimals]="0"
                         />
                     </div>
@@ -91,6 +91,7 @@
                                             [alwaysShowSteps]="true"
                                             [min]="100"
                                             [max]="100000"
+                                            [stepSize]="100"
                                         />
                                     </div>
                                 </div>
@@ -144,6 +145,7 @@
                                             [alwaysShowSteps]="true"
                                             [min]="100"
                                             [max]="100000"
+                                            [stepSize]="100"
                                         />
                                     </div>
                                 </div>

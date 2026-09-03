@@ -24,7 +24,19 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     [NodeType.PYTHON]: () => ({
         name: 'Python Code Node',
         libraries: [],
-        code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
+        code:
+            '# Replace this comment with your implementation.\n' +
+            '#\n' +
+            '# Purpose   : <describe the transformation or processing this node performs>\n' +
+            '# Inputs    : key = parameter name in main(), value = path to the domain variable - set via Input List\n' +
+            "# Output    : <what the returned value should contain> - written as-is to this node's Output Variable Path\n" +
+            '# Libraries : list any pip packages this code needs in the Libraries field\n' +
+            "# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')\n" +
+            '#\n' +
+            '# Required signature:\n' +
+            '#   def main(<your parameters>) -> ...:\n' +
+            '#       ...\n' +
+            "#       return ...  # written to this node's output variable\n",
         entrypoint: 'main',
     }),
     [NodeType.TASK]: (): TaskNodeData => ({
@@ -58,6 +70,17 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             next_error_node: null,
         },
     }),
+    [NodeType.CLASSIFICATION_TABLE]: () => ({
+        table: {
+            pre_computation_code: '',
+            condition_groups: [],
+            prompts: {},
+            output_variables: [],
+            route_variable_name: 'route_code',
+            default_next_node: null,
+            next_error_node: null,
+        },
+    }),
     [NodeType.NOTE]: () => ({
         content: 'Add your note here...',
         backgroundColor: NODE_COLORS[NodeType.NOTE],
@@ -68,7 +91,19 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         python_code: {
             name: 'Webhook trigger Node',
             libraries: [],
-            code: 'def main(trigger_payload: dict, **kwargs: dict) -> dict:\n    """\n    Main handler for processing webhook-triggered events.\n\n    Parameters\n    ----------\n    trigger_payload : dict\n        The data received from a third-party service via a webhook.\n    **kwargs : dict\n        Additional domain variables passed to the function.\n\n    Returns\n    -------\n    dict\n        A dictionary containing the updated values for domain variables.\n        The returned structure must include all changes that should be\n        applied to the domain.\n    """\n    return {\n        "new_data": trigger_payload,\n    }\n',
+            code:
+                '# Replace this comment with your implementation.\n' +
+                '#\n' +
+                '# Purpose   : <describe what this webhook handler should do with the incoming event>\n' +
+                '# Inputs    : trigger_payload (dict) - payload from the webhook; **kwargs - additional domain variables\n' +
+                '# Output    : <the domain variables this handler should update, and their new values>\n' +
+                '# Libraries : list any pip packages this code needs in the Libraries field\n' +
+                "# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')\n" +
+                '#\n' +
+                '# Required signature:\n' +
+                '#   def main(trigger_payload: dict, **kwargs) -> ...:\n' +
+                '#       ...\n' +
+                "#       return ...  # updated values applied to the flow's domain variables\n",
             entrypoint: 'main',
         },
     }),
@@ -94,5 +129,12 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     },
     [NodeType.END]: () => ({
         output_map: { context: 'variables' },
+    }),
+    [NodeType.KNOWLEDGE_RETRIEVER]: () => ({
+        source_collection: null,
+        rag_type: null,
+        query: '',
+        search_method: null,
+        search_configs: null,
     }),
 };

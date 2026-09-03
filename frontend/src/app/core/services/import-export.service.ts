@@ -3,7 +3,10 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../services/config/config.service';
-import { ImportResult } from '../models/import-result.model';
+import { ImportFlowRequestOptions, ImportResult } from '../models/import-result.model';
+import { InspectResult } from '../models/review-item.model';
+
+export type { ImportFlowRequestOptions };
 
 export type ExportFormat = 'json' | 'csv';
 
@@ -22,12 +25,7 @@ export interface PartialExportRequest {
     graph_note_list: number[];
     schedule_trigger_node_list: number[];
     edge_list: number[];
-}
-
-export interface ImportFlowRequestOptions {
-    preserveUuids: boolean;
-    replaceExisting: boolean;
-    importLabels: boolean;
+    knowledge_node_list: number[];
 }
 
 interface ExportAllBody {
@@ -84,6 +82,13 @@ export class ImportExportService {
         formData.append('import_labels', String(settings.importLabels));
 
         return this.http.post<ImportResult>(`${this.apiUrl}import/`, formData);
+    }
+
+    inspectFlow(file: File): Observable<InspectResult> {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        return this.http.post<InspectResult>(`${this.apiUrl}import/inspect/`, formData);
     }
 
     exportFlow(graphId: string): Observable<Blob> {
