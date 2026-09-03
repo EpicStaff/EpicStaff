@@ -67,6 +67,7 @@ class StopReason(str, Enum):
     LLM_ERROR = "llm_error"
     TIMEOUT = "timeout"
     MAX_CONSECUTIVE_FAILURES = "max_consecutive_failures"  # tool loop stopped after N consecutive tool failures; graceful summary produced
+    MAX_TOOL_CALLS_REACHED = "max_tool_calls_reached"  # tool-call budget for the run exhausted; graceful summary produced
 
 
 FAILURE_STOP_REASONS = frozenset({StopReason.LLM_ERROR, StopReason.TIMEOUT})
@@ -139,7 +140,7 @@ class AgentSpec(BaseModel):
     """Maximum LLM call retry attempts; ``None`` uses the client default."""
     default_temperature: float | None = None
     max_tool_calls: int | None = None
-    """Maximum tool calls executed per loop iteration; ``None`` means unlimited."""
+    """Maximum tool calls executed per agent run; ``None`` means unlimited."""
     tool_timeout: int | None = None
     """Per-tool-call timeout in seconds; ``None`` means no timeout."""
     max_consecutive_failures: int | None = None
