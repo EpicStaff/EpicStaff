@@ -1,8 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 
 import { GetProjectRequest } from '../../../../features/projects/models/project.model';
+import { ProjectsApiService } from '../../../../features/projects/services/projects-api.service';
 import { ProjectsStorageService } from '../../../../features/projects/services/projects-storage.service';
+import { ToastService } from '../../../../services/notifications';
 import { NodeType } from '../../../core/enums/node-type';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 
@@ -61,8 +64,10 @@ export class FlowProjectsContextMenuComponent {
     public readonly nodeSelected = output<CreateNodeRequest>();
 
     private readonly projectsService = inject(ProjectsStorageService);
+    private readonly projectsApiService = inject(ProjectsApiService);
+    private readonly toastService = inject(ToastService);
 
-    public readonly projects = toSignal(this.projectsService.getProjects(), {
+    public readonly projects = toSignal(this.projectsService.getProjects(true), {
         initialValue: [] as GetProjectRequest[],
     });
     public readonly filteredProjects = computed(() =>
@@ -70,6 +75,19 @@ export class FlowProjectsContextMenuComponent {
     );
 
     public onProjectClicked(project: GetProjectRequest): void {
-        this.nodeSelected.emit({ type: NodeType.PROJECT, overrides: { data: project } });
+        this.projectsApiService.getProjectById(project.id).subscribe({
+            next: (fresh) => this.nodeSelected.emit({ type: NodeType.PROJECT, overrides: { data: fresh } }),
+            error: (error: HttpErrorResponse) => {
+                if (error.status === 404) {
+                    this.toastService.error(
+                        `"${project.name}" no longer exists — it was deleted by someone else.`,
+                        5000,
+                        'bottom-right'
+                    );
+                    return;
+                }
+                this.nodeSelected.emit({ type: NodeType.PROJECT, overrides: { data: project } });
+            },
+        });
     }
 }
