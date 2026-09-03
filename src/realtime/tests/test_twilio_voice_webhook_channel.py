@@ -122,9 +122,9 @@ async def test_voice_webhook_falls_back_to_ngrok_domain_when_no_live_url(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_voice_webhook_falls_back_to_settings_voice_stream_url(monkeypatch):
+async def test_voice_webhook_falls_back_to_config_voice_stream_url(monkeypatch):
     from api.main import twilio_voice_webhook_channel
-    from core.config import settings
+    from core import config
 
     channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
 
@@ -132,7 +132,7 @@ async def test_voice_webhook_falls_back_to_settings_voice_stream_url(monkeypatch
         return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream")
+    monkeypatch.setattr(config, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream")
 
     response = await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
 
@@ -146,7 +146,7 @@ async def test_voice_webhook_falls_back_to_settings_voice_stream_url(monkeypatch
 @pytest.mark.asyncio
 async def test_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
     from api.main import twilio_voice_webhook_channel
-    from core.config import settings
+    from core import config
     from fastapi import HTTPException
 
     channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
@@ -155,7 +155,7 @@ async def test_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
         return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(settings, "VOICE_STREAM_URL", "")
+    monkeypatch.setattr(config, "VOICE_STREAM_URL", "")
 
     with pytest.raises(HTTPException) as exc_info:
         await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())

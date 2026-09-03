@@ -8,7 +8,7 @@ USERS_CREATED_FLAG="/tmp/users_created"
 # Only checks if postgres is ready + flag is set.
 # Called by Docker healthcheck — must be fast.
 if [[ "$1" = "healthcheck-users" ]]; then
-    pg_isready -U "${POSTGRES_USER:-postgres}" -p "${DB_PORT:-5432}" || exit 1
+    pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -p "${POSTGRES_PORT}" || exit 1
     if [[ -f "$USERS_CREATED_FLAG" ]]; then
         exit 0
     else
@@ -21,16 +21,16 @@ fi
 # Safe to run as soon as postgres is up.
 
 create_manager_user() {
-    local manager_user="${DB_MANAGER_USER}"
-    local manager_password="${DB_MANAGER_PASSWORD}"
+    local manager_user="${MANAGER_DB_USER}"
+    local manager_password="${MANAGER_DB_PASSWORD}"
 
     if [[ -z "$manager_user" || -z "$manager_password" ]]; then
-        echo "[manager] WARNING: DB_MANAGER_USER or DB_MANAGER_PASSWORD not set, skipping"
+        echo "[manager] WARNING: MANAGER_DB_USER or MANAGER_DB_PASSWORD not set, skipping"
         return 0
     fi
 
     echo "[manager] Creating role if not exists..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}') THEN
@@ -51,16 +51,16 @@ EOF
 }
 
 create_knowledge_user() {
-    local knowledge_user="${DB_KNOWLEDGE_USER}"
-    local knowledge_password="${DB_KNOWLEDGE_PASSWORD}"
+    local knowledge_user="${KNOWLEDGE_DB_USER}"
+    local knowledge_password="${KNOWLEDGE_DB_PASSWORD}"
 
     if [[ -z "$knowledge_user" || -z "$knowledge_password" ]]; then
-        echo "[knowledge] WARNING: DB_KNOWLEDGE_USER or DB_KNOWLEDGE_PASSWORD not set, skipping"
+        echo "[knowledge] WARNING: KNOWLEDGE_DB_USER or KNOWLEDGE_DB_PASSWORD not set, skipping"
         return 0
     fi
 
     echo "[knowledge] Creating role if not exists..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}') THEN
@@ -84,16 +84,16 @@ EOF
 }
 
 create_realtime_user() {
-    local realtime_user="${DB_REALTIME_USER}"
-    local realtime_password="${DB_REALTIME_PASSWORD}"
+    local realtime_user="${REALTIME_DB_USER}"
+    local realtime_password="${REALTIME_DB_PASSWORD}"
 
     if [[ -z "$realtime_user" || -z "$realtime_password" ]]; then
-        echo "[realtime] WARNING: DB_REALTIME_USER or DB_REALTIME_PASSWORD not set, skipping"
+        echo "[realtime] WARNING: REALTIME_DB_USER or REALTIME_DB_PASSWORD not set, skipping"
         return 0
     fi
 
     echo "[realtime] Creating role if not exists..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}') THEN
@@ -114,16 +114,16 @@ EOF
 }
 
 create_crew_user() {
-    local crew_user="${DB_CREW_USER}"
-    local crew_password="${DB_CREW_PASSWORD}"
+    local crew_user="${CREW_DB_USER}"
+    local crew_password="${CREW_DB_PASSWORD}"
 
     if [[ -z "$crew_user" || -z "$crew_password" ]]; then
-        echo "[crew] WARNING: DB_CREW_USER or DB_CREW_PASSWORD not set, skipping"
+        echo "[crew] WARNING: CREW_DB_USER or CREW_DB_PASSWORD not set, skipping"
         return 0
     fi
 
     echo "[crew] Creating role if not exists..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${crew_user}') THEN
@@ -148,11 +148,11 @@ EOF
 # Each function is safe to call multiple times.
 
 grant_manager_permissions() {
-    local manager_user="${DB_MANAGER_USER}"
+    local manager_user="${MANAGER_DB_USER}"
     [[ -z "$manager_user" ]] && return 0
 
     echo "[manager] Granting table permissions..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -183,11 +183,11 @@ EOF
 }
 
 grant_knowledge_permissions() {
-    local knowledge_user="${DB_KNOWLEDGE_USER}"
+    local knowledge_user="${KNOWLEDGE_DB_USER}"
     [[ -z "$knowledge_user" ]] && return 0
 
     echo "[knowledge] Granting table permissions..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 DECLARE
     tbl  text;
@@ -276,11 +276,11 @@ EOF
 }
 
 grant_realtime_permissions() {
-    local realtime_user="${DB_REALTIME_USER}"
+    local realtime_user="${REALTIME_DB_USER}"
     [[ -z "$realtime_user" ]] && return 0
 
     echo "[realtime] Granting table permissions..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -305,11 +305,11 @@ EOF
 }
 
 grant_crew_permissions() {
-    local crew_user="${DB_CREW_USER}"
+    local crew_user="${CREW_DB_USER}"
     [[ -z "$crew_user" ]] && return 0
 
     echo "[crew] Granting table permissions..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -351,7 +351,7 @@ REQUIRED_TABLES=(
 all_tables_exist() {
     for tbl in "${REQUIRED_TABLES[@]}"; do
         local count
-        count=$(psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" -tAc \
+        count=$(psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" -tAc \
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='${tbl}'" 2>/dev/null || echo "0")
         if [[ "$count" != "1" ]]; then
             echo "[check] Table '${tbl}' not yet present"
@@ -368,13 +368,13 @@ all_tables_exist() {
 # Uses CREATE OR REPLACE so it is safe to call on every container start.
 
 install_event_triggers() {
-    local manager_user="${DB_MANAGER_USER}"
-    local knowledge_user="${DB_KNOWLEDGE_USER}"
-    local realtime_user="${DB_REALTIME_USER}"
-    local crew_user="${DB_CREW_USER}"
+    local manager_user="${MANAGER_DB_USER}"
+    local knowledge_user="${KNOWLEDGE_DB_USER}"
+    local realtime_user="${REALTIME_DB_USER}"
+    local crew_user="${CREW_DB_USER}"
 
     echo "[triggers] Installing event triggers for auto-grant..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
 -- Auto-grant table permissions on CREATE TABLE
 CREATE OR REPLACE FUNCTION auto_grant_table_permissions()
 RETURNS event_trigger
@@ -489,13 +489,13 @@ EOF
 
 background_setup() {
     (
-        export TARGET_DB="${POSTGRES_DB:-postgres}"
+        export TARGET_DB="${POSTGRES_DB}"
 
         echo "=== [setup] Phase 1: Waiting for PostgreSQL and target database to be ready ==="
         # pg_isready only checks if postgres accepts connections — it returns true
         # even during the initdb temp-server phase, before POSTGRES_DB is created.
         # We must wait until we can actually connect to the target database.
-        until psql -U "${POSTGRES_USER:-postgres}" -p "${DB_PORT:-5432}" -d "$TARGET_DB" -c "SELECT 1" > /dev/null 2>&1; do
+        until psql -U "${POSTGRES_USER}" -p "${POSTGRES_PORT}" -d "$TARGET_DB" -c "SELECT 1" > /dev/null 2>&1; do
             echo "[setup] Waiting for database '${TARGET_DB}' to exist..."
             sleep 2
         done

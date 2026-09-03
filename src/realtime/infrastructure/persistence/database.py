@@ -5,10 +5,10 @@ from sqlalchemy.orm import sessionmaker
 
 from infrastructure.persistence.db_models import RealtimeSessionItem
 from sqlalchemy.exc import SQLAlchemyError
-from core.config import settings
+from core import config
 
 
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
+engine = create_async_engine(config.DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=engine, class_=AsyncSession
 )

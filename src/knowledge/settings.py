@@ -1,54 +1,64 @@
 from contextlib import contextmanager
-import os
 import sys
+from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
 
+from src.shared.envtools import Env
 from storage import ORMNaiveRagStorage, ORMGraphRagStorage
 
 
-def get_required_env_var(key: str) -> str:
-    """
-    If you see this error during local launch set all required variables in /knowledge/.env
-    """
-    value = os.getenv(key)
-    if value is None:
-        raise ValueError(f"Missing required environment variable: {key}")
-    return value
+BASE_DIR = Path(__file__).resolve().parent
 
+env = Env()
+if not env.bool("RUN_IN_DOCKER", False):
+    env.read_env(BASE_DIR / "../.env")
 
 DEBUG = False
-if len(sys.argv) > 1:
-    if "--debug" in sys.argv:
-        DEBUG = True
 
-if DEBUG:
-    load_dotenv(dotenv_path=find_dotenv(".debug.env"))
-else:
-    load_dotenv()
+DB_USER = env.str("KNOWLEDGE_DB_USER")
+DB_PASSWORD = env.str("KNOWLEDGE_DB_PASSWORD")
+DB_NAME = env.str("DB_NAME")
+DB_PORT = env.str("DB_PORT")
+DB_HOST = env.str("DB_HOST")
 
-# Workaround
-if os.environ.get("DB_NAME"):
-    DB_NAME = get_required_env_var("DB_NAME")
-else:
-    DB_NAME = get_required_env_var("POSTGRES_DB")
+REDIS_HOST = env.str("REDIS_HOST")
+REDIS_PORT = env.int("REDIS_PORT")
+REDIS_USER = env.str("REDIS_USER")
+REDIS_PASSWORD = env.str("REDIS_PASSWORD")
 
-DB_USER = get_required_env_var("DB_KNOWLEDGE_USER")
-DB_PASSWORD = get_required_env_var("DB_KNOWLEDGE_PASSWORD")
-DB_PORT = get_required_env_var("DB_PORT")
-DB_HOST = get_required_env_var("DB_HOST_NAME")
+KNOWLEDGE_SOURCES_CHANNEL = env.str("KNOWLEDGE_SOURCES_CHANNEL")
+KNOWLEDGE_SEARCH_REQUEST_CHANNEL = env.str("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
+KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = env.str("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")
+KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL = env.str("KNOWLEDGE_DOCUMENT_CHUNK_REQUEST_CHANNEL")
+KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE = env.str("KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL")
+KNOWLEDGE_INDEXING_CHANNEL = env.str("KNOWLEDGE_INDEXING_CHANNEL")
 
-# Construct SQLAlchemy URL
+GRAPH_DATA_DIR = env.str("KNOWLEDGE_GRAPH_DATA_DIR")
+
+KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE")
+KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE")
+KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE")
+KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE")
+KNOWLEDGE_MAX_EXTRACTION_PAGES = env.int("KNOWLEDGE_MAX_EXTRACTION_PAGES")
+
+OPENAI_API_KEY = env.str("OPENAI_API_KEY", "")
+MISTRAL_API_KEY = env.str("MISTRAL_API_KEY", "")
+TOGETHER_API_KEY = env.str("TOGETHER_API_KEY", "")
+COHERE_API_KEY = env.str("COHERE_API_KEY", "")
+GOOGLE_API_KEY = env.str("GOOGLE_API_KEY", "")
+CUSTOM_EMBED_BASE_URL = env.str("CUSTOM_EMBED_BASE_URL", "")
+CUSTOM_EMBED_API_KEY = env.str("CUSTOM_EMBED_API_KEY", "")
+EMBEDDING_HEADERS = env.str("KNOWLEDGE_EMBEDDING_HEADERS", "")
+
 DATABASE_URL = (
     f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-# Create engine
 ENGINE = create_engine(DATABASE_URL, echo=False, pool_size=10, max_overflow=20)
 
-# Scoped session
 SessionLocal = scoped_session(sessionmaker(bind=ENGINE))
 
 

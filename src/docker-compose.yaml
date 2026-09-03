@@ -1,21 +1,49 @@
-# docker-compose.yaml — production
+x-docker-env: &docker-env
+  RUN_IN_DOCKER: 1
 
-x-common-env: &common_env
-  CODE_RESULT_CHANNEL: code_results
-  CODE_EXEC_TASK_CHANNEL: code_exec_tasks
-  SESSION_EVENT_UPDATE_CHANNEL: session:event:update
-  SESSION_EVENT_CHANNEL: session:event
-  SESSION_STATUS_CHANNEL: sessions:session_status
-  MEMORY_UPDATE_CHANNEL: memory:update
-  SCHEDULE_CHANNEL: schedule_channel
-  REDIS_HOST: ${REDIS_HOST:-redis}
-  REDIS_PORT: ${REDIS_PORT:-6379}
-  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-  DB_HOST_NAME: ${DB_HOST_NAME:-crewdb}
-  DB_PORT: ${DB_PORT:-5432}
-  DB_NAME: ${POSTGRES_DB:-crew}
-  DJANGO_API_KEY: ${DJANGO_API_KEY}
+x-database-env: &database-env
+  DB_HOST: ${DB_HOST:?}
+  DB_PORT: ${DB_PORT:?}
+  DB_NAME: ${DB_NAME:?}
 
+x-redis-env: &redis-env
+  REDIS_USER: ${REDIS_USER:?}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+  REDIS_HOST: ${REDIS_HOST:?}
+  REDIS_PORT: ${REDIS_PORT:?}
+
+x-minio-env: &minio-env
+  MINIO_USER: ${MINIO_USER:?}
+  MINIO_PASSWORD: ${MINIO_PASSWORD:?}
+  MINIO_SSL: ${MINIO_SSL:?}
+  MINIO_HOST: ${MINIO_HOST:?}
+  MINIO_PORT: ${MINIO_PORT:?}
+  MINIO_BUCKET: ${MINIO_BUCKET}
+
+x-communication-env: &communication-env
+  CODE_RESULT_CHANNEL: ${CODE_RESULT_CHANNEL:?}
+  CODE_EXEC_CHANNEL: ${CODE_EXEC_CHANNEL:?}
+  SESSION_EVENT_UPDATE_CHANNEL: ${SESSION_EVENT_UPDATE_CHANNEL:?}
+  SESSION_EVENT_CHANNEL: ${SESSION_EVENT_CHANNEL:?}
+  SESSION_STATUS_CHANNEL: ${SESSION_STATUS_CHANNEL:?}
+  SESSION_SCHEMA_CHANNEL: ${SESSION_SCHEMA_CHANNEL:?}
+  SCHEDULE_CHANNEL: ${SCHEDULE_CHANNEL:?}
+  STOP_SESSION_CHANNEL: ${STOP_SESSION_CHANNEL:?}
+  KNOWLEDGE_INDEXING_CHANNEL: ${KNOWLEDGE_INDEXING_CHANNEL:?}
+  KNOWLEDGE_DOCUMENT_CHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_DOCUMENT_CHUNK_REQUEST_CHANNEL:?}
+  KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL:?}
+  KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL:?}
+  KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL:?}
+  GRAPH_MESSAGES_CHANNEL: ${GRAPH_MESSAGES_CHANNEL:?}
+  GRAPH_MESSAGE_UPDATE_CHANNEL: ${GRAPH_MESSAGE_UPDATE_CHANNEL:?}
+  WEBHOOK_MESSAGE_CHANNEL: ${WEBHOOK_MESSAGE_CHANNEL:?}
+  REQUEST_WEBHOOK_UPDATE_CHANNEL: ${REQUEST_WEBHOOK_UPDATE_CHANNEL:?}
+  MEMORY_UPDATE_CHANNEL: ${MEMORY_UPDATE_CHANNEL:?}
+  STORAGE_MUTATION_CHANNEL: ${STORAGE_MUTATION_CHANNEL:?}
+  SESSION_TIMEOUT_CHANNEL: ${SESSION_TIMEOUT_CHANNEL:?}
+  CREWAI_OUTPUT_CHANNEL: ${CREWAI_OUTPUT_CHANNEL:?}
+  REALTIME_AGENTS_SCHEMA_CHANNEL: ${REALTIME_AGENTS_SCHEMA_CHANNEL:?}
+  KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
 services:
   django_app:
@@ -26,67 +54,61 @@ services:
     container_name: django_app
     command: ./entrypoint.sh
     environment:
-      <<: *common_env
-      DEBUG: ${DEBUG:-False}
-      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      DB_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      DJANGO_MEDIA_ROOT: ${MEDIA_ROOT}
-      WEBHOOK_USE_TUNNEL: ${USE_TUNNEL}
-      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
-      WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
-      WEBHOOK_HOST_NAME: ${WEBHOOK_HOST_NAME}
-      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
-      GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
-      GUNICORN_MAX_REQUESTS: ${GUNICORN_MAX_REQUESTS:-1000}
-      GUNICORN_MAX_REQUESTS_JITTER: ${GUNICORN_MAX_REQUESTS_JITTER:-100}
-      DJANGO_HOST: ${DJANGO_HOST:-localhost}
-      DJANGO_PORT: ${DJANGO_PORT:-8000}
-      LOAD_DEBUG_ENV: ${LOAD_DEBUG_ENV}
-      TIMEZONE: ${TIMEZONE:-UTC}
-      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
-      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
-      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — generate one with `openssl rand -base64 48`.}
-      JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
-      JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
-      PASSWORD_RESET_TOKEN_TTL: ${PASSWORD_RESET_TOKEN_TTL:-900}
-      PASSWORD_RESET_REQUEST_THROTTLE_RATE: ${PASSWORD_RESET_REQUEST_THROTTLE_RATE:-5/hour}
-      PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${PASSWORD_RESET_CONFIRM_THROTTLE_RATE:-10/hour}
-      TOKEN_REFRESH_THROTTLE_RATE: ${TOKEN_REFRESH_THROTTLE_RATE:-30/min}
-      EMAIL_HOST: ${EMAIL_HOST:-}
-      EMAIL_PORT: ${EMAIL_PORT:-587}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-True}
-      EMAIL_USE_SSL: ${EMAIL_USE_SSL:-False}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@epicstaff.local}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:?FRONTEND_BASE_URL must be set}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
-      FRONTEND_PASSWORD_RESET_PATH: ${FRONTEND_PASSWORD_RESET_PATH:-/reset-password}
-      DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-Organization}
-      FIRST_SETUP_MODE: ${FIRST_SETUP_MODE:-cli_only}
-      LOGIN_THROTTLE_RATE: ${LOGIN_THROTTLE_RATE:-5/min}
-      DJANGO_API_KEY: ${DJANGO_API_KEY:-}
-      PASSWORD_CHANGE_TICKET_TTL_SECONDS: ${PASSWORD_CHANGE_TICKET_TTL_SECONDS:-300}
-      AVATAR_MAX_BYTES: ${AVATAR_MAX_BYTES:-5242880}
-      AVATAR_ALLOWED_FORMATS: ${AVATAR_ALLOWED_FORMATS:-JPEG,PNG}
-      MAX_UPLOAD_FILE_BYTES: ${MAX_UPLOAD_FILE_BYTES:-52428800}
-      MAX_UPLOAD_TOTAL_BYTES: ${MAX_UPLOAD_TOTAL_BYTES:-52428800}
-      MAX_ARCHIVE_ENTRIES: ${MAX_ARCHIVE_ENTRIES:-2000}
-      MAX_ARCHIVE_UNCOMPRESSED_BYTES: ${MAX_ARCHIVE_UNCOMPRESSED_BYTES:-268435456}
-      MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
-      MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
+      <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
+      DJANGO_DB_USER: ${DB_USER:?}
+      DJANGO_DB_PASSWORD: ${DB_PASSWORD:?}
+      DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
+      DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
+      DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
+      DJANGO_SGI_MAX_REQUESTS_JITTER: ${DJANGO_SGI_MAX_REQUESTS_JITTER:?}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:?}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
+      DJANGO_TIMEZONE: ${DJANGO_TIMEZONE:?}
+      DJANGO_JWT_ACCESS_LIFETIME: ${DJANGO_JWT_ACCESS_LIFETIME:?}
+      DJANGO_JWT_REFRESH_LIFETIME: ${DJANGO_JWT_REFRESH_LIFETIME:?}
+      DJANGO_EMAIL_HOST: ${DJANGO_EMAIL_HOST}
+      DJANGO_EMAIL_PORT: ${DJANGO_EMAIL_PORT}
+      DJANGO_EMAIL_USER: ${DJANGO_EMAIL_USER}
+      DJANGO_EMAIL_PASSWORD: ${DJANGO_EMAIL_PASSWORD}
+      DJANGO_EMAIL_USE_TLS: ${DJANGO_EMAIL_USE_TLS}
+      DJANGO_EMAIL_USE_SSL: ${DJANGO_EMAIL_USE_SSL}
+      DJANGO_DEFAULT_FROM_EMAIL: ${DJANGO_DEFAULT_FROM_EMAIL}
+      DJANGO_PASSWORD_RESET_TOKEN_TTL: ${DJANGO_PASSWORD_RESET_TOKEN_TTL:?}
+      DJANGO_PASSWORD_CHANGE_TICKET_TTL: ${DJANGO_PASSWORD_CHANGE_TICKET_TTL:?}
+      DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE:?}
+      DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE:?}
+      DJANGO_NOTIFY_EMAIL_THROTTLE_RATE: ${DJANGO_NOTIFY_EMAIL_THROTTLE_RATE:?}
+      DJANGO_LOGIN_THROTTLE_RATE: ${DJANGO_LOGIN_THROTTLE_RATE:?}
+      DJANGO_TOKEN_REFRESH_THROTTLE_RATE: ${DJANGO_TOKEN_REFRESH_THROTTLE_RATE:?}
+      DJANGO_FIRST_SETUP_MODE: ${DJANGO_FIRST_SETUP_MODE:?}
+      DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
+      DJANGO_FRONTEND_PASSWORD_RESET_PATH: ${DJANGO_FRONTEND_PASSWORD_RESET_PATH:?}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
+      DJANGO_API_KEY: ${DJANGO_API_KEY}
+      DJANGO_AVATAR_MAX_SIZE: ${DJANGO_AVATAR_MAX_SIZE:?}
+      DJANGO_AVATAR_ALLOWED_FORMATS: ${DJANGO_AVATAR_ALLOWED_FORMATS:?}
+      DJANGO_MAX_UPLOAD_FILE_SIZE: ${DJANGO_MAX_UPLOAD_FILE_SIZE:?}
+      DJANGO_MAX_UPLOAD_TOTAL_SIZE: ${DJANGO_MAX_UPLOAD_TOTAL_SIZE:?}
+      DJANGO_MAX_ARCHIVE_ENTRIES: ${DJANGO_MAX_ARCHIVE_ENTRIES:?}
+      DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE: ${DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE:?}
+      DJANGO_MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
+      DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
+
+      WEBHOOK_USE_TUNNEL: ${WEBHOOK_USE_TUNNEL:?}
+      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:?}
+      WEBHOOK_HOST: ${WEBHOOK_HOST:?}
     volumes:
       - media_data:/app/media
     networks:
       backend-network:
         aliases:
           - djangoapp
+          - django
     depends_on:
       crewdb:
         condition: service_started
@@ -95,7 +117,7 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://${DJANGO_HOST:-localhost}:${DJANGO_PORT:-8000}/ht/')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${DJANGO_PORT}/ht/')\""]
       interval: 30s
       timeout: 10s
       retries: 100
@@ -107,22 +129,23 @@ services:
       context: .
       dockerfile: ./realtime/Dockerfile.realtime
     environment:
-      <<: *common_env
-      KNOWLEDGE_SEARCH_GET_CHANNEL: knowledge:search:get
-      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: knowledge:search:response
-      REALTIME_AGENTS_SCHEMA_CHANNEL: realtime_agents:schema
-      REALTIME_PORT: ${REALTIME_PORT:-8050}
-      DB_REALTIME_USER: ${DB_REALTIME_USER}
-      DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
-      DJANGO_AUTH_URL: ${DJANGO_AUTH_URL}
-      DJANGO_AUTH_TIMEOUT: ${DJANGO_AUTH_TIMEOUT:-5}
-      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
-      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
-      VOICE_AGENT_ID: ${VOICE_AGENT_ID:-2}
-      VOICE_STREAM_URL: ${VOICE_STREAM_URL:-}
-      DJANGO_HOST: ${DJANGO_HOST:-django_app}
-      DJANGO_PORT: ${DJANGO_PORT:-8000}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      REALTIME_HOST: ${REALTIME_HOST:?}
+      REALTIME_PORT: ${REALTIME_PORT:?}
+      REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
+      DJANGO_API_URL: ${DJANGO_API_URL:?}
+      DJANGO_AUTH_URL: ${DJANGO_AUTH_URL:?}
+      DJANGO_AUTH_TIMEOUT: ${DJANGO_AUTH_TIMEOUT:?}
+      DJANGO_API_KEY: ${DJANGO_API_KEY:?}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
+      REALTIME_DB_USER: ${REALTIME_DB_USER:?}
+      REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:?}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:?}
+      TWILIO_VOICE_AGENT_ID: ${TWILIO_VOICE_AGENT_ID:?}
+      TWILIO_VOICE_STREAM_URL: ${TWILIO_VOICE_STREAM_URL:?}
     networks:
       - backend-network
     depends_on:
@@ -142,9 +165,9 @@ services:
       dockerfile: ./manager/Dockerfile.man
     container_name: manager_container
     environment:
-      <<: *common_env
-      DB_MANAGER_USER: ${DB_MANAGER_USER}
-      DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      MANAGER_DB_USER: ${MANAGER_DB_USER:?}
+      MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
     networks:
       - backend-network
     tty: true
@@ -161,22 +184,24 @@ services:
       context: ./crewdb
       dockerfile: Dockerfile.crewdb
     container_name: crewdb
-    command: ["postgres", "-c", "port=${DB_PORT:-5432}"]
+    command: ["postgres", "-c", "port=${DB_PORT}"]
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-crew}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      PGDATA: ${PGDATA:-/var/lib/postgresql/data/pgdata}
-      DB_MANAGER_USER: ${DB_MANAGER_USER}
-      DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
-      DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
-      DB_REALTIME_USER: ${DB_REALTIME_USER}
-      DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
-      DB_CREW_USER: ${DB_CREW_USER}
-      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
-      DB_PORT: ${DB_PORT:-5432}
-      DJANGO_HOST: ${DJANGO_HOST}
-      DJANGO_PORT: ${DJANGO_PORT:-8000}
+      POSTGRES_USER: ${DB_USER:?}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
+      POSTGRES_DB: ${DB_NAME:?}
+      POSTGRES_HOST: ${DB_HOST:?}
+      POSTGRES_PORT: ${DB_PORT:?}
+      PGDATA: ${PGDATA:?}
+      MANAGER_DB_USER: ${MANAGER_DB_USER:?}
+      MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
+      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
+      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
+      REALTIME_DB_USER: ${REALTIME_DB_USER:?}
+      REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
+      CREW_DB_USER: ${CREW_DB_USER:?}
+      CREW_DB_PASSWORD: ${CREW_DB_PASSWORD:?}
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
     volumes:
       - crew_pgdata:/var/lib/postgresql/data
     networks:
@@ -184,7 +209,7 @@ services:
     healthcheck:
       test: >
         bash -c '
-          pg_isready -U postgres -p ${DB_PORT:-5432} || exit 1
+          pg_isready -U ${DB_USER} -d ${DB_NAME} -p ${DB_PORT} || exit 1
           /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users
         '
       interval: 15s
@@ -203,43 +228,41 @@ services:
       - ./redis.conf:/usr/local/etc/redis/redis.conf
       - redis_data:/data
     environment:
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PORT: ${REDIS_PORT:?}
+      REDIS_USER: ${REDIS_USER:?}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     command: >
-      sh -c "redis-server --port $${REDIS_PORT:-6379}
-      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
+      sh -c "redis-server --port $${REDIS_PORT}
+      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}
+      $${REDIS_USER:+--user \"$${REDIS_USER}\" on \">$${REDIS_PASSWORD}\" ~* &* +@all}"
     healthcheck:
       test: >
-        sh -c "redis-cli -p $${REDIS_PORT:-6379} $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
+        sh -c "redis-cli -p $${REDIS_PORT} $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
       interval: 5s
       timeout: 2s
       retries: 50
       start_period: 5s
 
   crew:
-    image: ghcr.io/epicstaff/crew:${IMAGE_TAG:-latest}
+#    image: ghcr.io/epicstaff/crew:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./crew/Dockerfile.crew
     container_name: crew
     environment:
-      <<: *common_env
-      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
-      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
-      EC_TELEMETRY: ${EC_TELEMETRY:-False}
-      MEM0_TELEMETRY: ${MEM0_TELEMETRY:-False}
-      MONITORING_MODE: ${MONITORING_MODE}
-      DB_CREW_USER: ${DB_CREW_USER}
-      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
-      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS}
-      DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
-      NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
-      GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
-      LLM_HEADERS: ${LLM_HEADERS:-}
-      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
-      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
-      AGENT_RESULT_TIMEOUT_S: ${AGENT_RESULT_TIMEOUT_S:-600}
-      REMEMBERED_OUTPUTS_TTL_S: ${REMEMBERED_OUTPUTS_TTL_S:-3600}
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      CREW_DB_USER: ${CREW_DB_USER:?}
+      CREW_DB_PASSWORD: ${CREW_DB_PASSWORD:?}
+      CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
+      DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
+      NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
+      GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
+      CREW_LLM_HEADERS: ${CREW_LLM_HEADERS:?}
+      CREW_REMEMBERED_OUTPUTS_TTL: ${CREW_REMEMBERED_OUTPUTS_TTL:?}
+      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
+      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
+      AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
+      TOKEN_BUDGET: ${TOKEN_BUDGET:?}
     networks:
       - backend-network
     tty: true
@@ -262,17 +285,13 @@ services:
     container_name: sandbox
     init: true
     environment:
-      <<: *common_env
-      BASE_VENV_PATH: ${BASE_VENV_PATH}
-      OUTPUT_PATH: ${OUTPUT_PATH}
-      MASK_SECRET: ${MASK_SECRET:-true}
-      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
-      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
+      <<: [*docker-env, *redis-env, *minio-env, *communication-env]
+      SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
+      SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
+      SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
     volumes:
-      - sandbox_venvs:${BASE_VENV_PATH}
-      - ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}
+      - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
+      - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -306,18 +325,16 @@ services:
       dockerfile: ./knowledge/Dockerfile.knowledge
     container_name: knowledge
     environment:
-      <<: *common_env
-      KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
-      DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
-      DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
-      EMBEDDING_HEADERS: ${EMBEDDING_HEADERS:-}
-      GRAPH_DATA_DIR: /home/user/root/app/graph_data
-      KNOWLEDGE_MAX_EXTRACTION_INPUT_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_INPUT_BYTES:-52428800}
-      KNOWLEDGE_MAX_EXTRACTION_UNPACKED_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_UNPACKED_BYTES:-268435456}
-      KNOWLEDGE_MAX_EXTRACTION_CONTENT_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_CONTENT_BYTES:-4194304}
-      KNOWLEDGE_MAX_EXTRACTION_HTML_BYTES: ${KNOWLEDGE_MAX_EXTRACTION_HTML_BYTES:-2097152}
-      KNOWLEDGE_MAX_EXTRACTION_PAGES: ${KNOWLEDGE_MAX_EXTRACTION_PAGES:-2000}
-
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
+      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
+      KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE:?}
+      KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE:?}
+      KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE:?}
+      KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE:?}
+      KNOWLEDGE_MAX_EXTRACTION_PAGES: ${KNOWLEDGE_MAX_EXTRACTION_PAGES:?}
+      KNOWLEDGE_GRAPH_DATA_DIR: ${KNOWLEDGE_GRAPH_DATA_DIR:?}
+      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
     volumes:
       - graph_data:/home/user/root/app/graph_data
     networks:
@@ -333,17 +350,17 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: minio
-    command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-minioadmin_secret}
+      MINIO_ROOT_USER: ${MINIO_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?}
     volumes:
       - minio_data:/data
     networks:
       - backend-network
       - sandbox-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${MINIO_PORT:-9000}/minio/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:${MINIO_PORT}/minio/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -360,8 +377,8 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:${MINIO_PORT:-9000} ${STORAGE_ACCESS_KEY:-minioadmin} ${STORAGE_SECRET_KEY:-minioadmin_secret} &&
-      mc mb --ignore-existing local/${STORAGE_BUCKET_NAME:-epicstaff} &&
+      mc alias set local http://minio:${MINIO_PORT} ${MINIO_USER} ${MINIO_PASSWORD} &&
+      mc mb --ignore-existing local/${MINIO_BUCKET} &&
       echo 'Bucket ready.' &&
       exit 0
       "
@@ -375,27 +392,31 @@ services:
       target: production
     container_name: epicstaff-frontend
     environment:
-      - API_URL=${API_URL}
-      - REALTIME_API_URL=${REALTIME_API_URL}
+      API_URL: ${API_URL:?}
+      REALTIME_API_URL: ${REALTIME_API_URL:?}
     networks:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
+#    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
     container_name: webhook
     build:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: *common_env
-      USE_TUNNEL: ${USE_TUNNEL}
-      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
-      NGROK_DOMAIN: ${NGROK_DOMAIN}
+      <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
+      WEBHOOK_HOST: ${WEBHOOK_HOST:?}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:?}
+
+      WEBHOOK_NGROK_DOMAIN: ${WEBHOOK_NGROK_DOMAIN:?}
+
+      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
+      USE_TUNNEL: ${WEBHOOK_USE_TUNNEL:?}
+      WEBHOOK_LOG_LEVEL: ${WEBHOOK_LOG_LEVEL:?}
       WEBHOOK_EMPTY_JSON_PATHS: ${WEBHOOK_EMPTY_JSON_PATHS}
-      WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
     ports:
-      - "${WEBHOOK_PORT:-8051}:${WEBHOOK_PORT:-8051}"
+      - "${WEBHOOK_PORT}:${WEBHOOK_PORT}"
     depends_on:
       redis:
         condition: service_healthy
@@ -404,7 +425,7 @@ services:
     networks:
       - backend-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${WEBHOOK_PORT:-8051}/')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${WEBHOOK_PORT}/')\""]
       interval: 30s
       timeout: 10s
       retries: 30
@@ -417,10 +438,11 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      - DOMAIN_NAME=${DOMAIN_NAME}
-      - SSL_ENABLE=${SSL_ENABLE}
-      - FRONTEND_INTERNAL_PORT=80
-      - WEBHOOK_PORT=${WEBHOOK_PORT:-8051}
+      NGINX_DOMAIN_NAME: ${NGINX_DOMAIN_NAME:?}
+      NGINX_SSL_ENABLE: ${NGINX_SSL_ENABLE:?}
+      FRONTEND_PORT: ${FRONTEND_PORT:?}
+      FRONTEND_INTERNAL_PORT: ${FRONTEND_INTERNAL_PORT:?}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:?}
     volumes:
       - ./nginx/templates/default.conf.template:/etc/nginx/templates/default.conf.template
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -455,16 +477,18 @@ services:
       context: .
       dockerfile: ./agent/Dockerfile.agent
     environment:
-      <<: *common_env
-      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
-      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
-      AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:-agent-executors}
-      AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:-5}
-      AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:-25}
-      AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:-2}
-      AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:-true}
-      AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:-0.8}
-      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:-INFO}
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
+      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
+      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
+      AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
+      AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
+      AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
+      AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
+      AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:?}
+      AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:?}
+      NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
+      GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
     depends_on:
       redis:
         condition: service_healthy

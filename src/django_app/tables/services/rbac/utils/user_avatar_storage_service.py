@@ -66,8 +66,8 @@ class UserAvatarStorageService:
     def _validate(self, uploaded_file: UploadedFile) -> str:
         # 1. size gate — cheapest check first.
         size = getattr(uploaded_file, "size", None)
-        if size is None or size > settings.AVATAR_MAX_BYTES:
-            max_mb = settings.AVATAR_MAX_BYTES // (1024 * 1024)
+        if size is None or size > settings.AVATAR_MAX_SIZE:
+            max_mb = settings.AVATAR_MAX_SIZE // (1024 * 1024)
             raise AvatarTooLargeError(
                 detail=(
                     f"Avatar file exceeds the maximum allowed size " f"({max_mb} MB)."

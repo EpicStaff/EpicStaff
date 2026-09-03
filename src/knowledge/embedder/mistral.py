@@ -1,9 +1,10 @@
-import os
 from typing import List, Optional
 
 import httpx
 
 from .base_embedder import BaseEmbedder
+
+import settings
 
 MISTRAL_API_URL = "https://api.mistral.ai/v1/embeddings"
 
@@ -12,7 +13,7 @@ class MistralEmbedder(BaseEmbedder):
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
         # dims=1024
         self.model_name = model_name or "mistral-embed"
-        self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
+        self.api_key = api_key or settings.MISTRAL_API_KEY
         if not self.api_key:
             raise ValueError(
                 "Cohere API key must be provided via argument or 'MISTRAL_API_KEY' environment variable."

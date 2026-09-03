@@ -1,49 +1,71 @@
 import sys
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional, Dict, Any
+
+from src.shared.envtools import Env
+
+env = Env()
 
 IS_DEBUG = "--debug" in sys.argv
-
-config_dict: Dict[str, Any] = {"env_file_encoding": "utf-8", "extra": "ignore"}
 
 if IS_DEBUG:
     env_file_path = "../.debug.env"
     print(f"--- DEBUG MODE: Loading settings from {env_file_path} ---")
-    config_dict["env_file"] = env_file_path
+    try:
+        env.read_env(env_file_path)
+    except (ValueError, TypeError) as e:
+        print(f"\nFATAL CONFIGURATION ERROR:\n{e}", file=sys.stderr)
+        sys.exit(1)
 else:
     print("--- STANDARD MODE: Loading settings from system environment ---")
 
 
-class Settings(BaseSettings):
-    WEBHOOK_TUNNEL: Optional[str] = None
-    NGROK_DOMAIN: Optional[str] = None
-    WEBHOOK_PORT: int = 8009
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = "redis_password"
-    REDIS_TUNNEL_CONFIG_CHANNEL: str = "REDIS_TUNNEL_CONFIG_CHANNEL"
-    REQUEST_WEBHOOK_UPDATE_CHANNEL: str = "REQUEST_WEBHOOK_UPDATE_CHANNEL"
-    WEBHOOK_TUNNEL_RECONNECT_TIMEOUT: int = 10
-    LOG_LEVEL: str = "INFO"
-    TUNNEL_URLS_HASH_KEY: str = "tunnel_urls"
-    REALTIME_URL: str = "http://realtime:8050"
-    NGROK_TARGET_HOST: str = "epicstaff-nginx"
-    NGROK_TARGET_PORT: int = 80
-    LOCALHOST_TARGET_HOST: str = "localhost"
-    LOCALHOST_TARGET_PORT: int = 8009
+class Settings:
+    # --- Tunnel ---
+    WEBHOOK_TUNNEL: str | None = env.str("WEBHOOK_TUNNEL", None)
+    NGROK_DOMAIN: str | None = env.str("WEBHOOK_NGROK_DOMAIN", None)
 
-    # --- CORS ---
-    CORS_ALLOWED_ORIGINS: str = ""
+    # --- Server ---
+    WEBHOOK_PORT: int = env.int("WEBHOOK_PORT")
+    LOG_LEVEL: str = env.str("WEBHOOK_LOG_LEVEL")
+
+    # --- Redis ---
+    REDIS_HOST: str = env.str("REDIS_HOST")
+    REDIS_PORT: int = env.int("REDIS_PORT")
+    REDIS_USER: str = env.str("REDIS_USER")
+    REDIS_PASSWORD: str = env.str("REDIS_PASSWORD")
+
+    # --- Channels ---
+    REDIS_TUNNEL_CONFIG_CHANNEL: str = env.str("REDIS_TUNNEL_CONFIG_CHANNEL", "REDIS_TUNNEL_CONFIG_CHANNEL")
+    REQUEST_WEBHOOK_UPDATE_CHANNEL: str = env.str("REQUEST_WEBHOOK_UPDATE_CHANNEL", "REQUEST_WEBHOOK_UPDATE_CHANNEL")
+    WEBHOOK_MESSAGE_CHANNEL: str = env.str("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
+
+    # --- Tunnel behaviour ---
+    WEBHOOK_TUNNEL_RECONNECT_TIMEOUT: int = env.int("WEBHOOK_TUNNEL_RECONNECT_TIMEOUT", 10)
+    TUNNEL_URLS_HASH_KEY: str = env.str("TUNNEL_URLS_HASH_KEY", "tunnel_urls")
+
+    # --- Upstream targets ---
+    REALTIME_URL: str = env.str("REALTIME_URL", "http://realtime:8050")
+    NGROK_TARGET_HOST: str = env.str("NGROK_TARGET_HOST", "epicstaff-nginx")
+    NGROK_TARGET_PORT: int = env.int("NGROK_TARGET_PORT", 80)
+    LOCALHOST_TARGET_HOST: str = env.str("LOCALHOST_TARGET_HOST", "localhost")
+    LOCALHOST_TARGET_PORT: int = env.int("LOCALHOST_TARGET_PORT", 8009)
+
+    # --- CORS (env key is DJANGO_CORS_ALLOWED_ORIGINS, matching the BaseSettings alias) ---
+    CORS_ALLOWED_ORIGINS: str = env.str("DJANGO_CORS_ALLOWED_ORIGINS")
+
+    # --- Soft config list (optional — default empty string preserves original behaviour) ---
+    WEBHOOK_EMPTY_JSON_PATHS: str = env.str("WEBHOOK_EMPTY_JSON_PATHS", "")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 
-    model_config = SettingsConfigDict(**config_dict)
+    @property
+    def webhook_empty_json_paths_set(self) -> set[str]:
+        return {p.strip() for p in self.WEBHOOK_EMPTY_JSON_PATHS.split(",") if p.strip()}
 
 
 try:
     settings = Settings()
-except (ValueError, FileNotFoundError) as e:
+except Exception as e:
     print(f"\nFATAL CONFIGURATION ERROR:\n{e}", file=sys.stderr)
     sys.exit(1)

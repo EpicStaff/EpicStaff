@@ -5,6 +5,7 @@ from typing import Callable, Optional, Union
 
 import asyncio
 
+import settings
 from crewai.agents.crew_agent_executor import KNOWLEDGE_KEYWORD
 from crewai.agents.parser import AgentAction, AgentFinish
 from crewai.task import TaskOutput
@@ -23,12 +24,7 @@ from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.redis_service import RedisService, SyncPubsubSubscriber
 from services.knowledge_search_service import KnowledgeSearchService
 
-
-SESSION_STATUS_CHANNEL = os.environ.get(
-    "SESSION_STATUS_CHANNEL", "sessions:session_status"
-)
-
-# Typed findings channel: src/shared/tools/report_findings_tool/main.py
+# Typed findings channel (EST-3285 5.3): src/shared/tools/report_findings_tool/main.py
 # returns a dict carrying this marker key when it successfully reports findings.
 # The tool's return value goes to CrewAI as a JSON string (result_data is always
 # json.dumps(...) of whatever the sandboxed main() returns), so we recognize it
@@ -69,7 +65,7 @@ class GraphSessionCallbackFactory:
                 if task.cancelled():
                     logger.warning(f"Session {self.session_id} was cancelled.")
                     self.redis_service.publish(
-                        SESSION_STATUS_CHANNEL,
+                        settings.SESSION_STATUS_CHANNEL,
                         {"session_id": self.session_id, "status": "cancelled"},
                     )
                 elif task.exception():
@@ -80,7 +76,7 @@ class GraphSessionCallbackFactory:
                     )
 
                     self.redis_service.publish(
-                        SESSION_STATUS_CHANNEL,
+                        settings.SESSION_STATUS_CHANNEL,
                         {
                             "session_id": self.session_id,
                             "status": "error",
@@ -98,7 +94,7 @@ class GraphSessionCallbackFactory:
                     last_state = state_history[-1]
 
                     self.redis_service.publish(
-                        SESSION_STATUS_CHANNEL,
+                        settings.SESSION_STATUS_CHANNEL,
                         {
                             "session_id": self.session_id,
                             "status": "end",

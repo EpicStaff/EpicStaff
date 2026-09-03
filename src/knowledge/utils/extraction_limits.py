@@ -1,6 +1,7 @@
 import io
-import os
 import zipfile
+
+import settings
 
 
 _CHUNK_BYTES = 1024 * 1024
@@ -100,29 +101,12 @@ class ExtractionBudget:
             )
 
 
-def _env_int(name: str, default: int) -> int:
-    """Read a positive int from the environment, falling back to default."""
-    try:
-        value = int(os.environ[name])
-    except (KeyError, ValueError):
-        return default
-    return value if value > 0 else default
-
-
 def default_budget() -> ExtractionBudget:
     """Build the budget applied to extractions that do not supply one."""
     return ExtractionBudget(
-        max_input_bytes=_env_int(
-            "KNOWLEDGE_MAX_EXTRACTION_INPUT_BYTES", DEFAULT_MAX_INPUT_BYTES
-        ),
-        max_unpacked_bytes=_env_int(
-            "KNOWLEDGE_MAX_EXTRACTION_UNPACKED_BYTES", DEFAULT_MAX_UNPACKED_BYTES
-        ),
-        max_content_bytes=_env_int(
-            "KNOWLEDGE_MAX_EXTRACTION_CONTENT_BYTES", DEFAULT_MAX_CONTENT_BYTES
-        ),
-        max_html_bytes=_env_int(
-            "KNOWLEDGE_MAX_EXTRACTION_HTML_BYTES", DEFAULT_MAX_HTML_BYTES
-        ),
-        max_pages=_env_int("KNOWLEDGE_MAX_EXTRACTION_PAGES", DEFAULT_MAX_PAGES),
+        max_input_bytes=settings.KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE,
+        max_unpacked_bytes=settings.KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE,
+        max_content_bytes=settings.KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE,
+        max_html_bytes=settings.KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE,
+        max_pages=settings.KNOWLEDGE_MAX_EXTRACTION_PAGES,
     )

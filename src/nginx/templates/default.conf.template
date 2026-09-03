@@ -22,22 +22,22 @@ upstream webhook_server {
 server {
     listen 80;
     client_max_body_size 50M;
-    ${SSL_ENABLE} listen 443 ssl;
+    ${NGINX_SSL_ENABLE} listen 443 ssl;
     
-    server_name ${DOMAIN_NAME};
+    server_name ${NGINX_DOMAIN_NAME};
 
-    ${SSL_ENABLE} ssl_certificate /etc/nginx/certs/fullchain.pem; 
-    ${SSL_ENABLE} ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ${NGINX_SSL_ENABLE} ssl_certificate /etc/nginx/certs/fullchain.pem; 
+    ${NGINX_SSL_ENABLE} ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
-    ${SSL_ENABLE} ssl_protocols TLSv1.2 TLSv1.3;
-    ${SSL_ENABLE} ssl_ciphers HIGH:!aNULL:!MD5;
+    ${NGINX_SSL_ENABLE} ssl_protocols TLSv1.2 TLSv1.3;
+    ${NGINX_SSL_ENABLE} ssl_ciphers HIGH:!aNULL:!MD5;
 
     # Force TLS when SSL_ENABLE is on. This block serves both :80 and :443, so
     # the redirect is scoped by $scheme instead of a second server block -- a
     # second block on :80 would collide with the listen directive above.
     # If a load balancer terminates TLS in front of nginx, leave SSL_ENABLE off
     # here: $scheme would always be http and this would redirect in a loop.
-    ${SSL_ENABLE} if ($scheme = http) { return 301 https://$host$request_uri; }
+    ${NGINX_SSL_ENABLE} if ($scheme = http) { return 301 https://$host$request_uri; }
 
     # ---- Security response headers --------------------------------------
     # WARNING: nginx inherits add_header into a location only if that location
@@ -61,7 +61,7 @@ server {
     # Content-Security-Policy once the console is clean.
     add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self'" always;
 
-    ${SSL_ENABLE} add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    ${NGINX_SSL_ENABLE} add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     # ---------------------------------------------------------------------
 
     location / {

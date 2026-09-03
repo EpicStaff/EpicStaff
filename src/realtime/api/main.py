@@ -35,7 +35,7 @@ from infrastructure.transcription.transcription_client_factory import (
     TranscriptionClientFactory,
 )
 from utils.instructions_concatenator import generate_instruction
-from core.config import settings
+from core import config
 from utils.auth import introspect_token
 from utils.twilio_signature import validate_twilio_signature
 
@@ -48,14 +48,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI()
 redis_service = RedisService(
-    host=settings.REDIS_HOST, port=settings.REDIS_PORT, password=settings.REDIS_PASSWORD
+    host=config.REDIS_HOST, port=config.REDIS_PORT, password=config.REDIS_PASSWORD
 )
 python_code_executor_service = PythonCodeExecutorService(redis_service=redis_service)
 tool_manager_service = ToolManagerService(
     redis_service=redis_service,
     python_code_executor_service=python_code_executor_service,
-    knowledge_search_get_channel=settings.KNOWLEDGE_SEARCH_GET_CHANNEL,
-    knowledge_search_response_channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
+    knowledge_search_get_channel=config.KNOWLEDGE_SEARCH_GET_CHANNEL,
+    knowledge_search_response_channel=config.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
 )
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
 factory = RealtimeAgentClientFactory(
@@ -67,7 +67,7 @@ transcription_client_factory = TranscriptionClientFactory()
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allowed_origins_list,
+    allow_origins=config.DJANGO_CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,10 +75,10 @@ app.add_middleware(
 
 
 connection_repository = ConnectionRepository(
-    ttl_seconds=settings.CONNECTION_KEY_TTL_SECONDS
+    ttl_seconds=config.CONNECTION_KEY_TTL_SECONDS
 )
 stream_token_repository = StreamTokenRepository(
-    ttl_seconds=settings.STREAM_TOKEN_TTL_SECONDS
+    ttl_seconds=config.STREAM_TOKEN_TTL_SECONDS
 )
 
 # ---------------------------------------------------------------------------
@@ -100,14 +100,14 @@ async def get_channel_config(channel_token: str) -> dict:
     # unscoped by org, API-key-only. This request comes from Twilio via us with
     # no logged-in user and no org context, so it cannot use the normal
     # org-scoped list endpoint (that 400s with org_context_required).
-    url = f"{settings.DJANGO_API_BASE_URL}/realtime-channels/lookup-by-token/"
+    url = f"{config.DJANGO_API_BASE_URL}/realtime-channels/lookup-by-token/"
     logger.info(f"[channel_config] fetching from Django: {url}?token={channel_token}")
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 url,
                 params={"token": channel_token},
-                headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
+                headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
                 timeout=5.0,
             )
             logger.debug(
@@ -150,17 +150,17 @@ async def redis_listener():
     """Listen to Redis channel and store connection data."""
 
     redis_service = RedisService(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD,
+        host=config.REDIS_HOST,
+        port=config.REDIS_PORT,
+        password=config.REDIS_PASSWORD,
     )
     await redis_service.connect()
     logger.info("redis_listener: connected to Redis")
 
     pubsub = await redis_service.async_subscribe(
-        settings.REALTIME_AGENTS_SCHEMA_CHANNEL
+        config.REALTIME_AGENTS_SCHEMA_CHANNEL
     )
-    logger.info(f"Subscribed to channel '{settings.REALTIME_AGENTS_SCHEMA_CHANNEL}'")
+    logger.info(f"Subscribed to channel '{config.REALTIME_AGENTS_SCHEMA_CHANNEL}'")
 
     async for message in pubsub.listen():
         if message["type"] == "message":
@@ -500,8 +500,8 @@ async def _voice_stream_handler(
     async with httpx.AsyncClient() as http_client:
         try:
             resp = await http_client.post(
-                settings.INIT_API_URL,
-                headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
+                config.INIT_API_URL,
+                headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
                 json=init_realtime_payload,
                 timeout=10.0,
             )
@@ -558,10 +558,10 @@ async def _voice_stream_handler(
         tool_manager_service=tool_manager_service,
         connections=connections,
         factory=factory,
-        django_api_base_url=settings.DJANGO_API_BASE_URL,
-        django_api_key=settings.DJANGO_API_KEY,
+        django_api_base_url=config.DJANGO_API_BASE_URL,
+        django_api_key=config.DJANGO_API_KEY,
         initial_message=first_msg,
-        max_call_duration_seconds=settings.MAX_CALL_DURATION_SECONDS,
+        max_call_duration_seconds=config.MAX_CALL_DURATION_SECONDS,
     )
     await service.execute()
 
@@ -607,10 +607,10 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         # it and route it to the unrelated `webhook` stub service, which has
         # no WebSocket handler — breaking the Twilio Media Stream handshake.
         voice_stream_url = (
-            settings.VOICE_STREAM_URL.replace(
+            config.VOICE_STREAM_URL.replace(
                 "/voice/stream", f"/voice/{channel_token}/stream"
             )
-            if settings.VOICE_STREAM_URL
+            if config.VOICE_STREAM_URL
             else ""
         )
 

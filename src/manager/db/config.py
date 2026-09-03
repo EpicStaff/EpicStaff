@@ -5,31 +5,10 @@ import sys
 from dotenv import load_dotenv, find_dotenv
 from loguru import logger
 
-if "--debug" in sys.argv:
-    logger.info("RUNNING IN DEBUG MODE")
-    load_dotenv(find_dotenv(".debug.env"))
-else:
-    load_dotenv(find_dotenv(".env"))
-
-
-def get_required_env_var(key: str) -> str:
-    """
-    If you see this error during local launch set all required variables in manager/.env
-    """
-    value = os.getenv(key)
-    if value is None:
-        raise ValueError(f"Missing required environment variable: {key}")
-    return value
-
-
-DB_USER = get_required_env_var("DB_MANAGER_USER")
-DB_PASSWORD = get_required_env_var("DB_MANAGER_PASSWORD")
-DB_NAME = get_required_env_var("DB_NAME")
-DB_PORT = get_required_env_var("DB_PORT")
-DB_HOST_NAME = get_required_env_var("DB_HOST_NAME")
+import settings
 
 DATABASE_URL = (
-    f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST_NAME}:{DB_PORT}/{DB_NAME}"
+    f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 )
 
 engine = create_async_engine(

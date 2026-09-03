@@ -1,7 +1,7 @@
 import httpx
 from loguru import logger
 
-from core.config import settings
+from core import config
 
 
 _api_key_validated = False

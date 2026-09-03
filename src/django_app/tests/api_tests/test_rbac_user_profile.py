@@ -348,7 +348,7 @@ class TestProfileAvatarUpload:
     def test_reject_oversize(
         self, authed_client, member_acme, settings, tmp_media_root
     ):
-        settings.AVATAR_MAX_BYTES = 1024  # 1 KiB cap for this test
+        settings.AVATAR_MAX_SIZE = 1024  # 1 KiB cap for this test
         big = _make_image_bytes("PNG", size=(512, 512))
         upload = SimpleUploadedFile("big.png", big, content_type="image/png")
         resp = authed_client(member_acme).post(

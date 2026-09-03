@@ -86,7 +86,7 @@ def test_rejection_message_names_the_configured_limit():
     assert "60" in str(exc.value.detail["every"])
 
 
-@override_settings(SCHEDULE_MIN_INTERVAL_SECONDS=300)
+@override_settings(SCHEDULE_MIN_INTERVAL=300)
 def test_floor_is_configurable():
     """A raised floor rejects intervals the default would allow."""
     assert _validate(_schedule(5, "minutes"))["every"] == 5
@@ -94,7 +94,7 @@ def test_floor_is_configurable():
         _validate(_schedule(1, "minutes"))
 
 
-@override_settings(SCHEDULE_MIN_INTERVAL_SECONDS=0)
+@override_settings(SCHEDULE_MIN_INTERVAL=0)
 def test_floor_can_be_disabled():
     assert _validate(_schedule(1, "seconds"))["every"] == 1
 

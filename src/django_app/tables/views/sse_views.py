@@ -24,6 +24,7 @@ from tables.services.redis_service import RedisService
 from tables.services.rbac.session_access import assert_session_org_access
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
 
+from django.conf import settings
 
 redis_service = RedisService()
 
@@ -35,15 +36,9 @@ class RunSessionSSEViewSwagger(APIView):
 
 
 class RunSessionSSEView(SSEMixin):
-    session_status_channel_name = os.environ.get(
-        "SESSION_STATUS_CHANNEL", "sessions:session_status"
-    )
-    graph_messages_channel_name = os.environ.get(
-        "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
-    )
-    memory_updates_channel_name = os.environ.get(
-        "MEMORY_UPDATE_CHANNEL", "memory:update"
-    )
+    session_status_channel_name = settings.SESSION_STATUS_CHANNEL
+    graph_messages_channel_name = settings.GRAPH_MESSAGE_UPDATE_CHANNEL
+    memory_updates_channel_name = settings.MEMORY_UPDATE_CHANNEL
 
     def __init__(self):
         super().__init__()
