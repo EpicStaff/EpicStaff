@@ -154,7 +154,7 @@
                 <ng-container *ngIf="rootView.currentDrillEntry as drillEntry">
                     <div class="subgraph-drilldown__header">
                         @switch (drillEntry.message.message_data.message_type) {
-                            @case ('subgraph_start') {
+                            @case (MessageType.SUBGRAPH_START) {
                                 <app-subgraph-start-message
                                     [message]="drillEntry.message"
                                     [subgraphName]="drillEntry.subgraphName"
@@ -164,7 +164,7 @@
                                     (viewNestedMessages)="onViewNestedMessages(drillEntry.message)"
                                 ></app-subgraph-start-message>
                             }
-                            @case ('start') {
+                            @case (MessageType.START) {
                                 <app-start-message
                                     [message]="drillEntry.message"
                                     [showViewNestedMessages]="drillEntry.hasNestedMessages"
@@ -181,7 +181,7 @@
                     @for (nestedEntry of rootView.drilldownEntries; track nestedEntry.key; let nestedIndex = $index) {
                         <div class="message">
                             @switch (nestedEntry.message.message_data.message_type) {
-                                @case ('start') {
+                                @case (MessageType.START) {
                                     <app-start-message
                                         [message]="nestedEntry.message"
                                         [showViewNestedMessages]="nestedEntry.hasNestedMessages"
@@ -190,69 +190,77 @@
                                         (viewNestedMessages)="onViewNestedMessages(nestedEntry.message)"
                                     ></app-start-message>
                                 }
-                                @case ('user') {
+                                @case (MessageType.USER) {
                                     <app-user-message [message]="nestedEntry.message"></app-user-message>
                                 }
-                                @case ('agent') {
+                                @case (MessageType.AGENT) {
                                     <app-agent-message
                                         [message]="nestedEntry.message"
                                         [agent]="nestedEntry.agent"
                                     ></app-agent-message>
                                 }
-                                @case ('agent_finish') {
+                                @case (MessageType.AGENT_FINISH) {
                                     <app-agent-finish-message
                                         [message]="nestedEntry.message"
                                         [agent]="nestedEntry.agent"
                                     ></app-agent-finish-message>
                                 }
-                                @case ('python') {
+                                @case (MessageType.PYTHON) {
                                     <app-python-message [message]="nestedEntry.message"></app-python-message>
                                 }
-                                @case ('llm') {
+                                @case (MessageType.LLM) {
                                     <app-llm-message [message]="nestedEntry.message"></app-llm-message>
                                 }
-                                @case ('extracted_chunks') {
+                                @case (MessageType.EXTRACTED_CHUNKS) {
                                     <app-extracted-chunks-message
                                         [message]="nestedEntry.message"
                                     ></app-extracted-chunks-message>
                                 }
-                                @case ('findings') {
+                                @case (MessageType.FINDINGS) {
                                     <app-findings-message [message]="nestedEntry.message"></app-findings-message>
                                 }
-                                @case ('error') {
+                                @case (MessageType.ERROR) {
                                     <app-error-message [message]="nestedEntry.message"></app-error-message>
                                 }
-                                @case ('task') {
+                                @case (MessageType.TASK) {
                                     <app-task-message [message]="nestedEntry.message"></app-task-message>
                                 }
-                                @case ('condition_group') {
+                                @case (MessageType.CONDITION_GROUP) {
                                     <app-classification-dt-message
                                         [message]="nestedEntry.message"
                                     ></app-classification-dt-message>
                                 }
-                                @case ('classification_prompt') {
+                                @case (MessageType.CLASSIFICATION_PROMPT) {
                                     <app-classification-dt-message
                                         [message]="nestedEntry.message"
                                     ></app-classification-dt-message>
                                 }
-                                @case ('condition_group_manipulation') {
+                                @case (MessageType.CONDITION_GROUP_MANIPULATION) {
                                     <app-classification-dt-message
                                         [message]="nestedEntry.message"
                                     ></app-classification-dt-message>
                                 }
-                                @case ('finish') {
+                                @case (MessageType.FINISH) {
                                     <app-finish-message
                                         [message]="nestedEntry.message"
                                         [project]="nestedEntry.project"
                                     ></app-finish-message>
                                 }
-                                @case ('code_agent_stream') {
-                                    <app-code-agent-stream-message
+                                @case (MessageType.TASK_NODE_STREAM) {
+                                    <app-node-stream-message
                                         [message]="nestedEntry.message"
                                         [allMessages]="messages"
-                                    ></app-code-agent-stream-message>
+                                        [nodeCompleted]="nestedEntry.nodeCompleted"
+                                    ></app-node-stream-message>
                                 }
-                                @case ('subgraph_start') {
+                                @case (MessageType.AGENT_NODE_STREAM) {
+                                    <app-node-stream-message
+                                        [message]="nestedEntry.message"
+                                        [allMessages]="messages"
+                                        [nodeCompleted]="nestedEntry.nodeCompleted"
+                                    ></app-node-stream-message>
+                                }
+                                @case (MessageType.SUBGRAPH_START) {
                                     <app-subgraph-start-message
                                         [message]="nestedEntry.message"
                                         [subgraphName]="nestedEntry.subgraphName"
@@ -262,7 +270,7 @@
                                         (viewNestedMessages)="onViewNestedMessages(nestedEntry.message)"
                                     ></app-subgraph-start-message>
                                 }
-                                @case ('subgraph_finish') {
+                                @case (MessageType.SUBGRAPH_FINISH) {
                                     <app-subgraph-finish-message
                                         [message]="nestedEntry.message"
                                     ></app-subgraph-finish-message>
@@ -282,7 +290,7 @@
                 <app-project-transition *ngIf="entry.shouldShowTransition"></app-project-transition>
 
                 @switch (entry.message.message_data.message_type) {
-                    @case ('start') {
+                    @case (MessageType.START) {
                         @if (entry.rootView) {
                             <ng-container
                                 *ngTemplateOutlet="drilldownWrapper; context: { rootView: entry.rootView }"
@@ -297,61 +305,69 @@
                             ></app-start-message>
                         }
                     }
-                    @case ('user') {
+                    @case (MessageType.USER) {
                         <app-user-message [message]="entry.message"></app-user-message>
                     }
-                    @case ('agent') {
+                    @case (MessageType.AGENT) {
                         <app-agent-message
                             [message]="entry.message"
                             [agent]="entry.agent"
                         ></app-agent-message>
                     }
-                    @case ('agent_finish') {
+                    @case (MessageType.AGENT_FINISH) {
                         <app-agent-finish-message
                             [message]="entry.message"
                             [agent]="entry.agent"
                         ></app-agent-finish-message>
                     }
-                    @case ('python') {
+                    @case (MessageType.PYTHON) {
                         <app-python-message [message]="entry.message"></app-python-message>
                     }
-                    @case ('llm') {
+                    @case (MessageType.LLM) {
                         <app-llm-message [message]="entry.message"></app-llm-message>
                     }
-                    @case ('extracted_chunks') {
+                    @case (MessageType.EXTRACTED_CHUNKS) {
                         <app-extracted-chunks-message [message]="entry.message"></app-extracted-chunks-message>
                     }
-                    @case ('findings') {
+                    @case (MessageType.FINDINGS) {
                         <app-findings-message [message]="entry.message"></app-findings-message>
                     }
-                    @case ('error') {
+                    @case (MessageType.ERROR) {
                         <app-error-message [message]="entry.message"></app-error-message>
                     }
-                    @case ('task') {
+                    @case (MessageType.TASK) {
                         <app-task-message [message]="entry.message"></app-task-message>
                     }
-                    @case ('condition_group') {
+                    @case (MessageType.CONDITION_GROUP) {
                         <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
                     }
-                    @case ('classification_prompt') {
+                    @case (MessageType.CLASSIFICATION_PROMPT) {
                         <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
                     }
-                    @case ('condition_group_manipulation') {
+                    @case (MessageType.CONDITION_GROUP_MANIPULATION) {
                         <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
                     }
-                    @case ('finish') {
+                    @case (MessageType.FINISH) {
                         <app-finish-message
                             [message]="entry.message"
                             [project]="entry.project"
                         ></app-finish-message>
                     }
-                    @case ('code_agent_stream') {
-                        <app-code-agent-stream-message
+                    @case (MessageType.TASK_NODE_STREAM) {
+                        <app-node-stream-message
                             [message]="entry.message"
                             [allMessages]="messages"
-                        ></app-code-agent-stream-message>
+                            [nodeCompleted]="entry.nodeCompleted"
+                        ></app-node-stream-message>
                     }
-                    @case ('subgraph_start') {
+                    @case (MessageType.AGENT_NODE_STREAM) {
+                        <app-node-stream-message
+                            [message]="entry.message"
+                            [allMessages]="messages"
+                            [nodeCompleted]="entry.nodeCompleted"
+                        ></app-node-stream-message>
+                    }
+                    @case (MessageType.SUBGRAPH_START) {
                         @if (entry.rootView) {
                             <ng-container
                                 *ngTemplateOutlet="drilldownWrapper; context: { rootView: entry.rootView }"
@@ -367,7 +383,7 @@
                             ></app-subgraph-start-message>
                         }
                     }
-                    @case ('subgraph_finish') {
+                    @case (MessageType.SUBGRAPH_FINISH) {
                         <app-subgraph-finish-message [message]="entry.message"></app-subgraph-finish-message>
                     }
                 }

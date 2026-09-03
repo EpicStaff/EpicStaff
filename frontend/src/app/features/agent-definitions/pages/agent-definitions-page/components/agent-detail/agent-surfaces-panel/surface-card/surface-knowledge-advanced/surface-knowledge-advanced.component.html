@@ -1,0 +1,200 @@
+@if (collections().length === 0) {
+    <p class="advanced__empty">Select at least one collection to configure retrieval settings.</p>
+} @else {
+    <div class="advanced">
+        <div class="advanced__tabs">
+            @for (c of collections(); track c.id; let last = $last) {
+                <app-tab-button
+                    mod="sm"
+                    class="advanced__tab"
+                    appTooltipOnOverflow=".tab-btn__label"
+                    [active]="c.id === activeCollectionId()"
+                    [matTooltip]="c.name"
+                    matTooltipPosition="above"
+                    matTooltipClass="custom-tooltip"
+                    (click)="selectCollection(c.id)"
+                >
+                    {{ c.name }}
+                </app-tab-button>
+                @if (!last) {
+                    <div class="advanced__tabs-divider">/</div>
+                }
+            }
+        </div>
+
+        @if (form(); as fg) {
+            <div
+                class="advanced__body"
+                [formGroup]="fg"
+            >
+                @if (noRagsAvailable()) {
+                    <p class="advanced__na">No RAG has been built for this collection yet.</p>
+                } @else {
+                    <div class="form-group">
+                        <app-select
+                            formControlName="rag"
+                            label="RAG"
+                            tooltipText="Choose the retrieval method used for this collection on this surface. Only RAGs built for this collection are listed."
+                            placeholder="Select RAG"
+                            [items]="ragItems()"
+                            [loading]="ragsLoading()"
+                        />
+                    </div>
+                }
+
+                @if (fg.get('rag')?.value === 'naive') {
+                    <div formGroupName="naive">
+                        <div class="form-group">
+                            <app-slider-with-stepper
+                                formControlName="similarity_threshold"
+                                label="Similarity Threshold"
+                                tooltipText="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."
+                                [min]="0"
+                                [max]="1"
+                                [step]="0.1"
+                                [decimals]="1"
+                            />
+                        </div>
+                        <div class="form-group">
+                            <app-slider-with-stepper
+                                formControlName="search_limit"
+                                label="Search Limit"
+                                tooltipText="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
+                                [min]="1"
+                                [max]="1000"
+                                [step]="DEFAULT_STEP_SIZE"
+                                [decimals]="0"
+                            />
+                        </div>
+                    </div>
+                } @else if (fg.get('rag')?.value === 'graph') {
+                    <div class="form-group">
+                        <app-radio-button
+                            formControlName="search_method"
+                            label="Search Type"
+                            tooltipText="Basic Search uses vector-based RAG to find relevant information. Local search combines relevant data from the AI-extracted knowledge graph with text chunks of the raw documents — suitable for questions about specific entities mentioned in the documents."
+                            [options]="searchTypes"
+                        />
+                    </div>
+
+                    @switch (fg.get('search_method')?.value) {
+                        @case ('basic') {
+                            <div formGroupName="basic">
+                                <div class="form-group">
+                                    <app-textarea
+                                        formControlName="prompt"
+                                        label="Prompt"
+                                        tooltipText="Custom general knowledge instruction. Leave empty for default."
+                                        placeholder="Custom general knowledge instruction...&#10;Leave empty for default."
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-input-number
+                                        formControlName="k"
+                                        label="K"
+                                        tooltipText="Number of text units to retrieve from the vector store for context building"
+                                        [alwaysShowSteps]="true"
+                                        [min]="1"
+                                        [max]="100"
+                                        [stepSize]="5"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-input-number
+                                        formControlName="max_context_tokens"
+                                        label="Max Context Tokens"
+                                        tooltipText="The maximum context size to create, in tokens"
+                                        [alwaysShowSteps]="true"
+                                        [min]="100"
+                                        [max]="100000"
+                                        [stepSize]="100"
+                                    />
+                                </div>
+                            </div>
+                        }
+                        @case ('local') {
+                            <div formGroupName="local">
+                                <div class="form-group">
+                                    <app-textarea
+                                        formControlName="prompt"
+                                        label="Prompt"
+                                        tooltipText="Custom general knowledge instruction. Leave empty for default."
+                                        placeholder="Custom general knowledge instruction...&#10;Leave empty for default."
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-slider-with-stepper
+                                        formControlName="text_unit_prop"
+                                        label="Text Unit Proportion"
+                                        tooltipText="The text unit proportion"
+                                        [min]="0"
+                                        [max]="1"
+                                        [step]="0.01"
+                                        [decimals]="2"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-slider-with-stepper
+                                        formControlName="community_prop"
+                                        label="Community Proportion"
+                                        tooltipText="The community proportion"
+                                        [min]="0"
+                                        [max]="1"
+                                        [step]="0.01"
+                                        [decimals]="2"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-input-number
+                                        formControlName="conversation_history_max_turns"
+                                        label="Conversation History Max Turns"
+                                        tooltipText="The conversation history maximum turns"
+                                        [alwaysShowSteps]="true"
+                                        [min]="1"
+                                        [max]="50"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-input-number
+                                        formControlName="top_k_entities"
+                                        label="Top K Entities"
+                                        tooltipText="The top k mapped entities"
+                                        [alwaysShowSteps]="true"
+                                        [min]="1"
+                                        [max]="100"
+                                        [stepSize]="5"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-input-number
+                                        formControlName="top_k_relationships"
+                                        label="Top K Relationships"
+                                        tooltipText="The top k mapped relations"
+                                        [alwaysShowSteps]="true"
+                                        [min]="1"
+                                        [max]="100"
+                                        [stepSize]="5"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <app-input-number
+                                        formControlName="max_context_tokens"
+                                        label="Max Context Tokens"
+                                        tooltipText="The maximum tokens to use building the request context"
+                                        [alwaysShowSteps]="true"
+                                        [min]="100"
+                                        [max]="100000"
+                                        [stepSize]="100"
+                                    />
+                                </div>
+                            </div>
+                        }
+                        @default {
+                            <p class="advanced__na">Not available yet</p>
+                        }
+                    }
+                }
+            </div>
+        }
+    </div>
+}

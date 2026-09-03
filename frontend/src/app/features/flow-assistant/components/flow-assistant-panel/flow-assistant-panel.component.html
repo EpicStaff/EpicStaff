@@ -142,7 +142,7 @@
                         </div>
                     } @else if (isAssistantMessage(message)) {
                         <div class="message message--assistant">
-                            <div class="message__text">
+                            <div class="message__text markdown-content">
                                 @if (message.content) {
                                     <markdown
                                         [data]="message.content"
@@ -250,7 +250,6 @@
                         [value]="inputText()"
                         (input)="onInputChange($event)"
                         (keydown)="onKeydown($event)"
-                        [disabled]="isStreaming()"
                     ></textarea>
                     <div class="input-area__bottom-bar">
                         @if (isStreaming()) {

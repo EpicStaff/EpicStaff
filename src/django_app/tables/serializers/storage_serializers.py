@@ -1,8 +1,8 @@
 import os
-import re
 
 from rest_framework import serializers
 
+from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.validators.file_upload_validator import FileValidator
 
 
@@ -10,15 +10,14 @@ _MAX_STORAGE_PATH_BYTES = 1000
 
 
 def _normalize_path(value: str) -> str:
-    if not value:
-        return value
-    value = re.sub(r"/+", "/", value)
-    value = value.rstrip("/")
     if len(value.encode("utf-8")) > _MAX_STORAGE_PATH_BYTES:
         raise serializers.ValidationError(
             f"Path too long: max {_MAX_STORAGE_PATH_BYTES} bytes."
         )
-    return value
+    try:
+        return sanitize_storage_path(value, allow_empty=True)
+    except ValueError as exc:
+        raise serializers.ValidationError(str(exc))
 
 
 class StoragePathQuerySerializer(serializers.Serializer):
@@ -163,6 +162,7 @@ class StorageAddToGraphSerializer(serializers.Serializer):
 
 
 class FileItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     name = serializers.CharField(help_text="File or folder name")
     type = serializers.ChoiceField(
         choices=["file", "folder"],
@@ -187,6 +187,7 @@ class StorageListResponseSerializer(serializers.Serializer):
 
 
 class StorageInfoResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     path = serializers.CharField(help_text="File path")
     name = serializers.CharField(help_text="File name")
     type = serializers.CharField(help_text="Item type")
@@ -268,6 +269,9 @@ class StorageRemoveFromGraphSerializer(serializers.Serializer):
         help_text="Graph IDs to unlink from",
     )
 
+    def validate_paths(self, value: list[str]) -> list[str]:
+        return [_normalize_path(path) for path in value]
+
 
 class StorageGraphFilesQuerySerializer(serializers.Serializer):
     graph_id = serializers.IntegerField(
@@ -287,6 +291,7 @@ class StorageTreeQuerySerializer(serializers.Serializer):
 
 
 class TreeNodeSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True)
     name = serializers.CharField()
     path = serializers.CharField()
     type = serializers.ChoiceField(choices=["file", "folder"])
@@ -319,6 +324,7 @@ class StorageSearchQuerySerializer(serializers.Serializer):
 
 
 class StorageSearchResultSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
     path = serializers.CharField()
     name = serializers.CharField()
 
@@ -328,3 +334,52 @@ class StorageSearchResponseSerializer(serializers.Serializer):
     offset = serializers.IntegerField()
     limit = serializers.IntegerField()
     results = StorageSearchResultSerializer(many=True)
+
+
+class StorageFilesByIdsQuerySerializer(serializers.Serializer):
+    ids = serializers.CharField(
+        required=True,
+        help_text="Comma-separated list of StorageFile IDs (e.g. `1,2,3`)",
+    )
+
+    def validate_ids(self, value: str) -> list[int]:
+        tokens = [token.strip() for token in value.split(",") if token.strip()]
+
+        if not tokens:
+            raise serializers.ValidationError("At least one id is required.")
+
+        if not all(token.isdigit() for token in tokens):
+            raise serializers.ValidationError(
+                "ids must be a comma-separated list of integers."
+            )
+
+        return [int(token) for token in tokens]
+
+
+class StorageFileSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True, help_text="StorageFile id")
+    path = serializers.CharField(read_only=True, help_text="Org-relative storage path")
+    name = serializers.CharField(read_only=True, help_text="Last path segment")
+    item_type = serializers.CharField(read_only=True, help_text="'file' or 'folder'")
+    size = serializers.IntegerField(
+        read_only=True,
+        allow_null=True,
+        help_text="File size in bytes, null for folders",
+    )
+    s3_modified = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+        help_text="Storage backend LastModified timestamp",
+    )
+    is_system = serializers.BooleanField(
+        read_only=True, help_text="True for platform-written files"
+    )
+    parent_path = serializers.CharField(
+        read_only=True, help_text="Immediate parent directory path"
+    )
+    created_at = serializers.DateTimeField(
+        read_only=True, help_text="Row creation timestamp"
+    )
+    updated_at = serializers.DateTimeField(
+        read_only=True, help_text="Row last update timestamp"
+    )

@@ -9,7 +9,6 @@ NODE_RELATED_NAMES: tuple[tuple[str, str], ...] = (
     ("file_extractor", "file_extractor_node_list"),
     ("audio_transcription", "audio_transcription_node_list"),
     ("subgraph", "subgraph_node_list"),
-    ("code_agent", "code_agent_node_list"),
     ("start", "start_node_list"),
     ("end", "end_node"),
     ("decision_table", "decision_table_node_list"),

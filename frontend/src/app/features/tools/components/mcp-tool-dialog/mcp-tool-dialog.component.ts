@@ -1,9 +1,11 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     DestroyRef,
     Inject,
     inject,
@@ -22,12 +24,17 @@ import {
 import {
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     IconButtonComponent,
     InputNumberComponent,
+    SelectComponent,
+    SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable, of, timer } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 
@@ -53,6 +60,8 @@ interface DialogData {
         ButtonComponent,
         IconButtonComponent,
         HasPermissionDirective,
+        SelectComponent,
+        HintMessageComponent,
     ],
     templateUrl: './mcp-tool-dialog.component.html',
     styleUrls: ['./mcp-tool-dialog.component.scss'],
@@ -64,6 +73,7 @@ export class McpToolDialogComponent implements OnInit {
     public isEditMode: boolean = false;
     public backendErrorMessage: string | null = null;
     private readonly destroyRef = inject(DestroyRef);
+    private readonly secretsStorageService = inject(SecretsStorageService);
 
     constructor(
         private dialogRef: DialogRef<GetMcpToolRequest>,
@@ -78,8 +88,22 @@ export class McpToolDialogComponent implements OnInit {
         }
     }
 
+    public readonly secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
+
     ngOnInit(): void {
         this.initializeForm();
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toastService.error('Failed to load secrets.'),
+            });
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
                 if (this.form.status === 'PENDING') return;
@@ -131,7 +155,7 @@ export class McpToolDialogComponent implements OnInit {
                 Validators.maxLength(255),
             ]),
             timeout: new FormControl(this.selectedTool?.timeout ?? 30, [Validators.min(1), Validators.max(2147483647)]),
-            auth: new FormControl(this.selectedTool?.auth || ''),
+            auth_secret_id: new FormControl(this.selectedTool?.auth_secret_id ?? null),
             init_timeout: new FormControl(this.selectedTool?.init_timeout ?? 10, [
                 Validators.min(1),
                 Validators.max(2147483647),
@@ -162,7 +186,7 @@ export class McpToolDialogComponent implements OnInit {
             transport: formValue.transport,
             tool_name: formValue.tool_name,
             timeout: formValue.timeout || undefined,
-            auth: formValue.auth || undefined,
+            auth_secret_id: formValue.auth_secret_id || undefined,
             init_timeout: formValue.init_timeout || undefined,
         };
 
@@ -172,10 +196,10 @@ export class McpToolDialogComponent implements OnInit {
                     this.toastService.success(`MCP tool "${updatedTool.name}" updated successfully!`);
                     this.dialogRef.close(updatedTool);
                 },
-                error: (error) => {
+                error: (error: HttpErrorResponse) => {
                     console.error('Error updating MCP tool:', error);
-                    this.backendErrorMessage = this.extractErrorMessage(error);
-                    this.toastService.error(this.backendErrorMessage || 'Failed to update MCP tool. Please try again.');
+                    this.backendErrorMessage = extractHttpErrorMessage(error);
+                    this.toastService.error(this.backendErrorMessage);
                     this.cdr.markForCheck();
                 },
             });
@@ -185,47 +209,14 @@ export class McpToolDialogComponent implements OnInit {
                     this.toastService.success(`MCP tool "${createdTool.name}" created successfully!`);
                     this.dialogRef.close(createdTool);
                 },
-                error: (error) => {
+                error: (error: HttpErrorResponse) => {
                     console.error('Error creating MCP tool:', error);
-                    this.backendErrorMessage = this.extractErrorMessage(error);
-                    this.toastService.error(this.backendErrorMessage || 'Failed to create MCP tool. Please try again.');
+                    this.backendErrorMessage = extractHttpErrorMessage(error);
+                    this.toastService.error(this.backendErrorMessage);
                     this.cdr.markForCheck();
                 },
             });
         }
-    }
-
-    private extractErrorMessage(error: unknown): string {
-        const err = error as Record<string, Record<string, unknown> | string | undefined>;
-        // Extract error message from different possible error structures
-        if (err?.['error']) {
-            const errBody = err['error'] as Record<string, unknown>;
-            // Check for standard error message formats
-            if (typeof errBody === 'string') {
-                return errBody;
-            }
-            if (errBody['message']) {
-                return errBody['message'] as string;
-            }
-            if (errBody['detail']) {
-                return errBody['detail'] as string;
-            }
-            // Check for field-specific errors (e.g., {name: ["Tool with this name already exists."]})
-            if (errBody['name'] && Array.isArray(errBody['name'])) {
-                return (errBody['name'] as string[])[0];
-            }
-            // Check for non_field_errors
-            if (errBody['non_field_errors'] && Array.isArray(errBody['non_field_errors'])) {
-                return (errBody['non_field_errors'] as string[])[0];
-            }
-        }
-        if (err?.['message']) {
-            return err['message'] as string;
-        }
-        if (err?.['statusText']) {
-            return err['statusText'] as string;
-        }
-        return '';
     }
 
     public getFieldError(fieldName: string): string | null {

@@ -12,6 +12,21 @@ export function getDecisionTableVisualHeight(conditionGroups: { valid?: boolean 
     return Math.max(HEADER_HEIGHT + ROW_HEIGHT * totalRows, MIN_TABLE_HEIGHT);
 }
 
+const CDT_HEADER_HEIGHT = 60;
+const CDT_ROW_HEIGHT = 46;
+const CDT_BASE_ROWS = 2;
+
+export function getClassificationDecisionTableVisualHeight(
+    conditionGroups: { valid?: boolean; dock_visible?: boolean; route_code?: string | null }[]
+): number {
+    const renderedGroupRows = conditionGroups.filter(
+        (g) => g.valid !== false && g.dock_visible && !!g.route_code
+    ).length;
+    const groupRows = Math.max(renderedGroupRows, 1);
+    const totalRows = groupRows + CDT_BASE_ROWS;
+    return CDT_HEADER_HEIGHT + CDT_ROW_HEIGHT * totalRows;
+}
+
 export function getDefaultNodeSize(type: NodeType, data?: unknown): { width: number; height: number } {
     switch (type) {
         case NodeType.NOTE:

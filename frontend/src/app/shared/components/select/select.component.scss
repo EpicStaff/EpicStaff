@@ -141,35 +141,20 @@
         display: block;
         overflow-y: auto;
         scrollbar-gutter: stable;
-    }
-
-    &__search {
-        width: 100%;
-        padding: 0.25rem 0.75rem;
-        height: 40px;
-        font-size: 0.875rem;
-        border-radius: 4px;
-        border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
-        color: var(--color-text-primary);
-        transition: border-color 0.15s ease;
         flex-shrink: 0;
-
-        &:focus {
-            outline: none;
-            border-color: var(--accent-color);
-        }
-
-        &::placeholder {
-            color: var(--color-input-text-placeholder);
-        }
     }
 
     &__list {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0;
         overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+
+        &--boxed {
+            gap: 0.5rem;
+        }
     }
 
     &__dropdown--boxed &__list {
@@ -198,6 +183,28 @@
         line-height: 1;
     }
 
+    &__search {
+        width: 100%;
+        padding: 0.25rem 0.75rem;
+        height: 40px;
+        font-size: 0.875rem;
+        border-radius: 4px;
+        border: 1px solid var(--color-input-border);
+        background-color: var(--color-input-background);
+        color: var(--color-text-primary);
+        transition: border-color 0.15s ease;
+        flex-shrink: 0;
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+    }
+
     &__text {
         text-align: left;
         overflow: hidden;
@@ -208,12 +215,19 @@
         transition: background 0.15s ease;
     }
 
+    &__tip {
+        flex-shrink: 0;
+        color: var(--text-secondary-60);
+        font-size: 0.8125rem;
+    }
+
     &__option {
         display: flex;
         align-items: center;
         gap: 0.5rem;
 
         &--default {
+            height: 40px;
             padding: 0.5rem 0.75rem;
             font-size: 0.875rem;
             font-weight: 400;
@@ -239,6 +253,7 @@
         &--boxed {
             padding: 0.25rem 1rem;
             height: 40px;
+            flex-shrink: 0;
             font-size: 0.875rem;
             border-radius: 4px;
             border: 1px solid var(--color-divider-subtle);

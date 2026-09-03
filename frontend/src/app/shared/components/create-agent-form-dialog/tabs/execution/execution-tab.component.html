@@ -1,53 +1,126 @@
 <div
-    class="form-section"
+    class="execution-tab"
     [formGroup]="form()"
 >
-    <h3 class="section-title">EXECUTION SETTINGS</h3>
-    <div class="form-group">
-        <app-slider-with-stepper
-            formControlName="max_iter"
-            label="Maximum Iterations"
-            tooltipText="The maximum number of iterations the agent will perform before stopping."
-            [min]="1"
-            [max]="30"
-            [step]="1"
-            [decimals]="0"
-        />
-    </div>
+    <section class="execution-section">
+        <h3 class="section-title">RESOURCE LIMITS</h3>
 
-    <div class="form-group">
-        <app-slider-with-stepper
-            formControlName="max_rpm"
-            label="Maximum Requests Per Minute (RPM)"
-            tooltipText="Set the maximum number of API requests the agent can make per minute. Higher values allow more throughput but may increase costs."
-            [min]="1"
-            [max]="30"
-            [step]="1"
-            [decimals]="0"
-        />
-    </div>
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="max_iter"
+                label="Maximum Iterations"
+                tooltipText="The maximum number of iterations the agent will perform before stopping."
+                [min]="1"
+                [max]="30"
+                [step]="1"
+                [decimals]="0"
+            />
+        </div>
 
-    <div class="form-group">
-        <app-slider-with-stepper
-            formControlName="max_execution_time"
-            label="Maximum Execution Time (seconds)"
-            tooltipText="The maximum time in seconds the agent will run before timing out."
-            [min]="1"
-            [max]="600"
-            [step]="1"
-            [decimals]="0"
-        />
-    </div>
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="max_execution_time"
+                label="Maximum Execution Time (seconds)"
+                tooltipText="The maximum time in seconds the agent will run before timing out."
+                [min]="1"
+                [max]="600"
+                [step]="DEFAULT_STEP_SIZE"
+                [decimals]="0"
+            />
+        </div>
 
-    <div class="form-group">
-        <app-slider-with-stepper
-            formControlName="max_retry_limit"
-            label="Maximum Retry Limit"
-            tooltipText="The maximum number of times the agent will retry failed operations."
-            [min]="1"
-            [max]="10"
-            [step]="1"
-            [decimals]="0"
-        />
-    </div>
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="max_rpm"
+                label="Maximum Requests Per Minute (RPM)"
+                tooltipText="Set the maximum number of API requests the agent can make per minute. Higher values allow more throughput but may increase costs."
+                [min]="1"
+                [max]="30"
+                [step]="1"
+                [decimals]="0"
+            />
+        </div>
+    </section>
+
+    <section class="execution-section">
+        <h3 class="section-title">RETRY SETTINGS</h3>
+
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="max_retry_limit"
+                label="Maximum Retry Limit"
+                tooltipText="The maximum number of times the agent will retry field request to the provider."
+                [min]="0"
+                [max]="10"
+                [step]="1"
+                [decimals]="0"
+            />
+        </div>
+
+        @if (form().contains('schema_max_retries')) {
+            <div class="form-group">
+                <app-slider-with-stepper
+                    formControlName="schema_max_retries"
+                    label="Schema Max Retries"
+                    tooltipText="Maximum retries when enforcing structured-output schema validation."
+                    [min]="0"
+                    [max]="20"
+                    [step]="1"
+                    [decimals]="0"
+                />
+            </div>
+        }
+    </section>
+
+    @if (
+        form().contains('max_tool_calls') ||
+        form().contains('tool_timeout') ||
+        form().contains('max_consecutive_failures')
+    ) {
+        <section class="execution-section">
+            <h3 class="section-title">TOOL CALL</h3>
+
+            @if (form().contains('max_tool_calls')) {
+                <div class="form-group">
+                    <app-slider-with-stepper
+                        formControlName="max_tool_calls"
+                        label="Maximum Tool Calls"
+                        tooltipText="The maximum number of tool calls the agent may execute per loop iteration."
+                        [min]="1"
+                        [max]="100"
+                        [step]="1"
+                        [decimals]="0"
+                    />
+                </div>
+            }
+
+            @if (form().contains('tool_timeout')) {
+                <div class="form-group">
+                    <app-slider-with-stepper
+                        formControlName="tool_timeout"
+                        label="Tool Timeout (seconds)"
+                        tooltipText="How long to wait for a server response for a single tool call."
+                        [min]="1"
+                        [max]="600"
+                        [step]="DEFAULT_STEP_SIZE"
+                        [decimals]="0"
+                    />
+                </div>
+            }
+
+            @if (form().contains('max_consecutive_failures')) {
+                <div class="form-group">
+                    <app-slider-with-stepper
+                        formControlName="max_consecutive_failures"
+                        label="Maximum Consecutive Failures"
+                        tooltipText="The number of consecutive tool failures allowed before the agent stops."
+                        [min]="1"
+                        [max]="20"
+                        [step]="1"
+                        [decimals]="0"
+                    />
+                </div>
+            }
+        </section>
+    }
 </div>

@@ -8,6 +8,8 @@ from tables.models.graph_models import (
     DecisionTableNode,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
+from tables.services.rag_assignment_service import SearchConfigService
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 
 
 """
@@ -486,6 +488,36 @@ class ClassificationDecisionTableNodeSaveable:
 
         if self._deferred is not None:
             self._deferred.set_group_ids(created_groups)
+
+        return node
+
+
+class KnowledgeNodeSaveable:
+    """Wraps a validated KnowledgeNodeBulkSerializer plus the node's already
+    validated nested search_configs (validated by the factory via
+    NestedSearchConfigSerializer). Config rows are reverse OneToOne relations, not
+    node fields, so they are written through the shared SearchConfigService — the
+    same non-destructive merge path the CRUD serializer uses.
+    """
+
+    def __init__(self, serializer, search_configs, instance=None):
+        self._serializer = serializer
+        self._search_configs = search_configs
+        self._instance = instance
+
+    def save(self):
+        s = self._serializer
+        KnowledgeNodeValidator().validate_serializer(s)
+        validated = dict(s.validated_data)
+        _clean_for_write(validated)
+        node = (
+            s.create(validated)
+            if s.instance is None
+            else s.update(s.instance, validated)
+        )
+
+        if self._search_configs:
+            SearchConfigService.apply_node_search_configs(node, self._search_configs)
 
         return node
 

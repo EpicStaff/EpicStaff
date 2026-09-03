@@ -1,9 +1,9 @@
 from rest_framework import serializers
 
 from tables.serializers.model_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     ClassificationDecisionTableNodeSerializer,
-    CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     CrewNodeSerializer,
     DecisionTableNodeSerializer,
@@ -11,10 +11,12 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphNoteSerializer,
+    KnowledgeNodeSerializer,
     PythonNodeSerializer,
     ScheduleTriggerNodeSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
     WebhookTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
 )
@@ -37,11 +39,13 @@ class BulkSaveEntityMixin:
         return fields
 
 
-class CodeAgentNodeBulkSerializer(BulkSaveEntityMixin, CodeAgentNodeSerializer):
-    pass
-
-
 class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
+    """
+    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CrewNode rows.
+    """
+
     pass
 
 
@@ -71,6 +75,14 @@ class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
     pass
 
 
+class TaskNodeBulkSerializer(BulkSaveEntityMixin, TaskNodeSerializer):
+    pass
+
+
+class AgentNodeBulkSerializer(BulkSaveEntityMixin, AgentNodeSerializer):
+    pass
+
+
 class ClassificationDecisionTableNodeBulkSerializer(
     BulkSaveEntityMixin, ClassificationDecisionTableNodeSerializer
 ):
@@ -95,6 +107,10 @@ class DecisionTableNodeBulkSerializer(BulkSaveEntityMixin, DecisionTableNodeSeri
 
 
 class GraphNoteBulkSerializer(BulkSaveEntityMixin, GraphNoteSerializer):
+    pass
+
+
+class KnowledgeNodeBulkSerializer(BulkSaveEntityMixin, KnowledgeNodeSerializer):
     pass
 
 

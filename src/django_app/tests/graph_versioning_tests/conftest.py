@@ -39,16 +39,6 @@ def subgraph_node_dict():
 
 
 @pytest.fixture
-def code_agent_node_dict():
-    return {
-        "id": 40,
-        "node_type": NodeType.CODE_AGENT_NODE,
-        "node_name": "Code Agent Node",
-        "llm_config": _LLM_CONFIG_ID,
-    }
-
-
-@pytest.fixture
 def webhook_trigger_node_dict():
     return {
         "id": 50,
@@ -70,7 +60,16 @@ def telegram_trigger_node_dict():
 
 @pytest.fixture
 def empty_missing_sets():
-    return _MissingSets(crews=set(), subgraphs=set(), llm_configs=set(), webhooks=set())
+    return _MissingSets(
+        crews=set(),
+        subgraphs=set(),
+        llm_configs=set(),
+        webhooks=set(),
+        agent_definitions=set(),
+        surfaces=set(),
+        python_code_tools=set(),
+        mcp_tools=set(),
+    )
 
 
 @pytest.fixture
@@ -80,6 +79,10 @@ def full_missing_sets():
         subgraphs={_SUBGRAPH_ID},
         llm_configs={_LLM_CONFIG_ID},
         webhooks={_WEBHOOK_TRIGGER_ID},
+        agent_definitions=set(),
+        surfaces=set(),
+        python_code_tools=set(),
+        mcp_tools=set(),
     )
 
 

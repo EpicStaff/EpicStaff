@@ -34,30 +34,33 @@ export class PaginationControlsComponent {
             return Array.from({ length: tp }, (_, i) => i + 1);
         }
 
-        const half = Math.floor(max / 2);
-        let start = cp - half;
-        let end = cp + half;
+        // window of `max` consecutive pages centred on the current one, clamped to
+        // [1, tp] — the first and last page count towards it whenever it reaches them
+        let start = cp - Math.floor((max - 1) / 2);
+        let end = start + max - 1;
 
-        // clamp window so it never goes below 2 or above tp-1
-        start = Math.max(2, start);
-        end = Math.min(tp - 1, end);
-
-        // if we’re too far left, shift window right
-        if (cp - half < 2) {
-            start = 2;
-            end = 1 + max;
+        if (start < 1) {
+            start = 1;
+            end = max;
         }
-        // if we’re too far right, shift window left
-        if (cp + half > tp - 1) {
-            start = tp - max;
-            end = tp - 1;
+        if (end > tp) {
+            end = tp;
+            start = tp - max + 1;
         }
 
-        const pages: (number | '…')[] = [1];
-        if (start > 2) pages.push('…');
+        const pages: (number | '…')[] = [];
+        if (start > 1) {
+            pages.push(1);
+            // a gap of exactly one page shows that page instead of an ellipsis
+            if (start === 3) pages.push(2);
+            else if (start > 3) pages.push('…');
+        }
         for (let i = start; i <= end; i++) pages.push(i);
-        if (end < tp - 1) pages.push('…');
-        pages.push(tp);
+        if (end < tp) {
+            if (end === tp - 2) pages.push(tp - 1);
+            else if (end < tp - 2) pages.push('…');
+            pages.push(tp);
+        }
 
         return pages;
     }

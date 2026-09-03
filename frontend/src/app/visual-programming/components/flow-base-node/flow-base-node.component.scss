@@ -181,10 +181,28 @@
                 border: 1px solid rgba(255, 107, 107, 0.6);
                 white-space: nowrap;
             }
+
+            .llm-warning-badge {
+                margin-left: auto;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                background: color-mix(in srgb, var(--color-error) 15%, transparent);
+                color: var(--color-error);
+                border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
+                white-space: nowrap;
+            }
         }
 
         .node-details {
             margin-top: 1rem;
+        }
+
+        &.is-blocked-llm {
+            box-shadow: 0 0 0 1px var(--color-error);
         }
     }
 
@@ -293,33 +311,6 @@
 }
 
 // Specific host node types
-:host(.type-agent) {
-    .port-position-top {
-        @include mixins.agent-port-top-indexes;
-    }
-
-    .port-position-bottom {
-        @include mixins.agent-port-bottom-indexes;
-    }
-}
-
-:host(.type-task) {
-    .port-position-top {
-        @include mixins.task-port-top-indexes;
-    }
-
-    .port-position-right {
-        @include mixins.task-port-right-indexes;
-    }
-
-    .port-position-bottom {
-        @include mixins.task-port-bottom-indexes;
-    }
-
-    .port-position-left {
-        @include mixins.task-port-left-indexes;
-    }
-}
 
 :host(.type-start) {
     width: 122px;

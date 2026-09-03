@@ -1,6 +1,6 @@
 # Notification Tool
 #
-# EST-3285 4.8 human-in-the-loop, part (b): lets an agent push a short
+# 4.8 human-in-the-loop, part (b): lets an agent push a short
 # out-of-band notification without pausing the flow (unlike
 # wait_for_decision_tool, this tool does not block/poll -- it fires and
 # returns).

@@ -26,21 +26,21 @@
                     (click)="onStepDown()"
                     [disabled]="isDisabled() || (value() ?? min()) <= min()"
                 >
-                    <svg
-                        width="10"
-                        height="2"
-                        viewBox="0 0 10 2"
-                        fill="none"
-                    >
-                        <path
-                            d="M0 1H10"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                        />
-                    </svg>
+                    <app-svg-icon
+                        icon="minus-fit"
+                        size="12px"
+                    />
                 </button>
 
-                <span class="slider-stepper__value">{{ displayValue() }}</span>
+                <input
+                    type="text"
+                    inputmode="decimal"
+                    class="slider-stepper__value slider-stepper__value-input"
+                    [value]="displayValue()"
+                    [disabled]="isDisabled()"
+                    (keydown.enter)="onValueInputKeydown($event)"
+                    (blur)="onValueInputChange($event)"
+                />
 
                 <button
                     type="button"
@@ -48,18 +48,10 @@
                     (click)="onStepUp()"
                     [disabled]="isDisabled() || (value() ?? min()) >= max()"
                 >
-                    <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                    >
-                        <path
-                            d="M5 0V10M0 5H10"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                        />
-                    </svg>
+                    <app-svg-icon
+                        icon="plus-fit"
+                        size="12px"
+                    />
                 </button>
             </div>
         }
@@ -67,17 +59,23 @@
 
     @if (!optional() || enabled()) {
         <div class="slider-stepper__track-wrapper">
+            <div class="slider-stepper__track">
+                <div class="slider-stepper__track-dashed"></div>
+                <div
+                    class="slider-stepper__track-fill"
+                    [style.--slider-progress]="sliderPercentage()"
+                ></div>
+            </div>
             <input
                 type="range"
                 class="slider-stepper__slider"
                 [min]="min()"
                 [max]="max()"
-                [step]="step()"
+                step="any"
                 [ngModel]="value() ?? min()"
                 (input)="onSliderChange($event)"
                 (blur)="onTouched()"
                 [disabled]="isDisabled()"
-                [style.--slider-percentage]="sliderPercentage() + '%'"
             />
             <div
                 class="slider-stepper__thumb"

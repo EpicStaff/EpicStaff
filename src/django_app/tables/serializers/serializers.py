@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from tables.models.mcp_models import McpTool
-from tables.models.crew_models import ToolConfig
 from tables.models.python_models import PythonCodeTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models import PythonCode
@@ -8,6 +7,30 @@ from tables.models.session_models import Session
 from tables.import_export.services.partial_export_service import (
     LIST_KEY_TO_ENTITY_TYPE,
 )
+
+
+class ToolUsageSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    projects_count = serializers.IntegerField()
+    staff_count = serializers.IntegerField()
+    is_built_in = serializers.BooleanField()
+
+
+class ToolUsageProjectSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class ToolUsageStaffSerializer(serializers.Serializer):
+    # Agent has no `name` field — `role` is its display identity
+    # (see tables.models.crew_models.Agent.__str__).
+    id = serializers.IntegerField()
+    role = serializers.CharField()
+
+
+class ToolUsageDetailSerializer(serializers.Serializer):
+    projects = ToolUsageProjectSerializer(many=True)
+    staff = ToolUsageStaffSerializer(many=True)
 
 
 class RunSessionSerializer(serializers.Serializer):
@@ -23,13 +46,15 @@ class RunSessionSerializer(serializers.Serializer):
     # agent session that triggered it. Not exposed by any UI form — purely a
     # programmatic/tool-runtime input.
     parent_session_id = serializers.IntegerField(required=False, allow_null=True)
-    # EST-3285 4.2c: optional run-level token budget hard stop. Not exposed
+    # optional run-level token budget hard stop. Not exposed
     # by any UI form. Threaded to crew via SessionData.initial_state's
     # reserved "__token_budget__" key (see
     # SessionManagerService.create_session_data) rather than a new typed
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
-    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    token_budget = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -60,8 +85,20 @@ class NotifyEmailSerializer(serializers.Serializer):
 
 
 class InitRealtimeSerializer(serializers.Serializer):
-    agent_id = serializers.IntegerField(required=True)
+    agent_id = serializers.IntegerField(required=False)
+    agent_definition_id = serializers.IntegerField(required=False)
     config = serializers.DictField(required=False, default=dict)
+
+    def validate(self, attrs):
+        agent_id = attrs.get("agent_id")
+        agent_definition_id = attrs.get("agent_definition_id")
+
+        if bool(agent_id) == bool(agent_definition_id):
+            raise serializers.ValidationError(
+                "Exactly one of 'agent_id' or 'agent_definition_id' must be provided."
+            )
+
+        return attrs
 
 
 class BaseToolSerializer(serializers.Serializer):
@@ -72,7 +109,6 @@ class BaseToolSerializer(serializers.Serializer):
         from tables.serializers.model_serializers import (
             PythonCodeToolSerializer,
             McpToolSerializer,
-            ToolConfigSerializer,
             PythonCodeToolConfigSerializer,
         )
 
@@ -80,9 +116,6 @@ class BaseToolSerializer(serializers.Serializer):
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
             repr["data"] = PythonCodeToolSerializer(instance).data
-        elif isinstance(instance, ToolConfig):
-            repr["unique_name"] = f"configured-tool:{instance.pk}"
-            repr["data"] = ToolConfigSerializer(instance).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
             repr["data"] = McpToolSerializer(instance).data
@@ -158,10 +191,16 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
     graph_note_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
-    code_agent_node_list = serializers.ListField(
+    schedule_trigger_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
-    schedule_trigger_node_list = serializers.ListField(
+    knowledge_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    agent_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    task_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     edge_list = serializers.ListField(
@@ -203,6 +242,10 @@ class ImportRequestSerializer(serializers.Serializer):
                 }
             )
         return attrs
+
+
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

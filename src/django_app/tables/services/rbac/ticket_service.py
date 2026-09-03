@@ -1,8 +1,14 @@
+import hashlib
 import secrets
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django_redis import get_redis_connection
+
+
+def ticket_digest(ticket: str) -> str:
+    """Derive the storage form of a ticket. Pure - no I/O."""
+    return hashlib.sha256(ticket.encode("utf-8")).hexdigest()
 
 
 class TicketService:
@@ -13,9 +19,12 @@ class TicketService:
     The client POSTs with JWT to issue a ticket and then opens the connection
     URL with `?ticket=<value>`. Each ticket is consumed atomically via GETDEL
     (Redis 6.2+) so replay is impossible even under concurrent reconnects.
+
+    Redis holds only the SHA-256 digest of a ticket, never the ticket itself,
+    so read access to Redis yields no replayable credential.
     """
 
-    def __init__(self, prefix: str, ttl_seconds: int):
+    def __init__(self, prefix: str, ttl_seconds: int) -> None:
         self._prefix = prefix
         self._ttl_seconds = ttl_seconds
 
@@ -23,7 +32,7 @@ class TicketService:
         return get_redis_connection("default")
 
     def _key(self, ticket: str) -> str:
-        return f"{self._prefix}{ticket}"
+        return f"{self._prefix}{ticket_digest(ticket)}"
 
     def issue(self, user) -> tuple[str, int]:
         ticket = secrets.token_urlsafe(32)
@@ -31,7 +40,7 @@ class TicketService:
         return ticket, self._ttl_seconds
 
     def consume(self, ticket: str) -> object | None:
-        if not ticket:
+        if not isinstance(ticket, str) or not ticket:
             return None
         raw = self._redis().getdel(self._key(ticket))
         if raw is None:

@@ -2,6 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from tables.views.model_view_sets import (
+    AgentNodeViewSet,
+    AgentNodeTaskViewSet,
     ClassificationDecisionTableNodeModelViewSet,
     ConditionalEdgeViewSet,
     CrewNodeViewSet,
@@ -14,17 +16,17 @@ from tables.views.model_view_sets import (
     GraphViewSet,
     GraphVersionViewSet,
     McpToolViewSet,
-    NgrokWebhookConfigViewSet,
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
+    KnowledgeNodeViewSet,
     AudioTranscriptionNodeViewSet,
-    CodeAgentNodeViewSet,
     StartNodeModelViewSet,
     RealtimeConfigModelViewSet,
     RealtimeSessionItemViewSet,
     RealtimeTranscriptionConfigModelViewSet,
     RealtimeTranscriptionModelViewSet,
+    TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
     LLMConfigReadWriteViewSet,
     ProviderReadWriteViewSet,
@@ -40,14 +42,23 @@ from tables.views.model_view_sets import (
     MemoryViewSet,
     RealtimeModelViewSet,
     RealtimeAgentViewSet,
+    RealtimeAgentDefinitionViewSet,
     RealtimeAgentChatViewSet,
+    OpenAIRealtimeConfigViewSet,
+    ElevenLabsRealtimeConfigViewSet,
+    GeminiRealtimeConfigViewSet,
+    RealtimeChannelViewSet,
+    TwilioChannelViewSet,
+    ConversationRecordingViewSet,
+    RealtimeVoicesView,
+    GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
-    VoiceSettingsView,
-    TwilioPhoneNumbersView,
     TwilioConfigureWebhookView,
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
     LabelViewSet,
+    ToolLabelViewSet,
+    SecretViewSet,
     ScheduleTriggerNodeViewSet,
 )
 
@@ -99,7 +110,6 @@ from tables.views.storage_views import StorageAPIView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
-    FilteredRunSessionSSEView,
 )
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -127,6 +137,7 @@ router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
+# DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
 router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
@@ -143,14 +154,18 @@ collection_documents_viewset = CollectionDocumentsViewSet.as_view({"get": "list"
 
 # Graphs
 router.register(r"graphs", GraphViewSet, basename="graphs")
+# DEPRECATED: crewnodes route is deprecated. Use agentnodes/tasknodes instead.
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
+router.register(r"knowledge-nodes", KnowledgeNodeViewSet)
 router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
 router.register(r"subgraph-nodes", SubGraphNodeModelViewSet)
-router.register(r"code-agent-nodes", CodeAgentNodeViewSet)
+router.register(r"tasknodes", TaskNodeViewSet)
+router.register(r"agentnodes", AgentNodeViewSet)
+router.register(r"agentnodetasks", AgentNodeTaskViewSet)
 
 router.register(r"edges", EdgeViewSet)
 router.register(r"conditionaledges", ConditionalEdgeViewSet)
@@ -159,6 +174,7 @@ router.register(r"memory", MemoryViewSet)
 
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
 router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions")
+
 router.register(r"realtime-models", RealtimeModelViewSet)
 router.register(r"realtime-model-configs", RealtimeConfigModelViewSet)
 router.register(r"realtime-transcription-models", RealtimeTranscriptionModelViewSet)
@@ -167,7 +183,15 @@ router.register(
 )
 router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
 router.register(r"realtime-agents", RealtimeAgentViewSet)
+router.register(r"realtime-agent-definitions", RealtimeAgentDefinitionViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
+router.register(r"openai-realtime-configs", OpenAIRealtimeConfigViewSet)
+router.register(r"elevenlabs-realtime-configs", ElevenLabsRealtimeConfigViewSet)
+router.register(r"gemini-realtime-configs", GeminiRealtimeConfigViewSet)
+router.register(r"realtime-channels", RealtimeChannelViewSet)
+router.register(r"twilio-channels", TwilioChannelViewSet)
+router.register(r"conversation-recordings", ConversationRecordingViewSet)
+
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)
 router.register(
     r"classification-decision-table-node", ClassificationDecisionTableNodeModelViewSet
@@ -175,6 +199,7 @@ router.register(
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
+router.register(r"graph-organizations", GraphOrganizationViewSet)
 router.register(r"graph-organization-users", GraphOrganizationUserViewSet)
 router.register(r"naive-rag-document-chunks", NaiveRagChunkViewSet)
 router.register(r"webhook-trigger-nodes", WebhookTriggerNodeViewSet)
@@ -182,10 +207,11 @@ router.register(r"webhook-triggers", WebhookTriggerViewSet)
 router.register(r"telegram-trigger-nodes", TelegramTriggerNodeViewSet)
 router.register(r"python-code-tool-configs", PythonCodeToolConfigViewSet)
 router.register(r"graph-notes", GraphNoteViewSet)
-router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
+router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 admin_router = DefaultRouter()
@@ -256,11 +282,6 @@ urlpatterns = [
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
         name="run-session-subscribe",
-    ),
-    path(
-        "run-session/subscribe/<int:session_id>/filtered/",
-        FilteredRunSessionSSEView.as_view(),
-        name="run-session-subscribe-filtered",
     ),
     path(
         "run-session/subscribe/<int:session_id>/swagger/",
@@ -397,14 +418,9 @@ urlpatterns = [
         name="register-webhooks",
     ),
     path(
-        "voice-settings/",
-        VoiceSettingsView.as_view(),
-        name="voice-settings",
-    ),
-    path(
-        "twilio/phone-numbers/",
-        TwilioPhoneNumbersView.as_view(),
-        name="twilio-phone-numbers",
+        "realtime-voices/",
+        RealtimeVoicesView.as_view(),
+        name="realtime-voices",
     ),
     path(
         "twilio/configure-webhook/",

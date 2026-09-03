@@ -11,6 +11,7 @@ class PythonCode(ContentHashMixin, models.Model):
     entrypoint = models.TextField(default="main")
     libraries = models.TextField(default="")  # sep: space
     global_kwargs = models.JSONField(default=dict)
+    secrets = models.ManyToManyField("Secret", blank=True, related_name="python_codes")
 
     def get_libraries_list(self):
         return list(filter(None, self.libraries.split(" ")))
@@ -21,9 +22,11 @@ class PythonCodeTool(OrgScopedModel, models.Model):
     description = models.TextField()
     variables = models.JSONField(default=list, blank=True)
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE, null=False)
-    favorite = models.BooleanField(default=False)
     built_in = models.BooleanField(default=False)
     use_storage = models.BooleanField(default=False)
+    labels = models.ManyToManyField(
+        "Label", blank=True, related_name="python_code_tools"
+    )
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

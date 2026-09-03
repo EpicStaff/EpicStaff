@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormControl, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 export type StepperSize = 'sm' | 'md' | 'lg';
@@ -9,7 +10,7 @@ export type StepperSize = 'sm' | 'md' | 'lg';
 @Component({
     selector: 'app-number-stepper',
     standalone: true,
-    imports: [CommonModule, FormsModule, TooltipComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, TooltipComponent],
     templateUrl: './number-stepper.component.html',
     styleUrls: ['./number-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -116,6 +117,17 @@ export class NumberStepperComponent implements ControlValueAccessor {
         if (val === null) return true;
         if (maxVal === null) return true;
         return val < maxVal;
+    });
+
+    stepIconSize = computed(() => {
+        switch (this.size()) {
+            case 'lg':
+                return '14px';
+            case 'md':
+                return '12px';
+            default:
+                return '11px';
+        }
     });
 
     onKeyDown(event: KeyboardEvent) {

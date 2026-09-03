@@ -7,57 +7,78 @@
 .pagination {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     background: transparent;
-    border-radius: 6px;
     user-select: none;
-}
-
-.page-btn {
-    background: var(--color-secondary-btn-background);
-    color: var(--color-text-primary);
-    border: none;
-    padding: 0.4rem 0.75rem;
-    font-size: 0.9rem;
-    border-radius: 4px;
-    cursor: pointer;
-    transition:
-        background‐color 0.2s,
-        color 0.2s;
-
-    &:hover:not(:disabled) {
-        background: var(--color-secondary-btn-background-hover);
-        color: var(--color-text-primary-hover);
-    }
-
-    &:disabled {
-        opacity: 0.4;
-        cursor: default;
-    }
-
-    &.active {
-        background: var(--accent-color);
-        color: var(--color-sidenav-background);
-        pointer-events: none;
-
-        &:hover {
-            background: var(--accent-color-hover);
-        }
-        &:active {
-            background: var(--accent-color-active);
-        }
-    }
 }
 
 .page-list {
     display: flex;
+    align-items: center;
     list-style: none;
     margin: 0;
     padding: 0;
-    gap: 0.5rem;
+    gap: 8px;
+}
 
-    li.ellipsis .dots {
-        color: var(--color-text-secondary);
-        padding: 0.4rem 0.75rem;
+.page-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--color-text-primary);
+    border: 1px solid var(--accent-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        border-color 0.15s;
+
+    &:hover:not(:disabled):not(.active) {
+        background: color-mix(in srgb, var(--accent-color) 15%, transparent);
     }
+
+    &.active {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: #fff;
+        pointer-events: none;
+    }
+
+    &.nav {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: #fff;
+
+        svg {
+            display: block;
+        }
+
+        &:hover:not(:disabled) {
+            background: var(--accent-color-hover);
+            border-color: var(--accent-color-hover);
+        }
+
+        &:disabled {
+            background: var(--color-secondary-btn-background);
+            border-color: var(--color-secondary-btn-background);
+            color: var(--color-text-secondary);
+            opacity: 0.5;
+            cursor: default;
+        }
+    }
+}
+
+.dots {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 36px;
+    color: var(--color-text-secondary);
 }

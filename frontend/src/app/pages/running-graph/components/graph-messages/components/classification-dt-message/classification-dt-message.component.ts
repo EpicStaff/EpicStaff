@@ -472,14 +472,13 @@ export class ClassificationDtMessageComponent {
         return null;
     }
 
-    getManipulationDisplay(): Record<string, unknown> | null {
+    getManipulationDisplay(): unknown {
         const data = this.getManipulationData();
         if (!data) return null;
-        // Show only changed variables; fall back to full state for old messages
         if (data.changed_variables && Object.keys(data.changed_variables).length > 0) {
             return data.changed_variables;
         }
-        return (data.state?.['variables'] as Record<string, unknown>) ?? data.state;
+        return data.state?.['variables'] ?? data.state;
     }
 
     conditionResultClass(): string {

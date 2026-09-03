@@ -1,86 +1,135 @@
-import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, Inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { EnhancedTranscriptionConfig } from '@shared/models';
-import { RealtimeModelConfigsService, TranscriptionConfigsService } from '@shared/services';
+import { RadioButtonComponent, SelectComponent, SelectItem } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { finalize } from 'rxjs';
 
+import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/elevenlabs-realtime-config-storage.service';
+import { GeminiRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/gemini-realtime-config-storage.service';
+import { OpenAIRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/openai-realtime-config-storage.service';
 import { PartialUpdateAgentRequest, RealtimeAgentConfig } from '../../../../../../features/staff/models/agent.model';
 import { FullAgent, PartialAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { AgentsService } from '../../../../../../features/staff/services/staff.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { HelpTooltipComponent } from '../../../../../../shared/components/help-tooltip/help-tooltip.component';
-import { AVAILABLE_LANGUAGES } from '../../../../../../shared/constants/languages-selector.constants';
-import { AVAILABLE_VOICES } from '../../../../../../shared/constants/realtime-voice.constants';
+import { SliderWithStepperComponent } from '../../../../../../shared/components/slider-with-stepper/slider-with-stepper.component';
+import { VoiceSelectorComponent } from '../../../../../../shared/components/voice-selector/voice-selector.component';
+import { RealtimeVoice, RealtimeVoicesService } from '../../../../../../shared/services/realtime-voices.service';
 import { buildToolIdsArray } from '../../../../../../shared/utils/tool-ids-builder.util';
-import { AddTranscriptionConfigDialogComponent } from './add-transcription-dialog/add-transcription-dialog.component';
-import { LanguageSelectorComponent } from './language-selector/language-selector.component';
-import { TranscriptionConfigSelectorComponent } from './transcription-model-selector/transcription-config-selector.component';
-import { VoiceSelectorComponent } from './voice-selector/voice-selector.component';
+
+export type RealtimeProvider = 'openai' | 'elevenlabs' | 'gemini';
+type ProviderConfigValue = number | { id: number } | null | undefined;
 
 @Component({
     selector: 'app-realtime-settings-dialog',
     standalone: true,
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         CommonModule,
         FormsModule,
         ReactiveFormsModule,
-        LanguageSelectorComponent,
         VoiceSelectorComponent,
-        TranscriptionConfigSelectorComponent,
         HelpTooltipComponent,
+        SelectComponent,
+        SliderWithStepperComponent,
+        RadioButtonComponent,
     ],
     templateUrl: './realtime-settings-dialog.component.html',
     styleUrls: ['./realtime-settings-dialog.component.scss'],
 })
 export class RealtimeSettingsDialogComponent implements OnInit {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
+    private readonly dialogRef = inject<DialogRef<PartialAgent>>(DialogRef);
+    public readonly data = inject<{ agent: FullAgent }>(DIALOG_DATA);
+    private readonly agentsService = inject(AgentsService);
+    private readonly openaiStorage = inject(OpenAIRealtimeConfigStorageService);
+    private readonly elevenLabsStorage = inject(ElevenLabsRealtimeConfigStorageService);
+    private readonly geminiStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly fb = inject(FormBuilder);
+    private readonly toastService = inject(ToastService);
+    private readonly voicesService = inject(RealtimeVoicesService);
+    private readonly destroyRef = inject(DestroyRef);
+
     settingsForm!: FormGroup;
     submitting = false;
     errorMessage: string | null = null;
-    transcriptionConfigs: EnhancedTranscriptionConfig[] = [];
-    loadingConfigs = false;
-    isElevenLabs = false;
 
-    // Language options from constants
-    languages = AVAILABLE_LANGUAGES;
+    private voicesMap = signal<Record<string, RealtimeVoice[]>>({});
 
-    // Voice options from constants
-    voices = AVAILABLE_VOICES;
+    // Which provider is currently selected
+    activeProvider = signal<RealtimeProvider | null>(null);
 
-    constructor(
-        private dialogRef: DialogRef<PartialAgent>,
-        @Inject(DIALOG_DATA) public data: { agent: FullAgent },
-        private agentsService: AgentsService,
-        private transcriptionConfigsService: TranscriptionConfigsService,
-        private realtimeModelConfigsService: RealtimeModelConfigsService,
-        private fb: FormBuilder,
-        private toastService: ToastService,
-        private dialog: Dialog,
-        private destroyRef: DestroyRef
-    ) {}
+    availableVoices = computed<RealtimeVoice[]>(() => {
+        const provider = this.activeProvider();
+        if (!provider || provider === 'elevenlabs') return [];
+        return this.voicesMap()[provider] ?? [];
+    });
+
+    // Config selects for each provider
+    openaiConfigItems = computed<SelectItem[]>(() => [
+        { name: '— None —', value: null },
+        ...this.openaiStorage.configs().map((c) => ({ name: c.custom_name, value: c.id })),
+    ]);
+    elevenLabsConfigItems = computed<SelectItem[]>(() => [
+        { name: '— None —', value: null },
+        ...this.elevenLabsStorage.configs().map((c) => ({ name: c.custom_name, value: c.id })),
+    ]);
+    geminiConfigItems = computed<SelectItem[]>(() => [
+        { name: '— None —', value: null },
+        ...this.geminiStorage.configs().map((c) => ({ name: c.custom_name, value: c.id })),
+    ]);
+
+    isElevenLabs = computed(() => this.activeProvider() === 'elevenlabs');
+
+    readonly providers: SelectItem<RealtimeProvider>[] = [
+        { value: 'openai', name: 'OpenAI' },
+        { value: 'elevenlabs', name: 'ElevenLabs' },
+        { value: 'gemini', name: 'Gemini' },
+    ];
 
     ngOnInit(): void {
-        this.loadTranscriptionConfigs();
-        this.loadRealtimeConfig();
+        // Determine initial active provider from which FK is non-null
+        const ra = this.data.agent.realtime_agent;
+        const openaiConfigId = this.getProviderConfigId(ra.openai_config as ProviderConfigValue);
+        const elevenLabsConfigId = this.getProviderConfigId(ra.elevenlabs_config as ProviderConfigValue);
+        const geminiConfigId = this.getProviderConfigId(ra.gemini_config as ProviderConfigValue);
+
+        if (openaiConfigId != null) this.activeProvider.set('openai');
+        else if (elevenLabsConfigId != null) this.activeProvider.set('elevenlabs');
+        else if (geminiConfigId != null) this.activeProvider.set('gemini');
+        else this.activeProvider.set('openai');
 
         this.settingsForm = this.fb.group({
-            voice: [this.data.agent.realtime_agent.voice, Validators.required],
+            voice: [ra.voice ?? ''],
             threshold: [
                 Number(this.data.agent.search_configs?.naive?.similarity_threshold ?? 0.2),
                 [Validators.required, Validators.min(0), Validators.max(1)],
             ],
             searchLimit: [
-                this.data.agent.search_configs?.naive?.search_limit || 3,
+                this.data.agent.search_configs?.naive?.search_limit ?? 5,
                 [Validators.required, Validators.min(0), Validators.max(1000)],
             ],
-            wakeword: [this.data.agent.realtime_agent.wake_word],
-            stopword: [this.data.agent.realtime_agent.stop_prompt],
-            preferredLanguage: [this.data.agent.realtime_agent.language],
-            voice_recognition_prompt: [this.data.agent.realtime_agent.voice_recognition_prompt],
-            realtime_transcription_config: [this.data.agent.realtime_agent.realtime_transcription_config],
+            wakeword: [ra.wake_word],
+            stopword: [ra.stop_prompt],
+            openai_config: [openaiConfigId],
+            elevenlabs_config: [elevenLabsConfigId],
+            gemini_config: [geminiConfigId],
         });
+
+        this.openaiStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.elevenLabsStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.geminiStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+
+        this.voicesService
+            .getVoices()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((map) => {
+                this.voicesMap.set(map);
+            });
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
@@ -90,115 +139,14 @@ export class RealtimeSettingsDialogComponent implements OnInit {
         });
     }
 
-    loadRealtimeConfig(): void {
-        const configId = this.data.agent.realtime_agent.realtime_config;
-        if (configId == null) {
-            return;
-        }
-        this.realtimeModelConfigsService
-            .getConfigById(configId)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (config) => {
-                    this.isElevenLabs = config.provider_name === 'elevenlabs';
-                },
-                error: () => {
-                    // Non-critical — voice dropdown remains as default
-                },
-            });
+    private getProviderConfigId(config: ProviderConfigValue): number | null {
+        if (typeof config === 'number') return config;
+        return config?.id ?? null;
     }
 
-    loadTranscriptionConfigs(): void {
-        this.loadingConfigs = true;
-        this.transcriptionConfigsService
-            .getEnhancedTranscriptionConfigs()
-            .pipe(
-                finalize(() => {
-                    this.loadingConfigs = false;
-                })
-            )
-            .subscribe({
-                next: (configs) => {
-                    this.transcriptionConfigs = configs;
-                },
-                error: (error) => {
-                    console.error('Error loading transcription configs:', error);
-                    this.toastService.error('Failed to load transcription configurations.');
-                },
-            });
-    }
-
-    onTranscriptionConfigChange(configId: number | null): void {
-        this.settingsForm.patchValue({
-            realtime_transcription_config: configId,
-        });
-    }
-
-    openCreateTranscriptionConfigDialog(): void {
-        const dialogRef = this.dialog.open(AddTranscriptionConfigDialogComponent, {
-            data: {},
-            width: '500px',
-        });
-
-        dialogRef.closed.subscribe((result: unknown) => {
-            if (result) {
-                // Reload the configs to include the newly created one
-                this.loadTranscriptionConfigs();
-
-                // After a short delay to ensure the configs are loaded, select the new config
-                setTimeout(() => {
-                    this.onTranscriptionConfigChange((result as { id: number }).id);
-                }, 300);
-            }
-        });
-    }
-
-    editTranscriptionConfig(configId: number): void {
-        const editConfig = this.transcriptionConfigs.find((c) => c.id === configId);
-        if (!editConfig) {
-            return;
-        }
-
-        const dialogRef = this.dialog.open(AddTranscriptionConfigDialogComponent, {
-            data: { editConfig },
-            width: '500px',
-        });
-
-        dialogRef.closed.subscribe((result: unknown) => {
-            if (!result) {
-                return;
-            }
-
-            const updated = result as { id: number };
-            this.loadTranscriptionConfigs();
-
-            const currentSelected = this.settingsForm.get('realtime_transcription_config')?.value;
-            if (currentSelected === updated.id) {
-                setTimeout(() => {
-                    this.onTranscriptionConfigChange(updated.id);
-                }, 300);
-            }
-        });
-    }
-
-    deleteTranscriptionConfig(configId: number): void {
-        this.settingsForm.patchValue({ realtime_transcription_config: null });
-
-        this.transcriptionConfigsService.deleteTranscriptionConfig(configId).subscribe({
-            next: () => {
-                this.toastService.success('Transcription config deleted successfully');
-
-                this.transcriptionConfigs = this.transcriptionConfigs.filter((c) => c.id !== configId);
-            },
-            error: (error) => {
-                console.error('Error deleting transcription config:', error);
-                this.toastService.error('Failed to delete transcription config');
-            },
-        });
-    }
-
-    onLanguageChange(langId: string | null): void {
-        this.settingsForm.patchValue({ preferredLanguage: langId });
+    onProviderSelect(provider: unknown): void {
+        this.activeProvider.set(provider as RealtimeProvider);
+        if (provider === 'elevenlabs') this.settingsForm.patchValue({ voice: '' });
     }
 
     onVoiceChange(voiceId: string): void {
@@ -210,81 +158,77 @@ export class RealtimeSettingsDialogComponent implements OnInit {
     }
 
     onConfirm(): void {
-        if (this.settingsForm.valid) {
-            this.submitting = true;
-            this.errorMessage = null;
-
-            // Get form values
-            const formValues = this.settingsForm.value;
-
-            // Prepare the data for API request
-            const realtimeAgentData: RealtimeAgentConfig = {
-                wake_word: formValues.wakeword,
-                stop_prompt: formValues.stopword,
-                language: formValues.preferredLanguage,
-                voice: formValues.voice,
-                voice_recognition_prompt: formValues.voice_recognition_prompt,
-                realtime_transcription_config: formValues.realtime_transcription_config,
-                realtime_config: this.data.agent.realtime_agent.realtime_config,
-            };
-
-            const searchConfigsData = {
-                naive: {
-                    similarity_threshold: formValues.threshold.toString(),
-                    search_limit: formValues.searchLimit,
-                },
-            };
-
-            const getToolIds = (tools: { data: { id: number }; unique_name: string }[]) => {
-                const python_code_tool: number[] = [];
-
-                tools.forEach(({ data }) => {
-                    python_code_tool.push(data.id);
-                });
-
-                return { python_code_tool };
-            };
-
-            const { python_code_tool } = getToolIds(this.data.agent.tools);
-
-            // Build tool_ids array for settings update
-            const settingsToolIds = buildToolIdsArray(python_code_tool);
-
-            const updatedAgent: PartialUpdateAgentRequest = {
-                id: this.data.agent.id,
-                role: this.data.agent.role,
-                goal: this.data.agent.goal,
-                backstory: this.data.agent.backstory,
-                realtime_agent: realtimeAgentData,
-                search_configs: searchConfigsData,
-                python_code_tools: python_code_tool,
-                tool_ids: settingsToolIds,
-            };
-
-            // Send PATCH request to update the realtime agent
-            this.agentsService
-                .partialUpdateAgent(updatedAgent)
-                .pipe(
-                    finalize(() => {
-                        this.submitting = false;
-                    })
-                )
-                .subscribe({
-                    next: () => {
-                        this.toastService.success('Realtime agent settings updated successfully');
-
-                        // Pass the updated agent back to the parent component
-                        this.dialogRef.close(updatedAgent);
-                    },
-                    error: (error) => {
-                        console.error('Error updating realtime agent:', error);
-                        this.errorMessage = 'Failed to update settings. Please try again.';
-
-                        this.toastService.error('Failed to update settings. Please try again.');
-                    },
-                });
-        } else {
+        if (!this.settingsForm.valid) {
             this.settingsForm.markAllAsTouched();
+            return;
         }
+
+        this.submitting = true;
+        this.errorMessage = null;
+
+        const formValues = this.settingsForm.value;
+
+        const provider = this.activeProvider();
+        const realtimeAgentData: RealtimeAgentConfig = {
+            wake_word: formValues.wakeword,
+            stop_prompt: formValues.stopword,
+            language: formValues.preferredLanguage,
+            voice: formValues.voice,
+            openai_config: provider === 'openai' ? formValues.openai_config : null,
+            elevenlabs_config: provider === 'elevenlabs' ? formValues.elevenlabs_config : null,
+            gemini_config: provider === 'gemini' ? formValues.gemini_config : null,
+            voice_recognition_prompt: formValues.voice_recognition_prompt,
+            realtime_transcription_config: formValues.realtime_transcription_config,
+            realtime_config: this.data.agent.realtime_agent.realtime_config,
+        };
+
+        const existingGraph = this.data.agent.search_configs?.graph;
+        const searchConfigsData = {
+            naive: {
+                similarity_threshold: formValues.threshold.toString(),
+                search_limit: formValues.searchLimit,
+            },
+            ...(existingGraph ? { graph: existingGraph } : {}),
+        };
+
+        const mcp_tool: number[] = [];
+        const python_code_tool: number[] = [];
+        this.data.agent.tools.forEach(({ data, unique_name }) => {
+            const parts = unique_name.split(':');
+            if (parts[0] === 'mcp-tool') {
+                mcp_tool.push((data as { id: number }).id);
+            } else {
+                python_code_tool.push((data as { id: number }).id);
+            }
+        });
+
+        const updatedAgent: PartialUpdateAgentRequest = {
+            id: this.data.agent.id,
+            role: this.data.agent.role,
+            goal: this.data.agent.goal,
+            backstory: this.data.agent.backstory,
+            realtime_agent: realtimeAgentData,
+            search_configs: searchConfigsData,
+            python_code_tools: python_code_tool,
+            tool_ids: buildToolIdsArray(python_code_tool, mcp_tool),
+        };
+
+        this.agentsService
+            .partialUpdateAgent(updatedAgent)
+            .pipe(
+                finalize(() => {
+                    this.submitting = false;
+                })
+            )
+            .subscribe({
+                next: () => {
+                    this.toastService.success('Realtime agent settings updated successfully');
+                    this.dialogRef.close(updatedAgent);
+                },
+                error: () => {
+                    this.errorMessage = 'Failed to update settings. Please try again.';
+                    this.toastService.error('Failed to update settings. Please try again.');
+                },
+            });
     }
 }

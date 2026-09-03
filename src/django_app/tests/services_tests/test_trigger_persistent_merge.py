@@ -10,6 +10,7 @@ from tables.models.session_models import Session
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
 class _FakeGraphDump:
@@ -26,7 +27,7 @@ def _stub_publish(monkeypatch):
     sm = SessionManagerService()
     monkeypatch.setattr(sm, "create_session_data", lambda session: _FakeSessionData())
     monkeypatch.setattr(
-        sm.redis_service, "publish_session_data", lambda session_data: 2
+        sm.redis_service, "publish_session_data", lambda session_data, org_id: 2
     )
     return sm
 
@@ -45,6 +46,21 @@ def test_telegram_trigger_merges_org_and_keeps_payload(default_org, monkeypatch)
     )
     GraphOrganization.objects.create(graph=graph, persistent_variables={"counter": 5})
     trigger = WebhookTrigger.objects.create(path="tgpath")
+
+    # `TelegramTriggerNode.objects.create()` fires
+    # `telegram_signals.telegram_trigger_post_save_handler`, which otherwise
+    # makes a REAL `WebhookTriggerService().register_webhooks()` Redis
+    # publish and a REAL outbound Telegram API call via
+    # `TelegramTriggerService().register_telegram_trigger()`. Stub both
+    # before creating the node -- this test only cares about persistent
+    # variable merging.
+    monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+    monkeypatch.setattr(
+        TelegramTriggerService,
+        "register_telegram_trigger",
+        lambda self, telegram_trigger_instance=None, **kwargs: None,
+    )
+
     TelegramTriggerNode.objects.create(
         graph=graph, node_name="tg_node", webhook_trigger=trigger
     )
@@ -52,7 +68,7 @@ def test_telegram_trigger_merges_org_and_keeps_payload(default_org, monkeypatch)
     _stub_publish(monkeypatch)
 
     TelegramTriggerService().handle_telegram_trigger(
-        url_path="tgpath", payload={"m": 1}
+        path="tgpath", payload={"m": 1}
     )
 
     session = Session.objects.filter(graph=graph).order_by("-id").first()

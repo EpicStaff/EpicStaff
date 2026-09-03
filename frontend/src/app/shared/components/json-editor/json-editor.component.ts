@@ -44,10 +44,13 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public fullHeight: boolean = false;
     @Input() public showHeader: boolean = true;
     @Input() public title: string = 'JSON Editor';
+    @Input() public subtitle: string = '';
     @Input() public collapsible: boolean = false;
     @Input() public allowCopy: boolean = false;
+    @Input() public allowExpand: boolean = false;
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
+    @Input() public exampleHint: string = '';
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',
@@ -68,10 +71,12 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Output() public validationChange = new EventEmitter<boolean>();
     @Output() public errorsChange = new EventEmitter<JsonError[]>();
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
+    @Output() public expand = new EventEmitter<void>();
 
     public collapsed: boolean = true;
     public editorLoaded = false;
     public jsonIsValid = true;
+    public exampleCollapsed = false;
 
     private monacoEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
     private isProgrammaticChange: boolean = false;
@@ -81,8 +86,16 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     private readonly schemaId = `inmemory://json-editor-schema/${JsonEditorComponent.schemaSeq++}.json`;
     private markersDisposable: { dispose(): void } | null = null;
 
-    private get monacoGlobal(): any {
-        return (window as unknown as { monaco?: any }).monaco ?? null;
+    // Font metrics mirrored once from the live Monaco instance
+    public hintFontFamily: string = '';
+    public hintFontSize: number = 14;
+
+    public get showExampleHint(): boolean {
+        return !!this.exampleHint && this.editorLoaded;
+    }
+
+    private get monacoGlobal(): typeof import('monaco-editor') | null {
+        return (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco ?? null;
     }
 
     private get schemaMode(): boolean {
@@ -137,6 +150,9 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             this.runExtraValidation();
             this.emitMarkers();
         }
+        if (this.exampleHint) {
+            this.captureHintMetrics();
+        }
         this.cdr.markForCheck();
     }
 
@@ -178,6 +194,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         this.collapsed = !this.collapsed;
     }
 
+    public onToggleExample(): void {
+        this.exampleCollapsed = !this.exampleCollapsed;
+    }
+
     private buildJsonError(raw: string, err: unknown): JsonError {
         const message = err instanceof Error ? err.message : String(err);
 
@@ -211,6 +231,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         navigator.clipboard.writeText(this.jsonData).then(() => {
             this.toast.success('Copied to clipboard!');
         });
+    }
+
+    public onExpand(): void {
+        this.expand.emit();
     }
 
     public onResize(newHeight: number): void {
@@ -257,7 +281,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         if (!monaco?.editor?.onDidChangeMarkers) {
             return;
         }
-        this.markersDisposable = monaco.editor.onDidChangeMarkers((uris: { toString(): string }[]) => {
+        this.markersDisposable = monaco.editor.onDidChangeMarkers((uris) => {
             const myUri = this.monacoEditor?.getModel()?.uri?.toString();
             if (myUri && uris.some((u) => u.toString() === myUri)) {
                 this.emitMarkers();
@@ -315,6 +339,20 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             };
         });
         monaco.editor.setModelMarkers(model, 'json-editor-extra', markers);
+    }
+
+    private captureHintMetrics(): void {
+        const monaco = this.monacoGlobal;
+        if (!monaco?.editor?.EditorOption || !this.monacoEditor) {
+            return;
+        }
+        const fontInfo = this.monacoEditor.getOption(monaco.editor.EditorOption.fontInfo) as {
+            fontFamily: string;
+            fontSize: number;
+        };
+        this.hintFontFamily = fontInfo.fontFamily;
+        this.hintFontSize = fontInfo.fontSize;
+        this.cdr.markForCheck();
     }
 
     private setValueAndFormat(value: string): void {

@@ -3,6 +3,10 @@ import zipfile
 from abc import ABC, abstractmethod
 from typing import Iterator
 
+from tables.services.storage_service.archive_limits import (
+    ArchiveExtractionGuard,
+    default_guard,
+)
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FolderInfo,
@@ -10,6 +14,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 
 
 class AbstractStorageBackend(ABC):
@@ -61,9 +66,16 @@ class AbstractStorageBackend(ABC):
         finally:
             archive_file.seek(pos)
 
-    def _iter_archive_entries(self, archive_file) -> Iterator[tuple[str, bytes]]:
+    def _sanitize_archive_member_name(self, name: str) -> str:
+        """Raise ValueError if an archive member name can escape the extraction folder."""
+        return sanitize_storage_path(name, allow_empty=False)
+
+    def _iter_archive_entries(
+        self, archive_file, guard: ArchiveExtractionGuard | None = None
+    ) -> Iterator[tuple[str, bytes]]:
         """Yield (relative_path, bytes) for every file inside a ZIP or TAR archive."""
         pos = archive_file.tell()
+        guard = guard or default_guard()
 
         if zipfile.is_zipfile(archive_file):
             archive_file.seek(pos)
@@ -71,7 +83,13 @@ class AbstractStorageBackend(ABC):
             with zipfile.ZipFile(archive_file, "r") as zf:
                 for entry in zf.infolist():
                     if not entry.is_dir():
-                        yield entry.filename, zf.read(entry.filename)
+                        guard.account_entry()
+                        safe_name = self._sanitize_archive_member_name(entry.filename)
+                        with zf.open(entry, "r") as member_file:
+                            yield (
+                                safe_name,
+                                guard.read_member(member_file, entry.filename),
+                            )
 
             return
 
@@ -87,10 +105,16 @@ class AbstractStorageBackend(ABC):
 
             with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
                 for member in tf.getmembers():
+                    if member.issym() or member.islnk():
+                        raise ValueError(
+                            f"Archive member is a symlink or hardlink: {member.name!r}"
+                        )
                     if member.isfile():
+                        guard.account_entry()
+                        safe_name = self._sanitize_archive_member_name(member.name)
                         fobj = tf.extractfile(member)
                         if fobj:
-                            yield member.name, fobj.read()
+                            yield safe_name, guard.read_member(fobj, member.name)
 
             return
 
@@ -118,12 +142,24 @@ class AbstractStorageBackend(ABC):
         """Create a folder."""
 
     @abstractmethod
-    def move(self, source_path: str, destination_path: str) -> None:
-        """Move / rename file or folder."""
+    def move(self, source_path: str, destination_path: str) -> str:
+        """
+        Move source into the destination folder (never overwrites destination_path
+        itself — source is placed as a child of it).
+
+        Returns the actual destination base created after name-dedup: the exact
+        new file key for a file, or the folder base path (ending in "/") for a
+        folder.
+        """
 
     @abstractmethod
     def rename(self, source_path: str, destination_path: str) -> None:
-        """Rename/move source to the exact destination path (never into it)."""
+        """
+        Rename/move source to the exact destination path (never into it).
+
+        Raises FileExistsError when a file or folder already exists at the
+        exact destination path.
+        """
 
     @abstractmethod
     def copy(self, source_path: str, destination_path: str) -> list[str]:
@@ -142,10 +178,6 @@ class AbstractStorageBackend(ABC):
         """Recursively list all file keys under prefix (excludes folder markers)."""
 
     @abstractmethod
-    def download_zip(self, paths: list[str]) -> Iterator[bytes]:
-        """Yield a streaming zip archive containing the given paths."""
-
-    @abstractmethod
     def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
         """Extract archive into prefix. Returns list of extracted paths."""
 
@@ -154,3 +186,16 @@ class AbstractStorageBackend(ABC):
         self, prefix: str, max_depth: int | None = None, max_entries: int = 50_000
     ) -> tuple[TreeNode, bool]:
         """Return (root_node, truncated). Root path ends with '/'."""
+
+    @abstractmethod
+    def list_all_objects(self, prefix: str) -> list[tuple[str, int, str]]:
+        """
+        Recursively list all file objects under prefix.
+
+        Returns a list of (key, size, modified_iso) tuples where:
+          - key: full storage key as returned by the backend (not stripped)
+          - size: file size in bytes
+          - modified_iso: ISO-8601 datetime string (UTC)
+
+        Folder marker keys (ending in '/') and '.keep' files are excluded.
+        """

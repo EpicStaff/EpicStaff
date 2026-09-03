@@ -38,15 +38,22 @@
                 <app-validation-errors [control]="form.get('model')!" />
             </div>
             <div>
-                <app-custom-input
-                    formControlName="api_key"
+                <app-select
+                    formControlName="api_key_secret_id"
                     label="API Key"
-                    placeholder="Enter provider's API key"
-                    tooltipText="Your secret API key from the provider's dashboard. It will be stored securely."
-                    type="secret"
-                    cautionMessage="You must enter the full new API key to change it. Partial updates aren't supported."
+                    variant="boxed"
+                    placeholder="Select a secret"
+                    tooltipText="The stored secret holding this provider's API key"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
                 />
-                <app-validation-errors [control]="form.get('api_key')!" />
+                @if (!form.get('api_key_secret_id')?.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
+                <app-validation-errors [control]="form.get('api_key_secret_id')!" />
             </div>
             <div>
                 <app-custom-input
@@ -104,6 +111,7 @@
                     formControlName="presence_penalty"
                     label="Presence Penalty"
                     tooltipText="Penalises tokens that have already appeared, encouraging the model to introduce new topics."
+                    [step]="5"
                 />
                 <app-validation-errors [control]="form.get('presence_penalty')!" />
             </div>
@@ -112,6 +120,7 @@
                     formControlName="frequency_penalty"
                     label="Frequency Penalty"
                     tooltipText="Penalises tokens proportionally to how often they appear, reducing repetition."
+                    [step]="5"
                 />
                 <app-validation-errors [control]="form.get('frequency_penalty')!" />
             </div>
@@ -124,6 +133,7 @@
                     formControlName="max_tokens"
                     [min]="500"
                     [max]="2147483647"
+                    [stepSize]="100"
                     label="Max Tokens"
                     tooltipText="Maximum number of tokens the model may generate in a single response"
                     [alwaysShowSteps]="true"
@@ -135,6 +145,7 @@
                     formControlName="timeout"
                     [min]="1"
                     [max]="600"
+                    [stepSize]="DEFAULT_STEP_SIZE"
                     label="Timeout (seconds)"
                     tooltipText="How long to wait for the model to respond before the request is cancelled"
                     [alwaysShowSteps]="true"
@@ -149,6 +160,7 @@
                 <app-input-number
                     formControlName="seed"
                     placeholder="random"
+                    [stepSize]="DEFAULT_STEP_SIZE"
                     label="Seed"
                     tooltipText="Fixed seed for reproducible outputs. Leave empty to let the model pick randomly."
                     [alwaysShowSteps]="true"

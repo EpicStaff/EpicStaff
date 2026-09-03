@@ -1,20 +1,19 @@
-from rest_framework.views import exception_handler
+from django.core.exceptions import PermissionDenied
+from django.http import Http404, JsonResponse
+from rest_framework import exceptions
 from rest_framework.exceptions import APIException
+from rest_framework.views import exception_handler
+
 from django_app.settings import DEBUG
-from django.http import JsonResponse
 
 
 def custom_exception_handler(exc, context):
-    """
-    Custom exception handler for API.
+    """Render every exception as the project's `{status_code, code, message}` envelope."""
 
-    This function handles exceptions raised during the processing of API requests.
-    - If the exception is an instance of `APIException`, it customizes the response data
-      to include `status_code`, `code`, and a detailed error message.
-
-    - If `DEBUG` is enabled, the default behavior of `exception_handler` is used.
-
-    """
+    if isinstance(exc, Http404):
+        exc = exceptions.NotFound(*exc.args)
+    elif isinstance(exc, PermissionDenied):
+        exc = exceptions.PermissionDenied(*exc.args)
 
     response = exception_handler(exc, context)
 
@@ -34,11 +33,13 @@ def custom_exception_handler(exc, context):
         return response
 
     if not DEBUG:
-        response = {
-            "status_code": 500,
-            "code": exc.__class__.__name__,
-            "message": f"{exc.__class__.__name__}: Unpredictable error",
-        }
-        return JsonResponse(response)
+        return JsonResponse(
+            {
+                "status_code": 500,
+                "code": exc.__class__.__name__,
+                "message": f"{exc.__class__.__name__}: Unpredictable error",
+            },
+            status=500,
+        )
 
     return response

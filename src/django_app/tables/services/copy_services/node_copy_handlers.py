@@ -1,9 +1,16 @@
 import uuid
 from typing import Callable
 
+from agents.models.surface_models import AgentInlineSurface, InlineSurface
+from agents.services.surface_content_service import (
+    AGENT_INLINE_SURFACE_CONTENT,
+    INLINE_SURFACE_CONTENT,
+)
 from tables.import_export.enums import NodeType
 from tables.models import Graph
+from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.models.graph_models import (
+    AgentNode,
     AudioTranscriptionNode,
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
@@ -16,16 +23,21 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
     SubGraphNode,
+    TaskNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
-    CodeAgentNode,
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
+from tables.services.copy_services.inline_surface_copy_helpers import (
+    copy_agent_node_tasks,
+    copy_node_inline_surface,
+)
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
@@ -112,7 +124,7 @@ def copy_telegram_trigger_node(
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
         node_name=node.node_name,
-        telegram_bot_api_key=node.telegram_bot_api_key,
+        telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
         webhook_trigger=node.webhook_trigger,
         metadata=node.metadata,
     )
@@ -126,25 +138,29 @@ def copy_telegram_trigger_node(
     return new_node
 
 
-def copy_code_agent_node(graph: Graph, node: CodeAgentNode) -> CodeAgentNode:
-    return CodeAgentNode.objects.create(
+def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
+    new_node = KnowledgeNode.objects.create(
         graph=graph,
-        llm_config=node.llm_config,
-        agent_mode=node.agent_mode,
-        session_id=node.session_id,
-        system_prompt=node.system_prompt,
-        stream_handler_code=node.stream_handler_code,
-        libraries=node.libraries,
-        polling_interval_ms=node.polling_interval_ms,
-        silence_indicator_s=node.silence_indicator_s,
-        indicator_repeat_s=node.indicator_repeat_s,
-        chunk_timeout_s=node.chunk_timeout_s,
-        inactivity_timeout_s=node.inactivity_timeout_s,
-        max_wait_s=node.max_wait_s,
-        stream_config=node.stream_config,
-        output_schema=node.output_schema,
+        source_collection=node.source_collection,
+        rag_type=node.rag_type,
+        rag_id=node.rag_id,
+        query=node.query,
+        search_method=node.search_method,
         **get_base_node_fields(node),
     )
+    for relation in KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS:
+        # Reverse OneToOne raises RelatedObjectDoesNotExist (a subclass of
+        # AttributeError) when absent, so getattr default returns None.
+        config = getattr(node, relation, None)
+        if config is None:
+            continue
+        field_values = {
+            f.name: getattr(config, f.name)
+            for f in config._meta.fields
+            if f.name not in ("id", "knowledge_node")
+        }
+        type(config).objects.create(knowledge_node=new_node, **field_values)
+    return new_node
 
 
 def copy_schedule_trigger_node(
@@ -275,6 +291,36 @@ def copy_classification_decision_table_node(
     return new_node
 
 
+def copy_task_node(graph: Graph, node: TaskNode) -> TaskNode:
+    new_node = TaskNode.objects.create(
+        graph=graph,
+        agent_definition=node.agent_definition,
+        instructions=node.instructions,
+        output_schema=node.output_schema,
+        remember_output=node.remember_output,
+        **get_base_node_fields(node),
+    )
+    new_node.surface_list.set(node.surface_list.all())
+    copy_node_inline_surface(
+        node, new_node, InlineSurface, "task_node", INLINE_SURFACE_CONTENT
+    )
+    return new_node
+
+
+def copy_agent_node(graph: Graph, node: AgentNode) -> AgentNode:
+    new_node = AgentNode.objects.create(
+        graph=graph,
+        agent_definition=node.agent_definition,
+        **get_base_node_fields(node),
+    )
+    new_node.surface_list.set(node.surface_list.all())
+    copy_node_inline_surface(
+        node, new_node, AgentInlineSurface, "agent_node", AGENT_INLINE_SURFACE_CONTENT
+    )
+    copy_agent_node_tasks(node, new_node)
+    return new_node
+
+
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
 # To add a new node type: write a copy_<name> function above and add one entry here.
@@ -313,8 +359,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
         "classification_decision_table_node_list",
         copy_classification_decision_table_node,
     ),
-    NodeType.CODE_AGENT_NODE: (
-        "code_agent_node_list",
-        copy_code_agent_node,
+    NodeType.TASK_NODE: ("task_node_list", copy_task_node),
+    NodeType.AGENT_NODE: ("agent_node_list", copy_agent_node),
+    NodeType.KNOWLEDGE_NODE: (
+        "knowledge_node_list",
+        copy_knowledge_node,
     ),
 }

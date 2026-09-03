@@ -5,7 +5,7 @@ import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage } from '../../../../models/graph-session-message.model';
+import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-button/view-nested-messages-button.component';
 
 @Component({
@@ -236,7 +236,7 @@ export class StartMessageComponent {
     getStartInput(): Record<string, unknown> {
         if (!this.message.message_data) return {};
 
-        if (this.message.message_data.message_type === 'start' && 'input' in this.message.message_data) {
+        if (this.message.message_data.message_type === MessageType.START && 'input' in this.message.message_data) {
             return this.message.message_data.input;
         }
 

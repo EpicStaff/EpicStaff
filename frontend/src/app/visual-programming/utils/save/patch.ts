@@ -1,10 +1,12 @@
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../core/enums/node-type';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { ClassificationDecisionTableNodeModel } from '../../core/models/node.model';
+import { WebhookNodeAuthModel } from '../../core/models/webhook-trigger.model';
 import { NodeDiffByType } from './types';
 
 export function patchFlowStateWithBackendIds(
@@ -14,7 +16,6 @@ export function patchFlowStateWithBackendIds(
     responseGraph: GraphDto
 ): FlowModel {
     const uiToBackendId = buildCreatedNodeIdMap(previousFlow, nodeDiff, responseGraph);
-    if (uiToBackendId.size === 0) return currentFlow;
 
     const pythonCodeIdByBackendId = new Map<number, number | null>();
     for (const pn of responseGraph.python_node_list ?? []) {
@@ -33,6 +34,16 @@ export function patchFlowStateWithBackendIds(
         });
     }
 
+    const agentNodeByBackendId = new Map<number, AgentNode>();
+    for (const an of responseGraph.agent_node_list ?? []) {
+        agentNodeByBackendId.set(an.id, an);
+    }
+
+    const webhookAuthByBackendId = new Map<number, WebhookNodeAuthModel | null>();
+    for (const wn of responseGraph.webhook_trigger_node_list ?? []) {
+        webhookAuthByBackendId.set(wn.id, wn.webhook_node_auth ?? null);
+    }
+
     const patchedNodes = currentFlow.nodes.map((node) => {
         const mappedBackendId = uiToBackendId.get(node.id);
         let patched = mappedBackendId != null ? { ...node, backendId: mappedBackendId } : node;
@@ -41,6 +52,58 @@ export function patchFlowStateWithBackendIds(
             const resolvedBackendId = mappedBackendId ?? patched.backendId;
             if (resolvedBackendId != null && pythonCodeIdByBackendId.has(resolvedBackendId)) {
                 patched = { ...patched, python_code_id: pythonCodeIdByBackendId.get(resolvedBackendId) ?? null };
+            }
+        }
+
+        if (patched.type === NodeType.AGENT) {
+            const resolvedBackendId = mappedBackendId ?? patched.backendId;
+            const responseAgentNode =
+                resolvedBackendId != null ? agentNodeByBackendId.get(resolvedBackendId) : undefined;
+            if (responseAgentNode) {
+                const responseTasksByOrder = new Map<number, AgentNode['tasks'][number]>();
+                for (const t of responseAgentNode.tasks ?? []) {
+                    responseTasksByOrder.set(t.order, t);
+                }
+                const patchedTasks = patched.data.tasks.map((task, index) => {
+                    if (task.id != null) return task;
+                    const responseTask = responseTasksByOrder.get(index);
+                    return responseTask ? { ...task, id: responseTask.id } : task;
+                });
+
+                const idByTempId = new Map<string, number>();
+                for (const sibling of patchedTasks) {
+                    if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
+                }
+                const patchedTasksWithRefs = patchedTasks.map((task) => {
+                    if (!task.contextRefs?.length) return task;
+                    let changed = false;
+                    const newRefs = task.contextRefs.map((ref) => {
+                        if (ref.id == null && ref.tempId != null) {
+                            const resolvedId = idByTempId.get(ref.tempId);
+                            if (resolvedId != null) {
+                                changed = true;
+                                return { id: resolvedId };
+                            }
+                        }
+                        return ref;
+                    });
+                    return changed ? { ...task, contextRefs: newRefs } : task;
+                });
+
+                patched = { ...patched, data: { ...patched.data, tasks: patchedTasksWithRefs } };
+            }
+        }
+
+        if (patched.type === NodeType.WEBHOOK_TRIGGER) {
+            const resolvedBackendId = mappedBackendId ?? patched.backendId;
+            if (resolvedBackendId != null && webhookAuthByBackendId.has(resolvedBackendId)) {
+                patched = {
+                    ...patched,
+                    data: {
+                        ...patched.data,
+                        webhook_node_auth: webhookAuthByBackendId.get(resolvedBackendId) ?? null,
+                    },
+                };
             }
         }
 
@@ -129,6 +192,8 @@ function buildCreatedNodeIdMap(
         responseGraph.python_node_list ?? [],
         existingIdsByType(NodeType.PYTHON)
     );
+    mapByNewIds(nodeDiff.taskNodes.toCreate, responseGraph.task_node_list ?? [], existingIdsByType(NodeType.TASK));
+    mapByNewIds(nodeDiff.agentNodes.toCreate, responseGraph.agent_node_list ?? [], existingIdsByType(NodeType.AGENT));
     mapByNewIds(nodeDiff.llmNodes.toCreate, responseGraph.llm_node_list ?? [], existingIdsByType(NodeType.LLM));
     mapByNewIds(
         nodeDiff.fileExtractorNodes.toCreate,
@@ -159,11 +224,6 @@ function buildCreatedNodeIdMap(
         nodeDiff.decisionTableNodes.toCreate,
         responseGraph.decision_table_node_list ?? [],
         existingIdsByType(NodeType.TABLE)
-    );
-    mapByNewIds(
-        nodeDiff.codeAgentNodes.toCreate,
-        responseGraph.code_agent_node_list ?? [],
-        existingIdsByType(NodeType.CODE_AGENT)
     );
     mapByNewIds(nodeDiff.endNodes.toCreate, responseGraph.end_node_list ?? [], existingIdsByType(NodeType.END));
     mapByNewIds(nodeDiff.noteNodes.toCreate, responseGraph.graph_note_list ?? [], existingIdsByType(NodeType.NOTE));

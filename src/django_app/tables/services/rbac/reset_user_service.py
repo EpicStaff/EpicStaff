@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from tables.services.rbac.utils.bootstrap_lock import acquire_bootstrap_lock
 from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
 
@@ -22,6 +23,8 @@ class ResetUserService:
 
     @transaction.atomic
     def reset(self, *, email: str, password: str):
+        acquire_bootstrap_lock()
+
         UserModel = get_user_model()
         UserModel.objects.all().delete()  # user keys cascade; system key survives
 

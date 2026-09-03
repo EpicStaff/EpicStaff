@@ -7,7 +7,7 @@ from loguru import logger
 
 if "--debug" in sys.argv:
     logger.info("RUNNING IN DEBUG MODE")
-    load_dotenv(find_dotenv("debug.env"))
+    load_dotenv(find_dotenv(".debug.env"))
 else:
     load_dotenv(find_dotenv(".env"))
 

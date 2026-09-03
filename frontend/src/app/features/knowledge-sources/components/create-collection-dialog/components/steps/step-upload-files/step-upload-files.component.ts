@@ -1,5 +1,17 @@
 import { UpperCasePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, model, OnInit } from '@angular/core';
+import {
+    AfterViewInit,
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    input,
+    model,
+    OnInit,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FileUploaderComponent, HelpTooltipComponent, ValidationErrorsComponent } from '@shared/components';
@@ -7,7 +19,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../../services/notifications';
 import { FILE_TYPES } from '../../../../../constants/constants';
@@ -35,7 +47,7 @@ import { FilesListComponent } from './files-list/files-list.component';
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class StepUploadFilesComponent implements OnInit {
+export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     private destroyRef = inject(DestroyRef);
     private collectionsStorageService = inject(CollectionsStorageService);
     private documentsStorageService = inject(DocumentsStorageService);
@@ -47,6 +59,8 @@ export class StepUploadFilesComponent implements OnInit {
         notWhitespaceValidator(),
         Validators.maxLength(255),
     ]);
+    description: FormControl = new FormControl('', [Validators.maxLength(250)]);
+    private readonly descriptionTa = viewChild<ElementRef<HTMLTextAreaElement>>('descriptionTa');
     collection = input.required<CreateCollectionDtoResponse>();
     documents = model<DisplayedListDocument[]>([]);
 
@@ -66,13 +80,28 @@ export class StepUploadFilesComponent implements OnInit {
     }
 
     ngOnInit() {
-        this.collectionName.setValue(this.collection().collection_name);
+        this.collectionName.setValue(this.collection().collection_name, { emitEvent: false });
+        this.description.setValue(this.collection().description ?? '', { emitEvent: false });
 
         if (this.collection().document_count > 0) {
             this.getCollectionDocuments(this.collection().collection_id);
         }
 
         this.subscribeToCollectionName();
+        this.subscribeToDescription();
+    }
+
+    ngAfterViewInit(): void {
+        const el = this.descriptionTa()?.nativeElement;
+        if (el) this.autoGrow(el);
+    }
+
+    autoGrow(textarea: HTMLTextAreaElement): void {
+        const maxPx = 128;
+        textarea.style.height = 'auto';
+        const full = textarea.scrollHeight;
+        textarea.style.height = `${Math.min(full, maxPx)}px`;
+        textarea.style.overflowY = full > maxPx ? 'auto' : 'hidden';
     }
 
     private getCollectionDocuments(id: number): void {
@@ -94,6 +123,27 @@ export class StepUploadFilesComponent implements OnInit {
                     const body = { collection_name };
 
                     return this.collectionsStorageService.updateCollectionById(id, body).pipe(
+                        catchError(() => {
+                            this.toastService.error('Collection Update failed');
+                            return EMPTY;
+                        })
+                    );
+                })
+            )
+            .subscribe(() => this.toastService.success('Collection Updated'));
+    }
+
+    private subscribeToDescription() {
+        this.description.valueChanges
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                debounceTime(400),
+                map((description: string) => description.trim()),
+                distinctUntilChanged(),
+                filter(() => this.description.valid),
+                switchMap((description: string) => {
+                    const id = this.collection().collection_id;
+                    return this.collectionsStorageService.updateCollectionById(id, { description }).pipe(
                         catchError(() => {
                             this.toastService.error('Collection Update failed');
                             return EMPTY;

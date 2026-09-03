@@ -2,12 +2,13 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ToggleSwitchComponent } from '../form-controls/toggle-switch/toggle-switch.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-slider-with-stepper',
-    imports: [CommonModule, FormsModule, TooltipComponent, ToggleSwitchComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, TooltipComponent, ToggleSwitchComponent],
     templateUrl: './slider-with-stepper.component.html',
     styleUrls: ['./slider-with-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,7 +58,7 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     onSliderChange(event: Event) {
         const target = event.target as HTMLInputElement;
         const newValue = parseFloat(target.value);
-        this.updateValue(newValue);
+        this.updateValue(this.roundToDecimals(newValue));
     }
 
     onStepDown() {
@@ -70,6 +71,26 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         const current = this.value() ?? this.min();
         const newValue = Math.min(this.max(), current + this.step());
         this.updateValue(this.roundToDecimals(newValue));
+    }
+
+    onValueInputKeydown(event: Event) {
+        (event.target as HTMLInputElement).blur();
+    }
+
+    onValueInputChange(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const raw = target.value.trim();
+        const parsed = parseFloat(raw);
+
+        if (raw === '' || isNaN(parsed)) {
+            target.value = this.displayValue();
+            return;
+        }
+
+        const clamped = Math.min(this.max(), Math.max(this.min(), parsed));
+        this.updateValue(this.roundToDecimals(clamped));
+        target.value = this.displayValue();
+        this.onTouched();
     }
 
     onToggle(checked: boolean) {

@@ -25,8 +25,10 @@ _NODE_ENTITY_TYPES = {
     EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
     EntityType.SUBGRAPH_NODE,
     EntityType.NOTE_NODE,
-    EntityType.CODE_AGENT_NODE,
     EntityType.SCHEDULE_TRIGGER_NODE,
+    EntityType.KNOWLEDGE_NODE,
+    EntityType.AGENT_NODE,
+    EntityType.TASK_NODE,
 }
 
 
@@ -49,6 +51,7 @@ class PartialImportService:
         export_data: dict,
         graph: Graph,
         org_id: int = None,
+        user=None,
         effective_permissions=None,
     ) -> IDMapper:
         nodes_data = self._collect_nodes(export_data)
@@ -64,6 +67,7 @@ class PartialImportService:
                 export_data,
                 id_mapper,
                 org_id=org_id,
+                user=user,
                 effective_permissions=effective_permissions,
             )
 
@@ -92,6 +96,7 @@ class PartialImportService:
         export_data: dict,
         id_mapper: IDMapper,
         org_id: int = None,
+        user=None,
         effective_permissions=None,
     ) -> None:
         """Import all non-node, non-graph entity types in dependency order.
@@ -126,7 +131,7 @@ class PartialImportService:
                         denied_resources.add(resource)
 
                 instance = strategy.import_entity(
-                    entity_data, id_mapper, is_main=False, org_id=org_id
+                    entity_data, id_mapper, is_main=False, org_id=org_id, user=user
                 )
                 if instance is not None:
                     id_mapper.map(entity_type, old_id, instance.id, was_created)

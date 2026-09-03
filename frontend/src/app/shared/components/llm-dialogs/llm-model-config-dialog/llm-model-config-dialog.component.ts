@@ -1,9 +1,12 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
+import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
+import { extractHttpErrorMessage } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
@@ -11,8 +14,10 @@ import { ValidationErrorsComponent } from '../../app-validation-errors/validatio
 import { ButtonComponent } from '../../buttons';
 import { IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
+import { HintMessageComponent } from '../../hint-message/hint-message.component';
 import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form-field.component';
 import { KeyValueListComponent } from '../../key-value-list/key-value-list.component';
+import { SelectComponent, SelectItem } from '../../select/select.component';
 import { SliderWithStepperComponent } from '../../slider-with-stepper/slider-with-stepper.component';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
@@ -35,6 +40,8 @@ interface DialogData {
         ValidationErrorsComponent,
         LlmModelSelectorComponent,
         JsonEditorFormFieldComponent,
+        SelectComponent,
+        HintMessageComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -42,6 +49,7 @@ export class LlmModelConfigDialogComponent implements OnInit {
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
     private configStorageService = inject(LlmConfigStorageService);
+    private secretsStorageService = inject(SecretsStorageService);
     private toast = inject(ToastService);
     private data = inject<DialogData>(DIALOG_DATA, { optional: true });
 
@@ -55,12 +63,20 @@ export class LlmModelConfigDialogComponent implements OnInit {
     title = computed(() => (this.isEditMode() ? 'Edit LLM Configuration' : 'Add LLM Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add LLM'));
 
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
+
     form!: FormGroup;
 
     ngOnInit() {
         this.form = this.fb.group({
             custom_name: ['', [Validators.required]],
-            api_key: [''],
+            api_key_secret_id: [null],
             model: [null, [Validators.required]],
             temperature: [null, [Validators.min(0), Validators.max(1)]],
             top_p: [null, [Validators.min(0.1)]],
@@ -79,6 +95,13 @@ export class LlmModelConfigDialogComponent implements OnInit {
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);
         }
+
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toast.error('Failed to load secrets.'),
+            });
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
@@ -141,44 +164,14 @@ export class LlmModelConfigDialogComponent implements OnInit {
                 );
                 this.dialogRef.close();
             },
-            error: (err) => {
+            error: (err: HttpErrorResponse) => {
                 this.isSaving.set(false);
-                const fallback = this.isEditMode() ? 'Configuration update failed.' : 'Configuration creation failed.';
-                const message = this.extractErrorMessage(err, fallback);
-                this.errorMessage.set(message);
+                this.errorMessage.set(extractHttpErrorMessage(err));
                 console.error(err);
             },
         });
     }
 
-    private extractErrorMessage(err: unknown, fallback: string): string {
-        const error = (err as { error?: { message?: unknown } } | null)?.error;
-        const raw = error?.message;
-
-        if (typeof raw === 'string') {
-            const matches = [...raw.matchAll(/string=(['"])(.*?)\1/g)].map((m) => m[2]);
-            if (matches.length) {
-                return matches.join(' ');
-            }
-            return raw;
-        }
-
-        if (raw && typeof raw === 'object') {
-            const parts: string[] = [];
-            for (const value of Object.values(raw as Record<string, unknown>)) {
-                if (Array.isArray(value)) {
-                    parts.push(...value.map(String));
-                } else if (value != null) {
-                    parts.push(String(value));
-                }
-            }
-            if (parts.length) {
-                return parts.join(' ');
-            }
-        }
-
-        return fallback;
-    }
-
     protected readonly ModelTypes = ModelTypes;
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
 }

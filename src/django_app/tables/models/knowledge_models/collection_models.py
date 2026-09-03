@@ -1,8 +1,27 @@
+import ntpath
+
+from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
 
 from loguru import logger
 
 from tables.models.rbac_models.org_scoped import OrgScopedModel
+
+
+def _is_bare_file_name(file_name: str) -> bool:
+    """
+    True when file_name is a plain file name carrying no path component.
+
+    Anything that could steer a directory join away from its target folder is
+    not a name we accept: directory separators (both flavours, since the
+    consumer may run on either platform), a Windows drive prefix, and the
+    current/parent directory entries.
+    """
+    if file_name in (".", ".."):
+        return False
+    if ntpath.splitdrive(file_name)[0]:
+        return False
+    return "/" not in file_name and "\\" not in file_name
 
 
 class SourceCollection(OrgScopedModel, models.Model):
@@ -27,6 +46,15 @@ class SourceCollection(OrgScopedModel, models.Model):
 
     collection_id = models.AutoField(primary_key=True)
     collection_name = models.CharField(max_length=255, blank=True)
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "LLM-facing context describing this collection's contents. Appended to "
+            "the description of every knowledge tool generated for this collection "
+            "so agents know when to use it. Blank means no extra context is added."
+        ),
+    )
     collection_origin = models.CharField(
         max_length=20,
         choices=SourceCollectionOrigin.choices,
@@ -143,6 +171,11 @@ class DocumentMetadata(models.Model):
         indexes = [models.Index(fields=["source_collection"])]
 
     def save(self, *args, **kwargs):
+        if self.file_name and not _is_bare_file_name(self.file_name):
+            raise SuspiciousFileOperation(
+                f"file_name {self.file_name!r} must be a plain file name, not a path"
+            )
+
         res = super().save(*args, **kwargs)
         collection = self.source_collection
         if collection is None:

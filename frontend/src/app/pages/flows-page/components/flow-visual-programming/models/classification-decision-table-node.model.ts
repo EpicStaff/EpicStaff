@@ -64,6 +64,7 @@ export interface CDTPythonCodeBlock {
     entrypoint: string;
     global_kwargs: Record<string, unknown>;
     content_hash?: string;
+    secret_ids?: number[];
 }
 
 export interface GetClassificationDecisionTableNodeRequest {

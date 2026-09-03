@@ -9,8 +9,12 @@ from graphrag.config.models.graph_rag_config import GraphRagConfig
 
 from rag.base_rag_strategy import BaseRAGStrategy
 from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
-from rag.graph_rag.graph_rag_config_builder import GraphRagConfigBuilder
+from rag.graph_rag.graph_rag_config_builder import (
+    GraphRagConfigBuilder,
+    DEFAULT_EMBEDDING_MODEL_ID,
+)
 from rag.graph_rag.exceptions import GraphRAGUnavailableError
+from services.credential_mapper import RagCredentials, apply_credential
 from src.shared.models import (
     GraphRagSearchConfig,
     BaseKnowledgeSearchMessageResponse,
@@ -57,7 +61,9 @@ class GraphRAGStrategy(BaseRAGStrategy):
 
     # ==================== Indexing ====================
 
-    def process_rag_indexing(self, rag_id: int):
+    def process_rag_indexing(
+        self, rag_id: int, credentials: RagCredentials | None = None
+    ):
         """
         Process RAG indexing for a GraphRag.
 
@@ -100,6 +106,19 @@ class GraphRAGStrategy(BaseRAGStrategy):
                 )
                 embedder_config = uow_ctx.graph_rag_storage.get_embedder_configuration(
                     graph_rag_id
+                )
+
+                creds = credentials or RagCredentials()
+                creds_llm = creds.llm_api_key
+                llm_config = apply_credential(
+                    config=llm_config,
+                    api_key=creds_llm,
+                    context=f"graph_rag_id={graph_rag_id} llm",
+                )
+                embedder_config = apply_credential(
+                    config=embedder_config,
+                    api_key=creds.embedder_api_key,
+                    context=f"graph_rag_id={graph_rag_id} embedder",
                 )
 
                 # Get all documents linked to this GraphRag
@@ -189,12 +208,28 @@ class GraphRAGStrategy(BaseRAGStrategy):
 
         Args:
             config: GraphRagConfig instance
+
+        Raises:
+            RuntimeError: If any workflow in the pipeline reported errors.
+                graphrag catches per-workflow exceptions internally (e.g. a
+                misconfigured input file_pattern matching zero files) and
+                returns them in each PipelineRunResult.errors instead of
+                raising -- build_index() itself returns normally either way,
+                so an indexing run that loaded 0 documents and produced no
+                index would otherwise be logged and stored as "completed".
         """
         # Deferred: keeps this module importable on CPUs without AVX2 (lancedb requires AVX2)
         from graphrag.api.index import build_index
 
         # GraphRAG's build_index is async
-        asyncio.run(build_index(config))
+        results = asyncio.run(build_index(config))
+
+        failed = [r for r in results if r.errors]
+        if failed:
+            details = "; ".join(
+                f"{r.workflow}: {[str(e) for e in r.errors]}" for r in failed
+            )
+            raise RuntimeError(f"GraphRAG indexing workflow(s) failed: {details}")
 
     # ==================== Search ====================
 
@@ -205,6 +240,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
         query: str,
         collection_id: int,
         rag_search_config: GraphRagSearchConfig,
+        credentials: RagCredentials | None = None,
     ) -> dict:
         """
         Search using GraphRAG. Dispatches to basic or local search
@@ -219,6 +255,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
             query: Search query
             collection_id: Collection ID (for response)
             rag_search_config: Search configuration with search_method
+            credentials: Unused here -- the embedder/llm key is baked into the
+                persisted GraphRagConfig at indexing time (see
+                process_rag_indexing). Accepted only so this method matches
+                the BaseRAGStrategy.search(**kwargs) contract every caller
+                (e.g. CollectionProcessorService.search) invokes uniformly
+                across strategies.
 
         Returns:
             Dict with search results
@@ -244,6 +286,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
             # Step 2: Load persisted config from file (no DB calls)
             root_folder = self.file_manager.get_root_folder_path(graph_rag_id)
             graphrag_config = self.file_manager.load_config(root_folder)
+
+            embedder_api_key = (credentials or RagCredentials()).embedder_api_key
+            if embedder_api_key:
+                graphrag_config.models[
+                    DEFAULT_EMBEDDING_MODEL_ID
+                ].api_key = embedder_api_key
 
             # Step 3: Apply search params from Redis message
             if search_method == "local":

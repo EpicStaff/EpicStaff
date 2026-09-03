@@ -1,0 +1,101 @@
+:host {
+    display: block;
+    width: 100%;
+}
+
+// Shared font/box metrics — MUST stay identical between the backdrop and the real
+// textarea, otherwise the highlight overlay drifts out of sync with the actual text.
+@mixin vht-text-metrics {
+    box-sizing: border-box;
+    margin: 0;
+    border: none;
+    padding: 0.5rem 0.75rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    letter-spacing: normal;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.vht-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.vht-field {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--color-divider-subtle);
+    background: var(--color-input-background);
+    transition: border-color 0.2s ease;
+
+    &:focus-within {
+        border-color: var(--accent-color);
+    }
+
+    &.vht-field--invalid {
+        border-color: var(--color-error);
+    }
+
+    &.vht-field--disabled {
+        opacity: 0.7;
+    }
+}
+
+.vht-backdrop {
+    @include vht-text-metrics;
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    color: var(--color-ks-text);
+    background: transparent;
+    pointer-events: none;
+    overflow: hidden;
+    scrollbar-gutter: stable;
+
+    ::ng-deep .vht-variable {
+        color: var(--accent-color);
+        background-color: var(--color-ghost-btn-hover);
+        border-radius: 4px;
+        display: inline;
+    }
+}
+
+.vht-textarea {
+    @include vht-text-metrics;
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    min-height: 2.25rem;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--color-ks-text);
+    outline: none;
+    resize: vertical;
+    overflow: auto;
+    scrollbar-gutter: stable;
+    scroll-padding-block-end: 0.5em;
+
+    &::placeholder {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &::selection {
+        background-color: rgba(104, 95, 255, 0.3);
+        color: transparent;
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+    }
+
+    &:focus {
+        outline: none;
+    }
+}

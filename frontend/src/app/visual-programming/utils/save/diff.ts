@@ -4,13 +4,14 @@ import { PromptConfig } from '../../core/models/classification-decision-table.mo
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
+    AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
-    CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
     ProjectNodeModel,
@@ -18,6 +19,7 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
@@ -128,11 +130,58 @@ function toCrewComparable(node: ProjectNodeModel): unknown {
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data,
+        // secret_ids order is incidental (which secret record happened to resolve first), not a
+        // real difference — sort it so two independent reconstructions of the same set don't
+        // register as a change.
+        python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toTaskComparable(node: TaskNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        instructions: node.data.instructions,
+        output_schema: node.data.output_schema ?? {},
+        remember_output: node.data.remember_output ?? false,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toAgentTaskComparableRef(ref: { id?: number; tempId?: string }): { id: number | null; tempId: string | null } {
+    return ref.id != null ? { id: ref.id, tempId: null } : { id: null, tempId: ref.tempId ?? null };
+}
+
+function toAgentComparable(node: AgentNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
+        // Array order is significant — index === task order. Do NOT sort this array.
+        tasks: (node.data.tasks ?? []).map((t) => ({
+            id: t.id ?? null,
+            ...(t.id == null ? { tempId: t.tempId } : {}),
+            name: t.name,
+            instructions: t.instructions,
+            output_schema: t.output_schema ?? {},
+            contextRefs: (t.contextRefs ?? []).map(toAgentTaskComparableRef).sort((a, b) => {
+                const aKey = a.id != null ? `id:${a.id}` : `tempId:${a.tempId}`;
+                const bKey = b.id != null ? `id:${b.id}` : `tempId:${b.tempId}`;
+                return aKey.localeCompare(bKey);
+            }),
+        })),
         metadata: toNodeMetadata(node),
     };
 }
@@ -185,11 +234,15 @@ function toSubgraphComparable(node: SubGraphNodeModel): unknown {
 function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data.python_code,
+        python_code: {
+            ...node.data.python_code,
+            secret_ids: [...(node.data.python_code.secret_ids || [])].sort(),
+        },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
+        webhook_node_auth: { enabled: node.data.webhook_node_auth?.enabled ?? false },
         metadata: toNodeMetadata(node),
     };
 }
@@ -197,7 +250,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
 function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        telegram_bot_api_key: node.data.telegram_bot_api_key,
+        telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
         metadata: toNodeMetadata(node),
@@ -231,26 +284,18 @@ function toNoteComparable(node: GraphNoteModel): unknown {
     };
 }
 
-function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
+function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unknown {
+    const data = node.data;
     return {
         node_name: node.node_name,
-        llm_config: node.data?.llm_config_id ?? null,
-        agent_mode: node.data?.agent_mode ?? 'code_interpreter',
-        session_id: node.data?.session_id ?? '',
-        system_prompt: node.data?.system_prompt ?? '',
-        stream_handler_code: node.data?.stream_handler_code ?? '',
-        libraries: node.data?.libraries ?? [],
-        polling_interval_ms: node.data?.polling_interval_ms ?? 100,
-        silence_indicator_s: node.data?.silence_indicator_s ?? 3,
-        indicator_repeat_s: node.data?.indicator_repeat_s ?? 5,
-        chunk_timeout_s: node.data?.chunk_timeout_s ?? 30,
-        inactivity_timeout_s: node.data?.inactivity_timeout_s ?? 120,
-        max_wait_s: node.data?.max_wait_s ?? 300,
-        input_map: node.input_map,
-        output_variable_path: node.output_variable_path,
-        stream_config: node.stream_config ?? {},
-        output_schema: node.data?.output_schema ?? {},
-        use_storage: node.data?.use_storage ?? false,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        source_collection: data?.source_collection ?? null,
+        rag_type: data?.rag_type ?? null,
+        rag_id: data?.rag_id ?? null,
+        query: data?.query ?? '',
+        search_method: data?.search_method ?? null,
+        search_configs: data?.search_configs ?? null,
         metadata: toNodeMetadata(node),
     };
 }
@@ -325,6 +370,8 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         post_use_storage: tableData?.post_use_storage ?? false,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
+        pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
+        post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
         sections: ((tableData?.sections || []) as CdtSection[])
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
@@ -353,6 +400,16 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),
             nodesByType<PythonNodeModel>(current.nodes, NodeType.PYTHON),
             toPythonComparable
+        ),
+        taskNodes: diffNodesByBackendId(
+            nodesByType<TaskNodeModel>(previous.nodes, NodeType.TASK),
+            nodesByType<TaskNodeModel>(current.nodes, NodeType.TASK),
+            toTaskComparable
+        ),
+        agentNodes: diffNodesByBackendId(
+            nodesByType<AgentNodeModel>(previous.nodes, NodeType.AGENT),
+            nodesByType<AgentNodeModel>(current.nodes, NodeType.AGENT),
+            toAgentComparable
         ),
         llmNodes: diffNodesByBackendId(
             nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),
@@ -404,15 +461,15 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<GraphNoteModel>(current.nodes, NodeType.NOTE),
             toNoteComparable
         ),
-        codeAgentNodes: diffNodesByBackendId(
-            nodesByType<CodeAgentNodeModel>(previous.nodes, NodeType.CODE_AGENT),
-            nodesByType<CodeAgentNodeModel>(current.nodes, NodeType.CODE_AGENT),
-            toCodeAgentComparable
-        ),
         classificationDecisionTableNodes: diffNodesByBackendId(
             nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),
             nodesByType<ClassificationDecisionTableNodeModel>(current.nodes, NodeType.CLASSIFICATION_TABLE),
             (n) => toCdtComparable(n, current.nodes)
+        ),
+        knowledgeRetrieverNodes: diffNodesByBackendId(
+            nodesByType<KnowledgeRetrieverNodeModel>(previous.nodes, NodeType.KNOWLEDGE_RETRIEVER),
+            nodesByType<KnowledgeRetrieverNodeModel>(current.nodes, NodeType.KNOWLEDGE_RETRIEVER),
+            toKnowledgeRetrieverComparable
         ),
     };
 }

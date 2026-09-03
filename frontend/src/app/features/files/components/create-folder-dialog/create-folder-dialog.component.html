@@ -40,14 +40,13 @@
             <div class="create-folder-dialog__field create-folder-dialog__field--inline">
                 <div class="create-folder-dialog__label-group">
                     <label class="create-folder-dialog__label">Destination folder</label>
-                    <app-svg-icon
+                    <app-help-tooltip
                         icon="help-circle"
                         size="18px"
-                        class="create-folder-dialog__tooltip-icon"
-                        matTooltip="Choose where uploaded files will be placed. If not selected, files will be saved in Root (Default)."
-                        matTooltipPosition="above"
-                        matTooltipClass="dialog__label-tooltip"
-                    ></app-svg-icon>
+                        text="Choose where uploaded files will be placed. If not selected, files will be saved in Root (Default)."
+                        position="top"
+                        [tooltipClass]="'dialog__label-tooltip'"
+                    />
                 </div>
                 <div
                     class="create-folder-dialog__selector"
@@ -102,6 +101,11 @@
                                             size="0.5rem"
                                         ></app-svg-icon>
                                     </span>
+                                    <app-svg-icon
+                                        class="create-folder-dialog__node-icon"
+                                        icon="folder-storage"
+                                        size="12px"
+                                    ></app-svg-icon>
                                     <span class="create-folder-dialog__node-name">/</span>
                                 </div>
                                 @for (node of visibleNodes(); track node.path) {
@@ -125,9 +129,18 @@
                                         } @else {
                                             <span class="create-folder-dialog__chevron-gap"></span>
                                         }
+                                        <app-svg-icon
+                                            class="create-folder-dialog__node-icon"
+                                            [class.create-folder-dialog__node-icon--empty]="node.isEmpty"
+                                            icon="folder-storage"
+                                            size="12px"
+                                        ></app-svg-icon>
                                         <span class="create-folder-dialog__node-name">{{ node.name }}</span>
                                         @if (node.isLoading) {
                                             <span class="create-folder-dialog__node-spinner">...</span>
+                                        }
+                                        @if (node.isEmpty) {
+                                            <span class="create-folder-dialog__empty-badge">Empty</span>
                                         }
                                     </div>
                                 }
@@ -141,14 +154,13 @@
             <div class="create-folder-dialog__field create-folder-dialog__field--inline">
                 <div class="create-folder-dialog__label-group">
                     <label class="create-folder-dialog__label">Organize into folder</label>
-                    <app-svg-icon
+                    <app-help-tooltip
                         icon="help-circle"
                         size="18px"
-                        class="create-folder-dialog__tooltip-icon"
-                        matTooltip="Enter a folder name to group files. If empty, files won’t be grouped and will be saved in Root (Default)."
-                        matTooltipPosition="above"
-                        matTooltipClass="dialog__label-tooltip"
-                    ></app-svg-icon>
+                        text="Enter a folder name to group files. If empty, files won’t be grouped and will be saved in Root (Default)."
+                        position="top"
+                        [tooltipClass]="'dialog__label-tooltip'"
+                    />
                 </div>
                 <input
                     class="create-folder-dialog__input"
