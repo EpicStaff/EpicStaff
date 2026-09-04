@@ -77,10 +77,12 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     allowPickExisting = input<boolean>(true);
     /** Require a trigger to be provided (gates the parent form). */
     pathRequired = input<boolean>(true);
-    /** Allow the localhost provider. Off for Twilio (it can't reach localhost webhooks). */
-    allowLocalhost = input<boolean>(true);
+    /** Which providers are allowed for both the "Create new" dropdown and the "Use existing" picker. */
+    allowedProviders = input<WebhookProviderType[]>(['ngrok', 'localhost']);
     showAuth = input<boolean>(true);
     activeColor = input<string>('#685fff');
+    /** Restrict "Use existing" list to triggers with this auth kind. `null` = no restriction. */
+    existingAuthKindFilter = input<WebhookTriggerAuthKind | null>(null);
 
     /** Emits the resolved trigger model (the picked existing one, or the inline draft). */
     triggerResolved = output<WebhookTriggerModel | null>();
@@ -95,9 +97,10 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     private disabled = signal(false);
     existingAuth = signal<WebhookTriggerAuth | null>(null);
 
-    providerItems = computed<SelectItem[]>(() =>
-        this.allowLocalhost() ? WEBHOOK_PROVIDER_ITEMS : WEBHOOK_PROVIDER_ITEMS.filter((i) => i.value !== 'localhost')
-    );
+    providerItems = computed<SelectItem[]>(() => {
+        const allowed = new Set(this.allowedProviders());
+        return WEBHOOK_PROVIDER_ITEMS.filter((i) => allowed.has(i.value as WebhookProviderType));
+    });
     secretItems = computed<SelectItem[]>(() =>
         this.secretsStorageService.secrets().map((secret) => ({
             name: secret.name,
@@ -106,7 +109,12 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         }))
     );
     readonly regionItems = WEBHOOK_REGION_ITEMS;
-    readonly authKindItems: SelectItem[] = WEBHOOK_AUTH_KIND_ITEMS;
+    // Localhost can only use the Webhook Node auth strategy — hide the rest to prevent invalid combos.
+    authKindItems = computed<SelectItem[]>(() =>
+        this.providerType() === 'localhost'
+            ? WEBHOOK_AUTH_KIND_ITEMS.filter((i) => i.value === 'webhook')
+            : WEBHOOK_AUTH_KIND_ITEMS
+    );
     readonly modeItems: SelectItem[] = [
         { name: 'Create new', value: 'new' },
         { name: 'Use existing', value: 'existing' },
@@ -120,22 +128,29 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         ngrok_domain: [''],
         ngrok_region: ['eu'],
         localhost_name: [''],
-        auth_kind: [null as WebhookTriggerAuthKind | null],
+        auth_kind: [null as WebhookTriggerAuthKind | null, [Validators.required]],
         auth_secret_id: [null as number | null],
     });
 
     existingItems = computed<SelectItem[]>(() => {
-        const allowLocalhost = this.allowLocalhost();
+        const allowed = new Set(this.allowedProviders());
+        const authFilter = this.existingAuthKindFilter();
         const items = this.triggers()
-            .filter((t) => allowLocalhost || t.provider_type !== 'localhost')
+            .filter((t) => t.provider_type != null && allowed.has(t.provider_type))
+            .filter((t) => !authFilter || t.auth?.kind === authFilter)
             .map((t) => ({
                 name: `${this.triggerName(t)} (${t.provider_type ?? 'none'})`,
                 value: t.id as number,
             }));
         const selected = this.selectedExistingId();
-        // Keep a referenced-but-missing (e.g. deleted) trigger visible so we don't silently drop the binding.
-        if (selected != null && !this.triggers().some((t) => t.id === selected)) {
-            items.unshift({ name: `Unknown / deleted (#${selected})`, value: selected });
+        // Keep a referenced trigger visible even if it's missing or filtered out so we don't silently drop the binding.
+        if (selected != null && !items.some((i) => i.value === selected)) {
+            const known = this.triggers().find((t) => t.id === selected);
+            items.unshift(
+                known
+                    ? { name: `${this.triggerName(known)} (${known.provider_type ?? 'none'})`, value: selected }
+                    : { name: `Unknown / deleted (#${selected})`, value: selected }
+            );
         }
         return items;
     });
@@ -150,9 +165,14 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
 
     ngOnInit(): void {
         this.applyProviderValidators((this.form.value.provider_type as WebhookProviderType | null) ?? null);
-        this.form.controls.provider_type.valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((pt) => this.applyProviderValidators((pt as WebhookProviderType | null) ?? null));
+        this.form.controls.provider_type.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((pt) => {
+            const provider = (pt as WebhookProviderType | null) ?? null;
+            this.applyProviderValidators(provider);
+            // Localhost only allows the 'webhook' auth kind — drop any stale non-allowed selection.
+            if (provider === 'localhost' && this.form.controls.auth_kind.value !== 'webhook') {
+                this.form.controls.auth_kind.setValue(null);
+            }
+        });
         this.form.controls.auth_kind.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.form.controls.auth_secret_id.setValue(null, { emitEvent: false });
         });
@@ -195,7 +215,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     }
 
     authKindLabel(kind: WebhookTriggerAuthKind): string {
-        return this.authKindItems.find((i) => i.value === kind)?.name ?? kind;
+        return this.authKindItems().find((i) => i.value === kind)?.name ?? kind;
     }
 
     private triggerName(t: WebhookTriggerModel): string {
@@ -379,6 +399,10 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             }
             if (provider === 'localhost') {
                 if (!(this.form.value.localhost_name ?? '').trim()) return { localhostNameRequired: true };
+            }
+            // auth_kind is required when the auth section is visible and there's no existing auth to preserve.
+            if (this.showAuth() && !this.existingAuth() && !this.form.value.auth_kind) {
+                return { authKindRequired: true };
             }
         }
         return null;

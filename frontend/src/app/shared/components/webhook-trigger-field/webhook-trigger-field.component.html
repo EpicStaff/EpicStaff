@@ -98,9 +98,10 @@
 
             <app-select
                 label="Auth Strategy"
+                [required]="true"
                 tooltipText="Fixed authentication strategy for inbound requests to this trigger: Webhook Node sends the EPICSTAFF_API_KEY header, Telegram Node sends the X-Telegram-Bot-Api-Secret-Token header, and Twilio is verified via its own X-Twilio-Signature header."
                 formControlName="auth_kind"
-                [items]="authKindItems"
+                [items]="authKindItems()"
             />
 
             @if (authKindValue() === 'webhook' || authKindValue() === 'telegram') {
