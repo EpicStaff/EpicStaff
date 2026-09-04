@@ -117,6 +117,17 @@ export class NumberStepperComponent implements ControlValueAccessor {
         return val < maxVal;
     });
 
+    stepIconSize = computed(() => {
+        switch (this.size()) {
+            case 'lg':
+                return '14px';
+            case 'md':
+                return '12px';
+            default:
+                return '11px';
+        }
+    });
+
     onKeyDown(event: KeyboardEvent) {
         const allowedKeys = [
             'Backspace',

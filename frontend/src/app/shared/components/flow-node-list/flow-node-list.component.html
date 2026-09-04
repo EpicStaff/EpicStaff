@@ -1,0 +1,45 @@
+<div
+    class="flow-node-list grid-collapsible"
+    [class.expanded]="expanded()"
+>
+    <div class="flow-node-list__inner">
+        <div class="flow-node-list__toolbar">
+            <app-search
+                [placeholder]="searchPlaceholder()"
+                width="100%"
+                [(searchTerm)]="searchTerm"
+            />
+            <app-select
+                style="flex: 0 0 200px"
+                placeholder="Select Node Type"
+                [items]="nodeTypeFilterItems()"
+                [selectedValue]="nodeTypeFilter()"
+                (changed)="onNodeTypeFilterChange($event)"
+            />
+        </div>
+
+        <div class="flow-node-list__rows">
+            @for (node of filteredNodes(); track node.name + node.nodeType) {
+                <div
+                    class="flow-node-list__row"
+                    (click)="rowClick.emit(node)"
+                >
+                    <i
+                        [ngClass]="nodeIcon(node.nodeType)"
+                        [style.color]="nodeColor(node.nodeType)"
+                        aria-hidden="true"
+                    ></i>
+                    <span class="flow-node-list__node-name">{{ node.name }}</span>
+                    <span class="flow-node-list__node-type">{{ nodeTypeLabel(node.nodeType) }}</span>
+                    @if (trailingTemplate(); as tpl) {
+                        <ng-container *ngTemplateOutlet="tpl; context: { $implicit: node }"></ng-container>
+                    }
+                </div>
+            }
+
+            @if (!filteredNodes().length) {
+                <p class="flow-node-list__empty">No nodes match.</p>
+            }
+        </div>
+    </div>
+</div>

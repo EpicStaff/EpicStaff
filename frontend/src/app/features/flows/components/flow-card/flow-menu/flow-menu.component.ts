@@ -5,6 +5,7 @@ import {
     effect,
     ElementRef,
     EventEmitter,
+    HostListener,
     inject,
     Input,
     OnDestroy,
@@ -116,6 +117,13 @@ export class FlowMenuComponent implements OnDestroy {
         // Reset states
         this.isMouseOnButton.set(false);
         this.isMouseOnMenu.set(false);
+    }
+
+    @HostListener('document:click', ['$event'])
+    public onDocumentClick(event: MouseEvent): void {
+        if (!this.isMenuOpen()) return;
+        if (this.elementRef.nativeElement.contains(event.target)) return;
+        this.close();
     }
 
     public onActionClick(event: MouseEvent, action: string): void {

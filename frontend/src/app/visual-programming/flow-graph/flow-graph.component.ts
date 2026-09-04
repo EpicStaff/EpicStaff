@@ -1471,6 +1471,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             graph_note_list: [],
             schedule_trigger_node_list: [],
             edge_list: [],
+            knowledge_node_list: [],
         };
 
         for (const node of nodes) {
@@ -1513,6 +1514,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.SCHEDULE_TRIGGER:
                     body.schedule_trigger_node_list.push(id);
+                    break;
+                case NodeType.KNOWLEDGE_RETRIEVER:
+                    body.knowledge_node_list.push(id);
                     break;
             }
         }

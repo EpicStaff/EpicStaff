@@ -1,38 +1,32 @@
-import base64
 import json
 import logging
-import urllib.error
-import urllib.parse
-import urllib.request
 import uuid
 
 logger = logging.getLogger(__name__)
 
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
-    CharFilter,
     DjangoFilterBackend,
     FilterSet,
+    CharFilter,
     NumberFilter,
 )
-from rest_framework import filters as drf_filters
-from rest_framework import generics, mixins, status, viewsets, serializers
+from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    NotFound,
-    PermissionDenied,
     ValidationError as DRFValidationError,
+    PermissionDenied,
+    NotFound,
 )
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -41,20 +35,11 @@ from tables.serializers.model_serializers.embedding_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
-    RealtimeConfigSerializer,
-    RealtimeModelSerializer,
-    RealtimeTranscriptionConfigSerializer,
-    RealtimeTranscriptionModelSerializer,
-)
-from tables.serializers.model_serializers.provider_serializers import (
-    ProviderSerializer,
 )
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
-    GraphSaveVersionConflictError,
 )
-from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
@@ -85,7 +70,6 @@ from tables.models import (
     LLMConfig,
     LLMModel,
     Provider,
-    PythonCode,
     PythonCodeResult,
     PythonCodeTool,
     PythonNode,
@@ -150,6 +134,7 @@ from tables.models.graph_models import (
     ConditionGroup,
     DecisionTableNode,
     EndNode,
+    KnowledgeNode,
     GraphOrganization,
     GraphOrganizationUser,
     GraphNote,
@@ -200,6 +185,7 @@ from tables.services.copy_services import (
 )
 from tables.views.mixins import (
     CopyActionMixin,
+    InspectActionMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
@@ -207,9 +193,8 @@ from tables.views.mixins import (
     ToolUsageActionsMixin,
 )
 from tables.models.rbac_models import ApiKey, Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permissions import (
-    HasOrgPermission,
     IsSuperadmin,
     IsSystemApiKeyAuthenticated,
     DenyApiKeyAuth,
@@ -219,9 +204,6 @@ from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
-from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
-    validate_classification_condition_group_names,
-)
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
     AgentNodeSerializer,
@@ -241,6 +223,9 @@ from tables.serializers.model_serializers import (
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
+    KnowledgeNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    KnowledgeNodeWriteSerializer,
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
@@ -288,10 +273,12 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.utils.helpers import generate_file_name
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.classification_decision_table_node_service import (
     ClassificationDecisionTableNodeService,
 )
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
@@ -304,8 +291,8 @@ from tables.swagger_schemas.webhook_schemas import (
     WEBHOOK_TRIGGER_NODE_UPDATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
 )
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.services.rbac.org_context_service import OrgContextService
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -476,6 +463,7 @@ class ContentHashPreconditionMixin:
 class PythonCodeToolViewSet(
     OrgScopedHybridViewSetMixin,
     CopyActionMixin,
+    InspectActionMixin,
     ToolUsageActionsMixin,
     viewsets.ModelViewSet,
 ):
@@ -497,6 +485,7 @@ class PythonCodeToolViewSet(
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
     }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
@@ -657,7 +646,7 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -667,6 +656,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         "bulk_export": Permission.EXPORT,
         "partial_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
     }
@@ -757,6 +747,15 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                 ),
                 "start_node_list",
                 Prefetch("graph_note_list", queryset=GraphNote.objects.all()),
+                Prefetch(
+                    "knowledge_node_list",
+                    queryset=KnowledgeNode.objects.select_related(
+                        "source_collection",
+                        "naive_search_config",
+                        "graph_basic_search_config",
+                        "graph_local_search_config",
+                    ),
+                ),
             )
             .all()
         )
@@ -1164,6 +1163,36 @@ class FileExtractorNodeViewSet(
     serializer_class = FileExtractorNodeSerializer
 
 
+class KnowledgeNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = KnowledgeNode.objects.select_related(
+        "naive_search_config",
+        "graph_basic_search_config",
+        "graph_local_search_config",
+    )
+    serializer_class = KnowledgeNodeWriteSerializer
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return KnowledgeNodeReadSerializer
+        return KnowledgeNodeWriteSerializer
+
+    def perform_create(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_update(serializer)
+
+
 class AudioTranscriptionNodeViewSet(
     OrgScopedChildViewSetMixin,
     IdempotentNodeCreateMixin,
@@ -1504,7 +1533,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_definition"]
-    permission_classes = [IsAuthenticatedOrApiKey]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1529,16 +1558,6 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         through `self.get_queryset()` (which requires an active org via
         `OrgContextService`/`X-Organization-Id`) the way `destroy`/`retrieve`
         are.
-
-        Restricted to `key_type=SYSTEM` API-key callers
-        (`IsSystemApiKeyAuthenticated`)
-        `RealtimeChannelViewSet.lookup_by_token` / `InitRealtimeAPIView`. Do
-        not widen this to `IsAuthenticated` or the class-level
-        `IsAuthenticatedOrApiKey`: either would let a caller who has no
-        relationship to the chat's org (a plain JWT session, or a self-issued
-        `key_type=USER` API key any org member can mint) end/mutate another
-        org's realtime chat by guessing/observing its `connection_key`, since
-        the lookup below performs no org filter of its own.
         """
         from django.utils import timezone
 
@@ -1597,7 +1616,17 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     ).all()
     serializer_class = RealtimeChannelSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["realtime_agent", "channel_type", "is_active", "token"]
+    filterset_fields = [
+        # realtime_agent is read-only for writes (serializer), but stays
+        # filterable so a stranded legacy row can still be located, and so an
+        # existing `?realtime_agent=` caller keeps getting a filtered result
+        # instead of the whole org's channels.
+        "realtime_agent",
+        "realtime_agent_definition",
+        "channel_type",
+        "is_active",
+        "token",
+    ]
 
     @extend_schema(**REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET)
     @action(
@@ -1668,7 +1697,6 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
 
-        # 2. Validate they were provided
         if not sid or not auth_token_secret_id:
             return Response(
                 {
@@ -1677,17 +1705,28 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 3. Resolve the token and fetch numbers
-        auth_token = secret_resolver.resolve(
-            secret_id=auth_token_secret_id,
-            org_id=resolve_active_org_id(request),
-            context="TwilioChannel.auth_token",
-        )
+        try:
+            TwilioService().validate_account_sid(sid)
+            auth_token = secret_resolver.resolve(
+                secret_id=auth_token_secret_id,
+                org_id=resolve_active_org_id(request),
+                context="TwilioChannel.auth_token",
+            )
+            numbers = TwilioService().get_phone_numbers(sid, auth_token)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
 
-        return _twilio_phone_numbers_response(sid, auth_token)
+        return Response({"results": numbers})
 
 
-class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class ConversationRecordingViewSet(
+    OrgScopedChildViewSetMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     """
     Scoped through the recording's chat -> realtime agent to its agent's org
     (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
@@ -1715,7 +1754,8 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     filterset_fields = ["rt_agent_chat", "recording_type"]
     rbac_resource_type = ResourceType.VOICE
     org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
-    permission_classes = [IsAuthenticatedOrApiKey]
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def _is_system_api_key_request(self) -> bool:
         return (
@@ -2023,7 +2063,11 @@ class ClassificationDecisionTableNodeModelViewSet(
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class McpToolViewSet(
-    OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
@@ -2037,6 +2081,7 @@ class McpToolViewSet(
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
     }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
@@ -2435,53 +2480,11 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret))
 
 
-def _twilio_request(
-    account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict = None
-):
-    """Make an authenticated request to the Twilio REST API."""
-    credentials = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
-    headers = {"Authorization": f"Basic {credentials}", "Accept": "application/json"}
-    body = None
-    if data:
-        encoded = urllib.parse.urlencode(data).encode()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        body = encoded
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode())
-
-
-def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Response:
-    """Call Twilio's IncomingPhoneNumbers API and shape the response.
-
-    Used by `TwilioChannelViewSet.phone_numbers` (credentials resolved from
-    a stored `Secret`) to return the list of incoming phone numbers in a
-    consistent response shape with consistent error handling.
-    """
-    try:
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json?PageSize=100"
-        data = _twilio_request(account_sid, auth_token, url)
-        numbers = [
-            {
-                "sid": n["sid"],
-                "phone_number": n["phone_number"],
-                "friendly_name": n["friendly_name"],
-                "voice_url": n.get("voice_url") or "",
-            }
-            for n in data.get("incoming_phone_numbers", [])
-        ]
-        return Response({"results": numbers})
-    except urllib.error.HTTPError as e:
-        return Response({"error": e.read().decode(), "status": e.code}, status=400)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
-
-
 class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is enforced in two
+    OrgScopedModel) — org isolation is enforced in two
     layers here: `HasOrgPermission` checks that the caller's role has
     VOICE:UPDATE permission in their active org (a generic role-bit check,
     with no knowledge of this specific channel), and the manual
@@ -2506,114 +2509,14 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
     def post(self, request):
         phone_sid = request.data.get("phone_sid")
         channel_token = request.data.get("channel_token")
-        logger.info(
-            f"configure-webhook: phone_sid={phone_sid} channel_token={channel_token}"
-        )
-
-        if not phone_sid or not channel_token:
-            logger.warning("configure-webhook: missing phone_sid or channel_token")
-            return Response(
-                {"error": "phone_sid and channel_token are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         try:
-            channel = RealtimeChannel.objects.select_related(
-                "twilio__webhook_trigger__ngrok", "twilio__webhook_trigger__localhost"
-            ).get(token=channel_token)
-        except RealtimeChannel.DoesNotExist:
-            logger.warning(
-                f"configure-webhook: channel not found for token={channel_token}"
+            webhook_url = TwilioService().configure_webhook(
+                phone_sid=phone_sid,
+                channel_token=channel_token,
+                org_id=resolve_active_org_id(request),
             )
-            return Response(
-                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
 
-        twilio = getattr(channel, "twilio", None)
-        active_org_id = resolve_active_org_id(request)
-        if channel.org_id != active_org_id:
-            logger.warning(
-                f"configure-webhook: channel {channel.id} does not belong to "
-                f"the active org ({active_org_id})"
-            )
-            return Response(
-                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-        if not twilio or not twilio.account_sid or twilio.auth_token_secret_id is None:
-            logger.warning(
-                f"configure-webhook: no Twilio credentials for channel {channel.id}"
-            )
-            return Response(
-                {"error": "No Twilio credentials configured for this channel"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        account_sid = twilio.account_sid
-        auth_token = secret_resolver.resolve(
-            secret_id=twilio.auth_token_secret_id,
-            org_id=channel.org_id,
-            context="TwilioChannel.auth_token",
-        )
-        logger.info(
-            f"configure-webhook: using stored credentials for account_sid={account_sid}"
-        )
-
-        webhook_trigger = twilio.webhook_trigger
-        logger.info(f"configure-webhook: webhook_trigger={webhook_trigger}")
-        if not webhook_trigger or not webhook_trigger.provider_type:
-            logger.warning(
-                f"configure-webhook: no webhook trigger configured for channel {channel.id}"
-            )
-            return Response(
-                {"error": "No webhook trigger configured for this channel"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        provider_error = twilio.validate_provider()
-        if provider_error:
-            logger.warning(
-                f"configure-webhook: provider validation failed for channel {channel.id}: {provider_error}"
-            )
-            return Response(
-                {"error": provider_error},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        tunnel_url = WebhookTriggerService().get_tunnel_url_for_trigger(webhook_trigger)
-        if not tunnel_url:
-            active_config = webhook_trigger.get_active_config()
-            if active_config:
-                tunnel_url = active_config.get_webhook_url()
-        logger.info(f"configure-webhook: tunnel_url={tunnel_url}")
-        if not tunnel_url:
-            logger.warning(
-                f"configure-webhook: webhook trigger {webhook_trigger.id} has no live URL and no domain"
-            )
-            return Response(
-                {"error": "Webhook tunnel is not running and has no domain configured"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        webhook_url = f"{tunnel_url.rstrip('/')}/voice/{channel_token}"
-        logger.info(
-            f"configure-webhook: setting VoiceUrl={webhook_url} on phone_sid={phone_sid}"
-        )
-
-        try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers/{phone_sid}.json"
-            _twilio_request(
-                account_sid,
-                auth_token,
-                url,
-                method="POST",
-                data={"VoiceUrl": webhook_url, "VoiceMethod": "POST"},
-            )
-            logger.info(f"configure-webhook: success webhook_url={webhook_url}")
-            return Response({"webhook_url": webhook_url})
-        except urllib.error.HTTPError as e:
-            body = e.read().decode()
-            logger.error(f"configure-webhook: Twilio HTTP error {e.code}: {body}")
-            return Response({"error": body}, status=e.code)
-        except Exception as e:
-            logger.exception("configure-webhook: unexpected error")
-            return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"webhook_url": webhook_url})

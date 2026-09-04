@@ -4,6 +4,8 @@ from unittest import mock
 import pytest
 from django.urls import reverse
 
+from agents.models import AgentDefinition
+
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -12,7 +14,8 @@ from tables.models.webhook_models import (
     TwilioChannel,
     WebhookTrigger,
 )
-from tables.models.realtime_models import RealtimeAgent
+from tables.models import Agent
+from tables.models.realtime_models import RealtimeAgent, RealtimeAgentDefinition
 from tables.models.rbac_models import Organization
 from tables.services.secrets import secret_resolver, secret_service
 
@@ -36,7 +39,7 @@ def _make_secret(org, text):
 def _make_realtime_channel(db, org, **kwargs):
     """Create a minimal RealtimeChannel (no RealtimeAgent required).
 
-    RealtimeChannel is org-scoped (EST-3491 follow-up) — every direct ORM
+    RealtimeChannel is org-scoped — every direct ORM
     .create() must pass `org`, same as the API path stamps it via the
     active org (OrgScopedViewSetMixin.perform_create).
     """
@@ -46,7 +49,7 @@ def _make_realtime_channel(db, org, **kwargs):
 def _make_twilio_channel(realtime_channel, org=None, **kwargs):
     """Create a TwilioChannel attached to `realtime_channel`.
 
-    TwilioChannel itself has no `org` column (EST-3491 follow-up) — org
+    TwilioChannel itself has no `org` column — org
     lives on the parent RealtimeChannel. `org` is accepted only for
     call-site compatibility; it is also used to scope the Secret created for
     `auth_token_secret` when the caller doesn't supply its own.
@@ -60,15 +63,16 @@ def _make_twilio_channel(realtime_channel, org=None, **kwargs):
         kwargs["auth_token_secret"] = _make_secret(
             org or realtime_channel.org, "auth_test"
         )
+    account_sid = kwargs.pop("account_sid", "AC_test")
     return TwilioChannel.objects.create(
         channel=realtime_channel,
-        account_sid="AC_test",
+        account_sid=account_sid,
         **kwargs,
     )
 
 
-def _make_webhook_trigger_with_ngrok(org, path="test-voice"):
-    # WebhookTrigger is now org-owned (EST-3491) — every direct ORM .create()
+def _make_webhook_trigger_with_ngrok(org, path="test-voice", domain=None):
+    # WebhookTrigger is now org-owned — every direct ORM .create()
     # must pass `org`, same as the API path stamps it via the active org.
     trigger = WebhookTrigger.objects.create(
         path=path, provider_type=ProviderType.NGROK, org=org
@@ -78,8 +82,30 @@ def _make_webhook_trigger_with_ngrok(org, path="test-voice"):
         name="test-ngrok",
         auth_token_secret=_make_secret(org, "tok"),
         region=NgrokWebhookConfig.Region.EU,
+        domain=domain,
     )
     return trigger
+
+
+def _make_realtime_agent(org):
+    """Create a staff RealtimeAgent (the removed legacy destination).
+
+    `RealtimeAgent.agent` is a OneToOneField primary key onto the also-removed
+    staff `Agent` model, so this is the only way to build a value for
+    `RealtimeChannel.realtime_agent` — the model and FK are still on the DB,
+    only their API surface was removed.
+    """
+    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org)
+    return RealtimeAgent.objects.create(agent=agent)
+
+
+def _make_realtime_agent_definition(org):
+    """Create a RealtimeAgentDefinition — the only supported destination
+    going forward for `RealtimeChannel.realtime_agent_definition`."""
+    agent_definition = AgentDefinition.objects.create(
+        organization=org, name="voice-agent-definition"
+    )
+    return RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
 
 
 def _make_webhook_trigger_with_localhost(org, path="test-localhost"):
@@ -101,7 +127,9 @@ def _make_webhook_trigger_with_localhost(org, path="test-localhost"):
 
 @pytest.mark.django_db
 class TestTwilioChannelWebhookTrigger:
-    def test_create_twilio_channel_without_webhook_trigger(self, auth_client, db, default_org):
+    def test_create_twilio_channel_without_webhook_trigger(
+        self, auth_client, db, default_org
+    ):
         """POST without webhook_trigger should create successfully with null trigger."""
         rc = _make_realtime_channel(db, default_org)
         secret = _make_secret(default_org, "tok_noauth")
@@ -115,7 +143,9 @@ class TestTwilioChannelWebhookTrigger:
         assert response.status_code == 201, response.json()
         assert response.json()["webhook_trigger"] is None
 
-    def test_create_twilio_channel_with_ngrok_trigger(self, auth_client, db, default_org):
+    def test_create_twilio_channel_with_ngrok_trigger(
+        self, auth_client, db, default_org
+    ):
         """POST with webhook_trigger FK; GET should return nested webhook_trigger with live_url=null."""
         rc = _make_realtime_channel(db, default_org)
         trigger = _make_webhook_trigger_with_ngrok(default_org, path="voice-ngrok-test")
@@ -176,7 +206,9 @@ class TestTwilioChannelWebhookTrigger:
     def test_patch_twilio_channel_remove_trigger(self, auth_client, db, default_org):
         """PATCH webhook_trigger=null should clear the FK."""
         rc = _make_realtime_channel(db, default_org)
-        trigger = _make_webhook_trigger_with_ngrok(default_org, path="removable-trigger")
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org, path="removable-trigger"
+        )
         tc = _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
 
         url = reverse("twiliochannel-detail", args=[tc.channel_id])
@@ -187,16 +219,28 @@ class TestTwilioChannelWebhookTrigger:
         tc.refresh_from_db()
         assert tc.webhook_trigger_id is None
 
-    def test_configure_webhook_rejects_localhost_provider(self, auth_client, db, default_org):
+    def test_configure_webhook_rejects_localhost_provider(
+        self, auth_client, db, default_org
+    ):
         """configure-webhook must 400 when the trigger uses the localhost provider."""
         rc = _make_realtime_channel(db, default_org)
-        trigger = _make_webhook_trigger_with_localhost(default_org, path="cfg-localhost")
-        _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
+        trigger = _make_webhook_trigger_with_localhost(
+            default_org, path="cfg-localhost"
+        )
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
 
         url = reverse("twilio-configure-webhook")
         response = auth_client.post(
             url,
-            {"phone_sid": "PN_test", "channel_token": str(rc.token)},
+            {
+                "phone_sid": "PN" + "0" * 32,
+                "channel_token": str(rc.token),
+            },
             format="json",
         )
         assert response.status_code == 400, response.json()
@@ -229,7 +273,9 @@ class TestTwilioChannelWebhookTrigger:
         assert error is not None
         assert "no webhook trigger" in error.lower()
 
-    def test_realtime_channel_get_expands_twilio_webhook_trigger(self, auth_client, db, default_org):
+    def test_realtime_channel_get_expands_twilio_webhook_trigger(
+        self, auth_client, db, default_org
+    ):
         """GET /realtime-channels/{id}/ should include twilio.webhook_trigger with path and live_url."""
         trigger = _make_webhook_trigger_with_ngrok(default_org, path="realtime-voice")
         rc = _make_realtime_channel(db, default_org)
@@ -253,7 +299,7 @@ class TestTwilioChannelWebhookTrigger:
 
 @pytest.mark.django_db
 class TestTwilioChannelCrossOrgCreateGuard:
-    """EST-1869: create() looks up an existing TwilioChannel row via a raw,
+    """create() looks up an existing TwilioChannel row via a raw,
     unfiltered `TwilioChannel.objects.filter(channel_id=...)` (channel_id is
     the global PK, not scoped by get_queryset()) before it ever checks org.
     Without an explicit guard, an org A caller could POST an org B channel_id
@@ -300,7 +346,7 @@ class TestTwilioChannelCrossOrgCreateGuard:
 
 @pytest.mark.django_db
 class TestTwilioChannelAuthTokenNotLeaked:
-    """EST-3633: auth_token must never appear in a twilio-channels response
+    """auth_token must never appear in a twilio-channels response
     body (list/retrieve/create/update), though it must remain writable.
     Regression guard: the realtime-channels nested read path
     (_TwilioChannelReadSerializer) must also keep omitting it."""
@@ -410,7 +456,7 @@ class TestTwilioChannelAuthTokenNotLeaked:
 
 @pytest.mark.django_db
 class TestRealtimeChannelLookupByToken:
-    """EST-3631 (2nd STR): inbound Twilio calls have no logged-in user and no
+    """inbound Twilio calls have no logged-in user and no
     X-Organization-Id header. `realtime`'s get_channel_config() resolves the
     answering agent via GET /api/realtime-channels/lookup-by-token/?token=...,
     which must succeed for a valid token without any org context, while
@@ -466,7 +512,9 @@ class TestRealtimeChannelLookupByToken:
 
         assert response.status_code == 400
 
-    def test_lookup_by_token_rejects_unauthenticated_caller(self, api_client, db, default_org):
+    def test_lookup_by_token_rejects_unauthenticated_caller(
+        self, api_client, db, default_org
+    ):
         rc = _make_realtime_channel(db, default_org)
 
         response = api_client.get(self._url(), {"token": str(rc.token)})
@@ -488,7 +536,7 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_rejects_user_scoped_api_key(
         self, api_client, db, default_org, user_api_key
     ):
-        """EST-3633 regression: a self-issued `key_type=USER` API key (any org
+        """regression: a self-issued `key_type=USER` API key (any org
         member can mint one via POST /api/profile/api-keys/) must NOT be able
         to use this org-bypass path, even for their own org's channel.
         IsSystemApiKeyAuthenticated requires key_type=SYSTEM specifically —
@@ -505,7 +553,7 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_user_scoped_api_key_cannot_leak_other_org_twilio_secret(
         self, api_client, db, user_api_key
     ):
-        """EST-3633 regression: a USER-scoped API key must not be able to read
+        """a USER-scoped API key must not be able to read
         another org's TwilioChannel.auth_token by guessing/observing a
         RealtimeChannel token — it is rejected before any lookup happens."""
         raw_key, _key = user_api_key
@@ -546,7 +594,7 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_includes_twilio_auth_token_for_api_key_caller(
         self, api_client, db, default_org, env_api_key
     ):
-        """EST-3633 follow-up: lookup-by-token is the ONE legitimate internal
+        """lookup-by-token is the ONE legitimate internal
         consumer that must still receive twilio.auth_token — `realtime`'s
         get_channel_config()/_twilio_voice_webhook() needs it to validate the
         inbound X-Twilio-Signature header. This is gated by
@@ -587,11 +635,11 @@ class TestRealtimeChannelLookupByToken:
 
 @pytest.mark.django_db
 class TestTwilioChannelPhoneNumbersAction:
-    """EST-1869: GET /twilio-channels/{id}/phone-numbers/ resolves account_sid
+    """GET /twilio-channels/{id}/phone-numbers/ resolves account_sid
     and the auth token server-side from the channel's stored Secret — unlike
-    TwilioPhoneNumbersView (header-based, superadmin-only), the frontend
-    supplies no raw credentials at all here, and the caller only needs normal
-    org membership on the channel's own org."""
+    the removed, header-based TwilioPhoneNumbersView (superadmin-only), the
+    frontend supplies no raw credentials at all here, and the caller only
+    needs normal org membership on the channel's own org."""
 
     def _fake_twilio_response(self, *args, **kwargs):
         return {
@@ -613,7 +661,7 @@ class TestTwilioChannelPhoneNumbersAction:
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
         with mock.patch(
-            "tables.views.model_view_sets._twilio_request",
+            "tables.services.twilio_service._twilio_request",
             side_effect=self._fake_twilio_response,
         ) as mocked:
             response = auth_client.get(url)
@@ -641,9 +689,7 @@ class TestTwilioChannelPhoneNumbersAction:
         tc = _make_twilio_channel(rc, default_org, auth_token_secret=None)
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
-        with mock.patch(
-            "tables.views.model_view_sets._twilio_request"
-        ) as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.get(url)
 
         assert response.status_code == 400, response.json()
@@ -658,7 +704,7 @@ class TestTwilioChannelPhoneNumbersAction:
         tc = _make_twilio_channel(rc, other_org)
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.get(url)
 
         assert response.status_code == 404
@@ -670,10 +716,292 @@ class TestTwilioChannelPhoneNumbersAction:
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
         with mock.patch(
-            "tables.views.model_view_sets._twilio_request",
+            "tables.services.twilio_service._twilio_request",
             side_effect=self._fake_twilio_response,
         ):
             response = auth_client.get(url)
 
         assert response.status_code == 200, response.json()
         assert "auth_test" not in response.content.decode()
+
+
+@pytest.mark.django_db
+class TestTwilioChannelPhoneNumbersSidValidation:
+    """`TwilioChannelViewSet.phone_numbers` reads `sid` straight
+    from a query param and passes it into `TwilioService.get_phone_numbers`
+    (the shared helper; the header-based `TwilioPhoneNumbersView.get` that
+    used to share it was removed on `main`) without any format check — it
+    needs the identical `_TWILIO_ACCOUNT_SID_RE` guard.
+
+    NOTE: this action is registered `detail=False` (list-level), so its real
+    URL is `/api/twilio-channels/phone-numbers/` with no `<pk>` segment —
+    unlike the sibling tests above in `TestTwilioChannelPhoneNumbersAction`,
+    which pass `args=[tc.channel_id]` to `reverse()` and are consequently
+    reversing to a bogus URL (a pre-existing, unrelated routing bug: the
+    channel_id lands in the DRF format-suffix, e.g.
+    `/api/twilio-channels/phone-numbers.25`, and 500s before the view body
+    ever runs). Reversing with no args here hits the actual, correctly
+    routed action, so it validates the new SID check without depending on
+    that pre-existing bug being fixed.
+    """
+
+    def test_rejects_invalid_sid_query_param(self, auth_client, db, default_org):
+        url = reverse("twiliochannel-phone-numbers")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.get(
+                url, {"sid": "not-a-valid-sid", "auth_token_secret_id": "1"}
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid account_sid"}
+        mocked.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestTwilioConfigureWebhookInputValidation:
+    """TwilioConfigureWebhookView must reject malformed SIDs before
+    ever interpolating them into a Twilio REST URL, and must never reflect a
+    raw upstream Twilio error body back to the caller."""
+
+    def test_rejects_invalid_phone_sid_format(self, auth_client, db, default_org):
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="cfg-invalid-sid")
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN_not_a_valid_sid", "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid phone_sid"}
+        mocked.assert_not_called()
+
+    def test_rejects_invalid_account_sid_on_stored_credential(
+        self, auth_client, db, default_org
+    ):
+        """Defense in depth: even though account_sid isn't client-supplied
+        here, a malformed value stored on the channel must still be rejected
+        before it flows into the Twilio REST URL."""
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org, path="cfg-invalid-account-sid"
+        )
+        _make_twilio_channel(
+            rc, default_org, webhook_trigger=trigger, account_sid="AC_not_valid"
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid account_sid"}
+        mocked.assert_not_called()
+
+    def test_rejects_malformed_channel_token(self, auth_client, db, default_org):
+        """A non-UUID channel_token must 404 like an unknown token, not 500.
+
+        RealtimeChannel.token is a UUIDField, so `.get(token=channel_token)`
+        with a client-supplied string that isn't a well-formed UUID raises
+        django.core.exceptions.ValidationError before Django can even
+        evaluate DoesNotExist — that exception type must be normalized to
+        the same 404 as a genuinely missing token."""
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": "qwe"},
+                format="json",
+            )
+
+        assert response.status_code == 404, response.json()
+        assert response.json() == {"error": "Channel not found"}
+        mocked.assert_not_called()
+
+    def test_twilio_http_error_returns_generic_sanitized_body(
+        self, auth_client, db, default_org
+    ):
+        """A raw upstream Twilio error body (which can contain account
+        details) must never be reflected verbatim to the caller."""
+        import urllib.error
+
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org,
+            path="cfg-twilio-http-error",
+            domain="cfg-error.example.ngrok.io",
+        )
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
+
+        raw_twilio_body = (
+            '{"code": 20404, "message": "The requested resource '
+            '/Accounts/ACxxxx/IncomingPhoneNumbers/PNxxxx.json was not found"}'
+        )
+        http_error = urllib.error.HTTPError(
+            url="https://api.twilio.com/2010-04-01/Accounts/ACxxxx/IncomingPhoneNumbers/PNxxxx.json",
+            code=404,
+            msg="Not Found",
+            hdrs=None,
+            fp=mock.mock_open(read_data=raw_twilio_body.encode())(),
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch(
+            "tables.services.twilio_service._twilio_request", side_effect=http_error
+        ):
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 404, response.json()
+        assert response.json() == {"error": "Failed to configure Twilio webhook"}
+        body_text = response.content.decode()
+        assert "20404" not in body_text
+        assert "ACxxxx" not in body_text
+
+
+@pytest.mark.django_db
+class TestRealtimeChannelLegacyAgentPointer:
+    """`RealtimeChannel.realtime_agent` points at the removed staff-agent API
+    surface (`RealtimeAgent`/`Agent`) and can no longer be served. The field
+    and its DB column stay (migrations are frozen on this branch), but the
+    serializer must make it read-only and self-healing so old rows are
+    diagnosable and repairable through the API instead of permanently
+    unrepairable 400s."""
+
+    def test_create_ignores_realtime_agent_in_payload(
+        self, auth_client, db, default_org
+    ):
+        """realtime_agent is read-only: sending it on create must not set it,
+        and must not be rejected either — the field is simply ignored."""
+        rt_agent = _make_realtime_agent(default_org)
+
+        url = reverse("realtimechannel-list")
+        response = auth_client.post(
+            url,
+            {"name": "ignores-realtime-agent", "realtime_agent": rt_agent.pk},
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["realtime_agent"] is None
+
+        channel = RealtimeChannel.objects.get(pk=response.json()["id"])
+        assert channel.realtime_agent_id is None
+
+    def test_patch_realtime_agent_definition_repairs_stranded_channel(
+        self, auth_client, db, default_org
+    ):
+        """A channel whose `realtime_agent` was already set in the DB
+        (simulating a row created on `main`, before this field existed) is
+        repaired by PATCHing `realtime_agent_definition`: the new
+        destination wins and the dead legacy pointer is cleared, instead of
+        the update being rejected as "both set"."""
+        rt_agent = _make_realtime_agent(default_org)
+        stranded_channel = RealtimeChannel.objects.create(
+            name="stranded-channel", org=default_org, realtime_agent=rt_agent
+        )
+        rt_agent_definition = _make_realtime_agent_definition(default_org)
+
+        url = reverse("realtimechannel-detail", args=[stranded_channel.pk])
+        response = auth_client.patch(
+            url,
+            {"realtime_agent_definition": rt_agent_definition.pk},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+
+        stranded_channel.refresh_from_db()
+        assert stranded_channel.realtime_agent_id is None
+        assert stranded_channel.realtime_agent_definition_id == rt_agent_definition.pk
+
+    def test_get_still_exposes_stranded_realtime_agent(
+        self, auth_client, db, default_org
+    ):
+        """GET must keep returning realtime_agent for a stranded row so
+        operators can see which channels are still pointing at the removed
+        destination — read-only visibility is preserved, only writes are
+        blocked."""
+        rt_agent = _make_realtime_agent(default_org)
+        stranded_channel = RealtimeChannel.objects.create(
+            name="visible-stranded-channel", org=default_org, realtime_agent=rt_agent
+        )
+
+        url = reverse("realtimechannel-detail", args=[stranded_channel.pk])
+        response = auth_client.get(url)
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["realtime_agent"] == rt_agent.pk
+
+    def test_filter_by_realtime_agent_returns_only_stranded_channel(
+        self, auth_client, db, default_org
+    ):
+        """`realtime_agent` was dropped from filterset_fields at one point
+        with the field itself left read-only, which silently turned
+        `?realtime_agent=<pk>` into a no-op filter — DjangoFilterBackend
+        ignores unknown query params, so the endpoint returned every channel
+        in the org instead of just the one bound to that legacy agent.
+        Regression guard: the filter must still narrow the result set."""
+        rt_agent = _make_realtime_agent(default_org)
+        stranded_channel = RealtimeChannel.objects.create(
+            name="stranded-for-filter", org=default_org, realtime_agent=rt_agent
+        )
+        rt_agent_definition = _make_realtime_agent_definition(default_org)
+        RealtimeChannel.objects.create(
+            name="other-destination-channel",
+            org=default_org,
+            realtime_agent_definition=rt_agent_definition,
+        )
+
+        url = reverse("realtimechannel-list")
+        response = auth_client.get(url, {"realtime_agent": rt_agent.pk})
+
+        assert response.status_code == 200, response.json()
+        results = response.json()["results"]
+        assert [row["id"] for row in results] == [stranded_channel.pk]
+
+    def test_filter_by_realtime_agent_definition_still_works(
+        self, auth_client, db, default_org
+    ):
+        """Adding `realtime_agent` back to filterset_fields must not disturb
+        the existing, still-writable `realtime_agent_definition` filter."""
+        rt_agent = _make_realtime_agent(default_org)
+        RealtimeChannel.objects.create(
+            name="stranded-not-matched", org=default_org, realtime_agent=rt_agent
+        )
+        rt_agent_definition = _make_realtime_agent_definition(default_org)
+        matching_channel = RealtimeChannel.objects.create(
+            name="matches-definition-filter",
+            org=default_org,
+            realtime_agent_definition=rt_agent_definition,
+        )
+
+        url = reverse("realtimechannel-list")
+        response = auth_client.get(
+            url, {"realtime_agent_definition": rt_agent_definition.pk}
+        )
+
+        assert response.status_code == 200, response.json()
+        results = response.json()["results"]
+        assert [row["id"] for row in results] == [matching_channel.pk]

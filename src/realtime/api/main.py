@@ -67,7 +67,7 @@ transcription_client_factory = TranscriptionClientFactory()
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -119,8 +119,8 @@ async def get_channel_config(channel_token: str) -> dict:
                     data = {}
                 _channel_cache[channel_token] = (data, now)
                 logger.info(
-                    f"[channel_config] loaded: agent_id={data.get('realtime_agent')} "
-                    f"agent_definition_id={data.get('realtime_agent_definition')} "
+                    f"[channel_config] loaded: agent_definition_id={data.get('realtime_agent_definition')} "
+                    f"legacy_realtime_agent={data.get('realtime_agent')} "
                     f"twilio={data.get('twilio')}"
                 )
                 return data
@@ -271,6 +271,7 @@ async def root(
 
     summ_client = OpenaiSummarizationClient(
         api_key=realtime_agent_chat_data.rt_api_key,
+        base_url=realtime_agent_chat_data.rt_base_url,
     )
     service = ConversationService(
         client_websocket=websocket,
@@ -305,12 +306,32 @@ async def healthcheck_endpoint(websocket: WebSocket):
 
 async def _resolve_channel_agent(
     channel_token: str,
-) -> tuple[int | None, int | None, dict]:
-    """Fetch channel config and return (agent_id, agent_definition_id, channel_data)."""
+) -> tuple[int | None, dict]:
+    """Fetch channel config and return (agent_definition_id, channel_data).
+
+    `realtime_agent` (the legacy staff agent) is intentionally not read here:
+    Django removed the legacy staff-agent path, so `realtime_agent_definition`
+    is the only destination init-realtime can still accept.
+    """
     channel = await get_channel_config(channel_token)
-    agent_id = channel.get("realtime_agent")
     agent_definition_id = channel.get("realtime_agent_definition")
-    return agent_id, agent_definition_id, channel
+    return agent_definition_id, channel
+
+
+def _describe_missing_agent(channel: dict) -> str:
+    """Explain why a channel has no usable agent destination, for logs and
+    error responses. A channel still bound only to the removed legacy staff
+    agent needs different remediation (re-point it at an agent definition)
+    than one that was never assigned an agent at all — callers should not
+    collapse the two into one generic message."""
+    legacy_agent_id = channel.get("realtime_agent")
+    if legacy_agent_id:
+        return (
+            f"channel is still bound to removed legacy staff agent "
+            f"(realtime_agent={legacy_agent_id}) — re-point it at an agent "
+            "definition (realtime_agent_definition)"
+        )
+    return "channel has no agent assigned (realtime_agent_definition is not set)"
 
 
 def _append_stream_token(voice_stream_url: str, stream_token: str) -> str:
@@ -366,7 +387,10 @@ async def _twilio_voice_webhook(
             )
             raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     else:
-        logger.warning("[voice_webhook] no auth_token — skipping signature validation")
+        logger.warning(
+            "[voice_webhook] no auth_token — rejecting request (fail closed)"
+        )
+        raise HTTPException(status_code=503, detail="Twilio auth not configured")
 
     if not voice_stream_url:
         logger.error("[voice_webhook] no voice_stream_url configured")
@@ -397,17 +421,17 @@ async def _twilio_voice_webhook(
 
 async def _voice_stream_handler(
     twilio_ws: WebSocket,
-    agent_id: int | None,
+    agent_definition_id: int,
     auth_token: str | None,
-    agent_definition_id: int | None = None,
     stream_token: str | None = None,
     stream_bound_key: str | None = None,
 ) -> None:
     """Shared logic for voice stream WebSocket handlers.
 
-    agent_id / agent_definition_id are resolved by the caller (either from the
-    channel-token config or, for the deprecated /voice/stream route, from the
-    global Voice Settings singleton) before this handler is invoked.
+    agent_definition_id is resolved by the caller from the channel-token
+    config before this handler is invoked; callers are expected to have
+    already rejected channels with no usable destination (see
+    `_describe_missing_agent`) before calling this.
 
     Twilio's Media Stream WS leg carries no verifiable Twilio header (no
     `X-Twilio-Signature`), so authentication here is a short-lived, single-use
@@ -449,7 +473,9 @@ async def _voice_stream_handler(
             raw = await asyncio.wait_for(twilio_ws.receive_text(), timeout=5.0)
             first_msg = json.loads(raw)
         if first_msg.get("event") == "start":
-            logger.info(f"Twilio stream started: agent_id={agent_id}")
+            logger.info(
+                f"Twilio stream started: agent_definition_id={agent_definition_id}"
+            )
     except Exception as e:
         logger.warning(f"Could not read Twilio start event: {e}")
         first_msg = None
@@ -479,21 +505,15 @@ async def _voice_stream_handler(
         await twilio_ws.close(code=1008)
         return
 
-    # Call Django init-realtime with the resolved agent_id / agent_definition_id
+    # Call Django init-realtime with the resolved agent_definition_id.
     audio_config = {
         "input_audio_format": "g711_ulaw",
         "output_audio_format": "g711_ulaw",
     }
-    if agent_definition_id:
-        init_realtime_payload = {
-            "agent_definition_id": agent_definition_id,
-            "config": audio_config,
-        }
-    else:
-        init_realtime_payload = {
-            "agent_id": agent_id,
-            "config": audio_config,
-        }
+    init_realtime_payload = {
+        "agent_definition_id": agent_definition_id,
+        "config": audio_config,
+    }
 
     async with httpx.AsyncClient() as http_client:
         try:
@@ -572,16 +592,18 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     """
     logger.info(f"[voice/{channel_token}] POST received from {request.client.host}")
 
-    agent_id, agent_definition_id, channel = await _resolve_channel_agent(channel_token)
+    agent_definition_id, channel = await _resolve_channel_agent(channel_token)
     logger.info(
-        f"[voice/{channel_token}] resolved agent_id={agent_id} "
-        f"agent_definition_id={agent_definition_id} channel_keys={list(channel.keys())}"
+        f"[voice/{channel_token}] resolved agent_definition_id={agent_definition_id} "
+        f"channel_keys={list(channel.keys())}"
     )
 
-    if not agent_id and not agent_definition_id:
-        logger.error(f"[voice/{channel_token}] no agent assigned — returning 404")
+    if not agent_definition_id:
+        reason = _describe_missing_agent(channel)
+        logger.error(f"[voice/{channel_token}] {reason} — returning 404")
         raise HTTPException(
-            status_code=404, detail="Channel not found or no agent assigned"
+            status_code=404,
+            detail=f"Channel not found or no agent assigned: {reason}",
         )
 
     twilio_cfg = channel.get("twilio") or {}
@@ -624,16 +646,18 @@ async def voice_stream_channel(
     channel_token: str, twilio_ws: WebSocket, stream_token: str | None = None
 ):
     """Twilio MediaStream WebSocket (channel-token routing)."""
-    agent_id, agent_definition_id, _channel = await _resolve_channel_agent(channel_token)
-    if not agent_id and not agent_definition_id:
-        logger.error(f"No agent for channel token {channel_token}")
+    agent_definition_id, channel = await _resolve_channel_agent(channel_token)
+    if not agent_definition_id:
+        logger.error(
+            f"No agent for channel token {channel_token}: "
+            f"{_describe_missing_agent(channel)}"
+        )
         await twilio_ws.close(code=1008)
         return
     await _voice_stream_handler(
         twilio_ws,
-        agent_id,
+        agent_definition_id,
         auth_token=None,
-        agent_definition_id=agent_definition_id,
         stream_token=stream_token,
         stream_bound_key=channel_token,
     )

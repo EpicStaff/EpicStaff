@@ -12,6 +12,7 @@ import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper'
 import { mapEndNodeToModel } from './nodes/end-node.mapper';
 import { mapFileExtractorNodeToModel } from './nodes/file-extractor-node.mapper';
 import { mapGraphNoteToModel } from './nodes/graph-note.mapper';
+import { mapKnowledgeRetrieverNodeToModel } from './nodes/knowledge-retriever-node.mapper';
 import { mapLLMNodeToModel } from './nodes/llm-node.mapper';
 import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
@@ -61,6 +62,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const classificationDecisionTableNodes = (graph.classification_decision_table_node_list ?? []).map((n) =>
         mapClassificationDecisionTableNodeToModel(n)
     );
+    const knowledgeRetrieverNodes = (graph.knowledge_node_list ?? []).map((n) => mapKnowledgeRetrieverNodeToModel(n));
 
     // ── 2. Combine into one flat node list ───────────────────────────────
     const allNodes: NodeModel[] = [
@@ -79,6 +81,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...endNodes,
         ...decisionTableNodes,
         ...classificationDecisionTableNodes,
+        ...knowledgeRetrieverNodes,
     ];
 
     // ── 3. Build backendId ↔ UUID lookup maps ────────────────────────────

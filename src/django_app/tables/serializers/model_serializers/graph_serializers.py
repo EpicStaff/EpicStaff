@@ -13,6 +13,7 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
     AudioTranscriptionNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
+    KnowledgeNodeReadSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
     TaskNodeSerializer,
@@ -174,6 +175,7 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
+    knowledge_node_list = KnowledgeNodeReadSerializer(many=True, read_only=True)
     task_node_list = TaskNodeSerializer(many=True, read_only=True)
     agent_node_list = AgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
@@ -219,6 +221,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "subgraph_node_list",
             "task_node_list",
             "agent_node_list",
+            "knowledge_node_list",
             "start_node_list",
             "end_node_list",
             "time_to_live",

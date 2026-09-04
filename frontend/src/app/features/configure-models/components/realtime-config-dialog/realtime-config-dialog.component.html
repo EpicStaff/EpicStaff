@@ -33,12 +33,11 @@
             class="dialog__form"
             [formGroup]="openaiForm"
         >
-            <div
-                *ngIf="errorMessage()"
-                class="dialog__error"
-            >
-                <p>{{ errorMessage() }}</p>
-            </div>
+            @if (errorMessage()) {
+                <div class="dialog__error">
+                    <p>{{ errorMessage() }}</p>
+                </div>
+            }
             <div>
                 <app-custom-input
                     label="Name"
@@ -75,6 +74,14 @@
                     tooltipText="The realtime model to use"
                 />
                 <app-validation-errors [control]="openaiForm.get('model_name')!" />
+            </div>
+            <div>
+                <app-custom-input
+                    label="Base URL (optional)"
+                    formControlName="base_url"
+                    placeholder="https://api.openai.com/v1"
+                    tooltipText="Leave blank to use OpenAI's default endpoint. For self-hosted/local deployments only — must include http:// or https://"
+                />
             </div>
             <div>
                 <app-custom-input
@@ -117,12 +124,11 @@
             class="dialog__form"
             [formGroup]="elevenLabsForm"
         >
-            <div
-                *ngIf="errorMessage()"
-                class="dialog__error"
-            >
-                <p>{{ errorMessage() }}</p>
-            </div>
+            @if (errorMessage()) {
+                <div class="dialog__error">
+                    <p>{{ errorMessage() }}</p>
+                </div>
+            }
             <div>
                 <app-custom-input
                     label="Name"
@@ -176,12 +182,11 @@
             class="dialog__form"
             [formGroup]="geminiForm"
         >
-            <div
-                *ngIf="errorMessage()"
-                class="dialog__error"
-            >
-                <p>{{ errorMessage() }}</p>
-            </div>
+            @if (errorMessage()) {
+                <div class="dialog__error">
+                    <p>{{ errorMessage() }}</p>
+                </div>
+            }
             <div>
                 <app-custom-input
                     label="Name"

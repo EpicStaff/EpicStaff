@@ -1,5 +1,5 @@
-"""EST-3629 — RBAC/org-scoping on the three provider realtime-config
-endpoints (OpenAI / ElevenLabs / Gemini), plus EST-3630 — RealtimeChannel
+"""RBAC/org-scoping on the three provider realtime-config
+endpoints (OpenAI / ElevenLabs / Gemini), plus RealtimeChannel
 must not accept a cross-org RealtimeAgent.
 
 Follows the org_a/org_b + client_member pattern from
@@ -58,7 +58,9 @@ def _client(user, org):
 
 @pytest.fixture
 def client_org_b(db, django_user_model, org_b):
-    return _client(_org_admin(django_user_model, org_b, "orgb-admin@example.com"), org_b)
+    return _client(
+        _org_admin(django_user_model, org_b, "orgb-admin@example.com"), org_b
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -89,9 +91,7 @@ CONFIG_CASES = [
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("basename, model, payload", CONFIG_CASES)
-def test_provider_config_cross_org_404(
-    auth_client, org_b, basename, model, payload
-):
+def test_provider_config_cross_org_404(auth_client, org_b, basename, model, payload):
     instance = model.objects.create(org=org_b, **payload)
     url = reverse(f"{basename}-detail", args=[instance.pk])
     assert auth_client.get(url).status_code == 404
@@ -146,7 +146,7 @@ def test_provider_config_update_cross_org_rejected(
 
 
 # ---------------------------------------------------------------------------
-# EST-1869 follow-up — api_key / transcription_api_key are no longer raw
+# api_key / transcription_api_key are no longer raw
 # plaintext fields; each config references an existing org-scoped `Secret`
 # by id (api_key_secret_id / transcription_api_key_secret_id), matching
 # TwilioChannel.auth_token_secret_id exactly. The plaintext itself never
@@ -200,9 +200,7 @@ def test_provider_config_create_accepts_own_org_secret_id(
 ):
     secret = _make_secret(default_org, "sk-supersecretvalue1234")
     url = reverse(f"{basename}-list")
-    resp = auth_client.post(
-        url, {**payload, secret_field: secret.id}, format="json"
-    )
+    resp = auth_client.post(url, {**payload, secret_field: secret.id}, format="json")
     assert resp.status_code == 201, resp.data
     assert resp.data[secret_field] == secret.id
 
@@ -284,7 +282,7 @@ def test_agent_list_nested_realtime_config_exposes_secret_id_only(
 
 
 # ---------------------------------------------------------------------------
-# EST-3630 — RealtimeChannel.realtime_agent must reject cross-org agents
+# RealtimeChannel.realtime_agent must reject cross-org agents
 # ---------------------------------------------------------------------------
 
 
@@ -297,40 +295,33 @@ def _realtime_agent(org):
 
 
 @pytest.mark.django_db
-def test_realtime_channel_rejects_cross_org_realtime_agent(auth_client, org_b):
-    """Assigning an org-B RealtimeAgent to a channel created in default_org
-    (auth_client's active org) must be rejected as an invalid pk, not leak
-    the cross-org row's existence via a 403."""
+def test_realtime_channel_ignores_realtime_agent_regardless_of_org(
+    auth_client, org_b, default_org
+):
+    """`realtime_agent` points at the removed staff-agent API surface and is
+    now a read-only field (see RealtimeChannelSerializer) — it can no longer
+    be set through the API at all, cross-org or same-org, so the old
+    org-scoping guard this test used to cover no longer applies. Sending it
+    is simply ignored rather than rejected; full read-only/self-healing
+    coverage lives in twilio_channel_api_test.py::
+    TestRealtimeChannelLegacyAgentPointer."""
     cross_org_agent = _realtime_agent(org_b)
-
-    url = reverse("realtimechannel-list")
-    resp = auth_client.post(
-        url,
-        {"name": "cross-org-channel", "realtime_agent": cross_org_agent.pk},
-        format="json",
-    )
-    assert resp.status_code == 400, resp.data
-    assert "does not exist" in str(resp.data).lower()
-
-
-@pytest.mark.django_db
-def test_realtime_channel_accepts_same_org_realtime_agent(auth_client, default_org):
     same_org_agent = _realtime_agent(default_org)
 
     url = reverse("realtimechannel-list")
-    resp = auth_client.post(
-        url,
-        {"name": "same-org-channel", "realtime_agent": same_org_agent.pk},
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
-    channel = RealtimeChannel.objects.get(pk=resp.data["id"])
-    assert channel.realtime_agent_id == same_org_agent.pk
+    for label, agent in [("cross-org", cross_org_agent), ("same-org", same_org_agent)]:
+        resp = auth_client.post(
+            url,
+            {"name": f"{label}-channel", "realtime_agent": agent.pk},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        channel = RealtimeChannel.objects.get(pk=resp.data["id"])
+        assert channel.realtime_agent_id is None
 
 
 # ---------------------------------------------------------------------------
-# Nested RealtimeAgentWriteSerializer context propagation (EST-3629/3630
-# follow-up) — AgentWriteSerializer nests RealtimeAgentWriteSerializer
+# Nested RealtimeAgentWriteSerializer context propagation — AgentWriteSerializer nests RealtimeAgentWriteSerializer
 # declaratively (no explicit context= passed at instantiation). Confirm DRF's
 # implicit context propagation through the field tree actually works end to
 # end for the org-scoped openai_config/elevenlabs_config/gemini_config
@@ -360,13 +351,39 @@ def test_agent_create_nested_realtime_agent_accepts_same_org_config(
     assert agent.realtime_agent.openai_config_id == config.pk
 
 
+# ---------------------------------------------------------------------------
+# OpenAIRealtimeConfig.base_url override
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_openai_config_create_accepts_base_url(auth_client, default_org):
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(
+        url,
+        {"custom_name": "openai-cfg", "base_url": "https://my-proxy.internal"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["base_url"] == "https://my-proxy.internal"
+
+    instance = OpenAIRealtimeConfig.objects.get(pk=resp.data["id"])
+    assert instance.base_url == "https://my-proxy.internal"
+
+
+@pytest.mark.django_db
+def test_openai_config_base_url_defaults_to_null(auth_client, default_org):
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(url, {"custom_name": "openai-cfg"}, format="json")
+    assert resp.status_code == 201, resp.data
+    assert resp.data["base_url"] is None
+
+
 @pytest.mark.django_db
 def test_agent_create_nested_realtime_agent_rejects_cross_org_config(
     auth_client, org_b
 ):
-    cross_org_config = OpenAIRealtimeConfig.objects.create(
-        org=org_b, custom_name="cfg"
-    )
+    cross_org_config = OpenAIRealtimeConfig.objects.create(org=org_b, custom_name="cfg")
 
     url = reverse("agent-list")
     resp = auth_client.post(

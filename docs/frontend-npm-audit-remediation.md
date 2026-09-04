@@ -16,13 +16,13 @@ The numbers below are reproducible from those files.
 
 ## Result
 
-| | before | after |
-| --- | --- | --- |
-| `npm audit` findings (packages) | 77 — 3 critical, 44 high, 29 moderate, 1 low | **0** |
-| distinct advisories (GHSA) | **114** | **0** |
-| findings in the production tree | 29 — 1 critical, 18 high, 10 moderate | **0** |
-| packages in the lockfile | 1 398 | 843 |
-| highest severity reaching first-party code | CVSS **9.0** (`GHSA-g93w-mfhg-p222`) | — |
+|                                            | before                                       | after |
+| ------------------------------------------ | -------------------------------------------- | ----- |
+| `npm audit` findings (packages)            | 77 — 3 critical, 44 high, 29 moderate, 1 low | **0** |
+| distinct advisories (GHSA)                 | **114**                                      | **0** |
+| findings in the production tree            | 29 — 1 critical, 18 high, 10 moderate        | **0** |
+| packages in the lockfile                   | 1 398                                        | 839   |
+| highest severity reaching first-party code | CVSS **9.0** (`GHSA-g93w-mfhg-p222`)         | —     |
 
 `npm audit` groups findings by package, so its headline count understates the problem:
 77 affected packages carried 114 distinct advisories. Of those, 53 sat in the production
@@ -38,10 +38,10 @@ one at 9.0.
 
 ## Commits
 
-| | |
-| --- | --- |
+|             |                                                                       |
+| ----------- | --------------------------------------------------------------------- |
 | `d7338534d` | dependency cleanup, Angular untouched — 77 → 28 findings, prod 29 → 9 |
-| `fe36ca19e` | Angular 19 → 22 — 28 → 0, prod 9 → 0 |
+| `fe36ca19e` | Angular 19 → 22 — 28 → 0, prod 9 → 0                                  |
 
 Splitting the work this way isolates the two causes. The first commit shows how much of the
 backlog was tree drift rather than framework age: regenerating the lockfile and removing the
@@ -54,11 +54,11 @@ Counting by advisory rather than by package, because every 19.2.x release report
 three affected packages (`common`, `compiler`, `core`) and the difference is only visible
 inside them:
 
-| version | advisories | highest |
-| --- | --- | --- |
-| 19.2.18 — what `main` ran | 12 | **CVSS 9.0** |
-| 19.2.25 — final v19 release, no further patches | 6 | 7.5 |
-| 22.1.2 — current | **0** | — |
+| version                                         | advisories | highest      |
+| ----------------------------------------------- | ---------- | ------------ |
+| 19.2.18 — what `main` ran                       | 12         | **CVSS 9.0** |
+| 19.2.25 — final v19 release, no further patches | 6          | 7.5          |
+| 22.1.2 — current                                | **0**      | —            |
 
 Six of the twelve had been fixed inside the v19 line and simply not taken; `main` was seven
 patches behind the final release. Among the six was `GHSA-g93w-mfhg-p222` (CVSS 9.0,
@@ -67,14 +67,14 @@ sanitiser bypass via `i18n-` attribute bindings), fixed in 19.2.20.
 The remaining six have no fixed version in v19 at all, which is why a patch bump was never
 a sufficient answer. Their reachability in this codebase, verified by inspection:
 
-| advisory | CVSS | reachable | basis |
-| --- | --- | --- | --- |
-| `GHSA-58w9-8g37-x9v5` two-way binding sanitisation bypass | 6.1 | **yes** | 52 files use `[(…)]`, 35 of them `[(ngModel)]` |
-| `GHSA-48r7-hpm6-gfxm` `formatDate` OOM DoS | 7.5 | no | `formatDate` is never imported from `@angular/common`; the 9 matches in `src/` are the project's own local methods. No `digitsInfo` usage |
-| `GHSA-rgjc-h3x7-9mwg` hydration DOM clobbering | 6.1 | no | no `provideClientHydration`; client-rendered only |
-| `GHSA-39pv-4j6c-2g6v` HttpTransferCache weak cache key | 6.1 | no | transfer cache not enabled |
-| `GHSA-jhpw-976m-542j` HttpTransferCache key ambiguity | — | no | as above |
-| `GHSA-jj27-h5hq-8x99` i18n XSS via event-handler attributes | — | no | no `i18n` attributes in any template |
+| advisory                                                    | CVSS | reachable | basis                                                                                                                                     |
+| ----------------------------------------------------------- | ---- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `GHSA-58w9-8g37-x9v5` two-way binding sanitisation bypass   | 6.1  | **yes**   | 52 files use `[(…)]`, 35 of them `[(ngModel)]`                                                                                            |
+| `GHSA-48r7-hpm6-gfxm` `formatDate` OOM DoS                  | 7.5  | no        | `formatDate` is never imported from `@angular/common`; the 9 matches in `src/` are the project's own local methods. No `digitsInfo` usage |
+| `GHSA-rgjc-h3x7-9mwg` hydration DOM clobbering              | 6.1  | no        | no `provideClientHydration`; client-rendered only                                                                                         |
+| `GHSA-39pv-4j6c-2g6v` HttpTransferCache weak cache key      | 6.1  | no        | transfer cache not enabled                                                                                                                |
+| `GHSA-jhpw-976m-542j` HttpTransferCache key ambiguity       | —    | no        | as above                                                                                                                                  |
+| `GHSA-jj27-h5hq-8x99` i18n XSS via event-handler attributes | —    | no        | no `i18n` attributes in any template                                                                                                      |
 
 Five of six were unreachable and one was reachable. This is context, not mitigation: the
 protection rested on nobody adding an `i18n` attribute or enabling hydration, and it does
@@ -108,9 +108,59 @@ The substantive moves:
   already resolved, so regenerating the lockfile did not silently move them. Their resolved
   versions are unchanged; only the declarations differ.
 
-One `overrides` entry is required and cannot be removed: `monaco-editor` pins
-`dompurify@3.2.7`, which is vulnerable, and moving monaco to 0.56.0 does not help because
-it pins 3.4.8. The override forces `^3.4.14`.
+Four `overrides` entries are required and cannot be removed. The first was needed by the
+upgrade itself: `monaco-editor` pins `dompurify@3.2.7`, which is vulnerable, and moving monaco
+to 0.56.0 does not help because it pins 3.4.8. The override forces `^3.4.14`.
+
+The other three were added later, when `main` was merged back into the branch — see
+Advisories published after the measurement.
+
+## Advisories published after the measurement
+
+The zero above is a measurement against the advisory database as it stood on 2026-08-19, not a
+permanent property of the tree. Reinstalling on 2026-09-04, with the lockfile unchanged,
+returned three findings: one high and two moderate. Nothing in the dependency tree had moved,
+so these are advisories published in the intervening two weeks against versions the branch
+already resolved. This is the drift the CI `npm audit` gate exists to surface, and it surfaced
+on the first run after the merge rather than at review.
+
+| package                 | severity                      | reaches        | arrives through                                          |
+| ----------------------- | ----------------------------- | -------------- | -------------------------------------------------------- |
+| `fast-uri` 3.1.5        | high — 4 advisories, CVSS 7.5 | build only     | `@angular/cli` → `@angular-devkit/core` → `ajv`          |
+| `qs` 6.15.3             | moderate — 2 advisories       | build only     | `@angular/cli` → `@modelcontextprotocol/sdk` → `express` |
+| `@xmldom/xmldom` 0.9.11 | moderate                      | **production** | `read-excel-file`                                        |
+
+Only the third reached shipped code, and it is a genuine runtime import rather than an npm
+classification artefact: `storage-preview.component.ts` imports `read-excel-file/browser` to
+render the spreadsheet preview.
+
+None of the three could be closed by moving a direct dependency, because all three are
+transitive and their parents pin the vulnerable ranges — the same shape as the `dompurify`
+case. So they are closed the same way:
+
+```json
+"overrides": {
+    "dompurify": "^3.4.14",
+    "@xmldom/xmldom": "^0.9.12",
+    "fast-uri": "^4.1.4",
+    "qs": "^6.16.0"
+}
+```
+
+`@xmldom/xmldom` and `qs` are in-range moves. `fast-uri` is not: 3.1.5 → 4.1.4 forces a major
+inside `ajv`, so it was resolved in a scratch copy of `package.json` and `package-lock.json`
+first, confirming both that the tree resolves and that the result is `found 0 vulnerabilities`,
+before being applied to the workspace. `package.json` changed in `overrides` only; the whole
+lockfile delta is these three packages resolving up, plus a duplicate `chokidar@3` subtree
+under `svgtofont` that deduped away on reinstall.
+
+After: `npm audit` and `npm audit --omit=dev` both report 0, at 839 packages total and 58 in
+the production tree. `THIRD-PARTY-NOTICES.md` was regenerated, as the notices gate demanded on
+the changed lockfile.
+
+Read these three as evidence about process rather than about this branch: a dependency tree
+that audits clean today can audit dirty next week without anyone touching it, which is why the
+durable control is the gate in CI and not the number in this document.
 
 ## Deliberately unchanged
 
@@ -121,7 +171,10 @@ ag-grid 36 requires Angular ≥ 20, but Angular 22 does not require ag-grid 36 �
 three grid majors in the same commit as the framework upgrade would have made a regression
 impossible to attribute. Both have since been taken as separate steps, described below.
 
-## Deferred, none of it required by the upgrade
+## Deferred at the time of the upgrade, none of it required by it
+
+Recorded as it stood when the upgrade landed. All three are now closed; the detail is in the
+next section.
 
 - The control flow migration (`*ngIf` → `@if`, ~73 files, plus 262 now-redundant
   `standalone: true`). The schematic is marked `optional: true` and `NgIf` / `NgForOf` are
@@ -273,17 +326,22 @@ manual smoke pass over login, the flow editor, ag-grid, monaco, markdown renderi
 realtime dialogs.
 
 Note on tooling coverage: `npm run lint` is `eslint src` and does not check formatting —
-prettier is a separate command. A `prettier --check` gate, plus a scan of bare imports in
-`src/` against `package.json`, are being added to CI so that neither class of problem has
-to be caught by review again.
+prettier is a separate command. That gap is now closed in CI. The `frontend-checks` job in
+`.github/workflows/pr.yml` runs six gates: `npm run lint`, `npm run format:check`,
+`scripts/check-undeclared-imports.mjs`, `scripts/check-third-party-notices.mjs`, `npm test`
+and `npm audit --audit-level=high`.
+
+One control is still outside the repository and still open: `frontend-checks` is not yet a
+required status check in branch protection, so a pull request can be merged without it having
+passed. Setting it requires admin rights on the ruleset.
 
 ## Files
 
-| file | contents |
-| --- | --- |
-| `evidence/frontend-angular-22/audit-before-all.json` | full `npm audit --json` at `c2472d77b` |
-| `evidence/frontend-angular-22/audit-before-prod.json` | same with `--omit=dev` |
-| `evidence/frontend-angular-22/audit-after-all.json` | full `npm audit --json` on the branch |
-| `evidence/frontend-angular-22/audit-after-prod.json` | same with `--omit=dev` |
-| `evidence/frontend-angular-22/advisories-before.tsv` | all 114 advisories with severity, CVSS and whether each is still present after |
-| `evidence/frontend-angular-22/direct-dependencies.tsv` | every direct dependency, declared and resolved, before and after |
+| file                                                   | contents                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `evidence/frontend-angular-22/audit-before-all.json`   | full `npm audit --json` at `c2472d77b`                                         |
+| `evidence/frontend-angular-22/audit-before-prod.json`  | same with `--omit=dev`                                                         |
+| `evidence/frontend-angular-22/audit-after-all.json`    | full `npm audit --json` on the branch                                          |
+| `evidence/frontend-angular-22/audit-after-prod.json`   | same with `--omit=dev`                                                         |
+| `evidence/frontend-angular-22/advisories-before.tsv`   | all 114 advisories with severity, CVSS and whether each is still present after |
+| `evidence/frontend-angular-22/direct-dependencies.tsv` | every direct dependency, declared and resolved, before and after               |

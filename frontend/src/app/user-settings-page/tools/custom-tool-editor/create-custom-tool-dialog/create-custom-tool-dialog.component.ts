@@ -76,8 +76,18 @@ const SAVE_FAILURE_MESSAGES: Record<SaveAction, string> = {
     fork: 'Failed to save your copy of this built-in tool. Please try again.',
 };
 
-const DEFAULT_PYTHON_CODE = `def main() -> dict:
-    return {"status": "ok"}
+const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
+#
+# Logic     : <how it should work - algorithm steps, external services/APIs it calls>
+# Inputs    : defined via this dialog's Parameters fields
+# Output    : <what the return value should contain>
+# Library   : list any pip packages this code needs in the Library field
+# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')
+#
+# Required signature:
+#   def main(<parameters matching this tool's Parameters>) -> ...:
+#       ...
+#       return ...  # value returned to the agent that called this tool
 `;
 
 /** Explains why the built-in header button offers "Create Editable Copy" instead of editing in place. */

@@ -4,6 +4,7 @@ import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from './audio-to-text-node-ports/aud
 import { DEFAULT_EDGE_NODE_PORTS } from './edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from './end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from './file-extractor-ports/file-extractor-default-ports';
+import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from './knowledge-retriever-ports/knowledge-retriever-default-ports';
 import { DEFAULT_LLM_NODE_PORTS } from './llm-ports/llm-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from './python-ports/python-node-default-ports';
 import { DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS } from './schedule-trigger-ports/schedule-trigger-default-ports';
@@ -32,5 +33,6 @@ export const PORTS_DICTIONARY: { [role: string]: BasePort } = Object.fromEntries
         ...DEFAULT_END_NODE_PORTS,
         ...DEFAULT_SUBGRAPH_NODE_PORTS,
         ...DEFAULT_AUDIO_TO_TEXT_NODE_PORTS,
+        ...DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS,
     ].map((port) => [port.role, port])
 );

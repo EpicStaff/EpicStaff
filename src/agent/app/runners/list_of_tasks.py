@@ -162,6 +162,7 @@ class ListOfTasksRunner(Runner):
                         name=task.name,
                         order=task_order,
                         final_text=result.final_text,
+                        structured_output=result.structured_output,
                         token_usage=result.token_usage,
                         iterations=result.iterations,
                         tool_invocations=result.tool_invocations,

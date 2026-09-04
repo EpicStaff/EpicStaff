@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Fri, 21 Aug 2026 07:16:11 GMT -->
-<!-- commit: 4f392b77f6750e9992d6ac8f7095f630e83a09c8 -->
-<!-- package-lock.json sha256: 152e5cb502c1c9ed -->
+<!-- generated: Fri, 04 Sep 2026 12:02:50 GMT -->
+<!-- commit: e16a27be8069e335a42e7072fa6bbd52be61e96e -->
+<!-- package-lock.json sha256: 4e034005d6bd4df8 -->
 
 # Third-Party Notices
 
@@ -52,7 +52,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `@fontsource/roboto` | 5.2.10 | OFL-1.1 |
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/trusted-types` | 2.0.7 | MIT |
-| `@xmldom/xmldom` | 0.9.11 | MIT |
+| `@xmldom/xmldom` | 0.9.12 | MIT |
 | `ag-charts-types` | 14.1.0 | MIT |
 | `ag-grid-angular` | 36.1.0 | MIT |
 | `ag-grid-community` | 36.1.0 | MIT |
@@ -1260,7 +1260,7 @@ MIT License
 
 </details>
 
-### @xmldom/xmldom@0.9.11
+### @xmldom/xmldom@0.9.12
 
 - **License:** MIT
 - **Repository:** https://github.com/xmldom/xmldom

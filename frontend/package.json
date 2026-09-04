@@ -83,6 +83,9 @@
         "vitest": "^4.1.11"
     },
     "overrides": {
-        "dompurify": "^3.4.14"
+        "dompurify": "^3.4.14",
+        "@xmldom/xmldom": "^0.9.12",
+        "fast-uri": "^4.1.4",
+        "qs": "^6.16.0"
     }
 }

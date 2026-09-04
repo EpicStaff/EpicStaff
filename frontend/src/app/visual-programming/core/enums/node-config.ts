@@ -18,6 +18,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.SUBGRAPH]: 'ti ti-hierarchy-2',
     [NodeType.AUDIO_TO_TEXT]: 'ti ti-music',
     [NodeType.SCHEDULE_TRIGGER]: 'ti ti-calendar',
+    [NodeType.KNOWLEDGE_RETRIEVER]: 'ti ti-books',
 };
 
 export const NODE_COLORS: Record<NodeType, string> = {
@@ -38,4 +39,5 @@ export const NODE_COLORS: Record<NodeType, string> = {
     [NodeType.SUBGRAPH]: '#00bfa5',
     [NodeType.AUDIO_TO_TEXT]: '#ff7be9ff',
     [NodeType.SCHEDULE_TRIGGER]: '#FF5C00',
+    [NodeType.KNOWLEDGE_RETRIEVER]: '#D9D9DE',
 };

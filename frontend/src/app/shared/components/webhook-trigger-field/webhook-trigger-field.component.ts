@@ -49,7 +49,6 @@ type Mode = 'existing' | 'new';
 
 @Component({
     selector: 'app-webhook-trigger-field',
-    standalone: true,
     imports: [ReactiveFormsModule, CustomInputComponent, SelectComponent],
     templateUrl: './webhook-trigger-field.component.html',
     styleUrls: ['./webhook-trigger-field.component.scss'],
