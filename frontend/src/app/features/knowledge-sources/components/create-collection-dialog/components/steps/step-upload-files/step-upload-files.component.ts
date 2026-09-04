@@ -20,7 +20,7 @@ import {
     BlobPreviewComponent,
     FileUploaderComponent,
     HelpTooltipComponent,
-    ValidationErrorsComponent
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
@@ -35,6 +35,7 @@ import {
     Observable,
     of,
     startWith,
+    Subject,
     switchMap,
 } from 'rxjs';
 
@@ -80,7 +81,7 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     collectionName: FormControl = new FormControl('', [
         Validators.required,
         notWhitespaceValidator(),
-        Validators.maxLength(255)
+        Validators.maxLength(255),
     ]);
     description: FormControl = new FormControl('', [Validators.maxLength(250)]);
     private readonly descriptionTa = viewChild<ElementRef<HTMLTextAreaElement>>('descriptionTa');
@@ -88,6 +89,8 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     documents = model<DisplayedListDocument[]>([]);
     initialDocumentId = input<number | undefined>(undefined);
     selectedDocument = signal<DisplayedListDocument | null>(null);
+
+    private readonly nameSave$ = new Subject<{ id: number; body: { collection_name: string } }>();
 
     previewState = toSignal(
         toObservable(this.selectedDocument).pipe(
@@ -133,6 +136,19 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
 
             this.documents.set([...realDocs, ...uploading, ...invalidLocal]);
         });
+
+        this.nameSave$
+            .pipe(
+                switchMap(({ id, body }) =>
+                    this.collectionsStorageService.updateCollectionById(id, body).pipe(
+                        catchError(() => {
+                            this.toastService.error('Collection Update failed');
+                            return EMPTY;
+                        })
+                    )
+                )
+            )
+            .subscribe(() => this.toastService.success('Collection Updated'));
     }
 
     ngOnInit() {
@@ -173,20 +189,12 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
                 takeUntilDestroyed(this.destroyRef),
                 debounceTime(600),
                 distinctUntilChanged(),
-                filter(() => this.collectionName.valid),
-                switchMap((collection_name: string) => {
-                    const id = this.collection().collection_id;
-                    const body = { collection_name };
-
-                    return this.collectionsStorageService.updateCollectionById(id, body).pipe(
-                        catchError(() => {
-                            this.toastService.error('Collection Update failed');
-                            return EMPTY;
-                        })
-                    );
-                })
+                filter(() => this.collectionName.valid)
             )
-            .subscribe(() => this.toastService.success('Collection Updated'));
+            .subscribe((collection_name: string) => {
+                const id = this.collection().collection_id;
+                this.nameSave$.next({ id, body: { collection_name } });
+            });
     }
 
     private subscribeToDescription() {
