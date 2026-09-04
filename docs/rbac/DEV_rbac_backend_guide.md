@@ -284,6 +284,7 @@ All mixins live in `tables/views/mixins.py` and share `OrgScopedResolverMixin`
 | `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, Agent, Crew, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
 | `OrgScopedChildViewSetMixin` | Children scoped through a parent FK (nodes, edges, sessions, RealtimeAgent, …) | `org_filter_path = "graph__org_id"` | filters through the path; on create asserts the parent is in the active org (404 otherwise); does NOT stamp org |
 | `OrgScopedHybridViewSetMixin` | Shared built-ins + per-org custom rows (LLMModel via `is_custom`, PythonCodeTool via `built_in`, …) | `global_visibility_q`, `custom_create_values` | lists built-ins OR own-org rows; creates always stamped org + forced out of the built-in subset |
+| `BuiltInWriteProtectedMixin` | Any hybrid registry whose built-ins must be immutable via the API (the four provider `*Model` tables) | — | 403 `built_in_model_immutable` on update/destroy of an `org IS NULL` row, **including for superadmin**; place after the org mixin |
 | `OrgScopedQuerysetMixin` | Non-standard scope (multiple parents, hybrid-parent visibility) | `get_org_scope_q(org_id)`, optional `scope_distinct` | applies your Q |
 | `OrgScopedServiceViewSetMixin` | Views delegating to services with raw ids (knowledge endpoints) | — | `get_in_active_org_or_404(model, pk, org_path=...)` helper |
 
@@ -352,7 +353,8 @@ Serializer rules for org-scoped models:
 `tables/services/rbac/rbac_exceptions.py` as
 `{"status_code": ..., "code": "...", "message": "..."}`. Reuse existing codes
 (`org_context_required`, `org_membership_required`, `permission_denied`,
-`built_in_role_immutable`, `last_org_admin`, `last_superadmin`, …) and add new exceptions
+`built_in_role_immutable`, `built_in_model_immutable`, `last_org_admin`,
+`last_superadmin`, …) and add new exceptions
 to that module — never raw `Response({"error": ...})`.
 
 ---
@@ -406,10 +408,28 @@ so updates cannot re-point the child cross-org.
 ### 8.3 New hybrid resource (shared built-ins + org customs)
 
 Model: `OrgScopedModel` + a discriminator flag (`built_in` or `is_custom`), `org` stays
-nullable (built-ins keep `org=NULL` — do not flip NOT NULL).
+nullable (built-ins keep `org=NULL` — do not flip NOT NULL). Name uniqueness must be
+**per-org plus a partial constraint for the built-in subset** — Postgres treats NULLs as
+distinct, so a `UniqueConstraint(org, name, ...)` alone leaves built-ins uncovered, while a
+global one lets one org's private name block another's (pitfall #9).
 ViewSet: `OrgScopedHybridViewSetMixin` with `global_visibility_q` and
-`custom_create_values` (forcing new rows out of the built-in subset).
+`custom_create_values` (forcing new rows out of the built-in subset), then
+`BuiltInWriteProtectedMixin` — the hybrid queryset deliberately includes built-ins so they
+are *readable*, and the same queryset backs `get_object`, so without the second mixin every
+org can edit and delete them.
+Serializer: the discriminator flag and any `predefined`-style provenance flag must be
+`read_only` — `custom_create_values` only guards create, so a writable flag lets a `PATCH`
+promote an org's row into the shared bucket.
 References to it from other serializers: `OrgVisiblePrimaryKeyRelatedField`.
+
+**Resolution by name, not pk** (seeding commands, quickstart, importers) must filter on
+`org` explicitly, and must state a *precedence* when both a built-in and an own-org row can
+match: `org_visible_queryset(...)` returns both, and `.first()` on it has no `ORDER BY`, so
+the result is whatever Postgres feels like returning. See
+`QuickstartService._get_or_create_llm_model` for the pattern (own-org wins), and
+`upload_models.py` for the built-ins-only form (`org__isnull=True`) — Django strips
+`__`-lookups from `get_or_create`/`update_or_create` create params, so that filter narrows
+the lookup without leaking into the created row.
 
 ### 8.4 Plain APIView / service-delegating endpoint
 
