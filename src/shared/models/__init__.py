@@ -14,9 +14,6 @@ from .agent_service import (
 from .agents import (
     AgentData,
     RealtimeAgentChatData,
-    CrewData,
-    TaskData,
-    TaskMessageData,
 )
 from .ai_providers import (
     LLMConfigData,
@@ -30,7 +27,6 @@ from .ai_providers import (
     WebhookConfigData,
 )
 from .graph_nodes import (
-    CrewNodeData,
     PythonNodeData,
     KnowledgeNodeData,
     FileExtractorNodeData,
@@ -148,9 +144,6 @@ __all__ = [
     # agents
     "AgentData",
     "RealtimeAgentChatData",
-    "CrewData",
-    "TaskData",
-    "TaskMessageData",
     # ai_providers
     "LLMConfigData",
     "EmbedderConfigData",
@@ -162,7 +155,6 @@ __all__ = [
     "LocalhostConfigData",
     "WebhookConfigData",
     # graph_nodes
-    "CrewNodeData",
     "PythonNodeData",
     "KnowledgeNodeData",
     "FileExtractorNodeData",

@@ -75,7 +75,6 @@ export class UserMenuComponent {
      * the resource not exist in the new org. Map them to their list page.
      */
     private getUrlForOrgSwitch(currentUrl: string): string {
-        if (/^\/projects\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/projects/my';
         if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
         if (/^\/graph\//.test(currentUrl)) return '/sessions';
         return currentUrl;

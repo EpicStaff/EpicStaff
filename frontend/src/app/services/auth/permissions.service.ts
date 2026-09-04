@@ -156,8 +156,7 @@ export class PermissionsService implements StorageService {
         if (this._isSuperadmin()) return '/workspace/main';
         if (active === null) return '/unassigned';
 
-        if (this.can(ResourceCode.Projects, ActionCode.Read)) return '/projects/my';
-        if (this.can(ResourceCode.Agents, ActionCode.Read)) return '/staff';
+        if (this.can(ResourceCode.Agents, ActionCode.Read)) return '/agents';
         if (this.can(ResourceCode.Tools, ActionCode.Read)) return '/tools';
         if (this.can(ResourceCode.Flows, ActionCode.Read)) return '/flows/my';
         if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';

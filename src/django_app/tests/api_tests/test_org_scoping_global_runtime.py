@@ -6,12 +6,12 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent
+from agents.models import AgentDefinition
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.realtime_models import (
     ConversationRecording,
-    RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
 from tables.models.rbac_models import Organization, OrganizationUser, Role
@@ -115,9 +115,13 @@ def test_default_models_write_permitted_for_superadmin(client_super):
 
 
 def _chat(org):
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org)
-    rt = RealtimeAgent.objects.create(agent=agent)
-    return RealtimeAgentChat.objects.create(rt_agent=rt, connection_key="k")
+    agent_definition = AgentDefinition.objects.create(organization=org, name="a")
+    rt_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=agent_definition
+    )
+    return RealtimeAgentChat.objects.create(
+        rt_agent_definition=rt_definition, connection_key="k"
+    )
 
 
 @pytest.mark.django_db
@@ -132,7 +136,7 @@ def test_realtime_agent_chat_own_org_visible(client_member, org_a):
     assert client_member.get(f"/api/realtime-agent-chats/{chat.id}/").status_code == 200
 
 
-# ---- ConversationRecording: scoped via rt_agent_chat -> rt_agent -> agent -> org ----
+# ---- ConversationRecording: scoped via rt_agent_chat -> rt_agent_definition -> agent_definition -> org ----
 
 
 def _recording(org):

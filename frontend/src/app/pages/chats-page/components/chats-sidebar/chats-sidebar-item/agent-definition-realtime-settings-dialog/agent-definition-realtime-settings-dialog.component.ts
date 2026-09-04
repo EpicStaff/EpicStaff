@@ -19,7 +19,7 @@ import { HelpTooltipComponent } from '../../../../../../shared/components/help-t
 import { VoiceSelectorComponent } from '../../../../../../shared/components/voice-selector/voice-selector.component';
 import { AVAILABLE_LANGUAGES } from '../../../../../../shared/constants/languages-selector.constants';
 import { AVAILABLE_VOICES } from '../../../../../../shared/constants/realtime-voice.constants';
-import { LanguageSelectorComponent } from '../realtime-settings-dialog/language-selector/language-selector.component';
+import { LanguageSelectorComponent } from '../realtime-selectors/language-selector/language-selector.component';
 
 export type RealtimeProvider = 'openai' | 'elevenlabs' | 'gemini';
 

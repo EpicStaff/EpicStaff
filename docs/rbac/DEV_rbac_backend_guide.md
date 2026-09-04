@@ -282,7 +282,7 @@ All mixins live in `tables/views/mixins.py` and share `OrgScopedResolverMixin`
 
 | Mixin | Use for | Declares | Behavior |
 |---|---|---|---|
-| `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, Agent, Crew, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
+| `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, AgentDefinition, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
 | `OrgScopedChildViewSetMixin` | Children scoped through a parent FK (nodes, edges, sessions, RealtimeAgent, …) | `org_filter_path = "graph__org_id"` | filters through the path; on create asserts the parent is in the active org (404 otherwise); does NOT stamp org |
 | `OrgScopedHybridViewSetMixin` | Shared built-ins + per-org custom rows (LLMModel via `is_custom`, PythonCodeTool via `built_in`, …) | `global_visibility_q`, `custom_create_values` | lists built-ins OR own-org rows; creates always stamped org + forced out of the built-in subset |
 | `OrgScopedQuerysetMixin` | Non-standard scope (multiple parents, hybrid-parent visibility) | `get_org_scope_q(org_id)`, optional `scope_distinct` | applies your Q |
@@ -297,8 +297,8 @@ Queryset scoping protects reads; **FK references in writes** are protected by de
 fields (`tables/serializers/org_scoped_fields.py`):
 
 - `OrgScopedPrimaryKeyRelatedField(queryset=..., org_lookup="org_id")` — strict targets
-  (Agent, Crew, Graph, LLMConfig, RealtimeConfig, McpTool, PythonCodeToolConfig…).
-  `org_lookup` accepts paths like `"crew__org_id"`.
+  (AgentDefinition, Graph, LLMConfig, RealtimeConfig, McpTool, PythonCodeToolConfig…).
+  `org_lookup` accepts paths like `"graph__org_id"`.
 - `OrgVisiblePrimaryKeyRelatedField(queryset=...)` — hybrid targets (LLMModel,
   EmbeddingModel, Realtime*Model, PythonCodeTool): built-ins (`built_in=True` /
   `is_custom=False`) OR own-org rows. Use this one for hybrid targets, otherwise built-ins
@@ -399,7 +399,7 @@ to that module — never raw `Response({"error": ...})`.
 ### 8.2 New child resource (no own org column)
 
 No model change. ViewSet: `OrgScopedChildViewSetMixin` + `org_filter_path`
-(`"graph__org_id"`, `"crew__org_id"`, `"agent__org_id"`, …) + `HasOrgPermission` with the
+(`"graph__org_id"`, `"agent_node__graph__org_id"`, `"session__graph__org_id"`, …) + `HasOrgPermission` with the
 parent's resource type. The mixin already blocks creating a child under another org's
 parent. In the serializer, the parent FK should still use `OrgScopedPrimaryKeyRelatedField`
 so updates cannot re-point the child cross-org.

@@ -1,7 +1,7 @@
 # Agent Definitions
 
-`AgentDefinition` is the new, lean, org-scoped agent config that replaces the
-legacy CrewAI `tables.Agent` model for graph execution. It carries identity and
+`AgentDefinition` is the lean, org-scoped agent config that replaced the
+legacy `tables.Agent` model for graph execution. It carries identity and
 execution-tuning fields only — capabilities (tools, knowledge, storage access)
 are **not** columns on the model, they attach through **Surfaces**. Realtime
 (voice) configuration is a separate model attached by a one-to-one relation.
@@ -101,7 +101,7 @@ All other execution fields (`max_iter`, `max_rpm`, `max_execution_time`, `cache`
 
 ## 4. No manager LLM
 
-`AgentDefinition` has **no manager-LLM concept**. Manager LLM only exists on the legacy CrewAI path (`tables.Agent` / `tables.Crew`), which remains a separate, parallel model family used by the old `AGENT` / `CREW` node types. Do not conflate the two — `AgentDefinition` is not a superset of `tables.Agent`.
+`AgentDefinition` has **no manager-LLM concept**. Manager LLM only ever existed on the removed legacy path (`tables.Agent` / `tables.Crew`). Those models still sit in the database but are no longer read or written by anything — `AgentDefinition` is not a superset of `tables.Agent`, and manager-LLM behaviour is simply gone.
 
 ## 5. Realtime config
 

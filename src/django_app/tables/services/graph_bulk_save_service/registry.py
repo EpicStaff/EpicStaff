@@ -5,7 +5,6 @@ from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     ConditionalEdge,
-    CrewNode,
     DecisionTableNode,
     Edge,
     EndNode,
@@ -24,7 +23,6 @@ from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
     ClassificationDecisionTableNodeBulkSerializer,
-    CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
     FileExtractorNodeBulkSerializer,
@@ -58,10 +56,10 @@ _KNOWLEDGE_FACTORY = KnowledgeNodeSaveableFactory()
 class NodeTypeConfig:
     """NodeTypeConfig contains all required data about one node type"""
 
-    list_key: str  # key in the request payload, e.g. "crew_node_list"
-    delete_key: str  # key in the deleted dict, e.g. "crew_node_ids"
-    model_class: type  # Django model class, e.g. CrewNode
-    serializer_class: type  # bulk serializer class, e.g. CrewNodeBulkSerializer
+    list_key: str  # key in the request payload, e.g. "agent_node_list"
+    delete_key: str  # key in the deleted dict, e.g. "agent_node_ids"
+    model_class: type  # Django model class, e.g. AgentNode
+    serializer_class: type  # bulk serializer class, e.g. AgentNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
 
     def __post_init__(self):
@@ -88,12 +86,6 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
-    NodeTypeConfig(
-        "crew_node_list",
-        "crew_node_ids",
-        CrewNode,
-        CrewNodeBulkSerializer,
-    ),
     NodeTypeConfig(
         "python_node_list",
         "python_node_ids",

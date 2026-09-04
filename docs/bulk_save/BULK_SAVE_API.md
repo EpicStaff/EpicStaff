@@ -40,7 +40,8 @@ All keys are optional. Omitting a key or passing an empty list for it means "no 
 
 ```json
 {
-  "crew_node_list":                [],
+  "task_node_list":                [],
+  "agent_node_list":               [],
   "python_node_list":              [],
   "file_extractor_node_list":      [],
   "audio_transcription_node_list": [],
@@ -56,7 +57,8 @@ All keys are optional. Omitting a key or passing an empty list for it means "no 
   "conditional_edge_list":  [],
 
   "deleted": {
-    "crew_node_ids":                [],
+    "task_node_ids":                [],
+    "agent_node_ids":               [],
     "python_node_ids":              [],
     "file_extractor_node_ids":      [],
     "audio_transcription_node_ids": [],
@@ -152,7 +154,6 @@ Every entity the payload **references by id** is validated against the active or
 
 | Reference | Must resolve to |
 |---|---|
-| `crew_node_list[].crew_id` | a Crew in the active org |
 | `subgraph_node_list[].subgraph` | a Graph in the active org |
 
 A referenced id that belongs to **another** organization is rejected **exactly like a
@@ -165,21 +166,6 @@ the target graph — an id from another graph/org is reported as `not found in g
 ---
 
 ## Per-Node Notes
-
-### CrewNode
-
-Uses `crew_id` (integer, write-only) to assign the linked crew. Do **not** pass a nested `crew` object.
-
-```json
-{
-  "graph": 12,
-  "crew_id": 3,
-  "node_name": "my_crew_node",
-  "input_map": {},
-  "output_variable_path": null,
-  "metadata": {}
-}
-```
 
 ### PythonNode
 
@@ -318,7 +304,7 @@ Returns the full serialized graph object (same shape as `GET /api/graphs/{pk}/`)
 {
   "id": 12,
   "name": "My Flow",
-  "crew_node_list": [...],
+  "task_node_list": [...],
   "python_node_list": [...],
   "edge_list": [...],
   ...
@@ -357,7 +343,7 @@ No database writes have occurred. The response body contains a structured error 
 
 Error shape per section:
 
-- **Node list errors** (`crew_node_list`, `python_node_list`, etc.): array of `{ "index": <int>, "errors": <object or string> }`. `index` is the zero-based position of the failing item in the submitted list.
+- **Node list errors** (`task_node_list`, `python_node_list`, etc.): array of `{ "index": <int>, "errors": <object or string> }`. `index` is the zero-based position of the failing item in the submitted list.
 - **Edge list errors** (`edge_list`, `conditional_edge_list`): same `{ "index", "errors" }` shape. May also include a top-level string for cross-edge reference failures (e.g. referencing a non-existent real node id).
 - **Deletion errors** (`deleted`): array of plain strings, each naming the delete key and the invalid ids.
 
@@ -396,27 +382,27 @@ No `id` is present, so a new `PythonNode` and its associated `PythonCode` record
 
 ---
 
-### Example 2 — Update an Existing CrewNode
+### Example 2 — Update an Existing SubGraphNode
 
 ```json
 POST /api/graphs/12/save/
 
 {
-  "crew_node_list": [
+  "subgraph_node_list": [
     {
       "id": 5,
       "graph": 12,
-      "crew_id": 7,
-      "node_name": "support_crew",
+      "subgraph": 7,
+      "node_name": "support_subflow",
       "input_map": { "ticket": "variables.ticket_text" },
-      "output_variable_path": "crew_result",
+      "output_variable_path": "subflow_result",
       "metadata": { "position": { "x": 600, "y": 200 } }
     }
   ]
 }
 ```
 
-`id: 5` is present, so the server finds the existing `CrewNode` with that id (scoped to graph 12) and updates it. Note `crew_id`, not `crew`, is the write field.
+`id: 5` is present, so the server finds the existing `SubGraphNode` with that id (scoped to graph 12) and updates it. `subgraph` is a plain pk reference — the referenced flow is never cloned.
 
 ---
 
@@ -494,12 +480,12 @@ POST /api/graphs/12/save/
       "metadata": { "position": { "x": 200, "y": 300 } }
     }
   ],
-  "crew_node_list": [
+  "subgraph_node_list": [
     {
       "id": 5,
       "graph": 12,
-      "crew_id": 3,
-      "node_name": "crew_renamed",
+      "subgraph": 3,
+      "node_name": "subflow_renamed",
       "input_map": {},
       "output_variable_path": null,
       "metadata": { "position": { "x": 600, "y": 300 } }
@@ -515,7 +501,7 @@ POST /api/graphs/12/save/
 In one atomic transaction this request:
 1. Deletes edge 14 and `PythonNode` 9.
 2. Creates a new `PythonNode` ("greeter").
-3. Updates `CrewNode` 5 with a new name.
+3. Updates `SubGraphNode` 5 with a new name.
 
 If any of the three operations fail validation, none of the writes happen.
 
@@ -526,13 +512,11 @@ If any of the three operations fail validation, none of the writes happen.
 | Mistake | Error |
 |---|---|
 | Sending `id` that does not exist in this graph | `{ "index": 0, "errors": "id=99999 not found in graph 12" }` |
-| Referencing another org's `crew_id` | `{ "index": 0, "errors": { "crew_id": ["Invalid crew_id: crew does not exist."] } }` |
 | Referencing another org's `subgraph` / `llm_config` | `{ "index": 0, "errors": { "subgraph": ["Invalid pk \"77\" - object does not exist."] } }` |
 | Sending both `start_node_id` and `start_temp_id` on the same edge | `{ "index": 0, "errors": "Provide exactly one of start_node_id or start_temp_id, not both." }` |
 | `start_temp_id` value not matching any `temp_id` in the node lists | `{ "index": 0, "errors": "start_temp_id='...' does not match any temp_id in the node lists of this request." }` |
 | Deleting a node id that belongs to a different graph | `"deleted": ["python_node_ids: IDs [42] not found in graph 12"]` |
 | Missing required nested field (e.g. `python_code.code`) | `{ "index": 0, "errors": { "python_code": { "code": ["This field is required."] } } }` |
-| `crew_id` instead of `crew` omitted / wrong field name | `{ "index": 0, "errors": { "crew_id": ["This field is required."] } }` |
 | DTN: both `default_next_node_id` and `default_next_node_temp_id` provided | `{ "index": 0, "errors": ["Provide at most one of default_next_node_id or default_next_node_temp_id, not both."] }` |
 | DTN: `default_next_node_temp_id` not matching any `temp_id` in node lists | `{ "index": 0, "errors": ["default_next_node_temp_id='...' does not match any temp_id in the node lists of this request."] }` |
 | DTN: condition group `next_node_temp_id` not matching any `temp_id` | `{ "index": 0, "errors": ["condition_groups[0]: next_node_temp_id='...' does not match any temp_id ..."] }` |
@@ -556,7 +540,7 @@ All database writes for a single request execute inside one database transaction
 | `tables/services/graph_bulk_save_service/registry.py` | `NODE_TYPE_REGISTRY` — single source of truth mapping list keys, delete keys, models, and serializers |
 | `tables/services/graph_bulk_save_service/factories/` | `NodeSaveableFactory` ABC, `DefaultNodeSaveableFactory`, `DecisionTableNodeSaveableFactory` |
 | `tables/services/graph_bulk_save_service/saveables.py` | Saveable wrapper classes for deferred node and edge writes; temp_id resolution |
-| `tables/models/graph_models.py` | All graph model definitions (`CrewNode`, `PythonNode`, `Edge`, `ConditionalEdge`, etc.) |
+| `tables/models/graph_models.py` | All graph model definitions (`TaskNode`, `AgentNode`, `PythonNode`, `Edge`, `ConditionalEdge`, etc.) |
 | `tables/exceptions.py` | `BulkSaveValidationError` — raised by the service, caught in the view |
 | `tables/swagger_schemas/graph_bulk_save_schema.py` | Swagger/OpenAPI schema definition for the endpoint |
 | `tests/api_tests/bulk_save_test/test_bulk_save.py` | Integration tests covering create, update, delete, temp_id edge wiring, and error cases |

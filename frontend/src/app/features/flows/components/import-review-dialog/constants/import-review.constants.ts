@@ -21,7 +21,6 @@ export const FLOW_NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
     [NodeType.TELEGRAM_TRIGGER]: 'Telegram Node',
     [NodeType.AGENT]: 'Agent Node',
     [NodeType.TASK]: 'Task Node',
-    [NodeType.PROJECT]: 'Project Node',
     [NodeType.SUBGRAPH]: 'Subgraph Node',
     [NodeType.START]: 'Start Node',
     [NodeType.END]: 'End Node',
