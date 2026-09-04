@@ -7,10 +7,10 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.12.10,<3.13"
-litellm = "1.85.1"
+litellm = "==1.85.1"
 loguru = "0.7.3"
-redis = "5.2.1"
-pydantic = "2.13.4"
+redis = "==5.3.1"
+pydantic = "==2.13.4"
 jsonschema = "4.26.0"
 fastmcp = "2.12.5"
 
@@ -24,3 +24,20 @@ asyncio_mode = "auto"
 [build-system]
 requires = ["poetry-core==2.4.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.secfloor.dependencies]
+urllib3 = "==2.7.0"
+requests = "==2.34.2"
+jinja2 = "==3.1.6"
+certifi = "==2026.7.22"
+aiohttp = "==3.14.3"
+cryptography = "==50.0.1"
+python-dotenv = "==1.2.2"
+idna = "==3.18"
+pyjwt = "==2.13.0"
+charset-normalizer = "==3.4.7"
+yarl = "==1.24.5"
+anyio = "==4.14.2"
+authlib = "==1.7.2"
+uvicorn = "==0.49.0"
+python-multipart = "==0.0.32"
