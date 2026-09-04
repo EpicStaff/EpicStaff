@@ -33,7 +33,9 @@ interface NavItem {
     icon?: string;
     label: string;
     showTooltip: boolean;
-    isPermitted: boolean;
+    /** Function (not boolean) so signal reads inside happen at template-eval time.
+     *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
+    isPermitted: () => boolean;
     action?: () => void;
     customClass?: string;
 }
@@ -134,6 +136,12 @@ export class LeftSidebarComponent implements AfterViewInit {
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
+    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
+     *  binding re-evaluates when active-org permissions reload after an org switch. */
+    public canReadFlows(): boolean {
+        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
+    }
+
     constructor(
         public epicChatService: EpicChatService,
         public activeOrgService: ActiveOrgService,
@@ -158,7 +166,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'agents',
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -166,7 +174,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'tools',
                 icon: 'tools',
                 label: 'Tools',
-                isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -174,7 +182,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'files',
                 icon: 'sources',
                 label: 'Files',
-                isPermitted:
+                isPermitted: () =>
                     this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
                     this.permissionService.can(ResourceCode.Files, ActionCode.Read),
                 showTooltip: false,
@@ -184,14 +192,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'flows',
                 icon: 'flows',
                 label: 'Flows',
-                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'chats',
                 routeLink: 'chats',
                 icon: 'chats',
-                isPermitted: true,
+                isPermitted: () => true,
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -202,7 +210,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',

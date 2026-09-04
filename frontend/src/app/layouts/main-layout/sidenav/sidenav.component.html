@@ -32,7 +32,7 @@
 
     <ul class="sidenav-nav main-nav">
         @for (item of topNavItems; track item.id) {
-            @if (item.isPermitted) {
+            @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
                     (mouseenter)="item.showTooltip = true"
@@ -84,6 +84,7 @@
                             message-timeout="180000"
                             [apiBaseUrl]="apiBaseUrl"
                             [accessToken]="accessToken"
+                            [canReadFlows]="canReadFlows()"
                             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
                             [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
                             [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
@@ -103,7 +104,7 @@
         }
 
         @for (item of bottomNavItems; track item.id) {
-            @if (item.isPermitted) {
+            @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
                     (mouseenter)="item.showTooltip = true"

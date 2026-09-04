@@ -1,8 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { CreateRealtimeModel, RealtimeModel } from '@shared/models';
+import { ActionCode, CreateRealtimeModel, RealtimeModel, ResourceCode } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config';
 import { ApiGetResponse } from '../transcription-llms/transcription-models.service';
 
@@ -26,6 +27,12 @@ export class RealtimeModelsService {
         return this.http
             .get<ApiGetResponse<RealtimeModel>>(this.apiUrl, {
                 headers: this.headers,
+                context: withPermission<ApiGetResponse<RealtimeModel>>(ResourceCode.LlmConfigs, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
             })
             .pipe(map((response) => response.results));
     }

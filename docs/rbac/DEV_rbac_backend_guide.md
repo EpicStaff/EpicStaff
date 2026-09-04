@@ -68,7 +68,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 ```python
 class ResourceType(models.TextChoices):
     ORGANIZATIONS, FLOWS, AGENTS, TOOLS, KNOWLEDGE_SOURCES,
-    FILES, PROJECTS, LLM_CONFIGS, SECRETS, USERS, ROLES
+    FILES, PROJECTS, LLM_CONFIGS, SECRETS, MEMBERSHIPS, ROLES
 
 class Permission(IntFlag):
     CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
@@ -91,9 +91,9 @@ Superadmin role row has **zero** `RolePermission` rows — authority comes exclu
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
 | secrets | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
-| users | 15 (CRUD) | 0 | 0 |
+| memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
-| organizations | 0 | 0 | 0 |
+| organizations | 6 (R+U) | 0 | 0 |
 
 If you change a seed, do it with a new idempotent data migration — never edit an applied one.
 
@@ -486,9 +486,11 @@ path — the default org is only for bootstrap and data migrations.
 | CLI superadmin creation | `management/commands/create_superadmin.py` |
 | Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
-| Org CRUD (superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
-| User & membership admin | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
-| Roles read + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs |
+| Org management (list/read/rename permission-aware; create/deactivate superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
+| Membership management (cross-org, MEMBERSHIPS-gated) + assignable-user lookup | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
+| User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
+| Roles CRUD + ceiling + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `services/rbac/permission_assert.py` |
 | Session/SSE authorization | `services/rbac/session_access.py`, `views/sse_views.py` |

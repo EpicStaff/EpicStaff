@@ -1,0 +1,71 @@
+.dialog {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-nodes-sidepanel-bg);
+    border-radius: 12px;
+    border: 1px solid var(--color-divider-subtle);
+    overflow: hidden;
+
+    .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        .title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            cursor: pointer;
+            color: var(--text-secondary-60);
+            transition: color 0.2s ease;
+
+            &:hover {
+                color: var(--text);
+            }
+        }
+    }
+
+    .body {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px 24px;
+
+        .control {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+
+            .label {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.8125rem;
+                color: var(--text-secondary-60);
+            }
+        }
+
+        .required {
+            color: var(--accent-color);
+            margin-left: 2px;
+        }
+
+        .server-error {
+            display: block;
+            color: var(--color-danger, #e05252);
+            font-size: 0.8125rem;
+        }
+    }
+
+    .footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 12px 24px 16px;
+        border-top: 1px solid var(--color-divider-subtle);
+    }
+}

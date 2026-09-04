@@ -35,5 +35,8 @@ export const activeOrgInterceptor: HttpInterceptorFn = (req, next) => {
 };
 
 function shouldSkip(url: string): boolean {
-    return url.includes('/api/auth/') || /\/admin\/organizations\/\d+\//.test(url);
+    // Auth endpoints never carry an active-org.
+    // All /api/admin/** endpoints are cross-org — org is data (query param / body), not a header.
+    // /permissions/me/orgs/ is explicitly cross-org.
+    return url.includes('/api/auth/') || url.includes('/admin/') || url.endsWith('/permissions/me/orgs/');
 }

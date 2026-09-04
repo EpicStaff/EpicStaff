@@ -1,325 +1,233 @@
-# User Management — Superadmin and Org Admin
+# User & Membership Management
 
-Eight endpoints managing `User` rows and `OrganizationUser` memberships
-for the admin panel surface. Authorization splits two ways:
+Two surfaces manage people, and the split matters:
 
-- `/api/admin/users/...` — superadmin only
-- `/api/admin/organizations/{org_id}/users/...` — superadmin globally OR Org Admin of `org_id`
+- **Memberships** — `/api/admin/memberships/` — permission-driven and cross-org.
+  Who belongs to an organization and what role they hold, in every org where you
+  hold the `MEMBERSHIPS` permission. Any custom role carrying that permission
+  opens this surface, not only the built-in Org Admin role.
+- **User accounts** — `/api/admin/users/` — **superadmin only**. The global
+  account entity: create accounts, grant/revoke superadmin, deactivate/reactivate.
 
-Anonymous → 401; authenticated user without the right role → 403
-(`code: permission_denied`).
+Adding someone to your organization is a *membership* operation on an account that
+already exists. Creating the account itself is a superadmin operation. The two are
+never combined.
 
-Base URL in examples: `http://localhost:8000`.
+Anonymous → 401. Authenticated without the required permission → 403
+(`code: permission_denied`). Base URL in examples: `http://localhost:8000`.
 
 ---
 
-## Quick reference
+## Memberships — `/api/admin/memberships/`
+
+Org is **data** — in the body on create, taken from the membership row on every
+other write. These endpoints do not use the `X-Organization-Id` header, and the
+list spans organizations.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/admin/users/` | superadmin | List all users (paginated) with their memberships |
-| POST | `/api/admin/users/` | superadmin | Create a user; optionally assign to org+role |
-| POST | `/api/admin/users/{id}/grant-superadmin/` | superadmin | Set `is_superadmin=True` |
-| POST | `/api/admin/users/{id}/revoke-superadmin/` | superadmin | Set `is_superadmin=False` |
-| GET | `/api/admin/organizations/{org_id}/users/` | `HasOrgPermission(USERS, READ)` | List members of one organization |
-| POST | `/api/admin/organizations/{org_id}/users/` | `HasOrgPermission(USERS, CREATE)` | Create a user and link to organization |
-| POST | `/api/admin/organizations/{org_id}/assign-users/` | `HasOrgPermission(USERS, UPDATE)` | Batch-upsert memberships in organization (create or reassign roles) |
-| PATCH | `/api/admin/organizations/{org_id}/users/{user_id}/` | `HasOrgPermission(USERS, UPDATE)` | Change a user's role within the organization |
-| DELETE | `/api/admin/organizations/{org_id}/users/{user_id}/` | `HasOrgPermission(USERS, DELETE)` | Remove user from organization |
+| GET | `/api/admin/memberships/` | `MEMBERSHIPS.READ` in ≥1 org | Cross-org member list |
+| GET | `/api/admin/memberships/assignable-users/` | `MEMBERSHIPS.CREATE` in ≥1 org | Accounts you may add |
+| POST | `/api/admin/memberships/` | `MEMBERSHIPS.CREATE` in the target org | Add an existing user to an org |
+| PATCH | `/api/admin/memberships/{id}/` | `MEMBERSHIPS.UPDATE` in the row's org | Change a member's role |
+| DELETE | `/api/admin/memberships/{id}/` | `MEMBERSHIPS.DELETE` in the row's org | Remove a member |
 
----
+The door gate is coarse — it passes if you hold the action in at least one org.
+The precise per-org check runs behind it; a membership in an org you can't access
+is **404**, indistinguishable from one that doesn't exist.
 
-## Common response shapes
-
-### `UserResponse` (cross-org)
+### Membership row shape
 
 ```json
 {
-  "id": 42,
-  "email": "alice@example.com",
-  "display_name": "Alice",
-  "is_superadmin": false,
-  "is_active": true,
-  "created_at": "2026-05-01T10:00:00Z",
-  "updated_at": "2026-05-01T10:00:00Z",
-  "memberships": [
+  "id": 55,
+  "org": {"id": 10, "name": "Acme"},
+  "user": {"id": 42, "email": "bob@acme.com", "display_name": "Bob", "avatar_url": null, "is_active": true},
+  "role": {"id": 3, "name": "Member"},
+  "joined_at": "2026-08-13T10:00:00Z"
+}
+```
+
+### GET `/api/admin/memberships/`
+
+Paginated (`count/next/previous/results`, page size 50, max 200). One row per
+`(user, org, role)` — a user in three of your orgs is three rows.
+
+**Query params:** `org_ids` (comma-separated; a forbidden id → **403 fail-loud**
+for the whole request; omitted → every org you can read members in; superadmin →
+all), `search` (case-insensitive on email or display_name), `role_id` (exact
+role; a built-in role id spans orgs), `status` (`active` | `inactive` on the
+member's account), `ordering` (`email` | `joined_at` | `role` | `org`, prefix
+`-` for descending; default `org, email`). Invalid `role_id`/`status` → **400
+`invalid`**.
+
+### GET `/api/admin/memberships/assignable-users/`
+
+The accounts you may add to an organization — the list behind the person picker.
+
+You see active, non-superadmin accounts that already belong to at least one
+organization where you can read members. In other words: the people you can
+already see, and nobody else. A superadmin sees every active non-superadmin
+account, including those that belong to no organization yet.
+
+Paginated (page size 50, max 200). **Query params:** `search`
+(case-insensitive on email or display name), `page`, `page_size`.
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
     {
-      "id": 7,
-      "organization": {"id": 1, "name": "Acme Inc", "is_active": true},
-      "role": {"id": 3, "name": "Member"},
-      "joined_at": "2026-05-01T10:00:00Z"
+      "id": 42,
+      "email": "bob@acme.com",
+      "display_name": "Bob",
+      "avatar_url": null,
+      "org_ids": [10]
     }
   ]
 }
 ```
 
-### `OrgMemberResponse` (per-org)
+`org_ids` is where that person already belongs, limited to the organizations you
+can read — use it to mark those organizations as already-joined instead of
+attempting an add that would be rejected.
+
+If someone you need is not in the list, they belong to no organization you can
+see. Add them by email (below), or ask a superadmin.
+
+### POST `/api/admin/memberships/`
+
+Links an **existing** account to an organization.
 
 ```json
-{
-  "id": 42,
-  "email": "alice@example.com",
-  "display_name": "Alice",
-  "is_superadmin": false,
-  "is_active": true,
-  "membership": {
-    "id": 7,
-    "role": {"id": 3, "name": "Member"},
-    "joined_at": "2026-05-01T10:00:00Z"
-  }
-}
+{"org_id": 10, "user_id": 42, "role_id": 3}
 ```
+
+Provide `org_id`, `role_id`, and **exactly one** of `user_id` or `email`. Pick
+`user_id` from the assignable-users list; use `email` to reach an account outside
+that list.
+
+- Unknown email/user_id → **404 `user_not_found`**.
+- Already a member → **400 `membership_already_exists`**.
+- Target is a superadmin → **400 `superadmin_not_assignable`**.
+- Target account is deactivated → **400 `user_not_active`**.
+- Non-assignable role (the global Superadmin role, or a custom role from another
+  org) → **400 `invalid_role_assignment`**.
+- Target org you can't access → **404** (no existence leak).
+
+**201** → the membership row.
+
+### PATCH `/api/admin/memberships/{id}/`
+
+`{"role_id": 2}`. Assigns any existing assignable role. There is **no assignment
+ceiling** — holding `MEMBERSHIPS.UPDATE` lets you assign any existing role to
+others, including promoting to Org Admin. A non-superadmin **cannot change their
+own membership** → **403 `cannot_modify_self_membership`**. A membership held by
+a superadmin cannot be re-roled → **400 `superadmin_not_assignable`**. **200** →
+the row.
+
+### DELETE `/api/admin/memberships/{id}/`
+
+Removes the membership; the account stays. A non-superadmin **cannot remove their
+own membership** → **403 `cannot_modify_self_membership`**. There is no
+last-org-admin guard — a superadmin is the recovery path if an org loses its last
+delegated admin. **204**.
 
 ---
 
-## Common error envelopes
+## Superadmins are not organization members
 
-### Validation (`code: invalid`, status 400)
+A superadmin already reaches every organization and holds every permission there,
+so a membership row would grant them nothing. The rule follows from that:
 
-```json
-{
-  "status_code": 400,
-  "code": "invalid",
-  "message": "Validation failed",
-  "errors": [
-    {"field": "email", "value": "not-an-email", "reason": "Enter a valid email address."},
-    {"field": "password", "value": "***", "reason": "Password is too short."}
-  ]
-}
-```
+- A superadmin **cannot be added** to an organization → `400 superadmin_not_assignable`.
+- A superadmin's membership **cannot be re-roled** → same error. You cannot make a
+  superadmin a Viewer in your org; they are a superadmin everywhere.
+- **Granting superadmin removes that person's organization roles.** If Bob is Org
+  Admin of Acme and Member of Beta, granting him superadmin drops both rows — he
+  no longer needs them.
+- **Revoking superadmin does not bring them back.** Bob lands with no
+  organizations and must be added again by an admin. Warn before granting.
+- Removing a superadmin's membership is still allowed, and is how a leftover row
+  is cleaned up.
 
-### Domain (`code: <typed>`, status 400/404)
-
-```json
-{
-  "status_code": 400,
-  "code": "email_already_exists",
-  "message": "A user with this email already exists."
-}
-```
-
-### Forbidden (`code: permission_denied`, status 403)
-
-```json
-{
-  "status_code": 403,
-  "code": "permission_denied",
-  "message": "Superadmin privileges are required for this action."
-}
-```
-
-The 403 envelope `code` for the `/api/admin/organizations/{org_id}/...`
-membership endpoints is now `permission_denied` (previously
-`superadmin_or_org_admin_required` — any caller that relied on the
-old code must switch). Authorization is resolved through
-`HasOrgPermission(USERS, <action>)` and yields the unified
-`permission_denied` envelope. See
-[roles_and_permissions.md](roles_and_permissions.md) for the
-permission resolution model.
+Superadmins remain fully visible in user listings; they are simply never listed as
+members of an organization.
 
 ---
 
-## Endpoint reference
+## User accounts — `/api/admin/users/` (superadmin only)
 
-### `GET /api/admin/users/`
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/admin/users/` | List all users (paginated) with their memberships |
+| POST | `/api/admin/users/` | Create an account; optionally assign an initial org + role |
+| POST | `/api/admin/users/{id}/grant-superadmin/` | Set `is_superadmin=true` |
+| POST | `/api/admin/users/{id}/revoke-superadmin/` | Set `is_superadmin=false` (last-active-superadmin guard) |
+| POST | `/api/admin/users/{id}/deactivate/` | Set `is_active=false` (last-active-superadmin guard) |
+| POST | `/api/admin/users/{id}/reactivate/` | Set `is_active=true` |
 
-List all users, paginated. Optional filters: `?email=substr&is_superadmin=true|false&organization_id=N`.
+### GET `/api/admin/users/`
 
-```
-curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/admin/users/?is_superadmin=true&page=1"
-```
+Paginated (default 50, max 200). Filters: `?email=substr&is_superadmin=true|false&organization_id=N`.
+Returns `UserResponse` (id, email, display_name, avatar_url, is_superadmin,
+is_active, created_at, updated_at, `memberships[]`).
 
-200 response:
+### POST `/api/admin/users/`
+
 ```json
-{
-  "count": 7,
-  "next": "http://localhost:8000/api/admin/users/?page=2",
-  "previous": null,
-  "results": [ <UserResponse>, ... ]
-}
+{"email": "new@example.com", "password": "StrongPass123!", "organization_id": 1, "role_id": 3}
 ```
 
-Default page size 50, max 200 (`?page_size=200`).
+`organization_id` and `role_id` are optional; with `organization_id` and no
+`role_id` the server assigns the built-in **Member** role. **201** →
+`UserResponse`. Errors: `400 email_already_exists`, `400 invalid_role_assignment`,
+`400 invalid`, `404 organization_not_found`, `404 role_not_found`.
 
-### `POST /api/admin/users/`
+Setting `organization_id` matters more than it looks: an account created without
+one belongs to no organization, so it appears in no delegated admin's
+assignable-users list. Placing a new account in its first organization is part of
+creating it.
 
-Create a User; optionally assign initial org + role.
+### grant/revoke-superadmin, deactivate/reactivate
 
-Request body:
-```json
-{
-  "email": "new@example.com",
-  "password": "StrongPass123!",
-  "organization_id": 1,
-  "role_id": 3
-}
-```
+Idempotent, empty body, return `UserResponse`. `revoke-superadmin` and
+`deactivate` refuse to remove the **last active superadmin** →
+**400 `last_superadmin`**. Unknown id → **404 `user_not_found`**; non-numeric id
+→ **404** from the URL resolver.
 
-`organization_id` and `role_id` are optional. If `organization_id` is provided
-without `role_id`, the server defaults to the built-in `Member` role.
-
-201 response: `<UserResponse>` (with the new membership reflected in `memberships[]`).
-
-Errors:
-- 400 `email_already_exists`
-- 400 `invalid_role_assignment`
-- 400 `invalid` (validation)
-- 404 `organization_not_found`
-- 404 `role_not_found`
-
-### `POST /api/admin/users/{id}/grant-superadmin/`
-
-Sets `is_superadmin=True`. Idempotent. Empty body.
-
-200 response: `<UserResponse>` with `is_superadmin: true`.
-
-Errors: 404 `user_not_found`.
-
-### `POST /api/admin/users/{id}/revoke-superadmin/`
-
-Sets `is_superadmin=False`. Idempotent. Empty body. **Last-active-superadmin
-guard** — the system requires at least one active superadmin to remain.
-
-200 response: `<UserResponse>` with `is_superadmin: false`.
-
-Errors:
-- 400 `last_superadmin` (would leave zero active superadmins)
-- 404 `user_not_found`
-
-### `GET /api/admin/organizations/{org_id}/users/`
-
-List members of one org. Optional filters: `?email=substr&role=<role_name>`.
-
-200 response: `[<OrgMemberResponse>, ...]` (unpaginated array).
-
-### `POST /api/admin/organizations/{org_id}/users/`
-
-Create a new User and link them to the organization in one transaction.
-For linking already-existing users use the batch
-`/assign-users/` endpoint below.
-
-Request body:
-```json
-{"email": "fresh@example.com", "password": "StrongPass123!", "role_id": 3}
-```
-
-`role_id` is optional; defaults to the built-in `Member` role.
-
-201 response: `<OrgMemberResponse>` for the newly created membership.
-
-Errors:
-- 400 `email_already_exists`
-- 400 `invalid_role_assignment`
-- 400 `invalid` (validation: missing fields, weak password, malformed email, …)
-- 404 `organization_not_found`, `role_not_found`
-
-### `POST /api/admin/organizations/{org_id}/assign-users/`
-
-Batch-upsert memberships in the organization. For each row:
-
-- No existing `(user_id, org_id)` membership → **create** it with the given role.
-- Existing membership, role differs → **update** the role.
-- Existing membership, role unchanged → **no-op** (still returned in `updated`).
-
-All-or-nothing in one transaction. Any error rejects the whole batch.
-
-Request body:
-```json
-{
-  "assignments": [
-    {"user_id": 1, "role_id": 3},
-    {"user_id": 2, "role_id": 2}
-  ]
-}
-```
-
-Rules:
-- `assignments` is required, non-empty, at most 100 items.
-- Each row requires positive-int `user_id` and `role_id` (no defaults).
-- Duplicate `user_id` within the batch is rejected.
-- A non-superadmin caller must NOT include their own `user_id`. Superadmin
-  bypasses this rule (see "Self-assignment in batch" in behavioral notes).
-- The batch must not leave the org with zero Org Admins. The check uses
-  the **net effect** across the whole batch — demoting an Org Admin and
-  promoting another in the same request is fine.
-
-200 response:
-```json
-{
-  "created": [<OrgMemberResponse>, ...],
-  "updated": [<OrgMemberResponse>, ...]
-}
-```
-
-`created` lists rows whose membership did not exist before this batch.
-`updated` lists pre-existing memberships that appeared in the batch
-(whether or not the role actually changed). Both arrays preserve
-submission order.
-
-Errors:
-- 400 `cannot_self_assign` (non-superadmin caller included their own id)
-- 400 `last_org_admin` (batch would leave the org with zero Org Admins)
-- 400 `invalid_role_assignment` (e.g. global Superadmin role, cross-org custom role)
-- 400 `invalid` (validation: empty / >100 / missing fields / duplicate user_id / non-int)
-- 400 `membership_already_exists` (race: a parallel writer inserted a `(user, org)`
-  row between our pre-check and the batch insert; safe to retry)
-- 404 `organization_not_found`, `role_not_found`, `user_not_found`
-
-### `PATCH /api/admin/organizations/{org_id}/users/{user_id}/`
-
-Change a user's role inside an organization.
-
-Request: `{"role_id": 5}`. Idempotent if the new role equals the current role.
-
-**Last-Org-Admin guard**: demoting the only Org Admin in an org is refused.
-
-200 response: `<OrgMemberResponse>` with the new role.
-
-Errors:
-- 400 `last_org_admin`
-- 400 `invalid_role_assignment`
-- 400 `invalid` (validation)
-- 404 `user_not_found` (membership doesn't exist), `role_not_found`
-
-### `DELETE /api/admin/organizations/{org_id}/users/{user_id}/`
-
-Remove a user from an organization (delete the membership row; the User row
-itself stays).
-
-**Last-Org-Admin guard**: removing the only Org Admin is refused.
-
-204 on success (no body).
-
-Errors:
-- 400 `last_org_admin`
-- 404 `user_not_found`
+`grant-superadmin` also clears the target's memberships — see "Superadmins are not
+organization members" above.
 
 ---
 
-## Behavioral notes for the FE
+## Behavioral notes
 
 | Behavior | Note |
 |---|---|
-| Default role on create-and-assign | If `role_id` is omitted on `POST /admin/users/` (with `organization_id` set) or on `POST /admin/organizations/{org_id}/users/`, the server defaults to the built-in `Member` role. |
-| Pagination | `/admin/users/` is paginated (default 50, max 200). `/admin/organizations/{org_id}/users/` returns an unpaginated array — sort/filter on the client if needed. |
-| Self-removal | `DELETE /admin/organizations/{org_id}/users/{user_id}/` is allowed when removing yourself, unless it would trip the last-Org-Admin guard. The FE should still show a confirmation dialog. |
-| Self-revoke superadmin | Allowed when not the last active superadmin. FE should warn. |
-| Self-assignment in batch | `POST /admin/organizations/{org_id}/assign-users/` rejects an Org Admin caller whose own `user_id` appears in `assignments` (`code: cannot_self_assign`). Superadmin bypasses the rule. For deliberate self-changes use the single-row `PATCH /admin/organizations/{org_id}/users/{user_id}/` endpoint instead. |
-| API key authentication | User API keys carry exactly the owning user's permissions — a Member-bound API key cannot reach superadmin endpoints. The system key (no `created_by`) resolves to a superadmin-equivalent service principal and passes every superadmin-gated endpoint on this page. See [api_keys.md](api_keys.md). |
-| Org Admin assigning Org Admin role | Allowed (matches Story 5 D6). Org Admins can promote other members to Org Admin in their own org. |
-| 401 vs 403 | 401 = no/expired token (re-login). 403 = valid token but insufficient role. |
-| Password redaction | Validation echoes the offending value back, except `password` which is replaced with `***`. |
+| Adding a member | Pick from the assignable-users list, or supply an exact email. If the email has no account, you get a 404 — a superadmin creates the account first on `/api/admin/users/`. |
+| Who the picker shows | People already visible to you through an org where you can read members. Superadmins and deactivated accounts never appear. |
+| Assigning roles | Populating the role picker needs `ROLES.read` in the org (to list options) plus `MEMBERSHIPS.update` to assign. A `MEMBERSHIPS`-only admin without `ROLES.read` can still add/remove members and default them to Member. |
+| Self-management | You cannot change or remove your own membership; another admin or a superadmin does it. |
+| Deactivated orgs | Drop out of a delegated admin's scope; only a superadmin manages members in an inactive org. |
+| 401 vs 403 | 401 = no/expired credential. 403 = valid credential but insufficient permission. |
+| Password redaction | Validation echoes the offending value back, except `password`, replaced with `***`. |
 
----
+## Error reference
 
-## Future steps
-
-- **Custom roles** — `assert_role_is_assignable` already gates cross-org
-  custom roles correctly; the same membership endpoint will accept a custom `role_id`
-  once custom-role write endpoints land.
-- **Permission cache** — the `PermissionResolver` reserves a cache seam for a
-  future Redis layer; the resolver's public API does not change when added.
-- **Audit log** — when an audit-log surface lands, drop entries inside
-  `UserManagementService` (one place, every flow). Until then, every write
-  logs INFO via `loguru` for ops visibility.
+| Code | Status | Meaning |
+|---|---|---|
+| `user_not_found` | 404 | No account for that email or id |
+| `membership_already_exists` | 400 | Already a member of that organization |
+| `superadmin_not_assignable` | 400 | Target is a superadmin — cannot be added or re-roled |
+| `user_not_active` | 400 | Target account is deactivated |
+| `invalid_role_assignment` | 400 | Global Superadmin role, or a custom role from another org |
+| `cannot_modify_self_membership` | 403 | You cannot change or remove your own membership |
+| `membership_not_found` | 404 | No such membership, or it is in an org you cannot access |
+| `organization_not_found` | 404 | No such organization, or you cannot access it |
+| `email_already_exists` | 400 | An account with that email exists |
+| `last_superadmin` | 400 | At least one active superadmin must remain |
+| `permission_denied` | 403 | You lack the required `MEMBERSHIPS` permission |
+| `invalid` | 400 | Field validation, or a bad list filter |

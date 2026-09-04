@@ -35,6 +35,16 @@ class EffectivePermissions:
         mask = self.by_resource.get(resource_type, 0)
         return bool(mask & int(action))
 
+    @classmethod
+    def from_role(cls, role) -> "EffectivePermissions":
+        """Build a non-superadmin EffectivePermissions from a Role's
+        permission rows. `role.permissions_set` should be prefetched by
+        the caller when resolving many roles at once."""
+        by_resource = {
+            row.resource_type: row.permissions for row in role.permissions_set.all()
+        }
+        return cls(is_superadmin=False, role=role, by_resource=by_resource)
+
     def to_action_codes(self) -> Union[str, dict[str, list[str]]]:
         """Serialize for the wire — either "*" (superadmin) or
         {resource_type: [action_code, ...]}.

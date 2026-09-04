@@ -66,6 +66,8 @@ export class SelectComponent implements ControlValueAccessor {
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
+    /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
+    allowCustomValue = input<boolean>(false);
 
     changed = output<unknown>();
     opened = output<void>();
@@ -88,6 +90,20 @@ export class SelectComponent implements ControlValueAccessor {
         if (value === undefined || value === null) return null;
 
         return this.items().find((i) => deepEqual(i.value, value)) ?? null;
+    });
+
+    protected readonly hasExactMatch = computed(() => {
+        const term = this.search().trim().toLowerCase();
+        if (!term) return true;
+        return this.items().some((i) => i.name.toLowerCase() === term);
+    });
+
+    protected readonly displayText = computed<string>(() => {
+        const item = this.selectedItem();
+        if (item) return item.name;
+        const value = this.selectedValue();
+        if (this.allowCustomValue() && typeof value === 'string' && value.length) return value;
+        return this.placeholder();
     });
 
     private onChange: (value: unknown) => void = () => {};
@@ -172,6 +188,25 @@ export class SelectComponent implements ControlValueAccessor {
 
         this.selectedValue.set(item.value);
         this.changed.emit(item.value);
+        this.close();
+    }
+
+    protected commitCustomValue() {
+        if (this.isDisabled() || !this.allowCustomValue()) return;
+        const value = this.search().trim();
+        if (!value) return;
+
+        // If it exactly matches an existing item, prefer selecting that item.
+        const match = this.items().find((i) => i.name.toLowerCase() === value.toLowerCase());
+        if (match) {
+            this.select(match);
+            return;
+        }
+
+        this.onChange(value);
+        this.onTouched();
+        this.selectedValue.set(value);
+        this.changed.emit(value);
         this.close();
     }
 

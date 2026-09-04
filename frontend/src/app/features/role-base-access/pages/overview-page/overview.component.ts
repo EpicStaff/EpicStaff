@@ -21,31 +21,31 @@ export class OverviewComponent {
             routerLink: 'main',
             icon: 'home',
             label: 'Main',
-            isPermitted: this.permissionsService.isSuperadmin,
+            isPermitted: () => this.permissionsService.isSuperadmin,
         },
         {
             routerLink: 'organizations',
             icon: 'buildings',
             label: 'Organizations',
-            isPermitted: this.permissionsService.can(ResourceCode.Organizations, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Organizations, ActionCode.Read),
         },
         {
             routerLink: 'users',
             icon: 'profile',
             label: 'Users',
-            isPermitted: this.permissionsService.can(ResourceCode.Users, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Memberships, ActionCode.Read),
         },
         {
             routerLink: 'roles',
             icon: 'briefcase',
             label: 'Roles',
-            isPermitted: this.permissionsService.can(ResourceCode.Roles, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.Roles, ActionCode.Read),
         },
         {
             routerLink: 'api-keys',
             icon: 'key',
             label: 'API Keys',
-            isPermitted: this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read),
         },
     ];
 }

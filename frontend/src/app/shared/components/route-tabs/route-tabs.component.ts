@@ -14,5 +14,5 @@ import { RouteTab } from './route-tabs.interface';
 export class RouteTabsComponent {
     readonly tabs = input.required<RouteTab[]>();
 
-    readonly visibleTabs = computed(() => this.tabs().filter((tab) => tab.isPermitted));
+    readonly visibleTabs = computed(() => this.tabs().filter((tab) => tab.isPermitted()));
 }

@@ -39,7 +39,7 @@
                 let-row
             >
                 <app-select
-                    [items]="USER_ROLES"
+                    [items]="rolesForOrg(row['id'])"
                     [selectedValue]="row['role']"
                     (selectedValueChange)="onRoleSelected(row, $event)"
                     placeholder="Select role"

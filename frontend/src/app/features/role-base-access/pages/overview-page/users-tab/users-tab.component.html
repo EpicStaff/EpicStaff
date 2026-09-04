@@ -7,10 +7,11 @@
     <span class="count-label">{{ filteredUsers().length }} of {{ usersData().length }} users</span>
     <div class="toolbar-actions">
         <app-button
+            *appHasPermissionInAnyOrg="[ResourceCode.Memberships, ActionCode.Create]"
             type="primary"
             leftIcon="plus"
             (click)="onCreateUser()"
-            >Create User</app-button
+            >{{ isSuperadmin ? 'Create User' : 'Add Membership' }}</app-button
         >
         <!--        <button-->
         <!--            class="settings-btn"-->
@@ -58,14 +59,6 @@
                 appOverflowItems
                 #roleOverflow="overflowItems"
             >
-                @if (row['isSuperadmin']) {
-                    <span
-                        appOverflowItem
-                        appOverflowLabel="Super Admin"
-                        class="role-chip"
-                        >Super Admin</span
-                    >
-                }
                 @for (role of row['roles']; track role) {
                     <span
                         appOverflowItem

@@ -1,9 +1,10 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { LLMProvider, ModelTypes } from '@shared/models';
+import { ActionCode, LLMProvider, ModelTypes, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 
@@ -24,7 +25,15 @@ export class LLMProvidersService {
         const params = new HttpParams().set('limit', '1000');
 
         return this.http
-            .get<ApiGetRequest<LLMProvider>>(this.apiUrl, { params })
+            .get<ApiGetRequest<LLMProvider>>(this.apiUrl, {
+                params,
+                context: withPermission<ApiGetRequest<LLMProvider>>(ResourceCode.LlmConfigs, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response: ApiGetRequest<LLMProvider>) => response.results));
     }
 
@@ -51,7 +60,15 @@ export class LLMProvidersService {
         const params = new HttpParams().set('limit', '1000').set('model_type', `${typeParam}`);
 
         return this.http
-            .get<ApiGetRequest<LLMProvider>>(this.apiUrl, { params })
+            .get<ApiGetRequest<LLMProvider>>(this.apiUrl, {
+                params,
+                context: withPermission<ApiGetRequest<LLMProvider>>(ResourceCode.LlmConfigs, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response: ApiGetRequest<LLMProvider>) => response.results));
     }
 }

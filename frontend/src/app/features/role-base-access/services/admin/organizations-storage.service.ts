@@ -1,10 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { CreateOrganizationRequest, GetOrganizationResponse, UpdateOrganizationRequest } from '@shared/models';
 import { StorageService } from '@shared/services';
-import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
+import { catchError, delay, map, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
-import { AdminOrganizationsService } from './organizations.service';
+import { AdminOrganizationsService, ListOrganizationsParams } from './organizations.service';
 
 @Injectable({
     providedIn: 'root',
@@ -26,11 +26,15 @@ export class OrganizationsStorageService implements StorageService {
         );
     }
 
-    getOrganizations(forceRefresh = false): Observable<GetOrganizationResponse[]> {
+    getOrganizations(
+        forceRefresh = false,
+        params: ListOrganizationsParams = {}
+    ): Observable<GetOrganizationResponse[]> {
         if (this.organizationsLoaded() && !forceRefresh) {
             return of(this.organizationsSignal());
         }
-        return this.apiService.getOrganizations().pipe(
+        return this.apiService.list(params).pipe(
+            map((response) => response.results),
             tap((organizations) => {
                 this.organizationsSignal.set(organizations);
                 this.organizationsLoaded.set(true);

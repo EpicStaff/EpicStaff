@@ -1,0 +1,61 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">{{ editMode() ? 'Edit Membership' : 'Add Membership' }}</span>
+
+        <div class="actions">
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+            >
+                Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                [disabled]="submitDisabled()"
+                (click)="onSubmit()"
+            >
+                {{ editMode() ? 'Save' : 'Add' }}
+            </app-button>
+        </div>
+    </div>
+
+    <div class="body">
+        <div class="details">
+            <label class="label">
+                User <span class="required">*</span>
+                <app-help-tooltip
+                    [text]="'Pick an existing account to grant organization membership.'"
+                    position="right"
+                ></app-help-tooltip>
+            </label>
+            <div class="input-wrap">
+                @if (editMode()) {
+                    <div class="edit-user">
+                        <span class="edit-user__name">{{ editUser()?.displayName || editUser()?.email }}</span>
+                        @if (editUser()?.displayName) {
+                            <span class="edit-user__email">{{ editUser()?.email }}</span>
+                        }
+                    </div>
+                } @else {
+                    <app-select
+                        variant="boxed"
+                        [allowCustomValue]="true"
+                        [items]="userSelectItems()"
+                        [selectedValue]="userSelectValue()"
+                        [showSearch]="true"
+                        [loading]="isLoadingUsers()"
+                        placeholder="Select a user..."
+                        searchPlaceholder="Search or enter email..."
+                        (changed)="onUserSelected($event)"
+                    />
+                }
+            </div>
+        </div>
+
+        <app-step-assign-to-org
+            [isEditMode]="editMode()"
+            [organizations]="availableOrganizations()"
+            [existingMemberships]="existingMemberships()"
+        />
+    </div>
+</div>
