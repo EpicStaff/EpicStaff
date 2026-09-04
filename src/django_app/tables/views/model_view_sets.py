@@ -282,9 +282,19 @@ from tables.serializers.model_serializers import (
 )
 
 from tables.serializers.serializers import (
+    BulkDeleteRequestSerializer,
     BulkExportSerializer,
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
+)
+from tables.services import (
+    agent_delete_service,
+    crew_delete_service,
+    embedding_config_delete_service,
+    embedding_model_delete_service,
+    graph_delete_service,
+    llm_config_delete_service,
+    llm_model_delete_service,
 )
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
@@ -377,7 +387,7 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
 class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
 
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -397,6 +407,32 @@ class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        llm_config_delete_service.assert_llm_config_deletable(instance, org_id, effective)
+        instance.delete()
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = llm_config_delete_service.bulk_delete_llm_configs(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
+
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
     queryset = Provider.objects.all()
@@ -410,7 +446,7 @@ class LLMModelReadWriteViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -420,13 +456,42 @@ class LLMModelReadWriteViewSet(
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMModelFilter
 
+    def perform_destroy(self, instance):
+        if not instance.predefined:
+            org_id = self.get_active_org_id()
+            effective = PermissionResolver().resolve(self.request.user, org_id)
+            llm_model_delete_service.assert_llm_model_deletable(
+                instance, org_id, effective
+            )
+        super().perform_destroy(instance)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = llm_model_delete_service.bulk_delete_llm_models(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
+
 
 class EmbeddingModelReadWriteViewSet(
     OrgScopedHybridViewSetMixin, BasePredefinedRestrictedViewSet
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -438,11 +503,40 @@ class EmbeddingModelReadWriteViewSet(
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingModelFilter
 
+    def perform_destroy(self, instance):
+        if not instance.predefined:
+            org_id = self.get_active_org_id()
+            effective = PermissionResolver().resolve(self.request.user, org_id)
+            embedding_model_delete_service.assert_embedding_model_deletable(
+                instance, org_id, effective
+            )
+        super().perform_destroy(instance)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = embedding_model_delete_service.bulk_delete_embedding_models(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
+
 
 class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
 
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -462,6 +556,34 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingConfigFilter
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        embedding_config_delete_service.assert_embedding_config_deletable(
+            instance, org_id, effective
+        )
+        instance.delete()
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = embedding_config_delete_service.bulk_delete_embedding_configs(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
+
 
 class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
     """
@@ -477,6 +599,7 @@ class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
     }
     copy_service_class = AgentCopyService
     copy_serializer_class = AgentReadSerializer
@@ -621,6 +744,32 @@ class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
         )
         return Response(data, status=status.HTTP_200_OK)
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        agent_delete_service.assert_agent_deletable(instance, org_id, effective)
+        instance.delete()
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = agent_delete_service.bulk_delete_agents(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
+
 
 class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
     """
@@ -636,6 +785,7 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
     }
     copy_service_class = CrewCopyService
     copy_serializer_class = CrewSerializer
@@ -662,6 +812,12 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
             entity_type=EntityType.CREW, export_prefix="crew", filename_attr="name"
         )
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        crew_delete_service.assert_crew_deletable(instance, org_id, effective)
+        instance.delete()
+
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(self.get_object())
@@ -685,6 +841,26 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
             org_id=self.get_active_org_id(),
         )
         return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = crew_delete_service.bulk_delete_crews(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
 
 
 class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
@@ -993,6 +1169,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
         "inspect_import": Permission.CREATE,
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
+        "bulk_delete": Permission.DELETE,
     }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
@@ -1106,9 +1283,35 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
         created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
         GraphOrganization.objects.create(graph=created_graph)
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        graph_delete_service.assert_graph_deletable(instance, org_id, effective)
+        instance.delete()
+
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(self.get_object())
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = graph_delete_service.bulk_delete_graphs(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
     def bulk_export(self, request):

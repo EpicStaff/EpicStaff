@@ -156,6 +156,28 @@ class BulkExportSerializer(serializers.Serializer):
     )
 
 
+class BulkDeleteRequestSerializer(serializers.Serializer):
+    """Shared request body for every per-entity bulk-delete action.
+
+    Deliberately the only piece shared across entities — deletion/usage
+    logic itself is implemented per entity (see graph_delete_service.py and
+    future per-entity equivalents), not via a common mixin.
+    """
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=500,
+        help_text="List of entity IDs to delete",
+    )
+    dry_run = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="If true, report what would happen (usage, blocked ids) "
+        "without deleting anything.",
+    )
+
+
 class GraphNodesPartialExportSerializer(serializers.Serializer):
     crew_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
