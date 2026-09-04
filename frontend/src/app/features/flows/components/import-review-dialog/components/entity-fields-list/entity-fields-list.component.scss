@@ -1,0 +1,28 @@
+:host {
+    display: block;
+}
+
+.item-details {
+    background-color: rgba(0, 0, 0, 0.15);
+    border-top: 1px solid var(--transparent-white-8);
+
+    .item-details-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.3rem 1rem;
+        padding: 0.6rem 1rem 0.6rem 2.5rem;
+
+        .detail-key {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+        }
+
+        .detail-value {
+            font-size: 0.75rem;
+            color: var(--color-text-primary);
+            word-break: break-word;
+        }
+    }
+}

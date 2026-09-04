@@ -11,7 +11,6 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
     AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
-    CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
     KnowledgeNodeReadSerializer,
@@ -162,7 +161,6 @@ class GraphLightSerializer(GraphLightBaseSerializer):
 
 class GraphSerializer(serializers.ModelSerializer):
     # Reverse relationships
-    crew_node_list = CrewNodeSerializer(many=True, read_only=True)
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
     audio_transcription_node_list = AudioTranscriptionNodeSerializer(
@@ -212,7 +210,6 @@ class GraphSerializer(serializers.ModelSerializer):
             "name",
             "metadata",
             "description",
-            "crew_node_list",
             "python_node_list",
             "file_extractor_node_list",
             "audio_transcription_node_list",

@@ -17,9 +17,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.crew_models import (
-    AgentPythonCodeTools,
     DefaultAgentConfig,
-    DefaultCrewConfig,
 )
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
@@ -30,17 +28,12 @@ from tables.models import (
     EmbeddingModel,
     LLMModel,
     Provider,
-    Crew,
     Agent,
-    Task,
     Session,
     Graph,
-    CrewNode,
-    Edge,
     StartNode,
     PythonCodeTool,
     PythonCode,
-    RealtimeAgent,
     Organization,
     Secret,
 )
@@ -105,18 +98,6 @@ def default_agent_config(llm_config) -> DefaultAgentConfig:
 
 
 @pytest.fixture
-def default_crew_config(llm_config) -> DefaultCrewConfig:
-    default_crew_config = DefaultCrewConfig(
-        process="sequential",
-        memory=False,
-        embedding_config=None,
-        manager_llm_config=llm_config,
-    )
-    default_crew_config.save()
-    return default_crew_config
-
-
-@pytest.fixture
 def new_llm_config(gpt_4o_llm, default_org):
     llm_config = LLMConfig(
         model=gpt_4o_llm,
@@ -173,58 +154,13 @@ def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingC
 
 
 @pytest.fixture
-def test_task(wikipedia_agent) -> Task:
-    task = Task(
-        name="test task",
-        agent=wikipedia_agent,
-        instructions="some instructions",
-        expected_output="some output",
-        order=1,
-    )
-    task.save()
-    return task
-
-
-@pytest.fixture
-def crew(
-    wikipedia_agent: Agent,
-    embedding_config: EmbeddingConfig,
-    llm_config: LLMConfig,
-    test_task: Task,
-    default_org: Organization,
-) -> Crew:
-    crew = Crew(
-        name="Test Crew",
-        description="crew for tests",
-        process="sequential",
-        memory=True,
-        embedding_config=embedding_config,
-        manager_llm_config=llm_config,
-        memory_llm_config=llm_config,
-        org=default_org,
-    )
-
-    crew.save()
-    crew.agents.set([wikipedia_agent])
-    test_task.crew = crew
-    test_task.save()
-    crew.save()
-
-    return crew
-
-
-@pytest.fixture
 def graph(default_org: Organization) -> Graph:
     return Graph.objects.create(name="test", org=default_org)
 
 
 @pytest.fixture
-def session_data(crew: Crew, graph: Graph) -> dict:
-    crew_node = CrewNode.objects.create(node_name="crew_node_1", crew=crew, graph=graph)
-    start_node = StartNode.objects.create(graph=graph, variables={})
-    Edge.objects.create(
-        graph=graph, start_node_id=start_node.id, end_node_id=crew_node.id
-    )
+def session_data(graph: Graph) -> dict:
+    StartNode.objects.create(graph=graph, variables={})
     return {
         "graph_id": graph.pk,
         "variables": {
@@ -365,62 +301,6 @@ def wikipedia_agent_with_configured_realtime(
 
 
 @pytest.fixture
-def seeded_db():
-    code = PythonCode.objects.create(code="def main(arg1, arg2): return None")
-    custom_tool = PythonCodeTool.objects.create(
-        name="custom_tool1",
-        description="description",
-        python_code=code,
-        variables=[
-            {
-                "name": "arg1",
-                "type": "string",
-                "description": "",
-                "default_value": None,
-                "input_type": "agent_input",
-                "required": True,
-            },
-            {
-                "name": "arg2",
-                "type": "string",
-                "description": "",
-                "default_value": None,
-                "input_type": "agent_input",
-                "required": True,
-            },
-        ],
-    )
-
-    agent1 = Agent.objects.create(role="agent1", goal="goal1", backstory="backstory")
-    agent2 = Agent.objects.create(role="agent2", goal="goal2", backstory="backstory")
-    agent3 = Agent.objects.create(role="agent3", goal="agent3", backstory="backstory")
-    agent4 = Agent.objects.create(role="agent4", goal="agent4", backstory="backstory")
-
-    agents = [agent1, agent2, agent3, agent4]
-    for agent in agents:
-        RealtimeAgent.objects.create(agent=agent)
-    AgentPythonCodeTools.objects.create(agent=agent2, pythoncodetool=custom_tool)
-    AgentPythonCodeTools.objects.create(agent=agent3, pythoncodetool=custom_tool)
-    AgentPythonCodeTools.objects.create(agent=agent4, pythoncodetool=custom_tool)
-
-    crew1 = Crew.objects.create(name="crew1")
-    crew1.agents.set((agent1, agent2))
-    crew2 = Crew.objects.create(name="crew2")
-    crew2.agents.set((agent1, agent2, agent3, agent4))
-
-    graph = Graph.objects.create(name="graph1")
-
-    CrewNode.objects.create(crew=crew1, graph=graph, node_name="crew_node1")
-    CrewNode.objects.create(crew=crew2, graph=graph, node_name="crew_node2")
-
-    return {
-        "agents": agents,
-        "crews": [crew1, crew2],
-        "graph": graph,
-    }
-
-
-@pytest.fixture
 def python_tool_data():
     return {
         "id": 1,
@@ -555,47 +435,6 @@ def agents_data():
             "default_temperature": 0.0,
             "tags": [],
         },
-    ]
-
-
-@pytest.fixture
-def crew_data():
-    return [
-        {
-            "id": 337,
-            "agents": [694],
-            "tasks": [
-                {
-                    "id": 413,
-                    "tools": {"python_tools": [], "configured_tools": []},
-                    "context_tasks": [],
-                    "name": "Rate work done",
-                    "instructions": "Ask user about ...",
-                    "expected_output": "If user satisfied tell ...",
-                    "order": 1,
-                    "human_input": True,
-                    "async_execution": False,
-                    "config": None,
-                    "output_model": None,
-                    "agent": 694,
-                }
-            ],
-            "entity_type": "Project",
-            "memory_llm_config": None,
-            "manager_llm_config": None,
-            "planning_llm_config": None,
-            "metadata": {"icon": "ui/star"},
-            "description": "Rate user experience about work done",
-            "name": "Enjoying work (4)",
-            "process": "sequential",
-            "memory": False,
-            "config": None,
-            "max_rpm": 15,
-            "cache": True,
-            "full_output": True,
-            "planning": False,
-            "default_temperature": 0.0,
-        }
     ]
 
 

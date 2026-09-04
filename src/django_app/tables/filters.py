@@ -3,6 +3,7 @@
 from django.db.models import OuterRef, Exists, F, IntegerField
 from django.db.models.functions import Extract, Cast
 from django_filters import rest_framework as filters
+from tables.models.webhook_models import WebhookTrigger
 from tables.models import GraphSessionMessage
 from rest_framework.filters import BaseFilterBackend
 from tables.models.embedding_models import EmbeddingModel
@@ -225,3 +226,11 @@ class McpToolFilter(IsFavoriteFilterMixin, filters.FilterSet):
     class Meta:
         model = McpTool
         fields = ["name", "tool_name"]
+
+
+class WebhookTriggerFilter(filters.FilterSet):
+    kind = filters.CharFilter(field_name="auth__kind")
+
+    class Meta:
+        model = WebhookTrigger
+        fields = ["kind"]

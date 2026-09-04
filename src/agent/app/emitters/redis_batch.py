@@ -78,6 +78,7 @@ class RedisStreamBatchEmitter(Emitter):
             correlation_id=self._correlation_id,
             payload={
                 "final_text": result.final_text,
+                "structured_output": result.structured_output,
                 "tool_invocations": result.tool_invocations,
                 "iterations": result.iterations,
                 "stop_reason": result.stop_reason,

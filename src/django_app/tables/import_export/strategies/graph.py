@@ -1,12 +1,12 @@
 import re
 import uuid
 from copy import deepcopy
-from loguru import logger
 from typing import Optional
+
+from loguru import logger
 
 from tables.models import (
     Graph,
-    Crew,
     GraphOrganization,
 )
 from agents.models import (
@@ -18,7 +18,6 @@ from agents.models import (
 )
 from tables.models.label_models import Label
 from tables.models.graph_models import ClassificationDecisionTablePrompt
-from tables.serializers.model_serializers import CrewSerializer
 
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.strategies.nodes.node_maps import (
@@ -52,9 +51,6 @@ class GraphStrategy(EntityImportExportStrategy):
         self, instance: Graph
     ) -> dict[str, list[int]]:
         deps = {}
-        deps[EntityType.CREW] = set(
-            instance.crew_node_list.values_list("crew_id", flat=True)
-        )
         deps[EntityType.WEBHOOK_TRIGGER] = list(
             {
                 *instance.webhook_trigger_node_list.values_list(
@@ -268,10 +264,11 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_type = "GraphNote"
             old_id = node_data.get("id")
 
-            # Old archives still contain nodes of types that no longer exist.
+            # Old archives contain node types that no longer exist, and a type can
+            # still be mapped while its strategy is gone — hence both checks.
             # The edge passes below drop anything that pointed at them.
             entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
-            if entity_type is None:
+            if entity_type is None or not entity_registry.has_strategy(entity_type):
                 logger.warning(
                     "Skipping node id={} of unsupported node_type={} during import "
                     "(no longer supported)",
@@ -495,12 +492,6 @@ class GraphStrategy(EntityImportExportStrategy):
 
         nodes = metadata_copy.get("nodes", [])
         for node in nodes:
-            if node["type"] == "project":
-                old_id = node["data"]["id"]
-                new_id = id_mapper.get_or_none(EntityType.CREW, old_id)
-                crew = Crew.objects.get(id=new_id)
-
-                node["data"] = CrewSerializer(instance=crew).data
             if node["type"] == "webhook-trigger":
                 old_id = node["data"]["webhook_trigger"]
 

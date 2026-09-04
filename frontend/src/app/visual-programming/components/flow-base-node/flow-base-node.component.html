@@ -28,16 +28,6 @@
     >
         <app-svg-icon icon="edit"></app-svg-icon>
     </div>
-    <!-- Ungroup Icon -->
-    <div
-        *ngIf="node.type === NodeType.PROJECT"
-        class="action-button ungroup-button"
-        matTooltip="Expand project"
-        matTooltipPosition="above"
-        (click)="onExpandProjectClick()"
-    >
-        <app-svg-icon icon="edit"></app-svg-icon>
-    </div>
     <!-- Delete Button -->
     <div
         *ngIf="node.type !== NodeType.START"

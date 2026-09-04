@@ -60,7 +60,7 @@ This rule is applied uniformly wherever such references appear, including (non-e
   `LLMConfig.model`, `EmbeddingConfig.model`, `RealtimeConfig.realtime_model`,
   `RealtimeTranscriptionConfig.realtime_transcription_model`.
 - **Tool configs** (hybrid target): `PythonCodeToolConfig.tool`; `PythonCodeToolConfigField.tool`.
-- **Graph nodes**: `SubGraphNode.subgraph`, `CrewNode.crew`.
+- **Graph nodes**: `SubGraphNode.subgraph`.
 - **Label** — `parent`.
 - **Bulk save** (`POST /api/graphs/{pk}/save/`) enforces the same on every referenced entity — see
   `bulk_save/BULK_SAVE_API.md`.

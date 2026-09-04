@@ -2,8 +2,8 @@
 receiver, unlike `TelegramTriggerNode` (`telegram_signals.py`'s
 `_resync_tunnel_registration`, exercised by
 `TestTelegramNodeAttachResyncsTunnelRegistration` in
-`test_telegram_tunnel_registration.py`) and `WebhookNodeAuth` (fixed earlier
-this session, `webhook_signals.py`).
+`test_telegram_tunnel_registration.py`) and `WebhookTriggerAuth`
+(`webhook_signals.py`).
 
 The realistic ordering: a `WebhookTrigger` + its `NgrokWebhookConfig`/
 `LocalhostWebhookConfig` are created FIRST and registered under the bare path
@@ -12,9 +12,9 @@ EXISTING trigger, never create one for a node). Attaching a
 `WebhookTriggerNode` to that already-registered trigger afterward -- or
 detaching one -- must still re-push the tunnel/config registration via
 `tables.signals.webhook_signals`, otherwise the running `webhook` service
-keeps serving a stale config that doesn't reflect the node's
-`webhook_node_auth` (see `webhook_routes.py`: an empty pushed credential list
-means auth verification is skipped entirely).
+keeps serving a stale config that doesn't reflect the trigger's `auth` (see
+`webhook_routes.py`: no pushed auth means verification is skipped entirely,
+fail-open).
 """
 
 import pytest

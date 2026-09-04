@@ -6,7 +6,7 @@
 It creates least-privilege database roles for each microservice and grants per-table permissions
 before handing off to the standard `docker-entrypoint.sh`.
 
-The crewdb container hosts a single PostgreSQL database (`crew`) shared by four services,
+The crewdb container hosts a single PostgreSQL database (`crew`) shared by three services,
 each connecting with its own restricted role:
 
 | Service   | Role (env var)       | Purpose                                      |
@@ -14,7 +14,9 @@ each connecting with its own restricted role:
 | manager   | `DB_MANAGER_USER`    | Read-only access to session data              |
 | knowledge | `DB_KNOWLEDGE_USER`  | Read/write access to RAG and embedding tables |
 | realtime  | `DB_REALTIME_USER`   | CRUD on realtime session items                |
-| crew      | `DB_CREW_USER`       | CRUD on memory database                       |
+
+`tables_memorydatabase` still lives in this database, but it is created and owned
+by `django_app` (see `MemoryDatabase` model) — no crewdb service role connects to it.
 
 ## How It Works
 
@@ -63,9 +65,10 @@ Returns healthy only when:
 - PostgreSQL is accepting connections (`pg_isready`)
 - The `/tmp/users_created` flag exists (Phase 2 completed)
 
-Downstream services (`crew`, `knowledge`, `realtime`, `manager`) use
+Downstream services (`knowledge`, `realtime`, `manager`) use
 `depends_on: crewdb: condition: service_healthy` so they start only after all permissions
-are in place.
+are in place. `crew` no longer depends on `crewdb` at all — it has no database role and
+never connects to Postgres.
 
 `django_app` uses `depends_on: crewdb: condition: service_started` (not `service_healthy`)
 so it can begin running migrations immediately.
@@ -74,23 +77,25 @@ so it can begin running migrations immediately.
 
 ### Tables
 
-| Table                            | manager | knowledge | realtime | crew |
-|----------------------------------|---------|-----------|----------|------|
-| `tables_session`                 | SELECT  |           |          |      |
-| `tables_provider`                |         | SELECT    |          |      |
-| `tables_embeddingmodel`          |         | SELECT    |          |      |
-| `tables_embeddingconfig`         |         | SELECT    |          |      |
-| `tables_sourcecollection`        |         | SELECT    |          |      |
-| `tables_documentmetadata`        |         | SELECT    |          |      |
-| `tables_documentcontent`         |         | SELECT    |          |      |
-| `tables_baseragtype`             |         | SELECT    |          |      |
-| `tables_naiverag`                |         | SEL+UPD   |          |      |
-| `tables_naiveragdocumentconfig`  |         | SEL+UPD   |          |      |
-| `tables_naiveragchunk`           |         | CRUD      |          |      |
-| `tables_naiveragpreviewchunk`    |         | CRUD      |          |      |
-| `tables_naiveragembedding`       |         | CRUD      |          |      |
-| `realtime_session_items`         |         |           | CRUD     |      |
-| `tables_memorydatabase`          |         |           |          | CRUD |
+| Table                            | manager | knowledge | realtime |
+|----------------------------------|---------|-----------|----------|
+| `tables_session`                 | SELECT  |           |          |
+| `tables_provider`                |         | SELECT    |          |
+| `tables_embeddingmodel`          |         | SELECT    |          |
+| `tables_embeddingconfig`         |         | SELECT    |          |
+| `tables_sourcecollection`        |         | SELECT    |          |
+| `tables_documentmetadata`        |         | SELECT    |          |
+| `tables_documentcontent`         |         | SELECT    |          |
+| `tables_baseragtype`             |         | SELECT    |          |
+| `tables_naiverag`                |         | SEL+UPD   |          |
+| `tables_naiveragdocumentconfig`  |         | SEL+UPD   |          |
+| `tables_naiveragchunk`           |         | CRUD      |          |
+| `tables_naiveragpreviewchunk`    |         | CRUD      |          |
+| `tables_naiveragembedding`       |         | CRUD      |          |
+| `realtime_session_items`         |         |           | CRUD     |
+
+`tables_memorydatabase` is created by django migrations and granted no crewdb-service
+role permissions — django_app connects with the Postgres superuser, not a per-service role.
 
 ### Sequences
 
@@ -114,8 +119,6 @@ DB_KNOWLEDGE_USER    -- Knowledge service role name
 DB_KNOWLEDGE_PASSWORD
 DB_REALTIME_USER     -- Realtime service role name
 DB_REALTIME_PASSWORD
-DB_CREW_USER         -- Crew service role name
-DB_CREW_PASSWORD
 ```
 
 ## Startup Sequence Diagram
@@ -143,8 +146,9 @@ crewdb container starts
                |      |      +--> CREATE SEQUENCE fires event trigger -> auto-grant
                |      +--> migrations complete -> Django healthy
                |
-               +--> crew, knowledge, realtime, manager wait (depends_on: service_healthy)
+               +--> knowledge, realtime, manager wait (depends_on: service_healthy)
                       +--> start after crewdb flag is set
+                      (crew has no depends_on: crewdb -- it never connects to Postgres)
 ```
 
 ## Adding Permissions for a New Table

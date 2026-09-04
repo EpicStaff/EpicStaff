@@ -1,7 +1,6 @@
 import pytest
 
 from tables.models.rbac_models import Organization
-from tables.serializers.model_serializers.crew_serializers import CrewSerializer
 from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 
 
@@ -37,15 +36,3 @@ class TestOrgManagedFieldsReadOnly:
 
         llm_config.refresh_from_db()
         assert llm_config.org_id == default_org.id
-
-    def test_crew_update_ignores_client_org_move(self, crew, default_org):
-        other_org = Organization.objects.create(name="Other Crew Org")
-
-        serializer = CrewSerializer(
-            instance=crew, data={"org": other_org.id}, partial=True
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        crew.refresh_from_db()
-        assert crew.org_id == default_org.id

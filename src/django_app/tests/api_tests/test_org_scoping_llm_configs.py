@@ -326,37 +326,3 @@ def test_provider_write_denied_for_member(client_a):
 def test_provider_write_allowed_for_superadmin(superadmin, org_a):
     c = _client(superadmin, org_a)
     assert c.post("/api/providers/", {"name": "x"}, format="json").status_code == 201
-
-
-# ---- cross-org reference rejection on Agent ----
-
-
-@pytest.mark.django_db
-def test_agent_cannot_reference_other_orgs_llmconfig(member_a, org_a, org_b):
-    # Member has agents CRU, so the create itself is permitted; the cross-org
-    # llm_config ref must be the thing that fails (rejected like a missing pk).
-    client = _client(member_a, org_a)
-    m = _builtin_model()
-    other_cfg = LLMConfig.objects.create(custom_name="B cfg", model=m, org=org_b)
-    resp = client.post(
-        "/api/agents/",
-        {"role": "r", "goal": "g", "backstory": "b", "llm_config": other_cfg.id},
-        format="json",
-    )
-    assert resp.status_code == 400
-    # the custom exception handler nests field errors inside `message`
-    assert "llm_config" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_agent_can_reference_same_org_llmconfig(member_a, org_a):
-    client = _client(member_a, org_a)
-    m = _builtin_model()
-    cfg = LLMConfig.objects.create(custom_name="A cfg", model=m, org=org_a)
-    resp = client.post(
-        "/api/agents/",
-        {"role": "r", "goal": "g", "backstory": "b", "llm_config": cfg.id},
-        format="json",
-    )
-    assert resp.status_code == 201
-    assert Agent.objects.get(id=resp.data["id"]).llm_config_id == cfg.id

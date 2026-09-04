@@ -16,6 +16,7 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { IPoint } from '@foblex/2d';
+import { Subscription } from 'rxjs';
 
 import {
     CONTEXT_MENU_TAB,
@@ -26,7 +27,6 @@ import {
 import { CreateNodeRequest } from '../../core/models/node-creation.types';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu/flow-graph-core-menu.component';
 import { FlowsMenuComponent } from './flows-menu/flows-menu.component';
-import { FlowProjectsContextMenuComponent } from './section-projects/section-projects.component';
 
 export type { ContextMenuTab };
 
@@ -36,12 +36,13 @@ export type { ContextMenuTab };
     templateUrl: './flow-graph-context-menu.component.html',
     styleUrls: ['./flow-graph-context-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FlowGraphCoreMenuComponent, FlowProjectsContextMenuComponent, FlowsMenuComponent],
+    imports: [FlowGraphCoreMenuComponent, FlowsMenuComponent],
 })
 export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly position = input.required<IPoint>();
     public readonly currentFlowId = input<number | null>(null);
     public readonly nodeSelected = output<CreateNodeRequest>();
+    public readonly closed = output<void>();
 
     @ViewChild('menuTemplate', { static: true })
     private menuTemplate!: TemplateRef<unknown>;
@@ -58,6 +59,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
     private readonly viewContainerRef = inject(ViewContainerRef);
 
     private overlayRef?: OverlayRef;
+    private backdropSub?: Subscription;
 
     public ngAfterViewInit(): void {
         this.createOverlay();
@@ -65,6 +67,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
     }
 
     public ngOnDestroy(): void {
+        this.backdropSub?.unsubscribe();
         this.overlayRef?.dispose();
     }
 
@@ -86,8 +89,11 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
             positionStrategy: this.createPositionStrategy(this.position()),
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             disposeOnNavigation: true,
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-transparent-backdrop',
         });
 
+        this.backdropSub = this.overlayRef.backdropClick().subscribe(() => this.closed.emit());
         this.overlayRef.attach(new TemplatePortal(this.menuTemplate, this.viewContainerRef));
     }
 
