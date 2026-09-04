@@ -23,6 +23,7 @@ import {
     TabButtonComponent,
     TextareaComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -51,6 +52,8 @@ type RagKind = 'naive' | 'graph' | null;
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     private readonly fb = inject(FormBuilder);
     private readonly destroyRef = inject(DestroyRef);
     private readonly collectionsApi = inject(CollectionsApiService);

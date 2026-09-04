@@ -271,6 +271,7 @@ async def root(
 
     summ_client = OpenaiSummarizationClient(
         api_key=realtime_agent_chat_data.rt_api_key,
+        base_url=realtime_agent_chat_data.rt_base_url,
     )
     service = ConversationService(
         client_websocket=websocket,

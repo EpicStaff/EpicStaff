@@ -46,7 +46,7 @@ class RunSessionSerializer(serializers.Serializer):
     # agent session that triggered it. Not exposed by any UI form — purely a
     # programmatic/tool-runtime input.
     parent_session_id = serializers.IntegerField(required=False, allow_null=True)
-    # EST-3285 4.2c: optional run-level token budget hard stop. Not exposed
+    # optional run-level token budget hard stop. Not exposed
     # by any UI form. Threaded to crew via SessionData.initial_state's
     # reserved "__token_budget__" key (see
     # SessionManagerService.create_session_data) rather than a new typed
@@ -130,10 +130,6 @@ class BaseToolSerializer(serializers.Serializer):
         return repr
 
 
-class RegisterTelegramTriggerSerializer(serializers.Serializer):
-    telegram_trigger_node_id = serializers.IntegerField(required=True)
-
-
 class ProcessDocumentChunkingSerializer(serializers.Serializer):
     document_id = serializers.IntegerField(required=True)
 
@@ -194,6 +190,9 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
     schedule_trigger_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
+    knowledge_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
     agent_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
@@ -239,6 +238,10 @@ class ImportRequestSerializer(serializers.Serializer):
                 }
             )
         return attrs
+
+
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

@@ -1,4 +1,4 @@
-"""EST-3622 regression suite, extended for EST-3862/EST-3826 (C3) org scoping.
+"""Regression suite, extended for org scoping (C3).
 
 Three related classes of the same underlying bug:
 
@@ -255,7 +255,7 @@ class TestGetTriggerFilters:
 
 @pytest.mark.django_db
 class TestHandleWebhookTriggerConfigIsolation:
-    """Reproduces the EST-3622 cross-config scenario: two ngrok configs each
+    """Reproduces the cross-config scenario: two ngrok configs each
     have their own domain and their own trigger/path. Hitting one domain's
     tunnel (registered for its own path) with the OTHER trigger's path in
     the URL must start nothing."""
@@ -498,7 +498,7 @@ class TestUnrestrictedFanOutAcrossSharedPath:
 
 @pytest.mark.django_db
 class TestCrossOrgPathCollisionIsolation:
-    """C3 (EST-3862/EST-3826 architect follow-up): two different orgs each
+    """C3 (architect follow-up): two different orgs each
     legally register a `WebhookTrigger` with the IDENTICAL `path` string
     (`unique_together` is `(org, path, provider_type)`, not globally unique
     on `path`). An inbound event that resolved to one org's tunnel config

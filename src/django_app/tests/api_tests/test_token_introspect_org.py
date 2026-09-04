@@ -1,5 +1,5 @@
 """
-EST-1869 security fix: `TokenIntrospectView` now also returns `org_ids`
+Security fix: `TokenIntrospectView` now also returns `org_ids`
 (orgs the token's user belongs to) and `is_superadmin`, so the `realtime`
 service can verify a connecting user actually owns the org a
 `connection_key` was provisioned for (see `src/realtime/api/main.py`'s

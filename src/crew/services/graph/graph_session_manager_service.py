@@ -124,7 +124,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             # pydantic SessionData model itself.
             initial_state = dict(session_data.initial_state)
 
-            # EST-3285 4.2c: optional run-level token budget hard stop.
+            # optional run-level token budget hard stop.
             # Per-run override (if Django threaded one through the request)
             # takes precedence over the global env/settings default. Both
             # default to None ("no limit"), so this is fully inert unless

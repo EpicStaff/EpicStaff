@@ -6,6 +6,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import {
     ButtonComponent,
     CustomInputComponent,
+    RadioButtonComponent,
     SelectComponent,
     SelectItem,
     WebhookTriggerFieldComponent,
@@ -20,8 +21,12 @@ import {
     WebhookTriggerModel,
     WebhookTriggerWrite,
 } from '../../../../../visual-programming/core/models/webhook-trigger.model';
+import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
+import { AgentDefinitionsApiService } from '../../../../agent-definitions/services/agent-definitions-api.service';
 import { GetAgentRequest } from '../../../../staff/models/agent.model';
 import { AgentsService } from '../../../../staff/services/staff.service';
+
+type DestinationKind = 'agent' | 'definition';
 
 export interface AddEditChannelDialogData {
     channel: RealtimeChannel | null;
@@ -37,6 +42,7 @@ export interface AddEditChannelDialogData {
         CustomInputComponent,
         SelectComponent,
         ButtonComponent,
+        RadioButtonComponent,
         WebhookTriggerFieldComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,6 +52,7 @@ export class AddEditChannelDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
     private channelService = inject(RealtimeChannelService);
     private agentsService = inject(AgentsService);
+    private agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private webhookTriggerService = inject(WebhookTriggerService);
     private secretsStorageService = inject(SecretsStorageService);
     private destroyRef = inject(DestroyRef);
@@ -62,6 +69,7 @@ export class AddEditChannelDialogComponent implements OnInit {
     private createdTriggerId = signal<number | null>(null);
 
     private agents = signal<GetAgentRequest[]>([]);
+    private agentDefinitions = signal<AgentDefinition[]>([]);
     private phoneNumbers = signal<TwilioPhoneNumber[]>([]);
     private phonesFetched = signal<boolean>(false);
     phoneNumbersLoading = signal<boolean>(false);
@@ -73,6 +81,18 @@ export class AddEditChannelDialogComponent implements OnInit {
         { name: '— None —', value: null },
         ...this.agents().map((a) => ({ name: a.role, value: a.id })),
     ]);
+
+    agentDefinitionItems = computed<SelectItem[]>(() => [
+        { name: '— None —', value: null },
+        ...this.agentDefinitions()
+            .filter((d) => d.has_realtime_definition)
+            .map((d) => ({ name: d.name, value: d.id })),
+    ]);
+
+    readonly destinationKindOptions: { value: DestinationKind; label: string }[] = [
+        { value: 'agent', label: 'Agent' },
+        { value: 'definition', label: 'Agent Definition' },
+    ];
 
     secretItems = computed<SelectItem[]>(() =>
         this.secretsStorageService.secrets().map((secret) => ({
@@ -96,9 +116,13 @@ export class AddEditChannelDialogComponent implements OnInit {
         const ch = this.data.channel;
         const tw = ch?.twilio;
 
+        const initialKind: DestinationKind = ch?.realtime_agent_definition != null ? 'definition' : 'agent';
+
         this.form = this.fb.group({
             name: [ch?.name ?? '', Validators.required],
+            destination_kind: [initialKind],
             realtime_agent: [ch?.realtime_agent ?? null],
+            realtime_agent_definition: [ch?.realtime_agent_definition ?? null],
             is_active: [ch?.is_active ?? true],
             account_sid: [tw?.account_sid ?? ''],
             auth_token_secret_id: [tw?.auth_token_secret_id ?? null, [Validators.required]],
@@ -106,10 +130,23 @@ export class AddEditChannelDialogComponent implements OnInit {
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
 
+        this.form
+            .get('destination_kind')!
+            .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((kind: DestinationKind) => {
+                if (kind === 'agent') this.form.get('realtime_agent_definition')!.setValue(null);
+                else this.form.get('realtime_agent')!.setValue(null);
+            });
+
         this.agentsService
             .getAgentsWithRealtimeConfig()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ next: (agents) => this.agents.set(agents), error: () => {} });
+
+        this.agentDefinitionsApi
+            .getAgentDefinitions()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ next: (defs) => this.agentDefinitions.set(defs), error: () => {} });
 
         this.secretsStorageService
             .getSecrets()
@@ -153,12 +190,17 @@ export class AddEditChannelDialogComponent implements OnInit {
         const v = this.form.value;
         const saved = this.savedChannel();
 
+        const kind: DestinationKind = v.destination_kind;
+        const realtimeAgent = kind === 'agent' ? (v.realtime_agent ?? null) : null;
+        const realtimeAgentDefinition = kind === 'definition' ? (v.realtime_agent_definition ?? null) : null;
+
         if (!saved) {
             this.channelService
                 .createChannel({
                     name: v.name,
                     channel_type: 'twilio',
-                    realtime_agent: v.realtime_agent ?? null,
+                    realtime_agent: realtimeAgent,
+                    realtime_agent_definition: realtimeAgentDefinition,
                     is_active: v.is_active,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
@@ -185,7 +227,8 @@ export class AddEditChannelDialogComponent implements OnInit {
                 .updateChannel({
                     id: saved.id,
                     name: v.name,
-                    realtime_agent: v.realtime_agent ?? null,
+                    realtime_agent: realtimeAgent,
+                    realtime_agent_definition: realtimeAgentDefinition,
                     is_active: v.is_active,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
@@ -194,7 +237,8 @@ export class AddEditChannelDialogComponent implements OnInit {
                         this.savedChannel.set({
                             ...saved,
                             name: v.name,
-                            realtime_agent: v.realtime_agent ?? null,
+                            realtime_agent: realtimeAgent,
+                            realtime_agent_definition: realtimeAgentDefinition,
                             is_active: v.is_active,
                         });
                         this.channelService.channelsChanged$.next();
