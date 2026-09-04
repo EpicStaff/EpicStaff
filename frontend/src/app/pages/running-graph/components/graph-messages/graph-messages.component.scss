@@ -35,15 +35,15 @@
             transition: all 0.3s ease;
 
             &.reconnecting {
-                background-color: rgba(245, 158, 11, 0.1);
-                color: #f59e0b;
-                border: 1px solid rgba(245, 158, 11, 0.2);
+                background-color: var(--amber-620-alpha-10);
+                color: var(--amber-620);
+                border: 1px solid var(--amber-620-alpha-20);
             }
 
             &.disconnected {
-                background-color: rgba(239, 68, 68, 0.1);
-                color: #ef4444;
-                border: 1px solid rgba(239, 68, 68, 0.2);
+                background-color: var(--crimson-500-alpha-10);
+                color: var(--crimson-500);
+                border: 1px solid var(--crimson-500-alpha-20);
             }
 
             .status-icon {
@@ -92,8 +92,8 @@
                 &.subflow-level-1 {
                     padding-left: 2.5rem;
                     margin-left: 0.5rem;
-                    background-color: rgba(0, 191, 165, 0.015);
-                    border-left: 2px solid rgba(0, 191, 165, 0.2);
+                    background-color: var(--teal-alpha-1-5);
+                    border-left: 2px solid var(--teal-alpha-20);
                     border-radius: 0 8px 8px 0;
                 }
 
@@ -101,8 +101,8 @@
                 &.subflow-level-2 {
                     padding-left: 2.5rem;
                     margin-left: 1rem;
-                    background-color: rgba(0, 191, 165, 0.03);
-                    border-left: 2px solid rgba(0, 191, 165, 0.3);
+                    background-color: var(--teal-alpha-3);
+                    border-left: 2px solid var(--teal-alpha-30);
                     border-radius: 0 8px 8px 0;
                 }
 
@@ -110,8 +110,8 @@
                 &.subflow-level-3 {
                     padding-left: 2.5rem;
                     margin-left: 1.5rem;
-                    background-color: rgba(0, 191, 165, 0.045);
-                    border-left: 2px solid rgba(0, 191, 165, 0.4);
+                    background-color: var(--teal-alpha-4-5);
+                    border-left: 2px solid var(--teal-alpha-40);
                     border-radius: 0 8px 8px 0;
                 }
 
@@ -119,8 +119,8 @@
                 &.subflow-level-4 {
                     padding-left: 2.5rem;
                     margin-left: 2rem;
-                    background-color: rgba(0, 191, 165, 0.06);
-                    border-left: 2px solid rgba(0, 191, 165, 0.5);
+                    background-color: var(--teal-alpha-6);
+                    border-left: 2px solid var(--teal-alpha-50);
                     border-radius: 0 8px 8px 0;
                 }
             }
@@ -143,7 +143,7 @@
                     top: -0.5rem;
                     bottom: 0;
                     width: 2px;
-                    background-color: rgba(0, 191, 165, 0.3);
+                    background-color: var(--teal-alpha-30);
                     transition: all 0.2s ease;
                 }
 
@@ -151,7 +151,7 @@
                 &.subflow-level-1 {
                     &::before {
                         left: 0.75rem;
-                        background-color: rgba(0, 191, 165, 0.25);
+                        background-color: var(--teal-alpha-25);
                     }
                 }
 
@@ -159,7 +159,7 @@
                 &.subflow-level-2 {
                     &::before {
                         left: 1.25rem;
-                        background-color: rgba(0, 191, 165, 0.35);
+                        background-color: var(--teal-alpha-35);
                     }
                 }
 
@@ -167,7 +167,7 @@
                 &.subflow-level-3 {
                     &::before {
                         left: 1.75rem;
-                        background-color: rgba(0, 191, 165, 0.45);
+                        background-color: var(--teal-alpha-45);
                     }
                 }
 
@@ -175,7 +175,7 @@
                 &.subflow-level-4 {
                     &::before {
                         left: 2.25rem;
-                        background-color: rgba(0, 191, 165, 0.55);
+                        background-color: var(--teal-alpha-55);
                     }
                 }
             }
@@ -194,8 +194,8 @@
                 &.subflow-level-1 {
                     margin-left: 0.5rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.2);
-                    background-color: rgba(0, 191, 165, 0.015);
+                    border-left: 2px solid var(--teal-alpha-20);
+                    background-color: var(--teal-alpha-1-5);
 
                     &::before {
                         content: '';
@@ -205,7 +205,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.25);
+                        background-color: var(--teal-alpha-25);
                     }
                 }
 
@@ -213,8 +213,8 @@
                 &.subflow-level-2 {
                     margin-left: 1rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.3);
-                    background-color: rgba(0, 191, 165, 0.03);
+                    border-left: 2px solid var(--teal-alpha-30);
+                    background-color: var(--teal-alpha-3);
 
                     &::before {
                         content: '';
@@ -224,7 +224,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.35);
+                        background-color: var(--teal-alpha-35);
                     }
                 }
 
@@ -232,8 +232,8 @@
                 &.subflow-level-3 {
                     margin-left: 1.5rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.4);
-                    background-color: rgba(0, 191, 165, 0.045);
+                    border-left: 2px solid var(--teal-alpha-40);
+                    background-color: var(--teal-alpha-4-5);
 
                     &::before {
                         content: '';
@@ -243,7 +243,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.45);
+                        background-color: var(--teal-alpha-45);
                     }
                 }
 
@@ -251,8 +251,8 @@
                 &.subflow-level-4 {
                     margin-left: 2rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.5);
-                    background-color: rgba(0, 191, 165, 0.06);
+                    border-left: 2px solid var(--teal-alpha-50);
+                    background-color: var(--teal-alpha-6);
 
                     &::before {
                         content: '';
@@ -262,7 +262,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.55);
+                        background-color: var(--teal-alpha-55);
                     }
                 }
             }
@@ -309,7 +309,7 @@
             border: none;
             font-size: 23px;
             background-color: var(--color-nodes-background);
-            color: #d9d9de99;
+            color: var(--fog-alpha-60);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -320,7 +320,7 @@
         }
 
         .breadcrumbs-arrow:hover {
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: var(--white-alpha-8);
             color: var(--gray-100);
         }
 
@@ -331,8 +331,8 @@
             height: 40px;
             width: 40px;
             border-radius: 8px;
-            border: 1px solid #00ac98;
-            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--teal-460);
+            background-color: var(--white-alpha-4);
             color: var(--gray-300);
             overflow: hidden;
             transition: width 0.25s ease;
@@ -352,7 +352,7 @@
             height: 40px;
             border: none;
             background: transparent;
-            color: #00ac98;
+            color: var(--teal-460);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -403,7 +403,7 @@
             scroll-behavior: smooth;
             scrollbar-gutter: stable;
             scrollbar-width: thin;
-            scrollbar-color: #313137 transparent;
+            scrollbar-color: var(--graphite-635) transparent;
         }
 
         .breadcrumbs-scroll::-webkit-scrollbar {
@@ -411,7 +411,7 @@
         }
 
         .breadcrumbs-scroll::-webkit-scrollbar-thumb {
-            background-color: rgba(255, 255, 255, 0.35);
+            background-color: var(--white-alpha-35);
             border-radius: 90px;
         }
 
@@ -429,11 +429,11 @@
         .breadcrumb-button {
             background: transparent;
             border: none;
-            color: #00bfa5;
+            color: var(--teal-500);
             cursor: pointer;
             padding: 8px 16px;
             font-weight: 500;
-            border-left: 4px solid #00bfa5;
+            border-left: 4px solid var(--teal-500);
             border-radius: 8px;
             background-color: var(--color-nodes-background);
         }
@@ -452,7 +452,7 @@
 
         .icon-container {
             font-size: 23px;
-            color: #ffffff99;
+            color: var(--white-alpha-60);
         }
 
         .subgraph-drilldown__messages {
@@ -483,16 +483,16 @@
         height: 36px;
         flex-shrink: 0;
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background-color: #2c2c2e;
-        color: var(--color-ks-transparent-text-60);
+        border: 1px solid var(--white-alpha-10);
+        background-color: var(--graphite-700);
+        color: var(--fog-alpha-60);
         font-size: 16px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 10;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 2px 8px var(--black-alpha-30);
         transition:
             background-color 0.2s,
             transform 0.2s;
@@ -503,9 +503,9 @@
 
         &:active,
         &[aria-pressed='true'] {
-            background-color: #685fff;
+            background-color: var(--accent-color);
             color: var(--color-text-primary);
-            border-color: #685fff;
+            border-color: var(--accent-color);
         }
     }
 
@@ -522,8 +522,8 @@
             height: 18px;
             padding: 0 5px;
             border-radius: 9px;
-            background-color: #685fff;
-            color: #fff;
+            background-color: var(--accent-color);
+            color: var(--white);
             font-size: 11px;
             font-weight: 600;
             line-height: 18px;
@@ -667,7 +667,7 @@
 
 .empty-list {
     font-weight: 600;
-    color: #c69999;
+    color: var(--rose-500);
     margin: 10px;
 }
 

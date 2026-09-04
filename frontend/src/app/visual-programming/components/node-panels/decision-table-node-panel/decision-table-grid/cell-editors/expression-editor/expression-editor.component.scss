@@ -1,10 +1,10 @@
 .expression-editor-container {
-    background-color: #1e1e20;
-    border: 1px solid #685fff;
+    background-color: var(--graphite-878);
+    border: 1px solid var(--accent-color);
     border-radius: 4px;
     box-shadow:
-        0 0 0 2px rgba(104, 95, 255, 0.2),
-        0 4px 16px rgba(0, 0, 0, 0.4);
+        0 0 0 2px var(--purple-alpha-20),
+        0 4px 16px var(--black-alpha-40);
     overflow: visible;
     display: flex;
     flex-direction: column;
@@ -30,8 +30,8 @@
         right: 0;
         bottom: 0;
         z-index: 0;
-        background-color: #1e1e20;
-        color: #d9d9de;
+        background-color: var(--graphite-878);
+        color: var(--fog-200);
         padding: 0.5rem;
         font-family: 'JetBrains Mono', monospace;
         font-size: 14px;
@@ -54,8 +54,8 @@
         }
 
         ::ng-deep .variable {
-            background-color: rgba(104, 95, 255, 0.2);
-            color: #a5a5ff;
+            background-color: var(--purple-alpha-20);
+            color: var(--lavender-460);
             border-radius: 3px;
             padding: 0 2px;
             margin: 0 -2px;
@@ -63,7 +63,7 @@
         }
 
         ::ng-deep .keyword {
-            color: #c586c0;
+            color: var(--magenta-500);
             font-weight: bold;
             text-transform: uppercase;
         }
@@ -76,7 +76,7 @@
         height: 100%; // Fill wrapper
         background-color: transparent;
         color: transparent;
-        caret-color: #d9d9de;
+        caret-color: var(--fog-200);
         border: none;
         padding: 0.5rem;
         font-family: 'JetBrains Mono', monospace;
@@ -92,7 +92,7 @@
         overflow-x: hidden;
 
         &::selection {
-            background-color: rgba(104, 95, 255, 0.3);
+            background-color: var(--purple-alpha-30);
             color: transparent;
         }
 
@@ -118,14 +118,14 @@
         justify-content: center;
         width: 24px;
         height: 24px;
-        background: rgba(55, 118, 171, 0.15);
+        background: var(--blue-480-alpha-15);
         border-radius: 4px;
         pointer-events: none;
         z-index: 2;
 
         i {
             font-size: 18px;
-            color: #ffd43b;
+            color: var(--gold-470);
         }
     }
 }

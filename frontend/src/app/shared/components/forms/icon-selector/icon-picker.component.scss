@@ -121,10 +121,10 @@
     }
 
     &.selected {
-        background-color: var(--primary-100);
+        background-color: var(--purple-alpha-15);
 
         ::ng-deep app-icon svg {
-            fill: var(--primary-600);
+            fill: var(--accent-color);
         }
     }
 }

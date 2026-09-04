@@ -20,7 +20,7 @@
     }
 
     .warning-icon {
-        color: var(--color-warning, #f5a623);
+        color: var(--color-warning);
     }
 
     .dialog-title {
@@ -76,13 +76,13 @@
     gap: 0.75rem;
     padding: 0.75rem 1rem;
     background: var(--color-input-background);
-    border-left: 3px solid var(--color-warning, #f5a623);
+    border-left: 3px solid var(--color-warning);
     border-radius: 4px;
     font-size: 0.875rem;
     line-height: 1.5;
 
     .warning-item-icon {
-        color: var(--color-warning, #f5a623);
+        color: var(--color-warning);
         flex-shrink: 0;
         margin-top: 1px;
     }
@@ -100,7 +100,7 @@
         transition: background-color 0.15s ease;
 
         &:hover {
-            background: var(--color-input-background-hover, rgba(255, 255, 255, 0.06));
+            background: var(--color-input-background-hover);
 
             .warning-item-arrow {
                 color: var(--color-text-primary);

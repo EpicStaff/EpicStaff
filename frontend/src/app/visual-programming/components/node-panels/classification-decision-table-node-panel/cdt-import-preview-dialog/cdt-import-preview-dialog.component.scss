@@ -4,10 +4,10 @@
     width: 540px;
     max-width: 92vw;
     max-height: 85vh;
-    background: var(--color-modals-background, #1e1e22);
-    color: var(--color-text-primary, #fff);
+    background: var(--color-modals-background);
+    color: var(--color-text-primary);
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 20px var(--black-alpha-30);
     overflow: hidden;
 }
 
@@ -16,7 +16,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--white-alpha-8);
 }
 
 .title-group {
@@ -25,7 +25,7 @@
     gap: 0.6rem;
 
     i {
-        color: #685fff;
+        color: var(--accent-color);
         font-size: 1.1rem;
     }
 }
@@ -44,7 +44,7 @@
     height: 30px;
     border: none;
     background: transparent;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--white-alpha-60);
     border-radius: 6px;
     cursor: pointer;
     transition:
@@ -52,8 +52,8 @@
         color 0.15s ease;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.08);
-        color: #fff;
+        background: var(--white-alpha-8);
+        color: var(--white);
     }
 
     i {
@@ -73,7 +73,7 @@
 .lead {
     margin: 0;
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--white-alpha-65);
     line-height: 1.4;
 }
 
@@ -87,8 +87,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--white-alpha-4);
+    border: 1px solid var(--white-alpha-6);
     border-radius: 8px;
     padding: 0.6rem 0.75rem;
 }
@@ -97,17 +97,17 @@
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--white-alpha-45);
 }
 
 .meta-value {
     font-size: 0.9rem;
-    color: #fff;
+    color: var(--white);
     word-break: break-word;
 
     &--count {
         font-weight: 600;
-        color: #8b83ff;
+        color: var(--purple-410);
     }
 }
 
@@ -120,15 +120,15 @@
 .section-title {
     font-size: 0.8rem;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--white-alpha-75);
 }
 
 .empty {
     margin: 0;
     font-size: 0.82rem;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--white-alpha-45);
     padding: 0.75rem;
-    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border: 1px dashed var(--white-alpha-12);
     border-radius: 8px;
     text-align: center;
 }
@@ -136,7 +136,7 @@
 .groups-table-wrapper {
     max-height: 220px;
     overflow-y: auto;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--white-alpha-8);
     border-radius: 8px;
 }
 
@@ -148,18 +148,18 @@
     thead th {
         position: sticky;
         top: 0;
-        background: #2a2a30;
+        background: var(--graphite-830);
         text-align: left;
         padding: 0.5rem 0.75rem;
         font-weight: 500;
-        color: rgba(255, 255, 255, 0.7);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        color: var(--white-alpha-70);
+        border-bottom: 1px solid var(--white-alpha-8);
     }
 
     tbody td {
         padding: 0.5rem 0.75rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.85);
+        border-bottom: 1px solid var(--white-alpha-5);
+        color: var(--white-alpha-85);
         word-break: break-word;
     }
 
@@ -173,7 +173,7 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--white-alpha-8);
 }
 
 .btn {
@@ -188,20 +188,20 @@
         opacity 0.15s ease;
 
     &--ghost {
-        background: rgba(255, 255, 255, 0.08);
-        color: rgba(255, 255, 255, 0.85);
+        background: var(--white-alpha-8);
+        color: var(--white-alpha-85);
 
         &:hover {
-            background: rgba(255, 255, 255, 0.14);
+            background: var(--white-alpha-14);
         }
     }
 
     &--primary {
-        background: #685fff;
-        color: #fff;
+        background: var(--accent-color);
+        color: var(--white);
 
         &:hover {
-            background: #7a6fff;
+            background: var(--purple-430);
         }
     }
 }

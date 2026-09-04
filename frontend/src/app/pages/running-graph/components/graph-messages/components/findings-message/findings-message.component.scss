@@ -38,7 +38,7 @@
 
 .title h3 {
     margin: 0;
-    color: var(--gray-050);
+    color: var(--gray-50);
     font-size: 1rem;
     font-weight: 600;
 }
@@ -66,7 +66,7 @@
 }
 
 .chip-truncated {
-    background: rgba(245, 66, 66, 0.15);
+    background: var(--red-alpha-15);
     color: var(--color-error);
 }
 
@@ -114,7 +114,7 @@
     tbody td {
         padding: 0.5rem 0.75rem;
         border-top: 1px solid var(--gray-775);
-        color: var(--gray-050);
+        color: var(--gray-50);
         vertical-align: top;
     }
 
@@ -169,26 +169,26 @@
 }
 
 .severity-info {
-    background-color: rgba(92, 158, 255, 0.15);
-    color: #5c9eff;
+    background-color: var(--blue-410-alpha-15);
+    color: var(--blue-410);
 }
 
 .severity-low {
-    background-color: rgba(79, 209, 197, 0.15);
-    color: #4fd1c5;
+    background-color: var(--teal-450-alpha-15);
+    color: var(--teal-450);
 }
 
 .severity-medium {
-    background-color: rgba(245, 166, 35, 0.15);
-    color: #f5a623;
+    background-color: var(--amber-alpha-15);
+    color: var(--color-findings);
 }
 
 .severity-high {
-    background-color: rgba(255, 140, 66, 0.15);
-    color: #ff8c42;
+    background-color: var(--orange-450-alpha-15);
+    color: var(--orange-450);
 }
 
 .severity-critical {
-    background-color: rgba(245, 66, 66, 0.15);
+    background-color: var(--red-alpha-15);
     color: var(--color-error);
 }

@@ -32,6 +32,7 @@
                         formControlName="name"
                         placeholder="Enter flow name"
                         class="form-control"
+                        autocomplete="off"
                     />
                 </div>
                 @if (flowForm.get('name')?.invalid && flowForm.get('name')?.touched) {

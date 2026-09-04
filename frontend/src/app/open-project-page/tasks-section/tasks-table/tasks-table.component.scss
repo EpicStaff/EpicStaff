@@ -1,37 +1,10 @@
-$bg-dark: #1e1e1e;
-$bg-item: #2a2a2a;
-$bg-item-hover: #3a3a3a;
-$accent-blue: #6562f5;
-$border-color: #404040;
-$text-light: #e0e0e0;
-$text-secondary: #aaa;
-$shadow-color: rgba(0, 0, 0, 0.2);
-$transition-default: all 0.2s ease;
-
 .wrapper {
     height: 100%;
     border-radius: 4px;
     overflow: hidden;
-    box-shadow: 1px 1px 10px rgba(3, 3, 5, 0.35);
+    box-shadow: 1px 1px 10px var(--stone-950-alpha-35);
 }
 
-// ::ng-deep .ag-grid-staff {
-//   .ag-center-cols-container {
-//     min-height: 180px;
-//   }
-// }
-// ::ng-deep .ag-grid-staff {
-//   .ag-viewport {
-//     &.ag-center-cols-viewport {
-//       min-height: 100px;
-//     }
-//   }
-// }
-// ::ng-deep .ag-grid-staff {
-//   .ag-root-wrapper {
-//     overflow: visible;
-//   }
-// }
 ::ng-deep .ag-grid-staff {
     .ag-header {
         border-top-left-radius: 8px;
@@ -57,10 +30,10 @@ $transition-default: all 0.2s ease;
     padding: 4px 10px;
     line-height: 1.2;
     border-radius: 6px;
-    background-color: #2a2a2a;
-    color: #e6e6e6;
-    border: 1px solid #3a3a3a;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    background-color: var(--graphite-780);
+    color: var(--gray-118);
+    border: 1px solid var(--graphite-600);
+    box-shadow: 0 1px 2px var(--black-alpha-10);
     transition: all 0.15s ease;
     cursor: pointer;
     font-weight: 500;
@@ -73,10 +46,10 @@ $transition-default: all 0.2s ease;
 }
 
 ::ng-deep .ag-grid-staff .tag:hover {
-    background-color: #333;
-    border-color: #444;
+    background-color: var(--graphite-640);
+    border-color: var(--gray-440);
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 4px var(--black-alpha-15);
 }
 //tools column
 //cells
@@ -87,13 +60,13 @@ $transition-default: all 0.2s ease;
     gap: 4px;
     margin: 5px 0;
     padding: 5px;
-    color: #f0f0f0; // Light text for visibility
+    color: var(--gray-240); // Light text for visibility
 
     .tool-item {
         display: flex;
         align-items: center;
-        background-color: #2a2a2a;
-        border: 1px solid $border-color;
+        background-color: var(--graphite-780);
+        border: 1px solid var(--gray-405);
 
         border-radius: 4px;
         padding: 6px 8px;
@@ -103,10 +76,10 @@ $transition-default: all 0.2s ease;
         .tool-icon {
             margin-right: 6px;
             font-style: normal;
-            color: #f0f0f0; // Light icon color
+            color: var(--gray-240); // Light icon color
         }
         &:hover {
-            background-color: #3a3a3a;
+            background-color: var(--graphite-600);
         }
         .tool-name-text {
             white-space: nowrap;
@@ -114,7 +87,7 @@ $transition-default: all 0.2s ease;
             text-overflow: ellipsis;
             font-size: 13px;
             font-weight: 500;
-            color: #f0f0f0; // Light text color
+            color: var(--gray-240); // Light text color
         }
     }
 }
@@ -124,7 +97,7 @@ $transition-default: all 0.2s ease;
     display: flex;
     align-items: flex-end;
     justify-content: flex-end;
-    color: $text-secondary;
+    color: var(--gray-450);
     font-style: italic;
     padding: 4px 8px;
     font-size: 0.8rem;
@@ -167,19 +140,19 @@ $transition-default: all 0.2s ease;
 
     .action-icon {
         font-size: 1.2rem;
-        color: #b1b1b1;
+        color: var(--gray-475);
         transition:
             color 0.2s,
             transform 0.2s;
 
         &:hover {
-            color: #3498db; // Change to a light blue on hover
+            color: var(--sky-600); // Change to a light blue on hover
             transform: scale(1.1); // Slightly increase the size on hover
         }
     }
 }
 ::ng-deep .ag-grid-staff .ag-cell.popup-open {
-    border: 1px solid #6562f5 !important; /* Example: a blue border */
+    border: 1px solid var(--indigo-650) !important; /* Example: a blue border */
 }
 
 ::ng-deep .ag-grid-staff .llm-item {
@@ -187,22 +160,22 @@ $transition-default: all 0.2s ease;
     align-items: center;
     margin: 6px auto !important;
     padding: 6px 8px;
-    background-color: #2a2a2a;
+    background-color: var(--graphite-780);
     border-radius: 4px;
     cursor: default; // or pointer if you want it clickable
     transition:
         background-color 0.3s,
         border 0.3s;
     width: 100%; // Ensure the item uses available width inside the cell
-    border: 1px solid $border-color;
+    border: 1px solid var(--gray-405);
 
     &:hover {
-        background-color: #3a3a3a;
+        background-color: var(--graphite-600);
     }
 
     &.selected {
-        background-color: #444;
-        border: 2px solid #6562f5;
+        background-color: var(--gray-440);
+        border: 2px solid var(--indigo-650);
     }
 
     .chatgpt-logo {
@@ -231,7 +204,7 @@ $transition-default: all 0.2s ease;
             max-width: 100%; // Allow text to stretch based on content
 
             .custom-name {
-                color: #aaa;
+                color: var(--gray-450);
                 margin-left: 5px;
                 white-space: nowrap;
                 overflow: hidden;
@@ -242,18 +215,18 @@ $transition-default: all 0.2s ease;
 }
 
 ::ng-deep .ag-grid-staff .cell-warning {
-    border: 1px solid orange !important;
+    border: 1px solid var(--orange-600) !important;
 }
 
 :host ::ng-deep .required-header .ag-header-cell-text::after {
     content: '*';
-    color: var(--color-required-asterisk, var(--accent-color));
+    color: var(--color-required-asterisk);
     margin-left: 4px;
 }
 
 :host ::ng-deep .cell-required-invalid {
-    border: 1px solid rgba(255, 77, 79, 0.95) !important;
-    box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
+    border: 1px solid var(--red-450-alpha-95) !important;
+    box-shadow: inset 0 0 0 1px var(--red-450-alpha-35);
     border-radius: 6px;
 }
 

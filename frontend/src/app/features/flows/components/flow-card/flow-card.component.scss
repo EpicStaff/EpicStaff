@@ -8,15 +8,15 @@
     border-radius: 10px;
     font-family: 'Inter', sans-serif;
     box-shadow:
-        0px 6px 10px 0px rgba(0, 0, 0, 0.15),
-        0px 2px 3px 0px rgba(0, 0, 0, 0.3);
+        0px 6px 10px 0px var(--black-alpha-15),
+        0px 2px 3px 0px var(--black-alpha-30);
     cursor: pointer;
     min-height: 100px;
     width: 100%;
     box-sizing: border-box;
 
     &:hover {
-        background: #313438;
+        background: var(--graphite-690);
     }
 
     &.selected {
@@ -66,7 +66,7 @@
                 .flow-id {
                     font-size: 14px;
                     font-weight: 500;
-                    color: rgba(217, 217, 222, 0.4);
+                    color: var(--fog-alpha-40);
                     white-space: nowrap;
                     flex-shrink: 0;
                 }
@@ -74,7 +74,7 @@
 
             .flow-description {
                 font-size: 12px;
-                color: rgba(217, 217, 222, 0.6);
+                color: var(--fog-alpha-60);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -82,7 +82,7 @@
                 height: 16px;
 
                 &.placeholder {
-                    color: rgba(217, 217, 222, 0.3);
+                    color: var(--fog-alpha-30);
                 }
             }
         }
@@ -135,8 +135,8 @@
                 font-size: 12px;
                 font-weight: 400;
                 white-space: nowrap;
-                background: rgba(217, 217, 222, 0.08);
-                color: rgba(217, 217, 222, 0.6);
+                background: var(--fog-alpha-8);
+                color: var(--fog-alpha-60);
             }
         }
 
@@ -149,12 +149,12 @@
             overflow: hidden;
 
             .date-part {
-                color: rgba(217, 217, 222, 0.85);
+                color: var(--fog-alpha-85);
                 font-weight: 400;
             }
 
             .time-part {
-                color: rgba(217, 217, 222, 0.4);
+                color: var(--fog-alpha-40);
                 font-weight: 400;
             }
         }
@@ -177,7 +177,7 @@
             transition: background 0.15s ease;
 
             &:hover {
-                background: #313438;
+                background: var(--graphite-690);
             }
 
             .subflow-main {
@@ -210,7 +210,7 @@
                         .flow-id {
                             font-size: 13px;
                             font-weight: 400;
-                            color: rgba(217, 217, 222, 0.4);
+                            color: var(--fog-alpha-40);
                             flex-shrink: 0;
                             white-space: nowrap;
                         }
@@ -218,13 +218,13 @@
 
                     .subflow-description {
                         font-size: 12px;
-                        color: rgba(217, 217, 222, 0.6);
+                        color: var(--fog-alpha-60);
                         white-space: nowrap;
                         overflow: hidden;
                         text-overflow: ellipsis;
 
                         &.placeholder {
-                            color: rgba(217, 217, 222, 0.3);
+                            color: var(--fog-alpha-30);
                         }
                     }
                 }
@@ -254,8 +254,8 @@
                         font-size: 11px;
                         font-weight: 400;
                         white-space: nowrap;
-                        background: rgba(217, 217, 222, 0.08);
-                        color: rgba(217, 217, 222, 0.6);
+                        background: var(--fog-alpha-8);
+                        color: var(--fog-alpha-60);
                     }
                 }
 
@@ -268,11 +268,11 @@
                     overflow: hidden;
 
                     .date-part {
-                        color: rgba(217, 217, 222, 0.8);
+                        color: var(--fog-alpha-80);
                     }
 
                     .time-part {
-                        color: rgba(217, 217, 222, 0.4);
+                        color: var(--fog-alpha-40);
                     }
                 }
             }

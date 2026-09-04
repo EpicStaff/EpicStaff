@@ -1,15 +1,5 @@
-@use 'sass:color';
-
-$accent-color: #685fff;
-$background-color: #1a181a;
-$card-background: rgba(255, 255, 255, 0.05);
-$border-color: #2a2a2a;
-$text-color: #ebebeb;
-$muted-text-color: #999999;
-$purple-accent: rgba(104, 95, 255, 0.5);
-
 .settings-section {
-    color: $text-color;
+    color: var(--gray-108);
     padding-inline: 3rem;
     padding-top: 1rem;
     padding-bottom: 1.7rem;
@@ -18,31 +8,31 @@ $purple-accent: rgba(104, 95, 255, 0.5);
     min-width: 0;
 
     .settings-group {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--white-alpha-3-flat);
         border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 4px 12px var(--black-alpha-15);
+        border: 1px solid var(--white-alpha-8);
         overflow: visible;
         min-width: 0;
         box-sizing: border-box;
 
         .group-header {
             padding: 1rem 1.5rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--white-alpha-5);
+            border-bottom: 1px solid var(--white-alpha-8);
             border-radius: 12px 12px 0 0;
 
             h3 {
                 margin: 0;
                 font-size: 1rem;
                 font-weight: 500;
-                color: $accent-color;
+                color: var(--accent-color);
             }
 
             p {
                 margin: 0.5rem 0 0;
                 font-size: 0.85rem;
-                color: $muted-text-color;
+                color: var(--gray-595);
                 line-height: 1.4;
             }
         }
@@ -50,12 +40,12 @@ $purple-accent: rgba(104, 95, 255, 0.5);
         &.hierarchical-group,
         &.memory-group {
             margin-top: 2rem;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--white-alpha-3-flat);
+            border: 1px solid var(--white-alpha-8);
 
             .group-header {
-                background: rgba(255, 255, 255, 0.05);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                background: var(--white-alpha-5);
+                border-bottom: 1px solid var(--white-alpha-8);
             }
         }
     }
@@ -86,7 +76,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
             h3 {
                 margin: 0;
                 font-size: 14px;
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 font-weight: 400;
             }
 
@@ -97,11 +87,11 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                 left: 1.5rem;
                 right: 1.5rem;
                 height: 1px;
-                background: rgba(255, 255, 255, 0.06);
+                background: var(--white-alpha-6);
             }
 
             &:hover {
-                background: rgba(255, 255, 255, 0.02);
+                background: var(--white-alpha-2);
             }
 
             .setting-label {
@@ -111,7 +101,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                 padding-right: 1.5rem;
 
                 .setting-title {
-                    color: $text-color;
+                    color: var(--gray-108);
                     font-weight: 500;
                     font-size: 0.95rem;
                     display: flex;
@@ -121,7 +111,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                 .setting-description {
                     font-size: 0.8rem;
-                    color: $muted-text-color;
+                    color: var(--gray-595);
                     margin-top: 0.25rem;
                     line-height: 1.4;
                 }
@@ -149,29 +139,29 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                     min-width: 0;
                     max-width: 100%;
                     flex-shrink: 1;
-                    background: rgba(20, 20, 20, 0.4);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    background: var(--graphite-990-alpha-40);
+                    border: 1px solid var(--white-alpha-10);
                     border-radius: 8px;
                     overflow: hidden;
                     cursor: pointer;
                     transition: all 0.2s ease;
 
                     &:hover {
-                        border-color: rgba($accent-color, 0.3);
+                        border-color: var(--purple-alpha-30);
                     }
 
                     &.disabled {
                         cursor: default;
 
                         &:hover {
-                            border-color: rgba(255, 255, 255, 0.1);
+                            border-color: var(--white-alpha-10);
                         }
                     }
 
                     .toggle-option {
                         padding: 0.5rem 1rem;
                         font-size: 0.85rem;
-                        color: $muted-text-color;
+                        color: var(--gray-595);
                         transition: all 0.2s ease;
                         flex: 1 1 0;
                         min-width: 0;
@@ -182,18 +172,18 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         width: 100%;
 
                         &:hover:not(.active):not(.disabled-option) {
-                            background: rgba(255, 255, 255, 0.05);
+                            background: var(--white-alpha-5);
                         }
 
                         &.active {
-                            background: rgba($accent-color, 0.2);
-                            color: $text-color;
+                            background: var(--purple-alpha-20);
+                            color: var(--gray-108);
                         }
 
                         &.disabled-option {
                             cursor: default;
-                            color: #666666;
-                            background: rgba(255, 255, 255, 0.02);
+                            color: var(--gray-605);
+                            background: var(--white-alpha-2);
                             display: flex;
                             flex-direction: row;
                             align-items: center;
@@ -203,7 +193,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                             .coming-soon-label {
                                 font-size: 0.7rem;
-                                color: #888888;
+                                color: var(--gray-540);
                                 font-style: italic;
                                 font-weight: 300;
                             }
@@ -245,7 +235,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                             width: 16px;
                             height: 16px;
                             margin-top: -6px; /* center the thumb on the track */
-                            background: $accent-color;
+                            background: var(--accent-color);
                             border-radius: 50%;
                             transition:
                                 transform 0.2s ease,
@@ -253,7 +243,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                             &:hover {
                                 transform: scale(1.1);
-                                box-shadow: 0 0 0 4px rgba($accent-color, 0.2);
+                                box-shadow: 0 0 0 4px var(--purple-alpha-20);
                             }
                         }
 
@@ -261,15 +251,15 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         &::-moz-range-track {
                             height: 6px;
                             border-radius: 3px;
-                            background: grey;
+                            background: var(--gray-580);
                         }
 
                         /* Firefox thumb */
                         &::-moz-range-thumb {
                             width: 18px;
                             height: 18px;
-                            background: $text-color;
-                            border: 2px solid $accent-color;
+                            background: var(--gray-108);
+                            border: 2px solid var(--accent-color);
                             border-radius: 50%;
                             transition:
                                 transform 0.2s ease,
@@ -277,7 +267,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                             &:hover {
                                 transform: scale(1.1);
-                                box-shadow: 0 0 0 4px rgba($accent-color, 0.2);
+                                box-shadow: 0 0 0 4px var(--purple-alpha-20);
                             }
                         }
                     }
@@ -289,7 +279,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                         span {
                             font-size: 0.8rem;
-                            color: $muted-text-color;
+                            color: var(--gray-595);
                         }
                     }
                 }
@@ -303,34 +293,34 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         width: 100%;
                         padding: 0.6rem 1rem;
                         padding-right: 2rem;
-                        background: rgba(20, 20, 20, 0.4);
-                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        background: var(--graphite-990-alpha-40);
+                        border: 1px solid var(--white-alpha-10);
                         border-radius: 8px;
-                        color: $text-color;
+                        color: var(--gray-108);
                         font-size: 0.9rem;
                         appearance: none;
                         cursor: pointer;
                         transition: all 0.2s ease;
 
                         &.not-specified {
-                            border-color: rgba(255, 165, 0, 0.3); // Orange-ish border
-                            color: $muted-text-color;
+                            border-color: var(--orange-600-alpha-30); // Orange-ish border
+                            color: var(--gray-595);
                             font-style: italic;
                         }
 
                         &:hover {
-                            background: rgba(30, 30, 30, 0.4);
-                            border-color: rgba($accent-color, 0.3);
+                            background: var(--graphite-875-alpha-40);
+                            border-color: var(--purple-alpha-30);
                         }
 
                         &:focus {
                             outline: none;
-                            border-color: $accent-color;
-                            box-shadow: 0 0 0 2px rgba($accent-color, 0.1);
+                            border-color: var(--accent-color);
+                            box-shadow: 0 0 0 2px var(--purple-alpha-10);
                         }
 
                         option[value='null'] {
-                            color: $muted-text-color;
+                            color: var(--gray-595);
                             font-style: italic;
                         }
                     }
@@ -340,36 +330,36 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         right: 0.6rem;
                         top: 50%;
                         transform: translateY(-50%);
-                        color: $muted-text-color;
+                        color: var(--gray-595);
                         pointer-events: none;
                         transition: color 0.2s ease;
                         font-size: 1.2rem;
                     }
 
                     &:hover i.ti-chevron-down {
-                        color: $accent-color;
+                        color: var(--accent-color);
                     }
                 }
 
                 input[type='number'] {
                     width: 120px;
                     padding: 0.6rem 1rem;
-                    background: rgba(20, 20, 20, 0.4);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    background: var(--graphite-990-alpha-40);
+                    border: 1px solid var(--white-alpha-10);
                     border-radius: 8px;
-                    color: $text-color;
+                    color: var(--gray-108);
                     font-size: 0.9rem;
                     transition: all 0.2s ease;
 
                     &:hover {
-                        background: rgba(30, 30, 30, 0.4);
-                        border-color: rgba($accent-color, 0.3);
+                        background: var(--graphite-875-alpha-40);
+                        border-color: var(--purple-alpha-30);
                     }
 
                     &:focus {
                         outline: none;
-                        border-color: $accent-color;
-                        box-shadow: 0 0 0 2px rgba($accent-color, 0.1);
+                        border-color: var(--accent-color);
+                        box-shadow: 0 0 0 2px var(--purple-alpha-10);
                     }
 
                     &::-webkit-inner-spin-button {

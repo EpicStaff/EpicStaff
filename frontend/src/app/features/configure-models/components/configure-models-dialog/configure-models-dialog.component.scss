@@ -1,6 +1,6 @@
 ::ng-deep :root {
-    --configure-models-dialog-active-color: #d9d9de;
-    --configure-models-dialog-inactive-color: #685fff;
+    --configure-models-dialog-active-color: var(--fog-200);
+    --configure-models-dialog-inactive-color: var(--accent-color);
 }
 
 .configure-models-dialog {
@@ -96,7 +96,7 @@
     &__tab + &__tab::before {
         content: '/';
         margin-right: 10px;
-        color: var(--color-text-secondary, var(--color-text-primary));
+        color: var(--color-text-secondary);
         user-select: none;
         font-size: 20px;
         font-weight: 500;

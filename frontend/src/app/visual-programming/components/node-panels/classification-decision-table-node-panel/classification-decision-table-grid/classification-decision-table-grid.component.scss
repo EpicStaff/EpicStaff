@@ -18,7 +18,7 @@
 
     h3 {
         margin: 0;
-        color: #ffffffb3;
+        color: var(--white-alpha-70);
         font-size: 1rem;
         font-weight: 400;
         display: flex;
@@ -32,9 +32,9 @@
             width: 18px;
             height: 18px;
             border-radius: 50%;
-            color: #a89fff;
-            background: rgba(104, 95, 255, 0.2);
-            border: 1px solid rgba(104, 95, 255, 0.35);
+            color: var(--purple-440);
+            background: var(--purple-alpha-20);
+            border: 1px solid var(--purple-alpha-35);
             font-size: 0.75rem;
             cursor: help;
             transition:
@@ -42,9 +42,9 @@
                 color 0.2s ease;
 
             &:hover {
-                color: #fff;
-                background: rgba(104, 95, 255, 0.45);
-                border-color: rgba(104, 95, 255, 0.6);
+                color: var(--white);
+                background: var(--purple-alpha-45);
+                border-color: var(--purple-alpha-60);
             }
         }
     }
@@ -61,7 +61,7 @@
     padding: 0 12px;
     border-radius: 6px;
     background: transparent;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     color: var(--color-text-primary);
     font-family: 'Inter', sans-serif;
     font-size: 13px;
@@ -71,7 +71,7 @@
 }
 
 .grid-header-secondary-btn:hover:not(:disabled) {
-    border-color: var(--purple-primary);
+    border-color: var(--accent-color);
 }
 
 .grid-header-secondary-btn:disabled {
@@ -83,9 +83,9 @@
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     background: transparent;
-    color: var(--purple-primary);
+    color: var(--accent-color);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -94,14 +94,14 @@
 }
 
 .grid-header-icon-btn:hover {
-    background: rgba(255, 80, 80, 0.08);
+    background: var(--red-440-alpha-8);
 }
 
 .group-menu-dropdown {
-    background: #27272b;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--graphite-800);
+    border: 1px solid var(--white-alpha-15);
     border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 16px var(--black-alpha-50);
     min-width: 180px;
     padding: 4px 0;
 }
@@ -109,13 +109,13 @@
 .group-menu-item {
     padding: 0.45rem 0.75rem;
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--white-alpha-85);
     cursor: pointer;
     transition: background 0.1s ease;
 
     &:hover {
-        background: rgba(104, 95, 255, 0.2);
-        color: #fff;
+        background: var(--purple-alpha-20);
+        color: var(--white);
     }
 }
 
@@ -130,7 +130,7 @@
     align-items: center;
     gap: 0.4rem;
     background: var(--accent-color);
-    color: #ffffff;
+    color: var(--white);
     border: none;
     border-radius: 6px;
     padding: 0.4rem 0.85rem;
@@ -142,7 +142,7 @@
     flex-shrink: 0;
 
     &:hover {
-        background: #7a6fff;
+        background: var(--purple-430);
     }
 
     i {
@@ -160,7 +160,7 @@
 .field-controls-divider {
     width: 1px;
     height: 18px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--white-alpha-15);
     margin: 0 0.2rem;
 }
 
@@ -170,7 +170,7 @@
     gap: 0.25rem;
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--white-alpha-85);
     font-size: 0.75rem;
     font-family: 'Menlo', 'Monaco', monospace;
 
@@ -188,22 +188,22 @@
     }
 
     &--expr {
-        background: rgba(104, 95, 255, 0.2);
-        border: 1px solid rgba(104, 95, 255, 0.4);
+        background: var(--purple-alpha-20);
+        border: 1px solid var(--purple-alpha-40);
 
         .field-chip-prefix {
-            background: rgba(104, 95, 255, 0.6);
-            color: #fff;
+            background: var(--purple-alpha-60);
+            color: var(--white);
         }
     }
 
     &--manip {
-        background: rgba(255, 165, 0, 0.15);
-        border: 1px solid rgba(255, 165, 0, 0.4);
+        background: var(--orange-600-alpha-15);
+        border: 1px solid var(--orange-600-alpha-40);
 
         .field-chip-prefix {
-            background: rgba(255, 165, 0, 0.6);
-            color: #fff;
+            background: var(--orange-600-alpha-60);
+            color: var(--white);
         }
     }
 
@@ -215,15 +215,15 @@
 
         &:hover {
             opacity: 1;
-            color: #ff5449;
+            color: var(--red-415);
         }
     }
 
     &--hidden {
         opacity: 0.45;
         border-style: dashed;
-        border-color: rgba(255, 165, 0, 0.4);
-        background: rgba(255, 165, 0, 0.08);
+        border-color: var(--orange-600-alpha-40);
+        background: var(--orange-600-alpha-8);
         cursor: pointer;
         transition:
             opacity 0.15s ease,
@@ -231,12 +231,12 @@
 
         i {
             font-size: 0.75rem;
-            color: rgba(255, 165, 0, 0.7);
+            color: var(--orange-600-alpha-70);
         }
 
         &:hover {
             opacity: 0.8;
-            background: rgba(255, 165, 0, 0.15);
+            background: var(--orange-600-alpha-15);
         }
     }
 }
@@ -250,24 +250,24 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.25rem 0.6rem;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--white-alpha-15);
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.7);
+    background: var(--white-alpha-6);
+    color: var(--white-alpha-70);
     font-size: 0.75rem;
     cursor: pointer;
     transition: all 0.15s ease;
 
     &--expr:hover {
-        background: rgba(104, 95, 255, 0.15);
-        border-color: rgba(104, 95, 255, 0.4);
-        color: #fff;
+        background: var(--purple-alpha-15);
+        border-color: var(--purple-alpha-40);
+        color: var(--white);
     }
 
     &--manip:hover {
-        background: rgba(255, 165, 0, 0.12);
-        border-color: rgba(255, 165, 0, 0.4);
-        color: #fff;
+        background: var(--orange-600-alpha-12);
+        border-color: var(--orange-600-alpha-40);
+        color: var(--white);
     }
 }
 
@@ -309,7 +309,7 @@
     margin-left: 2px;
     border: 1px solid var(--color-text-primary);
     border-radius: 4px;
-    background: #212325;
+    background: var(--graphite-900);
     color: var(--color-text-primary);
     display: inline-flex;
     align-items: center;
@@ -343,13 +343,13 @@
 }
 
 .group-overlay-chevron.active {
-    border-color: var(--purple-primary);
-    color: var(--purple-primary);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
 }
 
 .group-overlay-bracket.active {
-    border-left-color: var(--purple-primary);
-    border-bottom-color: var(--purple-primary);
+    border-left-color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
 }
 
 .row-drop-indicator {
@@ -357,10 +357,10 @@
     left: 28px;
     right: 0;
     height: 2px;
-    background: var(--purple-primary);
+    background: var(--accent-color);
     z-index: 3;
     pointer-events: none;
-    box-shadow: 0 0 4px rgba(104, 95, 255, 0.6);
+    box-shadow: 0 0 4px var(--purple-alpha-60);
 }
 
 .hidden-col-badge {
@@ -368,9 +368,9 @@
     width: 20px;
     height: 20px;
     border-radius: 5px;
-    background: #27272b;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    color: rgba(255, 255, 255, 0.7);
+    background: var(--graphite-800);
+    border: 1px solid var(--white-alpha-25);
+    color: var(--white-alpha-70);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -386,9 +386,9 @@
     top: 0;
 
     &:hover {
-        background: var(--inactive-purple);
-        color: #fff;
-        border-color: rgba(104, 95, 255, 0.7);
+        background: var(--purple-alpha-40);
+        color: var(--white);
+        border-color: var(--purple-alpha-70);
     }
 
     i {
@@ -423,9 +423,9 @@
         border-color 0.15s ease;
 
     &:hover {
-        background: rgba(104, 95, 255, 0.15);
-        color: #a89fff;
-        border-color: #a89fff;
+        background: var(--purple-alpha-15);
+        color: var(--purple-440);
+        border-color: var(--purple-440);
     }
 
     i {
@@ -437,10 +437,10 @@
 .context-menu {
     position: fixed;
     z-index: 10000;
-    background: #27272b;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--graphite-800);
+    border: 1px solid var(--white-alpha-15);
     border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 16px var(--black-alpha-50);
     min-width: 160px;
     padding: 4px 0;
 }
@@ -451,38 +451,38 @@
     gap: 0.5rem;
     padding: 0.45rem 0.75rem;
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--white-alpha-85);
     cursor: pointer;
     transition: background 0.1s ease;
 
     i {
         font-size: 1rem;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--white-alpha-50);
     }
 
     &:hover {
-        background: rgba(104, 95, 255, 0.2);
-        color: #fff;
+        background: var(--purple-alpha-20);
+        color: var(--white);
 
         i {
-            color: rgba(104, 95, 255, 0.9);
+            color: var(--purple-alpha-90);
         }
     }
 
     &--danger {
-        color: var(--error-color, #ff3b30);
+        color: var(--red-410);
 
         i {
-            color: var(--error-color, #ff3b30);
+            color: var(--red-410);
             opacity: 0.8;
         }
 
         &:hover {
-            background: rgba(255, 59, 48, 0.15);
-            color: var(--error-color, #ff3b30);
+            background: var(--red-410-alpha-15);
+            color: var(--red-410);
 
             i {
-                color: var(--error-color, #ff3b30);
+                color: var(--red-410);
                 opacity: 1;
             }
         }
@@ -491,7 +491,7 @@
 
 .context-menu-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--white-alpha-10);
     margin: 3px 0;
 }
 
@@ -503,12 +503,12 @@
     .ag-root-wrapper {
         --ag-cell-focus-border-color: var(--accent-color);
         --ag-range-selection-border-color: var(--accent-color);
-        --ag-range-selection-background-color: rgba(104, 95, 255, 0.1);
+        --ag-range-selection-background-color: var(--purple-alpha-10);
         --ag-range-selection-border-style: solid;
         --ag-input-focus-border-color: var(--accent-color);
         // Kill the blue box-shadow ag-grid quartz applies to focused inputs
         --ag-input-focus-box-shadow: none;
-        --ag-selected-row-background-color: rgba(104, 95, 255, 0.08);
+        --ag-selected-row-background-color: var(--purple-alpha-8);
     }
 
     // Suppress browser-native blue outline on any input/focusable element inside a cell
@@ -586,7 +586,7 @@
             border-radius: 3px !important;
 
             &.ag-checked {
-                background-color: #ffffff !important;
+                background-color: var(--white) !important;
 
                 &::after {
                     color: var(--accent-color) !important;
@@ -596,7 +596,7 @@
 
             &:not(.ag-checked) {
                 background-color: transparent !important;
-                border-color: rgba(255, 255, 255, 0.3) !important;
+                border-color: var(--white-alpha-30) !important;
             }
         }
 
@@ -616,7 +616,7 @@
         }
 
         .ti-x:hover {
-            color: rgba(255, 255, 255, 0.9) !important;
+            color: var(--white-alpha-90) !important;
         }
 
         [col-id='actions'] .icon-header i {
@@ -624,15 +624,15 @@
         }
 
         .cell-warning {
-            background-color: rgba(255, 59, 48, 0.15) !important;
-            border: 1px solid #ff3b30 !important;
+            background-color: var(--red-410-alpha-15) !important;
+            border: 1px solid var(--red-410) !important;
         }
 
         .ag-root-wrapper:not(:focus-within) .ag-cell.cell-required-invalid,
         .ag-root-wrapper:focus-within .ag-cell.cell-required-invalid,
         .ag-cell.cell-required-invalid {
-            border: 1px solid rgba(255, 77, 79, 0.95) !important;
-            box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35) !important;
+            border: 1px solid var(--red-450-alpha-95) !important;
+            box-shadow: inset 0 0 0 1px var(--red-450-alpha-35) !important;
             border-radius: 6px;
         }
 
@@ -644,7 +644,7 @@
         // Frozen column separator — 2px right border on the pinned-left container
         .ag-pinned-left-cols-container,
         .ag-pinned-left-header {
-            border-right: 4px solid #3f4144 !important;
+            border-right: 4px solid var(--graphite-695) !important;
         }
     }
 
@@ -684,7 +684,7 @@
 }
 
 :host ::ng-deep .ag-header-cell[col-id='selection'] {
-    border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-right: 1px solid var(--white-alpha-6) !important;
 }
 
 :host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-row-drag,

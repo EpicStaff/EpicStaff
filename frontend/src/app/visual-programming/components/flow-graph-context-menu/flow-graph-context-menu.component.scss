@@ -1,33 +1,33 @@
 .context-menu {
     width: 300px;
     min-width: 300px;
-    background: #181818;
+    background: var(--graphite-1005);
 
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 8px var(--black-alpha-30);
     z-index: 1000;
 
     border-radius: 15px;
-    color: hsl(0, 0%, 94%);
+    color: var(--gray-240);
     height: auto;
 
     .search-container {
         display: flex;
         align-items: center;
-        background: #1e1e1e; /* Darker background */
+        background: var(--graphite-875); /* Darker background */
         margin: 16px;
         padding: 10px 10px; /* Smaller padding for compact size */
         border-radius: 6px; /* Slightly rounded corners */
-        border: 1px solid #333; /* Thin, subtle border */
+        border: 1px solid var(--graphite-640); /* Thin, subtle border */
 
         max-height: 40px; /* Reduce height */
         margin-bottom: 8px;
         &:focus-within {
-            border-color: #555; /* Softer focus effect */
+            border-color: var(--gray-555); /* Softer focus effect */
         }
 
         i {
             font-size: 14px; /* Make the icon smaller */
-            color: #888; /* Soft color */
+            color: var(--gray-540); /* Soft color */
             margin-right: 6px;
         }
 
@@ -35,14 +35,14 @@
             flex: 1;
             background: transparent;
             border: none;
-            color: #f0f0f0;
+            color: var(--gray-240);
             font-size: 13px; /* Slightly smaller text */
             outline: none;
             padding: 2px;
             line-height: 1; /* Align text properly */
 
             &::placeholder {
-                color: #666;
+                color: var(--gray-605);
                 font-size: 13px;
             }
         }
@@ -57,7 +57,7 @@
         button {
             background: transparent;
             border: none;
-            color: #aaa;
+            color: var(--gray-450);
             font-size: 14px;
             padding: 8px;
             cursor: pointer;
@@ -69,12 +69,12 @@
             text-align: center;
 
             &:hover {
-                color: #fff;
+                color: var(--white);
             }
 
             &.active {
-                color: #fff;
-                border-bottom: 2px solid #fff;
+                color: var(--white);
+                border-bottom: 2px solid var(--white);
             }
         }
     }
@@ -92,12 +92,12 @@
 
             li {
                 padding: 8px 0;
-                border-bottom: 1px solid #333;
+                border-bottom: 1px solid var(--graphite-640);
                 &:last-child {
                     border-bottom: none;
                 }
                 &:hover {
-                    background: #2a2a2a;
+                    background: var(--graphite-780);
                 }
             }
         }

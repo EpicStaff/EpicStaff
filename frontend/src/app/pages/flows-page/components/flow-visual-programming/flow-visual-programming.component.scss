@@ -36,9 +36,9 @@ app-flow-header {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: #2a1a1a;
-    color: #f87171;
-    border: 1px solid #7f1d1d;
+    background: var(--maroon-960);
+    color: var(--red-390);
+    border: 1px solid var(--maroon-900);
     border-radius: 8px;
     font-size: 0.85rem;
     font-weight: 500;
@@ -76,7 +76,7 @@ app-flow-header {
 
     &:hover::after,
     &.dragging::after {
-        background-color: #675fff;
+        background-color: var(--accent-color);
     }
 
     &.collapsed {
@@ -106,13 +106,12 @@ app-flow-header {
         border-color 0.15s ease;
 
     &:hover {
-        border-color: var(--accent-color, #675fff2a);
-        // border-color: var(--accent-color, #685fff);
+        border-color: var(--accent-color);
     }
 
     &__icon {
         display: inline-flex;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--white-alpha-60);
     }
 }
 

@@ -40,10 +40,10 @@
         gap: 0.75rem;
         padding: 0.75rem 1rem;
         margin-bottom: 1rem;
-        background-color: rgba(244, 67, 54, 0.1);
-        border: 1px solid rgba(244, 67, 54, 0.3);
+        background-color: var(--scarlet-500-alpha-10);
+        border: 1px solid var(--scarlet-500-alpha-30);
         border-radius: 8px;
-        color: #f44336;
+        color: var(--scarlet-500);
         font-size: 0.875rem;
 
         mat-icon {

@@ -11,8 +11,8 @@
     position: fixed;
     z-index: 2;
     box-sizing: border-box;
-    background: #212325;
-    border: 1px solid #2c2c2e;
+    background: var(--graphite-900);
+    border: 1px solid var(--graphite-700);
     border-radius: 8px;
     width: min(1028px, calc(100vw - 32px));
     max-width: 1028px;
@@ -46,7 +46,7 @@
         padding-right: 24px;
         overscroll-behavior: contain;
         scrollbar-width: thin;
-        scrollbar-color: #2b2d30 transparent;
+        scrollbar-color: var(--graphite-750) transparent;
     }
 
     .shortcuts__content::-webkit-scrollbar {
@@ -73,7 +73,7 @@
     }
 
     .shortcuts__content::-webkit-scrollbar-thumb {
-        background: #2b2d30;
+        background: var(--graphite-750);
         border-radius: 999px;
     }
 
@@ -147,7 +147,7 @@
     font-weight: 500;
     font-size: 18px;
     line-height: 1;
-    color: #d9d9de;
+    color: var(--fog-200);
 
     white-space: nowrap;
     overflow: hidden;
@@ -170,7 +170,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #d9d9de;
+    color: var(--fog-200);
     border-radius: 6px;
     opacity: 0.8;
     transition:
@@ -179,14 +179,14 @@
 }
 
 .shortcuts__size-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--white-alpha-6);
     opacity: 1;
 }
 
 .shortcuts__size-btn:disabled {
     cursor: default;
     opacity: 1;
-    color: #2b2d30;
+    color: var(--graphite-750);
     background: transparent;
 }
 
@@ -204,7 +204,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #d9d9de;
+    color: var(--fog-200);
     border-radius: 6px;
     opacity: 0.85;
     transition:
@@ -213,7 +213,7 @@
 }
 
 .shortcuts__close-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--white-alpha-6);
     opacity: 1;
 }
 
@@ -249,7 +249,7 @@
     font-weight: 500;
     font-size: 14px;
     line-height: 1.3;
-    color: #d9d9de;
+    color: var(--fog-200);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -272,14 +272,14 @@
 }
 
 .shortcuts__row--alt {
-    background: rgba(21, 21, 21, 0.28);
+    background: var(--color-ks-transparent-black-28);
 }
 
 .shortcuts__label {
     font-weight: 400;
     font-size: 12px;
     line-height: 1.3;
-    color: rgba(217, 217, 222, 0.8);
+    color: var(--fog-alpha-80);
     white-space: nowrap;
 }
 
@@ -296,11 +296,11 @@
     height: 24px;
     padding: 4px 8px;
     border-radius: 2px;
-    border: 1px solid #2c2c2e;
+    border: 1px solid var(--graphite-700);
     font-weight: 400;
     font-size: 12px;
     line-height: 1.3;
-    color: #d9d9de;
+    color: var(--fog-200);
 }
 
 @media (max-width: bp.$breakpoint-shortcuts) {

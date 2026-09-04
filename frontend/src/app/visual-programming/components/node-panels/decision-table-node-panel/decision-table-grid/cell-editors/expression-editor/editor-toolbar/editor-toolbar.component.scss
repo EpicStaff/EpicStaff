@@ -1,8 +1,8 @@
 .editor-toolbar {
     display: flex;
     padding: 4px 8px;
-    background-color: #252526;
-    border-bottom: 1px solid var(--color-divider-subtle, #333);
+    background-color: var(--graphite-812);
+    border-bottom: 1px solid var(--color-divider-subtle);
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
     gap: 4px;
@@ -10,13 +10,13 @@
 
     .separator {
         width: 1px;
-        background-color: var(--color-divider-subtle, #444);
+        background-color: var(--color-divider-subtle);
         margin: 0 2px;
     }
 
     .toolbar-btn {
         background: transparent;
-        border: 1px solid var(--color-divider-subtle, #444);
+        border: 1px solid var(--color-divider-subtle);
         border-radius: 3px;
         padding: 2px 6px;
         cursor: pointer;
@@ -27,15 +27,15 @@
         font-size: 11px;
         transition: background 0.2s;
         min-width: 24px;
-        color: #d9d9de;
+        color: var(--fog-200);
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            background-color: var(--white-alpha-10);
+            color: var(--white);
         }
 
         .keyword {
-            color: #c586c0;
+            color: var(--magenta-500);
             font-weight: bold;
         }
     }

@@ -6,40 +6,40 @@
     border-radius: 5px;
     font-size: 0.85em;
     font-weight: 400;
-    color: #fff;
+    color: var(--white);
     white-space: nowrap;
     letter-spacing: 0.01em;
     transition: background 0.18s;
 }
 .status-running {
-    background: rgba(94, 158, 255, 0.18);
-    color: #5e9eff;
+    background: var(--blue-alpha-18);
+    color: var(--blue-400);
 }
 .status-error {
-    background: rgba(224, 87, 91, 0.18);
-    color: #e0575b;
+    background: var(--red-580-alpha-18);
+    color: var(--red-580);
 }
 .status-stop {
-    background: rgba(10, 8, 8, 0.18);
-    color: #eca6a8;
+    background: var(--umber-950-alpha-18);
+    color: var(--rose-450);
 }
 .status-completed {
-    background: rgba(107, 219, 154, 0.18);
-    color: #3bb77e;
+    background: var(--mint-500-alpha-18);
+    color: var(--green-460);
 }
 .status-waiting {
-    background: rgba(255, 193, 77, 0.18);
-    color: #ffc14d;
+    background: var(--gold-460-alpha-18);
+    color: var(--gold-460);
 }
 .status-pending {
-    background: rgba(176, 184, 193, 0.18);
-    color: #b0b8c1;
+    background: var(--slate-400-alpha-18);
+    color: var(--slate-400);
 }
 .status-expired {
-    background: rgba(136, 136, 136, 0.18);
-    color: #888888;
+    background: var(--gray-540-alpha-18);
+    color: var(--gray-540);
 }
 .status-unknown {
-    background: rgba(68, 71, 79, 0.18);
-    color: #b0b8c1;
+    background: var(--slate-700-alpha-18);
+    color: var(--slate-400);
 }

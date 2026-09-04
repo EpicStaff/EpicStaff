@@ -30,13 +30,13 @@
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--white-alpha-60);
         text-decoration: none;
         cursor: pointer;
         transition: color 0.2s ease;
 
         &:hover {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--white-alpha-90);
         }
     }
 
@@ -100,13 +100,13 @@
             width: 36px;
             height: 20px;
             border-radius: 5px;
-            background: var(--color-divider-regular, #444);
+            background: var(--color-divider-regular);
             transition: background 0.2s;
             cursor: pointer;
             flex-shrink: 0;
 
             &.active {
-                background: var(--accent-color, #5e9eff);
+                background: var(--accent-color);
 
                 .toggle-thumb {
                     transform: translateX(16px);
@@ -121,7 +121,7 @@
             width: 16px;
             height: 16px;
             border-radius: 30%;
-            background: #fff;
+            background: var(--white);
             transition: transform 0.2s;
         }
 
@@ -133,8 +133,8 @@
         }
 
         .delete-btn {
-            background: #e0575b;
-            color: #fff;
+            background: var(--red-580);
+            color: var(--white);
             border: none;
             outline: none;
             padding: 6px 16px;
@@ -146,7 +146,7 @@
             transition: background 0.18s;
 
             &:hover {
-                background: #b32b36;
+                background: var(--red-700);
             }
 
             &.invisible {
@@ -229,7 +229,7 @@
     cursor: pointer;
     padding: 0;
     color: var(--color-text-secondary);
-    box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
+    box-shadow: -2px 0 6px var(--black-alpha-15);
     transition:
         background 0.15s,
         border-color 0.15s,
@@ -317,7 +317,7 @@
     .preview-open-btn {
         background: var(--accent-color);
         border: none;
-        color: #fff;
+        color: var(--white);
         width: 28px;
         height: 28px;
         padding: 0;
@@ -330,7 +330,7 @@
         transition: background 0.18s;
 
         &:hover {
-            background: var(--accent-color-hover, color-mix(in srgb, var(--accent-color) 80%, #000));
+            background: var(--accent-color-hover);
         }
     }
 
@@ -341,7 +341,7 @@
         display: flex;
         flex-direction: column;
         padding: 5px;
-        --color-nodes-background: rgba(60, 60, 72, 0.65);
+        --color-nodes-background: var(--slate-620-alpha-65);
     }
 
     .preview-empty {

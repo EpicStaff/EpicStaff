@@ -274,7 +274,7 @@ table {
 
 .view-btn {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--white);
     width: 88px;
     min-width: 88px;
     max-width: 88px;
@@ -286,8 +286,8 @@ table {
 }
 
 .delete-btn {
-    background: #e0575b !important;
-    color: #fff !important;
+    background: var(--red-580) !important;
+    color: var(--white) !important;
     border: none;
     outline: none;
     padding: 6px 14px;
@@ -301,29 +301,29 @@ table {
         color 0.18s;
 }
 .delete-btn:hover {
-    background: #b32b36 !important;
-    color: #fff !important;
+    background: var(--red-700) !important;
+    color: var(--white) !important;
 }
 
 .session-search-input {
     padding: 6px 12px;
-    border: 1px solid var(--color-divider-regular, #ccc);
+    border: 1px solid var(--color-divider-regular);
     border-radius: 6px;
     font-size: 1em;
     outline: none;
     transition: border 0.18s;
     min-width: 220px;
     max-width: 320px;
-    background: var(--color-background-body, #fff);
-    color: var(--color-text-primary, #222);
+    background: var(--color-background-body);
+    color: var(--color-text-primary);
 }
 .session-search-input:focus {
     border-color: var(--accent-color);
 }
 
 .stop-btn {
-    background: #e0575b;
-    color: #fff;
+    background: var(--red-580);
+    color: var(--white);
     border: none;
     outline: none;
     padding: 6px 14px;
@@ -341,8 +341,8 @@ table {
     max-width: 80px;
 }
 .stop-btn:hover {
-    background: #b32b36;
-    color: #fff;
+    background: var(--red-700);
+    color: var(--white);
 }
 
 .no-sessions-message {
@@ -394,12 +394,12 @@ tr.preview-row td.preview-cell {
     --graph-messages-container-height: auto;
     --graph-messages-max-height: 500px;
 
-    border-top: 1px solid var(--border-color, #2a2a3a);
-    background: rgba(0, 0, 0, 0.32);
+    border-top: 1px solid var(--graphite-785);
+    background: var(--black-alpha-32);
     padding: 5px;
 }
 
 .view-btn--active {
     background-color: transparent;
-    border: 1px solid rgba(104, 95, 255, 1);
+    border: 1px solid var(--accent-color);
 }

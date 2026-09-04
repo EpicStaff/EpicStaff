@@ -6,7 +6,7 @@
         display: block;
         margin-bottom: 8px;
         font-size: 14px;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
     }
 
     .selector {
@@ -15,16 +15,16 @@
         align-items: center;
         width: 100%;
         padding: 10px 12px;
-        background-color: rgba(30, 30, 30, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: var(--color-backdrop);
+        border: 1px solid var(--white-alpha-10);
         border-radius: 6px;
-        color: #ededed;
+        color: var(--gray-110);
         font-size: 14px;
         cursor: pointer;
         transition: all 0.2s ease;
 
         &:hover {
-            border-color: rgba(255, 255, 255, 0.2);
+            border-color: var(--white-alpha-20);
         }
 
         &.disabled {
@@ -42,7 +42,7 @@
         .selector-arrow {
             display: flex;
             align-items: center;
-            color: rgba(255, 255, 255, 0.8);
+            color: var(--white-alpha-80);
             transition: transform 0.2s ease;
             flex-shrink: 0;
             margin-left: 8px;
@@ -60,15 +60,15 @@
         right: 0;
         max-height: 250px;
         overflow-y: auto;
-        background-color: #2a2a2a;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        background-color: var(--graphite-780);
+        border: 1px solid var(--white-alpha-20);
         border-radius: 6px;
         z-index: 10;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 4px 12px var(--black-alpha-50);
 
         .dropdown-item {
             padding: 10px 12px;
-            color: #ededed;
+            color: var(--gray-110);
             font-size: 14px;
             cursor: pointer;
             transition: background-color 0.2s ease;
@@ -94,7 +94,7 @@
             .edit-icon,
             .delete-icon {
                 opacity: 0.6;
-                color: rgba(255, 255, 255, 0.8);
+                color: var(--white-alpha-80);
                 transition:
                     opacity 0.2s ease,
                     color 0.2s ease;
@@ -103,21 +103,21 @@
 
             .edit-icon:hover {
                 opacity: 1;
-                color: #685fff;
+                color: var(--accent-color);
             }
 
             .delete-icon:hover {
                 opacity: 1;
-                color: #ff4d4f;
+                color: var(--red-450);
             }
 
             &:hover {
-                background-color: #333333;
+                background-color: var(--graphite-640);
             }
 
             &.selected {
-                background-color: #1e72e6;
-                color: white;
+                background-color: var(--blue-450);
+                color: var(--white);
                 font-weight: 500;
             }
 
@@ -128,8 +128,8 @@
             }
 
             &.create-new {
-                border-top: 1px solid rgba(255, 255, 255, 0.1);
-                color: #685fff;
+                border-top: 1px solid var(--white-alpha-10);
+                color: var(--accent-color);
                 font-weight: 500;
                 display: flex;
                 align-items: center;
@@ -142,7 +142,7 @@
                 }
 
                 &:hover {
-                    background-color: rgba(104, 95, 255, 0.1);
+                    background-color: var(--purple-alpha-10);
                 }
             }
         }

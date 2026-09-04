@@ -14,7 +14,7 @@
     background-color: var(--gray-900);
     border-radius: 12px;
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px var(--black-alpha-30);
     border: 1px solid var(--gray-800);
     max-width: calc(100% - 1rem);
     transition: all 0.3s ease;
@@ -56,7 +56,7 @@
         .send-btn {
             background-color: transparent;
             border: none;
-            color: var(--accent-color, #685fff);
+            color: var(--accent-color);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -69,7 +69,7 @@
             transition: all 0.2s ease;
 
             &:hover {
-                background-color: rgba(104, 95, 255, 0.1);
+                background-color: var(--purple-alpha-10);
             }
 
             i {
@@ -98,7 +98,7 @@
         justify-content: center;
         flex: 0 1 auto;
         gap: 0.5rem;
-        background-color: var(--accent-color, #685fff);
+        background-color: var(--accent-color);
         color: var(--white);
         border: none;
         border-radius: 8px;
@@ -114,7 +114,7 @@
         overflow: hidden;
 
         &:hover:not(:disabled) {
-            background-color: rgba(104, 95, 255, 0.8);
+            background-color: var(--purple-alpha-80);
         }
 
         &:disabled {
@@ -184,14 +184,14 @@
             }
 
             &.active {
-                background-color: rgba(104, 95, 255, 0.2);
-                color: var(--accent-color, #685fff);
+                background-color: var(--purple-alpha-20);
+                color: var(--accent-color);
             }
 
             &.end-btn {
                 &:hover {
-                    background-color: rgba(220, 53, 69, 0.2);
-                    color: #dc3545;
+                    background-color: var(--crimson-600-alpha-20);
+                    color: var(--crimson-600);
                 }
             }
 

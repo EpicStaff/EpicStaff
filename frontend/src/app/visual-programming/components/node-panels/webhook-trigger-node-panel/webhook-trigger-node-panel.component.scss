@@ -3,7 +3,7 @@
 // Match app-select (app-tooltip) labels to the app-custom-input labels — scoped to this panel only.
 // Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
 :host ::ng-deep app-select .tooltip-label {
-    color: var(--color-ks-text);
+    color: var(--fog-200);
     font-weight: 400;
 }
 
@@ -112,25 +112,25 @@
         justify-content: center;
         border-width: 1px 0px 1px 1px;
         border-style: solid;
-        border-color: #2c2c2e;
-        background: #1e1e1e;
+        border-color: var(--graphite-700);
+        background: var(--graphite-875);
         cursor: pointer;
         border-radius: 8px 0 0 8px;
         transition: all 0.2s ease;
         padding: 0;
-        color: #d9d9d999;
+        color: var(--fog-alpha-60);
 
         svg {
             transition: transform 0.3s ease;
         }
 
         &:hover:not(:disabled) {
-            color: #d9d9d9;
-            background: #2c2c2e;
+            color: var(--gray-217);
+            background: var(--graphite-700);
         }
 
         &:active:not(:disabled) {
-            color: #d9d9d9;
+            color: var(--gray-217);
         }
 
         &:disabled {
@@ -153,7 +153,7 @@
 }
 
 .code-editor-section {
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    border: 1px solid var(--color-divider-subtle);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -187,7 +187,7 @@
 
 .webhook-url-display {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--white-alpha-65);
     word-break: break-all;
     display: flex;
     align-items: center;
@@ -199,16 +199,16 @@
 }
 
 .webhook-url-placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--white-alpha-50);
 }
 
 .webhook-url-error {
-    color: #ef4444;
+    color: var(--crimson-500);
 }
 
 .webhook-warning {
     font-size: 13px;
-    color: #ef4444;
+    color: var(--crimson-500);
     word-break: break-word;
 }
 
@@ -221,7 +221,7 @@
     flex-shrink: 0;
     border: none;
     background: transparent;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--white-alpha-80);
     border-radius: 4px;
     cursor: pointer;
     transition:
@@ -229,8 +229,8 @@
         background-color 0.15s ease;
 
     &:hover:not(:disabled) {
-        color: white;
-        background: var(--transparent-white-8);
+        color: var(--white);
+        background: var(--fog-alpha-8);
     }
 
     &:disabled {
@@ -248,18 +248,18 @@
 .webhook-auth-pending {
     margin: 0;
     padding: 6px 8px;
-    border-left: 2px solid var(--color-ks-status-warning);
+    border-left: 2px solid var(--yellow-500);
     border-radius: 4px;
     font-size: 12px;
     line-height: 1.5;
-    color: var(--color-ks-status-warning);
-    background: var(--color-ks-transparent-yellow);
+    color: var(--yellow-500);
+    background: var(--yellow-alpha-6);
 }
 
 .copy-button {
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--white-alpha-15);
     background: transparent;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--white-alpha-80);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
@@ -272,8 +272,8 @@
 }
 
 .copy-button:hover:not(:disabled) {
-    border-color: var(--active-color, #685fff);
-    color: white;
+    border-color: var(--active-color);
+    color: var(--white);
 }
 
 .copy-button:disabled {

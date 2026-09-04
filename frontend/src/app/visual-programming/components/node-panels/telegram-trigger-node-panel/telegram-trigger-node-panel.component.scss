@@ -3,7 +3,7 @@
 // Match app-select (app-tooltip) labels to the app-custom-input labels — scoped to this panel only.
 // Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
 :host ::ng-deep app-select .tooltip-label {
-    color: var(--color-ks-text);
+    color: var(--fog-200);
     font-weight: 400;
 }
 
@@ -76,7 +76,7 @@
 
 .code-editor-section {
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--white-alpha-70);
     display: flex;
     flex-direction: column;
     height: 300px;
@@ -91,7 +91,7 @@
         display: flex;
         align-items: center;
         font-size: 12px;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         opacity: 0.7;
     }
 
@@ -123,9 +123,9 @@
         width: 100%;
         padding: 0.5rem 0.75rem;
         background-color: var(--color-input-background);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--white-alpha-10);
         border-radius: 10px;
-        color: white;
+        color: var(--white);
         font-size: 0.74rem;
         display: flex;
         flex-direction: column;
@@ -143,15 +143,15 @@
             animation: spin 2s linear infinite;
         }
         &--failed {
-            color: #f54242;
+            color: var(--red-500);
         }
         &--success {
-            color: #685fff;
+            color: var(--accent-color);
         }
     }
     &__error-message {
         font-size: 0.75rem;
-        color: #d9d9de60;
+        color: var(--fog-alpha-38-flat);
     }
 }
 
@@ -163,7 +163,7 @@
 
 .output-fields {
     &__label {
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
         font-size: 0.875rem;
 
         display: flex;
@@ -174,17 +174,17 @@
     &__count {
         padding: 0.2rem 0.5rem;
         border-radius: 4px;
-        background-color: #44464a4d;
-        color: #d9d9de60;
+        background-color: var(--graphite-693-alpha-flat);
+        color: var(--fog-alpha-38-flat);
     }
 
     &__container {
         width: 100%;
         padding: 0.5rem;
         background-color: var(--color-input-background);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--white-alpha-10);
         border-radius: 8px;
-        color: white;
+        color: var(--white);
         font-size: 0.875rem;
         display: flex;
         flex-direction: column;
@@ -202,16 +202,16 @@
         flex-direction: column;
         flex-grow: 1;
         font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
         row-gap: 0.25rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background-color: #44464a4d;
+        border: 1px solid var(--white-alpha-10);
+        background-color: var(--graphite-693-alpha-flat);
         border-radius: 4px;
         padding: 0.25rem 0.5rem;
     }
 
     &__item-tip {
-        color: #d9d9de60;
+        color: var(--fog-alpha-38-flat);
     }
 }
 

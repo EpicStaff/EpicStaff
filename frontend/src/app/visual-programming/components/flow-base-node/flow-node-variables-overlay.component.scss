@@ -4,16 +4,16 @@
     bottom: calc(100% + 8px);
     min-width: 120px;
     width: 18rem;
-    background: rgba(30, 30, 30, 0.92);
+    background: var(--graphite-875-alpha-92);
     color: var(--color-text-primary);
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 2px 8px var(--black-alpha-18);
     padding: 8px 12px;
     z-index: 30;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border: 1.5px solid var(--color-divider-subtle, #333);
+    border: 1.5px solid var(--color-divider-subtle);
     max-height: 220px;
     overflow-y: auto;
     pointer-events: none;
@@ -23,7 +23,7 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
-    color: #aaa;
+    color: var(--gray-450);
 }
 
 .inputs-list {
@@ -52,7 +52,7 @@
 }
 
 .equals-sign {
-    color: #fff;
+    color: var(--white);
     margin: 0 2px;
 }
 
@@ -70,17 +70,17 @@
     right: -12rem;
     bottom: calc(100% + 8px);
     min-width: 100px;
-    background: rgba(30, 30, 30, 0.92);
+    background: var(--graphite-875-alpha-92);
     color: var(--color-text-primary);
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 2px 8px var(--black-alpha-18);
     padding: 8px 12px;
     z-index: 30;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     pointer-events: none;
-    border: 1.5px solid var(--color-divider-subtle, #333);
+    border: 1.5px solid var(--color-divider-subtle);
     max-height: 220px;
     overflow-y: auto;
 }
@@ -89,7 +89,7 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
-    color: #aaa;
+    color: var(--gray-450);
     margin-bottom: 4px;
 }
 

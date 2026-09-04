@@ -6,8 +6,8 @@
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
 
-    background-color: #212325;
-    border: 1px solid #2c2c2e;
+    background-color: var(--graphite-900);
+    border: 1px solid var(--graphite-700);
     border-radius: 4px;
 
     cursor: pointer;
@@ -18,16 +18,16 @@
 }
 
 .flow-shortcuts-btn:hover {
-    background-color: #383838;
+    background-color: var(--graphite-630);
 }
 
 .flow-shortcuts-btn--active {
-    background-color: #2d2b45;
-    border-color: #685fff;
+    background-color: var(--indigo-970);
+    border-color: var(--accent-color);
 }
 
 .flow-shortcuts-btn--active:hover {
-    background-color: #353260;
+    background-color: var(--indigo-960);
 }
 
 .flow-shortcuts-btn__icon {
@@ -48,7 +48,7 @@
     font-weight: 400;
     line-height: 100%;
     letter-spacing: 0;
-    color: #9a9a9a;
+    color: var(--gray-499);
 
     text-align: center;
     align-self: end;

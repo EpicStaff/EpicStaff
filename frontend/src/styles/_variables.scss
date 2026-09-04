@@ -17,6 +17,16 @@
     --iris-alpha-8: rgba(88, 86, 214, 0.08);
     --purple-300: #8c7fff;
     --purple-400: #7a70ff;
+    --purple-420: #817bff; // import-result-dialog navigate-button hover
+    --purple-410: #8b83ff; // cdt-import-preview-dialog meta-value count text
+    --purple-412: #8b85ff; // flow-assistant _ep-tokens link-hover color
+    --purple-415: #716bff; // default-llms-card/llm-library-card add-button hover
+    --purple-620: #5a52e0; // llm-library-section add-button hover
+    --purple-495: #6b6eff; // configure-models provider-btn "active" state (distinct from --accent-color)
+    --purple-440: #a89fff; // expression-builder editor caret color
+    --purple-430: #7a6fff; // cdt-import-preview-dialog primary-button hover
+    --purple-450: #7d7aff; // flow-messages-panel drag-handle active state
+    --purple-460: #8372ff; // grid-controls slider-thumb hover
     --purple-500: #685fff;
     --purple-600: #574fd6;
     --purple-700: #473fb3;
@@ -45,9 +55,22 @@
     // Graphite — dark surfaces
     --graphite-1000: #121212;
     --graphite-1000-alpha-70: rgba(18, 18, 18, 0.7); // staff-page loading overlay
+    --graphite-990: #141414; // open-project-page background
+    --graphite-990-alpha-40: rgba(20, 20, 20, 0.4);
+    --graphite-990-alpha-85: rgba(20, 20, 20, 0.85);
+    --graphite-1008: #171719; // custom-tool-editor inline-editor-host background
+    --graphite-1005: #181818; // flow-node-mixins port-label background
+    --graphite-1005-alpha-flat: #1818187e; // same background, port-wrapper hover variant (exact 8-digit-hex alpha, distinct from a rounded 0.49 rgba)
+    --graphite-970: #151515; // chat assistant message bubble background
     --graphite-950: #1a1a1c;
+    --graphite-960: #202022; // flow-messages-panel session-dropdown trigger background
+    --graphite-955: #262629; // flow-messages-panel session-dropdown trigger hover
+    --graphite-940: #2e2e42; // version-history-panel header/footer divider
     --graphite-900: #212325;
     --graphite-875: #1e1e1e;
+    --graphite-878: #1e1e20; // value-preview-tooltip background
+    --graphite-875-alpha-40: rgba(30, 30, 30, 0.4);
+    --graphite-875-alpha-92: rgba(30, 30, 30, 0.92);
     --graphite-850: #222225;
     --graphite-885: #1e1e2e; // dynamic-table drag-preview background
     --graphite-895: #22222b; // chunk-preview "odd" badge background
@@ -55,17 +78,35 @@
     --graphite-880: #1e1e22; // round-button tooltip background
     --graphite-870: #272836; // session/date-range filter dropdown background (used across flows too)
     --graphite-825: #232323;
+    --graphite-822: #222222; // flow-export-import-button hover background
+    --graphite-830: #2a2a30; // cdt-import-preview-dialog table header background
+    --graphite-838: #1f1f23; // expression-builder container background
+    --graphite-638: #33333a; // expression-builder template-btn hover
     --graphite-810: #25262a; // onboarding choice-card hover
+    --graphite-812: #252526; // expression-editor toolbar background (VS Code Dark+)
+    --graphite-815: #23232a; // flow-session-status-filter-dropdown toggle hover/menu background
     --graphite-800: #27272b;
     --graphite-780: #2a2a2a;
+    --graphite-785: #2a2a3a; // flow-sessions-table preview-content border
     --graphite-750: #2b2d30;
+    --graphite-750-alpha-50: rgba(43, 45, 48, 0.5);
+    --graphite-745: #35373b; // realtime-settings-dialog close-button hover
+    --graphite-740: #373a3e; // import-result-dialog summary-item hover background
     --graphite-720: #2d2d2d;
     --graphite-790: #292a2f; // ag-grid context menu item hover
     --graphite-700: #2c2c2e;
+    --graphite-690: #313438; // my-flows recent-flow-card hover background
+    --graphite-685: #3a3d45; // project-card hover border
+    --graphite-828: #2a2c34; // project-card header icon background
+    --graphite-693: #44464a; // telegram-trigger-node-panel output-field chip background
+    --graphite-695: #3f4144; // classification-decision-table-grid pinned-column separator
+    --graphite-693-alpha-flat: #44464a4d; // same, at its exact 8-digit-hex alpha (~0.3)
     --graphite-670: #333741; // ag-grid context menu border/divider
     --graphite-660: #3a3d40; // confirmation-dialog cancel-button hover border
     --graphite-650: #3a3e48;
     --graphite-640: #333333;
+    --graphite-630: #383838; // flow-shortcuts-button hover background
+    --graphite-635: #313137; // graph-messages breadcrumbs-scroll scrollbar thumb
     --graphite-600: #3a3a3a;
     --graphite-alpha-50: rgba(43, 45, 48, 0.5);
 
@@ -73,19 +114,33 @@
     --white: #ffffff;
     --black: #000000;
     --gray-50: #f9f9f9;
+    --gray-52: #f9fafb; // grid-controls search input text/hover
     --gray-105: #f5f5f5; // llm/tool selector popups primary text
+    --gray-108: #ebebeb; // open-project-page text
+    --gray-108-alpha-70: rgba(235, 235, 235, 0.7);
     --gray-100: #ececec;
     --gray-220: #e1e4e9; // ag-grid context menu item text
     --gray-200: #e3e3e3;
     --gray-300: #cdcdcd;
+    --gray-210: #d1d1d1; // chat "awaiting connection" text
     --gray-400: #b4b4b4;
     --gray-450: #aaaaaa;
+    --gray-204: #cccccc; // node-panel-mixins secondary-button text
     --gray-455: #acacac; // llm-model-selector secondary text
     --gray-475: #b1b1b1; // agents-table action-icon
     --gray-490: #a0a0a0; // llm/tool selector popups secondary text
     --gray-500: #9b9b9b;
+    --gray-499: #9a9a9a; // flow-shortcuts-button hint text
+    --slate-460: #9ca3af; // autocomplete-overlay "no results" text
+    --slate-215: #d3d3d3; // flow-graph minimap Start/End node fill
+    --slate-500: #8b8b8b; // flow-graph custom-connection-path stroke
     --gray-550: #777777; // llm/tool selector popups tertiary text
+    --gray-590: #5a5a5a; // chats-content "no agent" heading text
     --gray-600: #676767;
+    --gray-570: #6b7280; // grid-controls search icon/placeholder
+    --gray-605: #666666; // chats-content "no agent" body text
+    --gray-610: #777777; // version-history-panel empty-state subtext
+    --gray-225: #dddddd; // version-history-panel dropdown-item text
     --gray-405: #404040; // llm/tool selector popups item border
     --gray-440: #444444; // agents-table tag hover border
     --gray-700: #424242;
@@ -97,6 +152,9 @@
     --gray-830-alpha-90: rgba(27, 27, 27, 0.9); // json-editor loading overlay
     --gray-460: #969696; // json-editor copy-btn hover
     --gray-215: #e0e0e0; // json-editor text (recurs in ~9 other files)
+    --gray-212: #d4d4d4; // expression-editor family default foreground (VS Code Dark+)
+    --gray-213: #d4d4dc; // custom-tool-editor dialog text (distinct from --gray-212)
+    --gray-217: #d9d9d9; // knowledge-retriever-node-panel editor toggle icon hover
     --gray-215-alpha-30: rgba(224, 224, 224, 0.3); // json-editor spinner track
     --gray-110: #ededed; // voice/language/transcription selector text
     --gray-118: #e6e6e6; // agents-table tag text
@@ -107,8 +165,24 @@
     --gray-950: #0d0d0d;
 
     // Slate — spinner track/arc (select component)
+    --slate-200: #e2e8f0; // agents-section body text
     --slate-400: #b0b8c1;
+    --slate-400-alpha-18: rgba(176, 184, 193, 0.18);
     --slate-700: #44474f;
+    --slate-900: #1f2937; // grid-controls slider-thumb border
+    --slate-700-alpha-18: rgba(68, 71, 79, 0.18);
+    --gray-540: #888888; // flow-session-status-badge "expired" text
+    --gray-585: #6c757d; // staff-agent-card remove-icon default state
+    --gray-580: #808080; // settings-section slider Firefox track (CSS "grey" keyword)
+    --gray-573: #737373; // expression-builder muted text/placeholder
+    --gray-555: #555555; // flow-graph-context-menu search-container focus border
+    --gray-560: #a3a3a3; // flow-node-mixins port-label text
+    --gray-219: #dbdbdb; // flow-node-mixins icon-button icon color
+    --gray-595: #999999; // settings-section muted text
+    --gray-609: #9b9ba6; // custom-tool-editor secondary text
+    --gray-540-alpha-18: rgba(136, 136, 136, 0.18);
+    --slate-620: #3c3c48; // global-sessions-list preview panel graph background
+    --slate-620-alpha-65: rgba(60, 60, 72, 0.65);
 
     // Steel — cool border/muted base (#c8ceda + alpha)
     --steel-alpha-8: #c8ceda14;
@@ -124,17 +198,22 @@
     --fog-alpha-70: rgba(217, 217, 222, 0.7);
     --fog-alpha-60: rgba(217, 217, 222, 0.6);
     --fog-alpha-50: rgba(217, 217, 222, 0.5);
+    --fog-alpha-45: rgba(217, 217, 222, 0.45);
     --fog-alpha-40: rgba(217, 217, 222, 0.4);
     --fog-alpha-35: rgba(217, 217, 222, 0.35);
+    --fog-alpha-38-flat: #d9d9de60; // telegram-trigger-node-panel error/tip text (exact 8-digit-hex alpha, distinct from a rounded 0.38 rgba)
     --fog-alpha-30: rgba(217, 217, 222, 0.3);
     --fog-alpha-28: rgba(217, 217, 222, 0.28);
     --fog-alpha-25: rgba(217, 217, 222, 0.25);
     --fog-alpha-22: rgba(217, 217, 222, 0.22);
     --fog-alpha-20: rgba(217, 217, 222, 0.2);
     --fog-alpha-16: rgba(217, 217, 222, 0.16);
+    --fog-alpha-10: rgba(217, 217, 222, 0.1);
     --fog-alpha-14: rgba(217, 217, 222, 0.14);
     --fog-alpha-8: rgba(217, 217, 222, 0.08);
+    --fog-alpha-7: rgba(217, 217, 222, 0.07);
     --fog-alpha-6: rgba(217, 217, 222, 0.06);
+    --fog-alpha-4: rgba(217, 217, 222, 0.04);
 
     // White / black washes
     --white-alpha-2: rgba(255, 255, 255, 0.02);
@@ -153,7 +232,9 @@
     --white-alpha-9: #ffffff17;
     --white-alpha-10: rgba(255, 255, 255, 0.1);
     --white-alpha-12: rgba(255, 255, 255, 0.12);
+    --white-alpha-14: rgba(255, 255, 255, 0.14);
     --white-alpha-15: rgba(255, 255, 255, 0.15);
+    --white-alpha-16: rgba(255, 255, 255, 0.16);
     --white-alpha-20: rgba(255, 255, 255, 0.2);
     --white-alpha-25: rgba(255, 255, 255, 0.25);
     --white-alpha-30: rgba(255, 255, 255, 0.3);
@@ -174,6 +255,7 @@
     --black-alpha-8: rgba(0, 0, 0, 0.08);
     --black-alpha-10: rgba(0, 0, 0, 0.1);
     --black-alpha-12: rgba(0, 0, 0, 0.12);
+    --black-alpha-14: rgba(0, 0, 0, 0.14);
     --black-alpha-15: rgba(0, 0, 0, 0.15);
     --black-alpha-16: rgba(0, 0, 0, 0.16);
     --black-alpha-18: rgba(0, 0, 0, 0.18);
@@ -181,6 +263,7 @@
     --black-alpha-24: rgba(0, 0, 0, 0.24);
     --black-alpha-25: rgba(0, 0, 0, 0.25);
     --black-alpha-28: rgba(15, 15, 15, 0.28);
+    --pure-black-alpha-28: rgba(0, 0, 0, 0.28); // flow-assistant-panel shadow (distinct rgb from --black-alpha-28)
     --black-alpha-30: rgba(0, 0, 0, 0.3);
     --black-alpha-32: rgba(0, 0, 0, 0.32);
     --black-alpha-35: rgba(0, 0, 0, 0.35);
@@ -197,7 +280,23 @@
     // Status / feedback
     --green-400: #4caf82;
     --green-450: #2ecc71; // surface-usage-dialog status dot
+    --green-460: #3bb77e; // flow-session-status-badge "completed" text
+    --green-470: #4caf50; // import-result-dialog "viewing" status dot
+    --green-480: #22c55e; // flow-base-node "active" indicator dot
+    --green-490: #6a9955; // expression-builder tip-line text (VS Code Dark+ comment green)
+    --green-530: #52c41a; // voice-settings-section channel-badge "active" (Ant Design success green)
+    --green-530-alpha-15: rgba(82, 196, 26, 0.15);
+    --green-520: #21f367; // flow-graph minimap Webhook-Trigger node fill
+    --green-510: #00e676; // flow-graph minimap Code-Agent node fill
+    --mint-500: #6bdb9a; // flow-session-status-badge "completed" background base
+    --mint-500-alpha-18: rgba(107, 219, 154, 0.18);
+    --gold-460: #ffc14d; // flow-session-status-badge "waiting" text/background base
+    --gold-470: #ffd43b; // expression-editor python-badge icon (Python logo yellow)
+    --gold-475: #ffdd57; // custom-tool-editor code-editor python icon
+    --gold-480: #ffffd1; // flow-graph minimap Note node fill
+    --gold-460-alpha-18: rgba(255, 193, 77, 0.18);
     --green-500: #2aba6b;
+    --green-500-alpha-10: rgba(42, 186, 107, 0.1);
     --green-alpha-8: rgba(42, 186, 107, 0.08);
     --green-alpha-18: rgba(42, 186, 107, 0.18);
     --yellow-500: #ffcf00;
@@ -219,16 +318,53 @@
     --amber-alpha-60: rgba(245, 166, 35, 0.6);
     --amber-alpha-70: rgba(245, 166, 35, 0.7);
     --orange-500: #ff8f3f;
+    --orange-450: #ff8c42; // findings-message severity-high badge
+    --orange-470: #ff5c00; // flow-graph minimap Schedule-Trigger node fill
+    --orange-450-alpha-15: rgba(255, 140, 66, 0.15);
     --orange-alpha-8: rgba(255, 143, 63, 0.08);
+    --orange-alpha-6: rgba(255, 143, 63, 0.06);
     --crimson-500: #ef4444; // distinct "danger" red used across error/validation states
+    --crimson-500-alpha-10: rgba(239, 68, 68, 0.1);
+    --crimson-500-alpha-20: rgba(239, 68, 68, 0.2);
+    --crimson-600-alpha-30: rgba(220, 53, 69, 0.3);
+    --amber-620: #f59e0b; // graph-messages "reconnecting" status
+    --amber-620-alpha-10: rgba(245, 158, 11, 0.1);
+    --amber-620-alpha-20: rgba(245, 158, 11, 0.2);
+    --red-390: #f87171; // flow-visual-programming restore-warning-btn text (Tailwind red-400)
     --red-400: #ff6b6b;
+    --red-400-alpha-5: rgba(255, 107, 107, 0.05);
+    --red-400-alpha-10: rgba(255, 107, 107, 0.1);
+    --red-400-alpha-15: rgba(255, 107, 107, 0.15);
+    --red-400-alpha-60: rgba(255, 107, 107, 0.6);
+    --red-400-alpha-80: rgba(255, 107, 107, 0.8);
+    --red-405: #ffb3b3; // classification-decision-table-node "blocked" badge/title text
+    --red-410: #ff3b30; // decision-table-grid delete-icon (iOS red)
+    --red-410-alpha-15: rgba(255, 59, 48, 0.15);
+    --red-415: #ff5449; // decision-table-grid delete-icon hover
+    --red-427: #ff5c5c; // custom-tool-editor error-message text
+    --red-435: #ff5252; // flow-graph connection-center delete-icon hover
+    --red-435-alpha-10: rgba(255, 82, 82, 0.1);
+    --red-435-alpha-20: rgba(255, 82, 82, 0.2);
+    --red-440: #ff5050; // configure-models delete-action hover text/border
+    --red-440-alpha-8: rgba(
+        255,
+        80,
+        80,
+        0.08
+    ); // classification-decision-table-grid icon-btn hover (distinct from --red-435's rgb(255, 82, 82))
+    --red-440-alpha-12: rgba(255, 80, 80, 0.12);
+    --red-440-alpha-50: rgba(255, 80, 80, 0.5);
+    --rose-500: #c69999; // graph-messages empty-list text
     --red-450: #ff4d4f;
     --red-450-alpha-10: rgba(255, 77, 79, 0.1);
+    --red-450-alpha-12: rgba(255, 77, 79, 0.12);
     --red-450-alpha-35: rgba(255, 77, 79, 0.35);
     --red-450-alpha-95: rgba(255, 77, 79, 0.95);
     --red-490: #e5484d; // agent surfaces panel / webhook-trigger-select error accent
     --red-500: #f54242;
     --scarlet-500: #f44336; // Material red 500 — unsaved-changes-dialog "danger" button
+    --scarlet-500-alpha-10: rgba(244, 67, 54, 0.1);
+    --scarlet-500-alpha-30: rgba(244, 67, 54, 0.3);
     --scarlet-700: #d32f2f; // Material red 700 — its hover state
     --red-420: #ff8a8a; // json-editor error list item text
     --red-425: #ff7a7a; // ag-grid context menu delete-hover icon
@@ -236,12 +372,27 @@
     --red-950: #542326; // ag-grid context menu delete-hover background
     --red-460: #ff5555; // json-editor validation error text
     --red-460-alpha-6: rgba(255, 85, 85, 0.06);
+    --red-460-alpha-10: rgba(255, 85, 85, 0.1);
     --red-460-alpha-40: rgba(255, 85, 85, 0.4);
     --red-540: #e53935; // textarea invalid border
     --red-580: #e0575b; // date-range-picker / session status error variant
+    --red-560: #e05c5c; // version-history-panel dropdown-item "danger" text
+    --red-470: #f07070; // version-history-panel dropdown-item "danger" hover text
+    --maroon-950: #3d2020; // version-history-panel dropdown-item "danger" hover background
+    --maroon-960: #2a1a1a; // flow-visual-programming restore-warning-btn background
+    --maroon-900: #7f1d1d; // flow-visual-programming restore-warning-btn border
+    --red-580-alpha-18: rgba(224, 87, 91, 0.18);
+    --rose-450: #eca6a8; // flow-session-status-badge "stopped" text
+    --pink-500: #ff7be9; // flow-graph minimap Audio-to-text node fill
+    --terracotta-500: #ce9178; // expression-editor family "string" syntax-highlight color (VS Code Dark+)
+    --umber-950: #0a0808; // flow-session-status-badge "stopped" background base
+    --umber-950-alpha-18: rgba(10, 8, 8, 0.18);
     --red-550: #e63838; // danger hover
     --red-600: #dc5b60;
     --red-700: #b32b36;
+    --crimson-600: #dc3545; // chat-controls end-call button, bootstrap "danger" red
+    --crimson-700: #c82333; // node-panel-mixins danger-button hover
+    --crimson-600-alpha-20: rgba(220, 53, 69, 0.2);
     --red-alpha-6: rgba(245, 66, 66, 0.06);
     --red-alpha-8: rgba(245, 66, 66, 0.08);
     --red-alpha-10: rgba(245, 66, 66, 0.1);
@@ -254,11 +405,6 @@
     --red-alpha-40: rgba(245, 66, 66, 0.4);
     --red-alpha-50: rgba(245, 66, 66, 0.5);
     --red-alpha-95: rgba(245, 66, 66, 0.95);
-    --red-400-alpha-5: rgba(255, 107, 107, 0.05);
-    --red-400-alpha-10: rgba(255, 107, 107, 0.1);
-    --red-400-alpha-15: rgba(255, 107, 107, 0.15);
-    --red-400-alpha-60: rgba(255, 107, 107, 0.6);
-    --red-400-alpha-80: rgba(255, 107, 107, 0.8);
     --red-600-alpha-6: rgba(220, 91, 96, 0.06);
     --red-600-alpha-12: rgba(220, 91, 96, 0.12);
     --red-600-alpha-18: rgba(220, 91, 96, 0.18);
@@ -268,35 +414,79 @@
     --sky-alpha-6: rgba(72, 203, 255, 0.06);
     --sky-alpha-12: rgba(72, 203, 255, 0.12);
     --teal-500: #00bfa5;
+    --teal-460: #00ac98; // graph-messages breadcrumbs-search border/icon
+    --teal-470: #4ec9b0; // classification-decision-table-node-panel var-token text (VS Code Dark+ "type" color)
+    --teal-450: #4fd1c5; // findings-message severity-low badge
+    --teal-450-alpha-15: rgba(79, 209, 197, 0.15);
     --teal-rgb: 0, 191, 165;
     --teal-alpha-8: rgba(0, 191, 165, 0.08);
+    --teal-alpha-1-5: rgba(0, 191, 165, 0.015); // graph-messages subflow nesting (level 1 bg)
+    --teal-alpha-3: rgba(0, 191, 165, 0.03); // subflow nesting (level 2 bg)
+    --teal-alpha-4-5: rgba(0, 191, 165, 0.045); // subflow nesting (level 3 bg)
+    --teal-alpha-6: rgba(0, 191, 165, 0.06); // subflow nesting (level 4 bg)
+    --teal-alpha-20: rgba(0, 191, 165, 0.2); // subflow nesting (level 1 border/line)
+    --teal-alpha-25: rgba(0, 191, 165, 0.25); // subflow nesting (level 1 connector)
+    --teal-alpha-30: rgba(0, 191, 165, 0.3); // subflow nesting (level 2 border/line)
+    --teal-alpha-35: rgba(0, 191, 165, 0.35); // subflow nesting (level 2 connector)
+    --teal-alpha-40: rgba(0, 191, 165, 0.4); // subflow nesting (level 3 border/line)
+    --teal-alpha-45: rgba(0, 191, 165, 0.45); // subflow nesting (level 3 connector)
+    --teal-alpha-50: rgba(0, 191, 165, 0.5); // subflow nesting (level 4 border/line)
+    --teal-alpha-55: rgba(0, 191, 165, 0.55); // subflow nesting (level 4 connector)
     --blue-400: #5e9eff;
+    --blue-480: #3776ab; // expression-editor python-badge background (Python logo blue)
+    --blue-480-alpha-15: rgba(55, 118, 171, 0.15);
+    --blue-410: #5c9eff; // findings-message severity-info badge
+    --blue-410-alpha-15: rgba(92, 158, 255, 0.15);
     --blue-450: #1e72e6; // voice/language/transcription selector "selected" state
     --azure-500: #2196f3; // info icon color (confirm-dialog, toast, flow nodes)
+    --azure-450: #00aaff; // flow-graph minimap Decision-Table node fill
+    --azure-550: #2a5bd7; // flow-graph minimap Classification-Decision-Table node fill
+    --azure-560: #229ed9; // flow-graph minimap Telegram-Trigger node fill (Telegram brand blue)
+    --azure-465: #a0d7ff; // classification-decision-table-node-panel scope-info code text
     --blue-500: #5672cd;
     --blue-600: #3e63dd;
+    --blue-700: #004494; // chats-content "no agent" action-button hover
+    --indigo-300: #bec8ff; // extracted-chunks-message chip text
+    --indigo-450: #5c7cfa; // extracted-chunks/findings message accent
+    --indigo-450-alpha-15: rgba(92, 124, 250, 0.15);
     --indigo-500: #6366f1; // llm/tool selector popups accent (hover)
     --indigo-600: #4f46e5; // llm/tool selector popups accent
+    --indigo-600-alpha-10: rgba(79, 70, 229, 0.1);
     --indigo-600-alpha-15: rgba(79, 70, 229, 0.15);
+    --indigo-600-alpha-20: rgba(79, 70, 229, 0.2);
     --indigo-600-alpha-40: rgba(79, 70, 229, 0.4);
     --indigo-600-alpha-80: rgba(79, 70, 229, 0.8);
     --cyan-460: #00d4ff; // dual-slider thumb color (first handle)
     --cyan-500: #00dddd; // dual range slider min, decorative
     --violet-500: #8b5cf6; // dual range slider max, filter/sort accent
     --lavender-500: #bb86fc; // json-editor resize-handle hover accent
+    --lavender-460: #a5a5ff; // expression-renderer/expression-editor variable-token text
+    --magenta-500: #c586c0; // expression-renderer/expression-editor keyword-token text
     --blue-alpha-10: rgba(94, 158, 255, 0.1);
     --blue-alpha-15: rgba(94, 158, 255, 0.15);
     --blue-alpha-18: rgba(94, 158, 255, 0.18);
     --mauve-alpha-10: rgba(154, 115, 175, 0.1); // unsaved-changes indicator
     --mauve-alpha-20: rgba(154, 115, 175, 0.2);
+    --indigo-alpha-10: rgba(101, 98, 245, 0.1); // create-folder-dialog hover tint
     --indigo-alpha-30: rgba(101, 98, 245, 0.3); // auth spinner ring
     --gray-alpha-10: rgba(128, 128, 128, 0.1);
     --gray-alpha-18: rgba(136, 136, 136, 0.18);
     --stone-950-alpha-35: rgba(3, 3, 5, 0.35); // agents-table / tools-list wrapper shadow
     --sky-600: #3498db; // agents-table action-icon hover (Flat UI "Peter River")
     --indigo-650: #6562f5; // agents-table accent (popup-open border, llm-config badge) — used in 10 files
+    --indigo-970: #2d2b45; // flow-shortcuts-button active background
+    --indigo-960: #353260; // flow-shortcuts-button active-hover background
+    --indigo-950: #2a2a3e; // version-history-panel dropdown-menu background
+    --indigo-900: #3a3a50; // version-history-panel dropdown-menu border
+    --indigo-880: #353550; // version-history-panel dropdown-item hover background
     --orange-600: #ffa500; // literal CSS "orange" keyword, distinct from the legacy --orange token
+    --orange-600-alpha-8: rgba(255, 165, 0, 0.08);
+    --orange-600-alpha-12: rgba(255, 165, 0, 0.12);
+    --orange-600-alpha-15: rgba(255, 165, 0, 0.15);
+    --orange-600-alpha-30: rgba(255, 165, 0, 0.3);
+    --orange-600-alpha-40: rgba(255, 165, 0, 0.4);
     --orange-600-alpha-60: rgba(255, 165, 0, 0.6);
+    --orange-600-alpha-70: rgba(255, 165, 0, 0.7);
     --amber-600: #ffb300; // graph-rag-configuration warning accent
     --amber-600-alpha-8: rgba(255, 179, 0, 0.08);
     --amber-600-alpha-30: rgba(255, 179, 0, 0.3);
@@ -409,6 +599,9 @@
     --color-divider: var(--color-divider-regular);
     --color-divider-regular: var(--steel-alpha-14);
     --color-divider-subtle: var(--steel-alpha-8);
+    --color-divider-strong: var(
+        --steel-alpha-18
+    ); // flow-sessions-table scrollbar-thumb hover — token was referenced but never defined before this fix
 
     // ------------------------------------------------------------------
     // SEMANTIC — statuses & feedback (independent from buttons)

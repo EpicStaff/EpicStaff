@@ -9,9 +9,9 @@
     padding: 0.5rem 1.25rem;
     font-size: 12px;
     border-radius: 4px;
-    border: 1.5px solid var(--color-divider-subtle, #444);
-    background: var(--color-surface-card, #232323);
-    color: rgba(230, 230, 230, 1);
+    border: 1.5px solid var(--color-divider-subtle);
+    background: var(--color-surface-card);
+    color: var(--gray-118);
     cursor: pointer;
     transition:
         background 0.15s,
@@ -22,25 +22,25 @@
 
     &:hover,
     &:focus {
-        background: #222222;
-        color: #fff;
+        background: var(--graphite-822);
+        color: var(--white);
     }
 
     &--active {
-        color: rgba(104, 95, 255, 1);
+        color: var(--accent-color);
 
         .flow-files-btn__icon {
-            color: rgba(104, 95, 255, 1);
+            color: var(--accent-color);
         }
 
         &:hover,
         &:focus {
-            color: rgba(104, 95, 255, 1);
+            color: var(--accent-color);
         }
     }
 
     &__icon {
-        color: rgba(230, 230, 230, 1);
+        color: var(--gray-118);
         flex-shrink: 0;
     }
 

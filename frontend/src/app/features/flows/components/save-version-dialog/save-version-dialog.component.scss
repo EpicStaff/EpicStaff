@@ -32,7 +32,7 @@
         border-radius: 4px;
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: var(--white-alpha-10);
             color: var(--color-text-primary);
         }
     }
@@ -89,13 +89,13 @@
             }
 
             &--error {
-                border-color: var(--color-error, #e0575b);
+                border-color: var(--color-error);
             }
         }
 
         .error-message {
             font-size: 0.75rem;
-            color: var(--color-error, #e0575b);
+            color: var(--color-error);
             margin-top: 0.25rem;
         }
     }

@@ -33,7 +33,7 @@
             flex: 1 1 auto;
 
             .project-prefix {
-                color: rgba(255, 255, 255, 0.6);
+                color: var(--white-alpha-60);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -55,7 +55,7 @@
             }
 
             .separator {
-                color: rgba(255, 255, 255, 0.4);
+                color: var(--white-alpha-40);
                 margin: 0 0.5rem;
                 flex-shrink: 0;
             }
@@ -64,7 +64,7 @@
                 display: flex;
                 gap: 0.25rem;
                 align-items: flex-start;
-                color: var(--color-text-primary, #d9d9de);
+                color: var(--color-text-primary);
                 max-width: 500px;
                 min-width: 0;
                 overflow: hidden;
@@ -79,10 +79,10 @@
                 &__edit {
                     transition: all 0.2s ease;
                     cursor: pointer;
-                    color: rgba(255, 255, 255, 0.6);
+                    color: var(--white-alpha-60);
 
                     &:hover {
-                        color: #ffffff;
+                        color: var(--white);
                     }
                 }
             }

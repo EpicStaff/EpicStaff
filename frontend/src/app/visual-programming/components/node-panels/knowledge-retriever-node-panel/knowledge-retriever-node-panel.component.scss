@@ -96,7 +96,7 @@
 .search-config-toggle {
     background: none;
     border: none;
-    color: var(--text);
+    color: var(--fog-200);
     font-size: 0.875rem;
     padding: 0.25rem 0;
     cursor: pointer;
@@ -108,7 +108,7 @@
         display: inline-block;
         transition: transform 0.15s ease;
         font-size: 0.7rem;
-        color: var(--text-secondary-60);
+        color: var(--fog-alpha-60);
 
         &.open {
             transform: rotate(90deg);
@@ -116,7 +116,7 @@
     }
 
     &:hover {
-        color: #ffffff;
+        color: var(--white);
     }
 }
 
@@ -148,21 +148,21 @@
         justify-content: center;
         border-width: 1px 0 1px 1px;
         border-style: solid;
-        border-color: #2c2c2e;
+        border-color: var(--graphite-700);
         background: transparent;
         cursor: pointer;
         border-radius: 8px 0 0 8px;
         transition: all 0.2s ease;
         padding: 0;
-        color: #d9d9d999;
+        color: var(--fog-alpha-60);
 
         svg {
             transition: transform 0.3s ease;
         }
 
         &:hover:not(:disabled) {
-            color: #d9d9d9;
-            background: #2c2c2e;
+            color: var(--gray-217);
+            background: var(--graphite-700);
         }
     }
 }
@@ -203,7 +203,7 @@
 
         .tooltip {
             font-size: 0.75rem;
-            color: var(--text-secondary-60);
+            color: var(--fog-alpha-60);
         }
     }
 }
@@ -248,7 +248,7 @@
     align-self: flex-start;
     background: none;
     border: none;
-    color: var(--text-secondary-60);
+    color: var(--fog-alpha-60);
     font-size: 0.875rem;
     cursor: pointer;
     display: flex;
@@ -266,7 +266,7 @@
     }
 
     &:hover {
-        color: #ffffff;
+        color: var(--white);
     }
 }
 
@@ -283,7 +283,7 @@
     padding: 0.25rem 0.5rem;
     border: 1px solid var(--color-divider-subtle);
     border-radius: 4px;
-    color: var(--text);
+    color: var(--fog-200);
     font-size: 0.75rem;
     cursor: pointer;
     transition:
@@ -299,5 +299,5 @@
 
 .inputs-chip-empty {
     font-size: 0.75rem;
-    color: var(--text-secondary-60);
+    color: var(--fog-alpha-60);
 }

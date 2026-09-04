@@ -3,7 +3,7 @@
 }
 
 .default-llms-card {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--white-alpha-8);
     border-radius: 12px;
     padding: 16px;
     display: flex;
@@ -34,7 +34,7 @@
     &__icon {
         width: 2rem;
         height: 2rem;
-        color: var(--color-ks-text);
+        color: var(--fog-200);
     }
 
     &__close-icon {
@@ -48,7 +48,7 @@
     &__title {
         font-size: 16px;
         font-weight: 500;
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--configure-models-dialog-inactive-color);
     }
 
     &__controls {
@@ -64,7 +64,7 @@
 
     &__divider {
         height: 1px;
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--white-alpha-8);
     }
 
     &__add {
@@ -72,8 +72,8 @@
         aspect-ratio: 1;
         border-radius: 6px;
         border: none;
-        background: var(--configure-models-dialog-inactive-color, #685fff);
-        color: #ffffff;
+        background: var(--configure-models-dialog-inactive-color);
+        color: var(--white);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -89,7 +89,7 @@
         }
 
         &:hover {
-            background: #716bff;
+            background: var(--purple-415);
         }
 
         &:active {
@@ -102,6 +102,6 @@
         font-size: 12px;
         font-weight: 400;
         line-height: 1;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
     }
 }
