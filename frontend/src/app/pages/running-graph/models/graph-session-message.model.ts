@@ -204,13 +204,22 @@ export interface ConditionGroupMessageData {
     message_type: MessageType.CONDITION_GROUP;
 }
 
+export interface ClassificationTokenUsage {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    cached_prompt_tokens?: number;
+    total_cost_usd?: number;
+    [key: string]: number | undefined;
+}
+
 export interface ClassificationPromptMessageData {
     prompt_id: string;
     prompt_text: string;
     raw_response: string;
     parsed_result: unknown;
     result_variable: string;
-    usage: Record<string, number>;
+    usage: ClassificationTokenUsage;
     message_type: MessageType.CLASSIFICATION_PROMPT;
 }
 

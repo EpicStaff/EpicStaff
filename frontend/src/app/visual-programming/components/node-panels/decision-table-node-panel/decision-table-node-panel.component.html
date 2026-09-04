@@ -31,19 +31,14 @@
                         formControlName="next_error_node"
                         [items]="availableNodeItems()"
                     />
-                    <div class="convert-toggle-field">
-                        <label class="convert-toggle-label">
-                            Classification Dec Table
-                            <app-help-tooltip text="Convert this node to a Classification Decision Table" />
-                        </label>
-                        <button
-                            type="button"
-                            class="cdt-toggle"
-                            aria-label="Convert to Classification Decision Table"
+                    <div class="convert-cdt-field">
+                        <app-button
+                            type="outline-primary"
+                            [leftIcon]="'refresh'"
                             (click)="convertToCdt()"
                         >
-                            <span class="toggle-thumb"></span>
-                        </button>
+                            Convert to CDT
+                        </app-button>
                     </div>
                 </div>
 

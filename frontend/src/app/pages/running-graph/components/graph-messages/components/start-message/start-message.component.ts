@@ -1,16 +1,23 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, ViewEncapsulation } from '@angular/core';
+import { Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
+import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-button/view-nested-messages-button.component';
 
 @Component({
     selector: 'app-start-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [
+        CommonModule,
+        NgxJsonViewerModule,
+        AppSvgIconComponent,
+        CopyButtonComponent,
+        ViewNestedMessagesButtonComponent,
+    ],
     encapsulation: ViewEncapsulation.Emulated,
     animations: [expandCollapseAnimation],
     template: `
@@ -37,6 +44,13 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 <h3>
                     <span class="node-name">{{ message.name }}</span> started
                 </h3>
+
+                <app-view-nested-messages-button
+                    *ngIf="showViewNestedMessages"
+                    [count]="nestedMessagesCount"
+                    [isOpen]="isNestedMessagesOpen"
+                    (clicked)="viewNestedMessages.emit()"
+                ></app-view-nested-messages-button>
             </div>
 
             <!-- Collapsible Content -->
@@ -191,6 +205,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 })
 export class StartMessageComponent {
     @Input() message!: GraphMessage;
+    @Input() showViewNestedMessages = false;
+    @Input() isNestedMessagesOpen = false;
+    @Input() nestedMessagesCount: number = 0;
+    @Output() viewNestedMessages = new EventEmitter<void>();
+
     isMessageExpanded = false;
     isInputsExpanded = true;
 

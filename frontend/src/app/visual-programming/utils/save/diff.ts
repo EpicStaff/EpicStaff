@@ -1,4 +1,5 @@
 import { NodeType } from '../../core/enums/node-type';
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -361,14 +362,24 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path:
             tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
+        pre_use_storage: tableData?.pre_use_storage ?? false,
         post_computation_code: postCode,
         post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
         post_output_variable_path:
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
+        post_use_storage: tableData?.post_use_storage ?? false,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
         pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
         post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
+        sections: ((tableData?.sections || []) as CdtSection[])
+            .slice()
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map((s) => ({
+                id: s.id,
+                name: s.name,
+                color: normalizeCdtSectionColor(s.metadata?.color),
+            })),
         metadata: toNodeMetadata(node),
     };
 }

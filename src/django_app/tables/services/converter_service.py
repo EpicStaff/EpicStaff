@@ -1004,6 +1004,8 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         node: ClassificationDecisionTableNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -1040,16 +1042,46 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
+        pre_storage_allowed_paths = None
+        pre_storage_org_prefix = None
+        if node.pre_use_storage and graph_id is not None:
+            pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                pre_storage_allowed_paths.append(f"sessions/{session_id}/")
+            pre_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        post_storage_allowed_paths = None
+        post_storage_org_prefix = None
+        if node.post_use_storage and graph_id is not None:
+            post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                post_storage_allowed_paths.append(f"sessions/{session_id}/")
+            post_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
         pre_python_code_data = None
         if node.pre_python_code is not None:
             pre_python_code_data = self.convert_python_code_to_pydantic(
-                node.pre_python_code
+                node.pre_python_code,
+                use_storage=node.pre_use_storage,
+                storage_allowed_paths=pre_storage_allowed_paths,
+                storage_org_prefix=pre_storage_org_prefix,
+                session_id=session_id,
+                org_id=org_id,
             )
 
         post_python_code_data = None
         if node.post_python_code is not None:
             post_python_code_data = self.convert_python_code_to_pydantic(
-                node.post_python_code
+                node.post_python_code,
+                use_storage=node.post_use_storage,
+                storage_allowed_paths=post_storage_allowed_paths,
+                storage_org_prefix=post_storage_org_prefix,
+                session_id=session_id,
+                org_id=org_id,
             )
 
         return ClassificationDecisionTableNodeData(

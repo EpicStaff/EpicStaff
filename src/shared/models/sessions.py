@@ -12,6 +12,15 @@ class SessionData(BaseModel):
     output_state: dict[str, Any] = {}
 
 
+class TokenUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    successful_requests: int = 0
+    cached_prompt_tokens: int = 0
+    total_cost_usd: float = 0.0
+
+
 class GraphSessionMessageData(BaseModel):
     session_id: int
     name: str

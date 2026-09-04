@@ -3,9 +3,9 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
@@ -28,7 +28,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         DecisionTableGridComponent,
         MatTooltipModule,
         SelectComponent,
-        HelpTooltipComponent,
+        ButtonComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],

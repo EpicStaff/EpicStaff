@@ -90,6 +90,7 @@ from .knowledge import (
 )
 from .sessions import (
     SessionData,
+    TokenUsage,
     GraphSessionMessageData,
     StopSessionMessage,
     UNAUTHENTICATED_FALLBACK_PRINCIPAL,
@@ -219,6 +220,7 @@ __all__ = [
     "ChunkDocumentMessageResponse",
     # sessions
     "SessionData",
+    "TokenUsage",
     "GraphSessionMessageData",
     "StopSessionMessage",
     "UNAUTHENTICATED_FALLBACK_PRINCIPAL",

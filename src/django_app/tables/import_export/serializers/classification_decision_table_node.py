@@ -6,7 +6,10 @@ from tables.models import (
     ClassificationConditionGroup,
     PythonCode,
 )
-from tables.models.graph_models import ClassificationDecisionTablePrompt
+from tables.models.graph_models import (
+    ClassificationConditionGroupSection,
+    ClassificationDecisionTablePrompt,
+)
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 
 
@@ -23,6 +26,12 @@ class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClassificationConditionGroup
         exclude = ["created_at", "updated_at"]
+
+
+class ClassificationConditionGroupSectionImportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClassificationConditionGroupSection
+        fields = ["id", "name", "metadata"]
 
 
 class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSerializer):
@@ -45,6 +54,9 @@ class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerialize
         queryset=Graph.objects.all(), write_only=True
     )
     condition_groups = ClassificationConditionGroupImportSerializer(
+        many=True, required=False, read_only=True
+    )
+    sections = ClassificationConditionGroupSectionImportSerializer(
         many=True, required=False, read_only=True
     )
     prompt_configs = ClassificationDecisionTablePromptImportSerializer(

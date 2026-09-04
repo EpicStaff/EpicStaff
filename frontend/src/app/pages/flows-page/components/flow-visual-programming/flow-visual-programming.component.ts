@@ -73,9 +73,11 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
+import { PromptConfig } from '../../../../visual-programming/core/models/classification-decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import {
     AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
     NodeModel,
     ScheduleTriggerNodeModel,
     TaskNodeModel,
@@ -419,7 +421,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private getBlockingNodeValidationIssues(flowState: FlowModel): string[] {
         let issues: string[] = [];
         try {
-            issues = [...this.getInvalidTaskNodeMessages(flowState), ...this.getInvalidAgentNodeMessages(flowState)];
+            issues = [
+                ...this.getInvalidTaskNodeMessages(flowState),
+                ...this.getInvalidAgentNodeMessages(flowState),
+                ...this.getInvalidClassificationTableMessages(flowState),
+            ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);
             return ['a node failed validation — check the console and try again'];
@@ -505,6 +511,45 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
+    }
+
+    /** CDT prompt schemas may legitimately be stored as a JSON string (legacy rows,
+     *  CSV/JSON import, crew runtime `json.loads`) — parse before applying the object rule. */
+    private isValidCdtPromptSchema(schema: PromptConfig['output_schema']): boolean {
+        if (schema == null) return true;
+        if (typeof schema === 'string') {
+            const trimmed = schema.trim();
+            if (trimmed === '') return true;
+            try {
+                return isValidOutputSchema(JSON.parse(trimmed));
+            } catch {
+                return false;
+            }
+        }
+        return isValidOutputSchema(schema);
+    }
+
+    private getInvalidClassificationTableMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.CLASSIFICATION_TABLE) return;
+            const cdtNode = node as ClassificationDecisionTableNodeModel;
+            const prompts = cdtNode.data?.table?.prompts ?? {};
+
+            const invalidKeys = Object.entries(prompts)
+                .filter(([, cfg]) => cfg.output_schema_invalid || !this.isValidCdtPromptSchema(cfg.output_schema))
+                .map(([key]) => key);
+
+            if (invalidKeys.length === 0) return;
+
+            const label = cdtNode.node_name?.trim() || `Untitled decision table #${index + 1}`;
+            const detail =
+                invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
+            messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
         });
 
         return messages;

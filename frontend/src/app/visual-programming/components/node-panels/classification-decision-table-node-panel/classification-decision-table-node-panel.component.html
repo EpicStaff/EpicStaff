@@ -19,7 +19,10 @@
                 <!-- Sticky header: node fields + tab row -->
                 <div class="panel-sticky-header">
                     <!-- Header fields row -->
-                    <div class="panel-node-header">
+                    <div
+                        class="panel-node-header"
+                        [class.panel-node-header--collapsed]="headerCollapsed()"
+                    >
                         <div class="header-field">
                             <label class="header-label"
                                 >Name
@@ -105,9 +108,13 @@
 
                 <!-- Decision Table Tab -->
                 @if (activeTab() === 'table') {
-                    <div class="grid-section">
+                    <div
+                        class="grid-section"
+                        (scroll)="onGridSectionScroll($event)"
+                    >
                         <app-classification-decision-table-grid
                             [conditionGroups]="conditionGroups()"
+                            [sections]="sections()"
                             [activeColor]="activeColor"
                             [currentNodeId]="node().id"
                             [storageNodeId]="gridStorageId()"
@@ -117,6 +124,7 @@
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
+                            (sectionsChange)="onSectionsChange($event)"
                             (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
                             (promptAdd)="onPromptAdd($event.id, $event.config)"
                             (openPromptLibrary)="onOpenPromptLibrary($event)"
@@ -158,6 +166,12 @@
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
+                            <app-node-storage-section
+                                [useStorage]="preUseStorage()"
+                                (onToggleChange)="onPreStorageToggle($event)"
+                                (onInsertCode)="insertPreStorageCode($event)"
+                                (onRemoveCode)="removePreStorageCode($event)"
+                            ></app-node-storage-section>
                         </div>
                         <app-column-resize-divider
                             ariaLabel="Resize inputs and code columns"
@@ -214,6 +228,12 @@
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
+                            <app-node-storage-section
+                                [useStorage]="postUseStorage()"
+                                (onToggleChange)="onPostStorageToggle($event)"
+                                (onInsertCode)="insertPostStorageCode($event)"
+                                (onRemoveCode)="removePostStorageCode($event)"
+                            ></app-node-storage-section>
                         </div>
                         <app-column-resize-divider
                             ariaLabel="Resize inputs and code columns"
@@ -361,17 +381,23 @@
                                                 </div>
 
                                                 <div class="prompt-field">
-                                                    <label class="field-label">Output Schema (JSON)</label>
-                                                    <textarea
-                                                        class="schema-textarea"
-                                                        rows="4"
-                                                        [ngModel]="prompt.output_schema"
-                                                        [ngModelOptions]="{ standalone: true }"
-                                                        (ngModelChange)="
-                                                            updatePrompt(prompt.id, 'output_schema', $event)
+                                                    <label class="field-label">Output Schema</label>
+                                                    <app-json-editor
+                                                        [jsonData]="
+                                                            getPromptSchemaText(prompt.id, prompt.output_schema)
                                                         "
-                                                        placeholder='{"route_label": "string", "confidence": 0.0}'
-                                                    ></textarea>
+                                                        (jsonChange)="onSchemaChange(prompt.id, $event)"
+                                                        [showHeader]="true"
+                                                        [allowCopy]="true"
+                                                        [allowExpand]="false"
+                                                        [editorHeight]="220"
+                                                        [exampleHint]="outputSchemaExampleHint"
+                                                    ></app-json-editor>
+                                                    @if (getPromptSchemaError(prompt.id)) {
+                                                        <div class="prompt-schema-error">
+                                                            {{ getPromptSchemaError(prompt.id) }}
+                                                        </div>
+                                                    }
                                                 </div>
                                             </div>
                                         }

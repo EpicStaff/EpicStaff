@@ -64,6 +64,7 @@
         flex: 1;
         min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
         scrollbar-gutter: stable;
         row-gap: 0.375rem;
     }

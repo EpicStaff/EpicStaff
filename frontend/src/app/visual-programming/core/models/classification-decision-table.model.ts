@@ -1,3 +1,4 @@
+import { CdtSection } from './cdt-section.model';
 import { ConditionGroup } from './decision-table.model';
 
 export interface ComputationConfig {
@@ -12,12 +13,15 @@ export interface ClassificationDecisionTableData {
     pre_computation_code: string | null;
     pre_input_map?: Record<string, string>;
     pre_output_variable_path?: string | null;
+    pre_use_storage?: boolean;
     post_computation_code?: string | null;
     post_input_map?: Record<string, string>;
     post_output_variable_path?: string | null;
+    post_use_storage?: boolean;
     pre_computation?: ComputationConfig;
     post_computation?: ComputationConfig;
     condition_groups: ConditionGroup[];
+    sections?: CdtSection[];
     route_variable_name?: string;
     default_next_node: string | null;
     next_error_node: string | null;
@@ -53,4 +57,5 @@ export interface PromptConfig {
     output_schema: Record<string, unknown> | string | null;
     result_variable: string;
     variable_mappings: Record<string, string>;
+    output_schema_invalid?: boolean;
 }

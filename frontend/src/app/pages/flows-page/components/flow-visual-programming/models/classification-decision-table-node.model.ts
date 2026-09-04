@@ -17,6 +17,12 @@ export interface CreatePromptConfigRequest {
     variable_mappings: Record<string, string>;
 }
 
+export interface ClassificationDecisionTableSectionBackend {
+    id: string;
+    name: string;
+    metadata: { color?: string };
+}
+
 export interface ClassificationConditionGroupBackend {
     id: number;
     classification_decision_table_node: number;
@@ -68,14 +74,17 @@ export interface GetClassificationDecisionTableNodeRequest {
     pre_python_code: CDTPythonCodeBlock | null;
     pre_input_map: Record<string, string>;
     pre_output_variable_path: string | null;
+    pre_use_storage: boolean;
     post_python_code: CDTPythonCodeBlock | null;
     post_input_map: Record<string, string>;
     post_output_variable_path: string | null;
+    post_use_storage: boolean;
     prompt_configs: PromptConfigBackend[];
     default_llm_config: number | null;
     default_next_node_id: number | null;
     next_error_node_id: number | null;
     condition_groups: ClassificationConditionGroupBackend[];
+    sections?: ClassificationDecisionTableSectionBackend[];
     metadata?: unknown;
 }
 
@@ -85,9 +94,11 @@ export interface CreateClassificationDecisionTableNodeRequest {
     pre_python_code: CDTPythonCodeBlock | null;
     pre_input_map: Record<string, string> | null;
     pre_output_variable_path: string | null;
+    pre_use_storage: boolean;
     post_python_code: CDTPythonCodeBlock | null;
     post_input_map: Record<string, string> | null;
     post_output_variable_path: string | null;
+    post_use_storage: boolean;
     prompt_configs: CreatePromptConfigRequest[];
     default_llm_config: number | null;
     default_next_node_id?: number | null;
@@ -95,5 +106,6 @@ export interface CreateClassificationDecisionTableNodeRequest {
     next_error_node_id?: number | null;
     next_error_node_temp_id?: string | null;
     condition_groups: CreateClassificationConditionGroupRequest[];
+    sections?: ClassificationDecisionTableSectionBackend[];
     metadata?: unknown;
 }

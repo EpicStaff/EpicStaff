@@ -1,3 +1,4 @@
+import uuid
 from typing import Callable
 
 from agents.models.surface_models import AgentInlineSurface, InlineSurface
@@ -12,6 +13,7 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     ConditionGroup,
@@ -238,6 +240,8 @@ def copy_classification_decision_table_node(
         default_next_node_id=node.default_next_node_id,
         next_error_node_id=node.next_error_node_id,
         metadata=node.metadata,
+        pre_use_storage=node.pre_use_storage,
+        post_use_storage=node.post_use_storage,
     )
 
     new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
@@ -256,6 +260,16 @@ def copy_classification_decision_table_node(
     )
     new_prompt_map = {p.prompt_key: p for p in new_prompts}
 
+    new_section_map = {}
+    for section in node.sections.all():
+        new_section = ClassificationConditionGroupSection.objects.create(
+            id=uuid.uuid4(),
+            classification_decision_table_node=new_node,
+            name=section.name,
+            metadata=section.metadata,
+        )
+        new_section_map[section.id] = new_section
+
     for group in node.condition_groups.all():
         ClassificationConditionGroup.objects.create(
             classification_decision_table_node=new_node,
@@ -265,11 +279,13 @@ def copy_classification_decision_table_node(
             prompt=new_prompt_map.get(group.prompt.prompt_key)
             if group.prompt
             else None,
+            section=new_section_map.get(group.section_id),
             manipulation=group.manipulation,
             continue_flag=group.continue_flag,
             dock_visible=group.dock_visible,
             field_expressions=group.field_expressions,
             field_manipulations=group.field_manipulations,
+            next_node_id=group.next_node_id,
         )
 
     return new_node

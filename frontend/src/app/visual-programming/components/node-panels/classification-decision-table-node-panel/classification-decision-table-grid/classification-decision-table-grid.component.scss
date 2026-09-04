@@ -1,3 +1,6 @@
+$grid-header-height: 40px;
+$grid-header-gap: 1rem;
+
 :host {
     display: block;
 }
@@ -13,8 +16,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 0.5rem;
+    padding: 0 1.5rem;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 26;
+    background: var(--color-nodes-sidepanel-bg);
+    box-shadow: 0 $grid-header-gap 0 0 var(--color-nodes-sidepanel-bg);
 
     h3 {
         margin: 0;
@@ -107,16 +115,25 @@
 }
 
 .group-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     padding: 0.45rem 0.75rem;
     font-size: 0.8rem;
     color: rgba(255, 255, 255, 0.85);
     cursor: pointer;
     transition: background 0.1s ease;
 
-    &:hover {
+    &:hover,
+    &--submenu.active {
         background: rgba(104, 95, 255, 0.2);
         color: #fff;
     }
+}
+
+.group-menu-item--submenu app-svg-icon {
+    color: var(--color-ks-transparent-text-60);
 }
 
 .grid-header-right {
@@ -284,29 +301,113 @@
     }
 }
 
+$group-gutter-width: 28px;
+
 .group-overlays {
     position: absolute;
     left: 0;
     top: 0;
-    width: 28px;
-    z-index: 1;
+    width: 100%;
+    z-index: 11;
+    pointer-events: none;
 }
 
 .group-overlay {
     position: absolute;
     left: 0;
-    width: 28px;
+    width: 100%;
+    pointer-events: none;
+
+    &.collapsed {
+        width: $group-gutter-width;
+    }
+}
+
+.group-overlay-border {
+    position: absolute;
+    left: $group-gutter-width;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    border: 1px solid var(--color-text-primary);
+    border-radius: 4px;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.group-overlay-chip {
+    position: absolute;
+    left: $group-gutter-width;
+    top: -11px;
+    max-width: calc(100% - #{$group-gutter-width} - 12px);
+    height: 22px;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    border-radius: 4px;
+    pointer-events: auto;
+    overflow: hidden;
+}
+
+.group-overlay-chip-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: #212325;
+}
+
+.group-overlay-chip-btn {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #212325;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 3px;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+
+.group-overlay-chip-btn--delete {
+    width: 20px;
+    height: 20px;
+}
+
+.group-overlay-chip-btn:hover {
+    color: var(--color-text-primary);
+}
+.group-overlay-chip.is-light .group-overlay-chip-btn:hover {
+    color: rgba(21, 21, 21, 0.28);
+}
+
+.group-overlay-gutter {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: $group-gutter-width;
     pointer-events: auto;
 }
 
 .group-overlay-chevron {
+    position: absolute;
+    left: 2px;
+    top: 0;
     width: 22px;
     height: 22px;
     padding: 0;
-    margin-left: 2px;
     border: 1px solid var(--color-text-primary);
     border-radius: 4px;
     background: #212325;
@@ -331,30 +432,29 @@
     fill: currentColor;
 }
 
-.group-overlay-bracket {
-    margin-left: 13px;
-    margin-top: 0;
-    width: 10px;
-    flex: 1;
-    border-left: 1px solid var(--color-text-primary);
-    border-bottom: 1px solid var(--color-text-primary);
-    border-bottom-left-radius: 8px;
-    box-sizing: border-box;
-}
-
 .group-overlay-chevron.active {
     border-color: var(--purple-primary);
     color: var(--purple-primary);
 }
 
+.group-overlay-bracket {
+    position: absolute;
+    left: 13px;
+    width: 10px;
+    border-left: 1px solid var(--color-text-primary);
+    border-bottom: 1px solid var(--color-text-primary);
+    border-bottom-left-radius: 8px;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
 .group-overlay-bracket.active {
-    border-left-color: var(--purple-primary);
-    border-bottom-color: var(--purple-primary);
+    border-color: var(--purple-primary);
 }
 
 .row-drop-indicator {
     position: absolute;
-    left: 28px;
+    left: $group-gutter-width;
     right: 0;
     height: 2px;
     background: var(--purple-primary);
@@ -397,8 +497,6 @@
     }
 }
 
-// Above-grid "+" button: shown centered above Expression/Manipulation column
-// when the corresponding params group is empty (no field variables added yet).
 .col-above-add-btn {
     position: absolute;
     top: 16px;
@@ -611,7 +709,7 @@
             border-top-left-radius: 8px;
             border-top-right-radius: 8px;
             position: sticky;
-            top: 0;
+            top: calc(#{$grid-header-height} + #{$grid-header-gap});
             z-index: 10;
         }
 
@@ -695,4 +793,26 @@
 
 :host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-row-drag:active {
     cursor: grabbing;
+}
+
+:host ::ng-deep .ag-header-cell-moving,
+:host ::ng-deep .ag-header-group-cell.ag-header-cell-moving,
+:host ::ng-deep .ag-cell.col-drag-lifted {
+    z-index: 5;
+}
+
+:host ::ng-deep .col-drag-edge-left {
+    border-left: 1px solid #2b2d30; // Figma "Line" — no exact CSS var (design-tokens.md gap;
+    // closest is --color-ks-line #2c2c2e). Developer specified this hex explicitly.
+    box-shadow: -4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}
+:host ::ng-deep .col-drag-edge-right {
+    border-right: 1px solid #2b2d30;
+    box-shadow: 4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}
+
+:host ::ng-deep .col-drag-edge-left.col-drag-edge-right {
+    box-shadow:
+        -4px 0px 4px 0px rgba(0, 0, 0, 0.25),
+        4px 0px 4px 0px rgba(0, 0, 0, 0.25);
 }

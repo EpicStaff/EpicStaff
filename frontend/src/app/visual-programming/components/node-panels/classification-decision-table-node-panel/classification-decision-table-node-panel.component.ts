@@ -32,12 +32,15 @@ import { ColumnResizeDividerComponent } from '../../../../shared/components/colu
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
+import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
 import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
+import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
     ComputationConfig,
@@ -48,8 +51,15 @@ import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import {
+    isValidOutputSchema,
+    OUTPUT_SCHEMA_JSON_ERROR,
+    OUTPUT_SCHEMA_RULE_ERROR,
+} from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { CDT_HEADER_COLLAPSE_AT, CDT_HEADER_COLLAPSE_MIN_SCROLLABLE, CDT_HEADER_EXPAND_AT } from './cdt.constants';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -70,8 +80,10 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         AppSvgIconComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        NodeStorageSectionComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
+        JsonEditorComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -100,18 +112,25 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private sanitizer = inject(DomSanitizer);
 
     public activeTab = signal<TabType>('table');
+    public headerCollapsed = signal<boolean>(false);
 
     protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
+    public sections = signal<CdtSection[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
     public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
+    public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
+    private readonly schemaDrafts = signal<Record<string, string>>({});
+    private readonly schemaErrors = signal<Record<string, string>>({});
 
     public preCode: string = '';
     public postCode: string = '';
+    public preUseStorage = signal(false);
+    public postUseStorage = signal(false);
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
     public readonly preSecretNames = computed(() => this.namesFor(this.preSelectedSecretIds()));
@@ -343,6 +362,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
+        this.preUseStorage.set(tableData.pre_use_storage ?? false);
+        this.postUseStorage.set(tableData.post_use_storage ?? false);
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
@@ -409,9 +430,15 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
         this.conditionGroups.set(groupsCopy);
+        const sectionsCopy = this.cloneSections(tableData.sections ?? []);
+        const referencedSectionIds = groupsCopy.map((group) => group.section ?? null);
+        this.sections.set(reconcileCdtSections(sectionsCopy, referencedSectionIds));
         this.prompts.set({ ...(tableData.prompts || {}) });
+        this.schemaDrafts.set({});
+        this.schemaErrors.set({});
 
         this.activeTab.set('table');
+        this.headerCollapsed.set(false);
 
         return form;
     }
@@ -425,7 +452,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         const tableData: ClassificationDecisionTableData = {
             pre_computation_code: this.preCode,
+            pre_use_storage: this.preUseStorage(),
             post_computation_code: this.postCode,
+            post_use_storage: this.postUseStorage(),
             pre_computation: {
                 code: this.preCode,
                 input_map: preInputMap,
@@ -441,6 +470,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 secret_ids: this.postSelectedSecretIds(),
             },
             condition_groups: conditionGroups,
+            sections: this.cloneSections(this.sections() || []),
             route_variable_name: 'route_code',
             default_next_node: this.form.value.default_next_node,
             next_error_node: this.form.value.next_error_node,
@@ -495,8 +525,26 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         }
     }
 
+    public onGridSectionScroll(event: Event): void {
+        const el = event.target as HTMLElement;
+        const scrollable = el.scrollHeight - el.clientHeight;
+        const collapsed = this.headerCollapsed();
+        if (!collapsed && scrollable < CDT_HEADER_COLLAPSE_MIN_SCROLLABLE) return;
+
+        const next = collapsed ? el.scrollTop > CDT_HEADER_EXPAND_AT : el.scrollTop > CDT_HEADER_COLLAPSE_AT;
+        if (next === collapsed) return;
+        this.headerCollapsed.set(next);
+        this.cdr.markForCheck();
+    }
+
     public onConditionGroupsChange(groups: ConditionGroup[]): void {
         this.conditionGroups.set(this.cloneConditionGroups(groups));
+        this.cdr.markForCheck();
+        this.sidePanelService.triggerAutosave();
+    }
+
+    public onSectionsChange(sections: CdtSection[]): void {
+        this.sections.set(this.cloneSections(sections));
         this.cdr.markForCheck();
         this.sidePanelService.triggerAutosave();
     }
@@ -533,8 +581,19 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             updated[k === oldId ? trimmed : k] = v;
         });
         this.prompts.set(updated);
+        this.rekeySchemaState(oldId, trimmed);
         this.editingPromptId.set(trimmed);
         this.sidePanelService.triggerAutosave();
+    }
+
+    private rekeySchemaState(oldId: string, newId: string): void {
+        const rekey = (map: Record<string, string>): Record<string, string> => {
+            if (!(oldId in map)) return map;
+            const { [oldId]: value, ...rest } = map;
+            return { ...rest, [newId]: value };
+        };
+        this.schemaDrafts.update(rekey);
+        this.schemaErrors.update(rekey);
     }
 
     public onPromptAdd(id: string, config: PromptConfig): void {
@@ -544,9 +603,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public updatePrompt(id: string, field: keyof PromptConfig, value: PromptConfig[keyof PromptConfig]): void {
+        this.updatePromptFields(id, { [field]: value } as Partial<PromptConfig>);
+    }
+
+    private updatePromptFields(id: string, fields: Partial<PromptConfig>): void {
         const current = { ...this.prompts() };
         if (!current[id]) return;
-        current[id] = { ...current[id], [field]: value };
+        current[id] = { ...current[id], ...fields };
         this.prompts.set(current);
         this.sidePanelService.triggerAutosave();
     }
@@ -571,6 +634,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const current = { ...this.prompts() };
         delete current[id];
         this.prompts.set(current);
+        this.schemaDrafts.update((drafts) => {
+            const next = { ...drafts };
+            delete next[id];
+            return next;
+        });
+        this.schemaErrors.update((errors) => {
+            const next = { ...errors };
+            delete next[id];
+            return next;
+        });
         if (this.editingPromptId() === id) {
             this.editingPromptId.set(null);
         }
@@ -602,9 +675,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return llmConfig ?? null;
     }
 
-    public getSchemaString(schema: PromptConfig['output_schema']): string {
+    public getPromptSchemaText(promptId: string, schema: PromptConfig['output_schema']): string {
+        const draft = this.schemaDrafts()[promptId];
+        if (draft !== undefined) return draft;
         if (!schema || (typeof schema === 'object' && Object.keys(schema).length === 0)) {
-            return '';
+            return '{}';
         }
         if (typeof schema === 'string') {
             return schema;
@@ -612,14 +687,32 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return JSON.stringify(schema, null, 2);
     }
 
-    public onSchemaChange(promptId: string, value: string): void {
+    public getPromptSchemaError(promptId: string): string {
+        return this.schemaErrors()[promptId] ?? '';
+    }
+
+    public onSchemaChange(promptId: string, json: string): void {
+        this.schemaDrafts.update((drafts) => ({ ...drafts, [promptId]: json }));
+
+        const trimmed = json.trim();
         try {
-            const parsed = JSON.parse(value);
-            this.updatePrompt(promptId, 'output_schema', parsed);
+            const parsed = trimmed === '' ? {} : JSON.parse(trimmed);
+            this.updatePromptFields(promptId, { output_schema: parsed, output_schema_invalid: false });
+            this.setSchemaError(promptId, isValidOutputSchema(parsed) ? '' : OUTPUT_SCHEMA_RULE_ERROR);
         } catch {
-            // Store as string if not valid JSON yet (user still typing)
-            this.updatePrompt(promptId, 'output_schema', value);
+            this.updatePromptFields(promptId, { output_schema_invalid: true });
+            this.setSchemaError(promptId, OUTPUT_SCHEMA_JSON_ERROR);
         }
+    }
+
+    private setSchemaError(promptId: string, message: string): void {
+        this.schemaErrors.update((errors) => {
+            if (!message) {
+                if (!(promptId in errors)) return errors;
+                return Object.fromEntries(Object.entries(errors).filter(([key]) => key !== promptId));
+            }
+            return { ...errors, [promptId]: message };
+        });
     }
 
     public onPromptTextChange(promptId: string, value: string): void {
@@ -676,13 +769,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             preLibraries: this.parseLibraries(this.form.value.pre_libraries),
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
+            preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: this.parseLibraries(this.form.value.post_libraries),
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
+            postUseStorage: this.postUseStorage(),
             defaultLlmConfig: this.form.value.default_llm_config || null,
             conditionGroups: this.conditionGroups(),
             prompts: this.prompts(),
+            sections: this.sections(),
         });
         const csv = this.cdtExportImportService.exportToCsv(exportData);
         this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
@@ -721,6 +817,56 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCode = code;
         this.notifyExternalChange();
         this.codeChange$.next();
+    }
+
+    // ── Storage toggle handlers ──
+
+    public onPreStorageToggle(value: boolean): void {
+        this.preUseStorage.set(value);
+        this.codeChange$.next();
+    }
+
+    public onPostStorageToggle(value: boolean): void {
+        this.postUseStorage.set(value);
+        this.codeChange$.next();
+    }
+
+    public insertPreStorageCode(code: string): void {
+        if (!this.preCode.includes('epicstaff_storage')) {
+            this.preCode = code + '\n\n' + this.preCode;
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
+    }
+
+    public removePreStorageCode(code: string): void {
+        const prefix = code + '\n\n';
+        if (this.preCode.startsWith(prefix)) {
+            this.preCode = this.preCode.slice(prefix.length);
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
+    }
+
+    public insertPostStorageCode(code: string): void {
+        if (!this.postCode.includes('epicstaff_storage')) {
+            this.postCode = code + '\n\n' + this.postCode;
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
+    }
+
+    public removePostStorageCode(code: string): void {
+        const prefix = code + '\n\n';
+        if (this.postCode.startsWith(prefix)) {
+            this.postCode = this.postCode.slice(prefix.length);
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
     }
 
     public onPreSecretsChange(values: number[]): void {
@@ -835,10 +981,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         }));
     }
 
+    private cloneSections(sections: CdtSection[]): CdtSection[] {
+        return sections.map((section) => ({
+            ...section,
+            metadata: { ...section.metadata },
+        }));
+    }
+
     private getDefaultTableData(): ClassificationDecisionTableData {
         return {
             pre_computation_code: '',
             condition_groups: [],
+            sections: [],
             prompts: {},
             output_variables: [],
             route_variable_name: 'route_code',
