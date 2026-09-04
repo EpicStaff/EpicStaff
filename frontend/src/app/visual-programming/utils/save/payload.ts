@@ -1,4 +1,8 @@
 import {
+    AgentNodeTaskUi,
+    AgentNodeTaskWrite,
+} from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
+import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
@@ -6,7 +10,6 @@ import {
     CreateConditionGroupRequest,
     CreateDecisionTableNodeRequest,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
@@ -121,22 +124,6 @@ function serializeCDTFieldExpressions(fieldExpressions: Record<string, unknown>)
     return result;
 }
 
-interface CdtConditionGroupUi {
-    group_name: string;
-    order?: number;
-    expression?: string | null;
-    prompt_id?: string | null;
-    manipulation?: string | null;
-    continue_flag?: boolean;
-    continue?: boolean;
-    route_code?: string | null;
-    next_node?: string | null;
-    dock_visible?: boolean;
-    field_expressions?: Record<string, unknown>;
-    field_manipulations?: Record<string, unknown>;
-    section?: string | null;
-}
-
 function buildCdtNodePayload(
     node: ClassificationDecisionTableNodeModel,
     graphId: number,
@@ -144,13 +131,13 @@ function buildCdtNodePayload(
     idMap: Map<string, number>,
     connections: ConnectionModel[]
 ): Record<string, unknown> {
-    const tableData = node.data?.table;
-    const preComp = tableData?.pre_computation || {};
-    const postComp = tableData?.post_computation || {};
-    const preCodeValue = preComp.code || tableData?.pre_computation_code || '';
-    const postCodeValue = postComp.code || tableData?.post_computation_code || '';
+    const tableData = node.data.table;
+    const preComp = tableData.pre_computation;
+    const postComp = tableData.post_computation;
+    const preCodeValue = preComp?.code || tableData.pre_computation_code || '';
+    const postCodeValue = postComp?.code || tableData.post_computation_code || '';
 
-    const conditionGroups = ((tableData?.condition_groups || []) as CdtConditionGroupUi[])
+    const conditionGroups = (tableData.condition_groups ?? [])
         .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
         .map((g, idx) => {
             // Resolve next_node only when route_code is present.
@@ -176,7 +163,7 @@ function buildCdtNodePayload(
                 // this same save connects in one payload. `prompt` (numeric id) is
                 // still sent for back-compat; the backend prefers prompt_key.
                 prompt_key: g.prompt_id ?? null,
-                prompt: (tableData?.prompts?.[g.prompt_id ?? ''] as PromptConfig | undefined)?.backendId ?? null,
+                prompt: tableData.prompts?.[g.prompt_id ?? '']?.backendId ?? null,
                 manipulation: g.manipulation || null,
                 continue_flag: !!(g.continue_flag ?? g.continue),
                 route_code: g.route_code || null,
@@ -184,12 +171,12 @@ function buildCdtNodePayload(
                 next_node_id: resolved.backendId,
                 ...(resolved.tempId ? { next_node_temp_id: resolved.tempId } : {}),
                 dock_visible: g.dock_visible !== false,
-                field_expressions: serializeCDTFieldExpressions(g.field_expressions || {}),
-                field_manipulations: (g.field_manipulations || {}) as Record<string, string>,
+                field_expressions: serializeCDTFieldExpressions(g.field_expressions ?? {}),
+                field_manipulations: g.field_manipulations ?? {},
             };
         });
 
-    let defaultTargetUuid: string | null = tableData?.default_next_node ?? null;
+    let defaultTargetUuid: string | null = tableData.default_next_node ?? null;
     if (!defaultTargetUuid) {
         const conn = connections.find(
             (c) => c.sourceNodeId === node.id && c.sourcePortId === `${node.id}_decision-default`
@@ -197,7 +184,7 @@ function buildCdtNodePayload(
         if (conn) defaultTargetUuid = conn.targetNodeId;
     }
 
-    let errorTargetUuid: string | null = tableData?.next_error_node ?? null;
+    let errorTargetUuid: string | null = tableData.next_error_node ?? null;
     if (!errorTargetUuid) {
         const conn = connections.find(
             (c) => c.sourceNodeId === node.id && c.sourcePortId === `${node.id}_decision-error`
@@ -208,32 +195,37 @@ function buildCdtNodePayload(
     const defaultRef = resolveNodeRef(defaultTargetUuid, allNodes, idMap);
     const errorRef = resolveNodeRef(errorTargetUuid, allNodes, idMap);
 
+    const preSecretIds = preComp?.secret_ids || [];
+    const postSecretIds = postComp?.secret_ids || [];
+
     return {
         graph: graphId,
         node_name: node.node_name,
         pre_python_code:
-            preCodeValue.trim() === ''
+            preCodeValue.trim() === '' && !preSecretIds.length
                 ? null
                 : {
                       code: preCodeValue,
-                      libraries: preComp.libraries || [],
+                      libraries: preComp?.libraries ?? [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: preSecretIds,
                   },
-        pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
-        pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
+        pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
+        pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
         post_python_code:
-            postCodeValue.trim() === ''
+            postCodeValue.trim() === '' && !postSecretIds.length
                 ? null
                 : {
                       code: postCodeValue,
-                      libraries: postComp.libraries || [],
+                      libraries: postComp?.libraries ?? [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: postSecretIds,
                   },
-        post_input_map: postComp.input_map || tableData?.post_input_map || {},
-        post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,
-        prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>).map(
+        post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
+        post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
+        prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
                 ({
                     prompt_key: key,
@@ -244,7 +236,7 @@ function buildCdtNodePayload(
                     variable_mappings: cfg.variable_mappings ?? {},
                 }) satisfies CreatePromptConfigRequest
         ),
-        default_llm_config: tableData?.default_llm_config ?? null,
+        default_llm_config: tableData.default_llm_config ?? null,
         ...(defaultRef.backendId != null ? { default_next_node_id: defaultRef.backendId } : {}),
         ...(defaultRef.tempId != null ? { default_next_node_temp_id: defaultRef.tempId } : {}),
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
@@ -252,6 +244,41 @@ function buildCdtNodePayload(
         condition_groups: conditionGroups,
         metadata: toNodeMetadata(node),
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
+}
+
+function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] {
+    const idByTempId = new Map<string, number>();
+    for (const sibling of tasks ?? []) {
+        if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
+    }
+
+    return (tasks ?? []).map((t, index) => {
+        const contextTaskIds: number[] = [];
+        const contextTaskTempIds: string[] = [];
+
+        for (const r of t.contextRefs ?? []) {
+            if (r.id != null) {
+                contextTaskIds.push(r.id);
+            } else if (r.tempId != null) {
+                const resolvedId = idByTempId.get(r.tempId);
+                if (resolvedId != null) {
+                    contextTaskIds.push(resolvedId);
+                } else {
+                    contextTaskTempIds.push(r.tempId);
+                }
+            }
+        }
+
+        return {
+            ...(t.id != null ? { id: t.id } : { temp_id: t.tempId }),
+            name: t.name,
+            order: index,
+            instructions: t.instructions,
+            output_schema: t.output_schema ?? {},
+            context_task_ids: contextTaskIds,
+            context_task_temp_ids: contextTaskTempIds,
+        } satisfies AgentNodeTaskWrite;
+    });
 }
 
 export function buildBulkSavePayload(
@@ -299,6 +326,8 @@ export function buildBulkSavePayload(
         start_node_ids: nodeDiff.startNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         crew_node_ids: nodeDiff.crewNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         llm_node_ids: nodeDiff.llmNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         file_extractor_node_ids: nodeDiff.fileExtractorNodes.toDelete
             .map((n) => n.backendId!)
@@ -315,8 +344,10 @@ export function buildBulkSavePayload(
             .map((n) => n.backendId!)
             .filter((id) => id != null),
         graph_note_ids: nodeDiff.noteNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        code_agent_node_ids: nodeDiff.codeAgentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         classification_decision_table_node_ids: nodeDiff.classificationDecisionTableNodes.toDelete
+            .map((n) => n.backendId!)
+            .filter((id) => id != null),
+        knowledge_node_ids: nodeDiff.knowledgeRetrieverNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
         edge_ids: connectionDiff.toDelete.map((c) => c.data?.id).filter((id): id is number => id != null),
@@ -352,6 +383,30 @@ export function buildBulkSavePayload(
                 metadata: toNodeMetadata(n),
             };
         }),
+        task_node_list: nodeItems(nodeDiff.taskNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            instructions: n.data.instructions,
+            output_schema: n.data.output_schema ?? {},
+            remember_output: n.data.remember_output ?? false,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            metadata: toNodeMetadata(n),
+        })),
+        agent_node_list: nodeItems(nodeDiff.agentNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            tasks: buildAgentTasksPayload(n.data.tasks ?? []),
+            metadata: toNodeMetadata(n),
+        })),
         llm_node_list: nodeItems(nodeDiff.llmNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
@@ -395,12 +450,13 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            webhook_node_auth: { enabled: n.data.webhook_node_auth?.enabled ?? false },
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
-            telegram_bot_api_key: n.data.telegram_bot_api_key,
+            telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
             metadata: toNodeMetadata(n),
@@ -421,31 +477,22 @@ export function buildBulkSavePayload(
             content: n.data.content,
             metadata: { ...toNodeMetadata(n), backgroundColor: n.data.backgroundColor ?? null },
         })),
-        code_agent_node_list: nodeItems(nodeDiff.codeAgentNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            llm_config: n.data?.llm_config_id ?? null,
-            agent_mode: n.data?.agent_mode ?? 'code_interpreter',
-            session_id: n.data?.session_id ?? '',
-            system_prompt: n.data?.system_prompt ?? '',
-            stream_handler_code: n.data?.stream_handler_code ?? '',
-            libraries: n.data?.libraries ?? [],
-            polling_interval_ms: n.data?.polling_interval_ms ?? 100,
-            silence_indicator_s: n.data?.silence_indicator_s ?? 3,
-            indicator_repeat_s: n.data?.indicator_repeat_s ?? 5,
-            chunk_timeout_s: n.data?.chunk_timeout_s ?? 30,
-            inactivity_timeout_s: n.data?.inactivity_timeout_s ?? 120,
-            max_wait_s: n.data?.max_wait_s ?? 300,
-            input_map: n.input_map,
-            output_variable_path: n.output_variable_path,
-            stream_config: n.stream_config ?? {},
-            output_schema: n.data?.output_schema ?? {},
-            use_storage: n.data?.use_storage ?? false,
-            metadata: toNodeMetadata(n),
-        })),
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)
         ),
+        knowledge_node_list: nodeItems(nodeDiff.knowledgeRetrieverNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            source_collection: n.data?.source_collection ?? null,
+            rag_type: n.data?.rag_type ?? null,
+            rag_id: n.data?.rag_id ?? null,
+            query: n.data?.query ?? '',
+            search_method: n.data?.search_method ?? null,
+            search_configs: n.data?.search_configs ?? null,
+            metadata: toNodeMetadata(n),
+        })),
         edge_list: [...edgeList, ...edgeUpdateList],
         deleted,
     };

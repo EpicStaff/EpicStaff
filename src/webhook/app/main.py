@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -85,30 +85,12 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=settings.cors_allowed_origins_list,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     app.include_router(webhook_routes.router)
-
-    @app.get("/api/tunnel-url/{unique_id}")
-    async def get_tunnel_url(
-        unique_id: str,
-        tunnel_registry: TunnelRegistry = Depends(get_tunnel_registry),
-    ):
-        tunnel = await tunnel_registry.get_tunnel(unique_id=unique_id)
-        if tunnel is None:
-            return {"status": "fail", "description": "Tunnel was not found"}
-
-        tunnel_url = tunnel.public_url
-        if tunnel_url is not None:
-            return {
-                "status": "success",
-                "tunnel_url": tunnel_url,
-            }
-
-        return {"status": "fail", "description": "Tunnel URL not available"}
 
     return app

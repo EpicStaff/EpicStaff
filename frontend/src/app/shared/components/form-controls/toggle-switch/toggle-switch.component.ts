@@ -42,10 +42,10 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
-    private isDisabled = false;
+    disabled = false;
 
     onToggle() {
-        if (this.isDisabled) return;
+        if (this.disabled) return;
         const next = !this.checked;
         this.checked = next;
         this.checkedChange.emit(next);
@@ -68,6 +68,7 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.isDisabled = isDisabled;
+        this.disabled = isDisabled;
+        this.cdr.markForCheck();
     }
 }

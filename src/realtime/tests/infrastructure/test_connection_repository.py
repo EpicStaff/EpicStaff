@@ -16,6 +16,7 @@ def reset_singleton():
 def _make_data(key: str) -> RealtimeAgentChatData:
     return RealtimeAgentChatData(
         connection_key=key,
+        org_id=1,
         rt_api_key="k",
         rt_model_name="m",
         wake_word="",
@@ -101,3 +102,50 @@ def test_overwrite_existing_key():
     repo.save_connection("k", data2)
     assert repo.get_connection("k") is data2
     assert len(repo.get_all_connections()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Security fix: TTL + single-use.
+# ---------------------------------------------------------------------------
+
+
+def test_connection_expires_after_ttl(monkeypatch):
+    """A connection_key must stop working shortly after being published if
+    nobody ever connects with it — otherwise a leaked/guessed key stays a
+    valid, reusable credential forever."""
+    import infrastructure.persistence.connection_repository as repo_module
+
+    fake_time = {"now": 1000.0}
+    monkeypatch.setattr(repo_module.time, "monotonic", lambda: fake_time["now"])
+
+    repo = ConnectionRepository(ttl_seconds=5)
+    repo.save_connection("key1", _make_data("key1"))
+    assert repo.get_connection("key1") is not None
+
+    fake_time["now"] += 5.1
+    assert repo.get_connection("key1") is None
+
+
+def test_connection_not_yet_expired_within_ttl(monkeypatch):
+    import infrastructure.persistence.connection_repository as repo_module
+
+    fake_time = {"now": 1000.0}
+    monkeypatch.setattr(repo_module.time, "monotonic", lambda: fake_time["now"])
+
+    repo = ConnectionRepository(ttl_seconds=300)
+    repo.save_connection("key1", _make_data("key1"))
+
+    fake_time["now"] += 299.0
+    assert repo.get_connection("key1") is not None
+
+
+def test_delete_connection_prevents_reuse():
+    """Single-use: once consumed (deleted), the same connection_key must not
+    resolve to the same session data again."""
+    repo = ConnectionRepository()
+    repo.save_connection("key1", _make_data("key1"))
+    assert repo.get_connection("key1") is not None
+
+    repo.delete_connection("key1")
+
+    assert repo.get_connection("key1") is None

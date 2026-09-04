@@ -3,14 +3,12 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
-    effect,
     inject,
     input,
     OnInit,
     output,
     signal,
 } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -24,12 +22,13 @@ import {
     themeQuartz,
 } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
+import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { NodeType } from '../../../../core/enums/node-type';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
+import { NextNodeEditorComponent } from './cell-editors/next-node-editor/next-node-editor.component';
 import { DeleteCellRendererComponent } from './cell-renderers/delete-cell-renderer/delete-cell-renderer.component';
 import { ExpressionRendererComponent } from './cell-renderers/expression-renderer/expression-renderer.component';
 
@@ -38,7 +37,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 @Component({
     selector: 'app-decision-table-grid',
     standalone: true,
-    imports: [AgGridModule, ButtonComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [AgGridModule, ButtonComponent, HelpTooltipComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,35 +75,6 @@ export class DecisionTableGridComponent implements OnInit {
                 label: node.node_name || node.id,
             }));
     });
-
-    constructor() {
-        effect(() => {
-            const nodes = this.availableNodes();
-            const refData: Record<string, string> = {};
-            nodes.forEach((n) => {
-                refData[n.value] = n.label;
-            });
-
-            if (this.gridApi) {
-                const colDefs = this.gridApi.getColumnDefs();
-                if (colDefs) {
-                    const newColDefs = colDefs.map((col: ColDef) => {
-                        if (col.field === 'next_node' || col.colId === 'next_node') {
-                            return {
-                                ...col,
-                                refData,
-                                cellEditorParams: {
-                                    values: ['', ...nodes.map((n) => n.value)],
-                                },
-                            };
-                        }
-                        return col;
-                    });
-                    this.gridApi.setGridOption('columnDefs', newColDefs);
-                }
-            }
-        });
-    }
 
     ngOnInit(): void {
         const groups = this.conditionGroups();
@@ -253,13 +223,10 @@ export class DecisionTableGridComponent implements OnInit {
             field: 'next_node',
             editable: true,
             width: 200,
-            cellEditor: 'agSelectCellEditor',
-            cellEditorParams: () => {
-                const nodes = this.availableNodes();
-                return {
-                    values: ['', ...nodes.map((n) => n.value)],
-                };
-            },
+            singleClickEdit: true,
+            cellEditor: NextNodeEditorComponent,
+            cellEditorPopup: true,
+            cellEditorParams: () => ({ nodes: this.availableNodes() }),
             valueFormatter: (params) => {
                 if (!params.value) return '';
                 const nodes = this.availableNodes();

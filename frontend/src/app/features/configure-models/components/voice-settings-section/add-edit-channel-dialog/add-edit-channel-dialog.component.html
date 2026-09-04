@@ -1,0 +1,129 @@
+<div class="dialog">
+    <div class="dialog__header">
+        {{ data.action === 'create' ? 'Add Channel' : 'Edit Channel' }}
+    </div>
+
+    <form
+        class="dialog__form"
+        [formGroup]="form"
+    >
+        @if (errorMessage()) {
+            <div class="dialog__error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
+
+        <div>
+            <app-custom-input
+                label="Channel Name"
+                formControlName="name"
+                [required]="true"
+                placeholder="e.g. Support Line"
+                tooltipText="A descriptive name for this channel"
+            />
+        </div>
+
+        <app-radio-button
+            label="Destination Type"
+            formControlName="destination_kind"
+            mod="segmented"
+            tooltipText="Route calls to a legacy Realtime Agent or to a new Realtime Agent Definition. Exactly one may be set per channel."
+            [options]="destinationKindOptions"
+        />
+
+        @if (form.get('destination_kind')?.value === 'agent') {
+            <app-select
+                label="Realtime Agent"
+                formControlName="realtime_agent"
+                [items]="agentItems()"
+                placeholder="Select an agent"
+                tooltipText="The realtime agent that will handle calls on this channel"
+            />
+        } @else {
+            <app-select
+                label="Realtime Agent Definition"
+                formControlName="realtime_agent_definition"
+                [items]="agentDefinitionItems()"
+                placeholder="Select an agent definition"
+                tooltipText="Only agent definitions that have realtime voice enabled are listed."
+            />
+        }
+
+        <div class="dialog__section-divider">
+            <span class="dialog__section-label">Twilio Settings</span>
+        </div>
+
+        <div>
+            <app-custom-input
+                label="Account SID"
+                formControlName="account_sid"
+                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                tooltipText="Your Twilio Account SID"
+            />
+        </div>
+
+        <div>
+            <app-select
+                formControlName="auth_token_secret_id"
+                label="Auth Token"
+                variant="boxed"
+                tooltipText="Your Twilio Auth Token"
+                placeholder="Select a secret"
+                [required]="true"
+                [items]="secretItems()"
+                [showSearch]="true"
+                searchPlaceholder="Search a secret..."
+            />
+        </div>
+
+        <app-select
+            label="Phone Number"
+            formControlName="phone_number"
+            [items]="phoneNumberItems()"
+            [loading]="phoneNumbersLoading()"
+            [disabled]="phoneNumberSelectDisabled()"
+            placeholder="Select a phone number"
+            [tooltipText]="
+                phoneNumberSelectDisabled()
+                    ? 'Save the channel first to look up available phone numbers'
+                    : 'Twilio phone number in E.164 format'
+            "
+            (opened)="onPhoneSelectOpened()"
+        />
+        @if (phoneLoadError()) {
+            <p class="dialog__field-error">
+                {{ phoneLoadError() }}
+            </p>
+        }
+
+        <div class="dialog__section-divider">
+            <span class="dialog__section-label">Webhook Tunnel</span>
+        </div>
+
+        <app-webhook-trigger-field
+            formControlName="webhook_trigger"
+            [pathRequired]="false"
+            [allowLocalhost]="false"
+            (triggerResolved)="onTriggerResolved($event)"
+        ></app-webhook-trigger-field>
+    </form>
+
+    <div class="dialog__actions">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="form.invalid || isSubmitting()"
+        >
+            @if (isSubmitting()) {
+                {{ data.action === 'create' ? 'Creating…' : 'Saving…' }}
+            } @else {
+                {{ data.action === 'create' ? 'Create' : 'Save' }}
+            }
+        </app-button>
+    </div>
+</div>

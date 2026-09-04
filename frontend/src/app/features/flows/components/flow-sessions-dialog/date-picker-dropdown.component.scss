@@ -1,0 +1,23 @@
+.cd-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: var(--color-text-primary);
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    white-space: nowrap;
+    transition: color 0.15s;
+
+    &:hover {
+        color: var(--accent-color, #5e9eff);
+    }
+
+    &--active {
+        color: var(--accent-color);
+    }
+}

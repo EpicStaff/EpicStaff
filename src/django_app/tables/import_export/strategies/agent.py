@@ -5,13 +5,16 @@ from django.db.models import Q
 from tables.models import (
     Agent,
     RealtimeAgent,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
     LLMConfig,
     AgentPythonCodeTools,
     AgentMcpTools,
     PythonCodeTool,
     McpTool,
+)
+from tables.models.realtime_models import (
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
 )
 from tables.models.knowledge_models.naive_rag_models import NaiveRagSearchConfig
 from tables.import_export.strategies.base import EntityImportExportStrategy
@@ -51,17 +54,19 @@ class AgentStrategy(EntityImportExportStrategy):
             "mcptool_id", flat=True
         )
 
-        realtime_config = instance.realtime_agent.realtime_config
-        realtime_transcription_config = (
-            instance.realtime_agent.realtime_transcription_config
-        )
-
-        if realtime_config:
-            deps[EntityType.REALTIME_CONFIG] = [realtime_config.id]
-        if realtime_transcription_config:
-            deps[EntityType.REALTIME_TRANSCRIPTION_CONFIG] = [
-                realtime_transcription_config.id
-            ]
+        # Provider config dependencies (new architecture)
+        try:
+            rt_agent = instance.realtime_agent
+            if rt_agent.openai_config_id:
+                deps[EntityType.OPENAI_REALTIME_CONFIG] = [rt_agent.openai_config_id]
+            if rt_agent.elevenlabs_config_id:
+                deps[EntityType.ELEVENLABS_REALTIME_CONFIG] = [
+                    rt_agent.elevenlabs_config_id
+                ]
+            if rt_agent.gemini_config_id:
+                deps[EntityType.GEMINI_REALTIME_CONFIG] = [rt_agent.gemini_config_id]
+        except RealtimeAgent.DoesNotExist:
+            pass
 
         return deps
 
@@ -77,7 +82,7 @@ class AgentStrategy(EntityImportExportStrategy):
 
         agent = self._create_agent(data, org_id)
         self._assign_tools(agent, python_tools, mcp_tools)
-        self._create_realtime_agent(agent, realtime_data, id_mapper)
+        self._create_realtime_agent(agent, realtime_data, id_mapper, org_id)
         self._create_naive_search_config(agent, naive_search_config_data)
 
         agent.llm_config = llm_config
@@ -222,30 +227,64 @@ class AgentStrategy(EntityImportExportStrategy):
             [AgentMcpTools(agent=agent, mcptool_id=tool.id) for tool in mcp_tools]
         )
 
-    def _create_realtime_agent(self, agent, data, id_mapper: IDMapper):
+    def _create_realtime_agent(
+        self, agent, data, id_mapper: IDMapper, org_id: int = None
+    ):
         if not data:
             return
 
-        old_realtime_config_id = data.pop("realtime_config", None)
-        old_realtime_transcription_config_id = data.pop(
-            "realtime_transcription_config", None
+        # Strip any legacy fields from old exports that no longer exist on the model
+        data.pop("realtime_config", None)
+        data.pop("realtime_transcription_config", None)
+        data.pop("language", None)
+        data.pop("voice_recognition_prompt", None)
+
+        # Resolve new provider config FKs
+        old_openai_id = data.pop("openai_config", None)
+        old_elevenlabs_id = data.pop("elevenlabs_config", None)
+        old_gemini_id = data.pop("gemini_config", None)
+
+        # Defense-in-depth: even though the IDMapper only maps IDs created/reused
+        # within this same import (already org-scoped upstream), require the
+        # resolved config to belong to the target org before attaching it.
+        openai_config = (
+            OpenAIRealtimeConfig.objects.filter(
+                id=id_mapper.get_or_none(
+                    EntityType.OPENAI_REALTIME_CONFIG, old_openai_id
+                ),
+                org_id=org_id,
+            ).first()
+            if old_openai_id
+            else None
         )
-        realtime_cofig_id = id_mapper.get_or_none(
-            EntityType.REALTIME_CONFIG, old_realtime_config_id
+
+        elevenlabs_config = (
+            ElevenLabsRealtimeConfig.objects.filter(
+                id=id_mapper.get_or_none(
+                    EntityType.ELEVENLABS_REALTIME_CONFIG, old_elevenlabs_id
+                ),
+                org_id=org_id,
+            ).first()
+            if old_elevenlabs_id
+            else None
         )
-        realtime_transcription_config_id = id_mapper.get_or_none(
-            EntityType.REALTIME_TRANSCRIPTION_CONFIG,
-            old_realtime_transcription_config_id,
+
+        gemini_config = (
+            GeminiRealtimeConfig.objects.filter(
+                id=id_mapper.get_or_none(
+                    EntityType.GEMINI_REALTIME_CONFIG, old_gemini_id
+                ),
+                org_id=org_id,
+            ).first()
+            if old_gemini_id
+            else None
         )
-        realtime_config = RealtimeConfig.objects.filter(id=realtime_cofig_id).first()
-        realtime_transcription_config = RealtimeTranscriptionConfig.objects.filter(
-            id=realtime_transcription_config_id
-        ).first()
 
         realtime_agent = RealtimeAgent.objects.create(
             agent=agent,
-            realtime_config=realtime_config,
-            realtime_transcription_config=realtime_transcription_config,
+            openai_config=openai_config,
+            elevenlabs_config=elevenlabs_config,
+            gemini_config=gemini_config,
             **data,
         )
         return realtime_agent

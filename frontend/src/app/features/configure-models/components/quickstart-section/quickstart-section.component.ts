@@ -37,6 +37,9 @@ import { ToastService } from '../../../../services/notifications';
 import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { CreateQuickstartRequest } from '../../models/quickstart.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
+import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
+import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
+import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { QuickstartService } from '../../services/quickstart.service';
 
 @Component({
@@ -61,6 +64,9 @@ export class QuickstartSectionComponent implements OnInit {
     private readonly embeddingConfigStorageService = inject(EmbeddingConfigStorageService);
     private readonly realtimeConfigStorageService = inject(RealtimeConfigStorageService);
     private readonly transcriptionConfigStorageService = inject(TranscriptionConfigStorageService);
+    private readonly openaiRealtimeStorage = inject(OpenAIRealtimeConfigStorageService);
+    private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly quickstartService = inject(QuickstartService);
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
     private readonly destroyRef = inject(DestroyRef);
@@ -186,10 +192,34 @@ export class QuickstartSectionComponent implements OnInit {
                 }),
                 finalize(() => {
                     this.defaultModelsStorageService.markDefaultModelsOutdated();
-                    this.llmConfigStorageService.markConfigsOutdated();
-                    this.embeddingConfigStorageService.markConfigsOutdated();
-                    this.realtimeConfigStorageService.markConfigsOutdated();
-                    this.transcriptionConfigStorageService.markConfigsOutdated();
+                    this.llmConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.embeddingConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.realtimeConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.transcriptionConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.openaiRealtimeStorage
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.geminiRealtimeStorage
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.elevenLabsRealtimeStorage
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
                     this.isSaving.set(false);
                 }),
                 takeUntilDestroyed(this.destroyRef)

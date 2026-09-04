@@ -3,6 +3,7 @@
     --color-sidenav-background: #222225;
     --color-background-body: #212325;
     --color-flow-card-bg: #2b2d30;
+    --color-white: #ffffff;
 
     --accent-color: #685fff;
     --accent-color-hover: #574fd6;
@@ -98,6 +99,7 @@
     --purple-primary: rgba(104, 95, 255, 1);
     --transparent-white-8: rgba(217, 217, 222, 0.08);
     --transparent-white-4: rgba(217, 217, 222, 0.04);
+    --transparent-white-16: rgba(217, 217, 222, 0.16);
     --transparent-yellow-8: rgba(255, 207, 0, 0.08);
     --transparent-green-8: rgba(42, 186, 107, 0.08);
     --transparent-orange-8: rgba(255, 143, 63, 0.08);
@@ -110,10 +112,12 @@
     --color-storage-icon: rgba(230, 230, 230, 1);
 }
 
+// palette is incomplete and inactive, requires improvement in case of use
 .my-app-light {
     //colors
     --color-sidenav-background: #ffffff;
     --color-background-body: #f8fafc;
+    --color-white: #ffffff;
 
     --accent-color: #685fff;
     --accent-color-hover: #574fd6;

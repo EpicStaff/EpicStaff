@@ -13,6 +13,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
 }
 
 .form-container {
@@ -32,15 +33,19 @@
 
 .form-container--expanded {
     .form-layout {
-        flex-wrap: wrap;
-        gap: 1rem;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 0;
     }
     .form-data {
+        @include mixins.resizable-column(550px);
         overflow: auto;
+        min-height: 0;
         padding-right: 1rem;
-        width: 550px;
     }
     .code-editor-section {
+        flex: 1;
+        min-width: 0;
         height: 100%;
         min-height: 0;
     }
@@ -100,32 +105,6 @@
     display: flex;
     flex-direction: column;
     row-gap: 0.75rem;
-
-    &__label-container {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-
-        label {
-            display: block;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
-            margin: 0;
-        }
-
-        .help-icon {
-            font-size: 18px;
-            width: 18px;
-            height: 18px;
-            color: var(--accent-color);
-            cursor: help;
-            transition: opacity 0.2s ease;
-
-            &:hover {
-                opacity: 0.7;
-            }
-        }
-    }
 }
 
 .webhook-status {

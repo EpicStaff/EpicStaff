@@ -7,7 +7,7 @@ IS_DEBUG = "--debug" in sys.argv
 config_dict: Dict[str, Any] = {"env_file_encoding": "utf-8", "extra": "ignore"}
 
 if IS_DEBUG:
-    env_file_path = "../debug.env"
+    env_file_path = "../.debug.env"
     print(f"--- DEBUG MODE: Loading settings from {env_file_path} ---")
     config_dict["env_file"] = env_file_path
 else:
@@ -16,7 +16,6 @@ else:
 
 class Settings(BaseSettings):
     WEBHOOK_TUNNEL: Optional[str] = None
-    WEBHOOK_AUTH: Optional[str] = None
     NGROK_DOMAIN: Optional[str] = None
     WEBHOOK_PORT: int = 8009
     REDIS_HOST: str = "localhost"
@@ -30,6 +29,15 @@ class Settings(BaseSettings):
     REALTIME_URL: str = "http://realtime:8050"
     NGROK_TARGET_HOST: str = "epicstaff-nginx"
     NGROK_TARGET_PORT: int = 80
+    LOCALHOST_TARGET_HOST: str = "localhost"
+    LOCALHOST_TARGET_PORT: int = 8009
+
+    # --- CORS ---
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(**config_dict)
 

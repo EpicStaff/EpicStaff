@@ -31,7 +31,10 @@
                         [size]="'18px'"
                     ></app-svg-icon>
                 }
-                <span class="selector__text">
+                <span
+                    class="selector__text"
+                    [attr.title]="selectedItem()?.name || null"
+                >
                     {{ displayText() }}
                 </span>
 
@@ -81,7 +84,10 @@
             </div>
         }
 
-        <div class="selector__list">
+        <div
+            class="selector__list"
+            [class.selector__list--boxed]="variant() === 'boxed'"
+        >
             @for (item of filteredItems(); track item.name) {
                 <div
                     class="selector__option selector__option--exists"
@@ -101,6 +107,9 @@
                             <span class="selector__subtitle">{{ item.subtitle }}</span>
                         }
                     </div>
+                    @if (item.tip) {
+                        <span class="selector__tip">{{ item.tip }}</span>
+                    }
                 </div>
             }
 

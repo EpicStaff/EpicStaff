@@ -73,11 +73,10 @@ ANSWER_TO_LLM = dict(
 RUN_SESSION_POST = dict(
     summary="Start a new session",
     description=(
-        "Starts a new session for the given flow (identified by `graph_id` or `graph_uuid`). "
-        "Optionally accepts `variables`, uploaded `files`, and a `username` (interpreted as "
-        "the user's email) to bind an OrganizationUser context. Files are base64-encoded and "
-        "merged into variables under the `files` key. Organization and user persistent "
-        "variables are applied on top of request variables before the session is dispatched."
+        "Starts a new session for the given flow (`graph_id` or `graph_uuid`). "
+        "Caller and organization are derived from the authenticated request. "
+        "Requires READ on flows. Uploaded `files` are base64-encoded into "
+        "`variables` under the `files` key."
     ),
     request=RunSessionSerializer,
     examples=[
@@ -110,9 +109,8 @@ RUN_SESSION_POST = dict(
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
             description=(
-                "Bad request — total file size exceeds the limit, "
-                "serializer validation failed, username provided but no GraphOrganization "
-                "exists for this flow, or an internal error occurred while starting the session."
+                "Total file size exceeds the limit, validation failed, or the "
+                "session failed to start."
             ),
             examples=[
                 OpenApiExample(
@@ -130,12 +128,6 @@ RUN_SESSION_POST = dict(
                     status_codes=["400"],
                 ),
                 OpenApiExample(
-                    "No GraphOrganization for flow",
-                    value={"message": "No GraphOrganization exists for this flow."},
-                    response_only=True,
-                    status_codes=["400"],
-                ),
-                OpenApiExample(
                     "Internal error",
                     value={"error": "Connection refused"},
                     response_only=True,
@@ -144,21 +136,29 @@ RUN_SESSION_POST = dict(
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Caller lacks READ on flows in the flow's organization.",
+            examples=[
+                OpenApiExample(
+                    "Permission denied",
+                    value={
+                        "status_code": 403,
+                        "code": "permission_denied",
+                        "message": "PermissionDenied: You do not have permission to perform this action.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Graph not found, or the specified user does not exist or does not belong to the graph's organization.",
+            description="No flow exists for the provided `graph_id` or `graph_uuid`.",
             examples=[
                 OpenApiExample(
                     "Graph not found",
                     value={"message": "Provided graph does not exist"},
-                    response_only=True,
-                    status_codes=["404"],
-                ),
-                OpenApiExample(
-                    "User not found in organization",
-                    value={
-                        "message": "Provided user does not exist or does not belong to organization Acme Corp"
-                    },
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -202,7 +202,6 @@ RUN_SESSION_SSE_GET = dict(
                             "session_id": 42,
                             "message_data": {
                                 "message_type": "finish",
-                                "sse_visible": True,
                                 "content": "Task completed successfully.",
                             },
                         },
@@ -301,7 +300,6 @@ SESSION_LIST_GET = dict(
                                     "crew_node_list": [],
                                     "python_node_list": [],
                                     "subgraph_node_list": [],
-                                    "code_agent_node_list": [],
                                     "conditional_edge_list": [],
                                     "decision_table_node_list": [],
                                     "file_extractor_node_list": [],
@@ -315,6 +313,8 @@ SESSION_LIST_GET = dict(
                                     "prompt_tokens": 0,
                                     "completion_tokens": 0,
                                     "successful_requests": 0,
+                                    "cached_prompt_tokens": 0,
+                                    "total_cost_usd": 0.0,
                                 },
                                 "graph": 0,
                                 "parent_session": None,

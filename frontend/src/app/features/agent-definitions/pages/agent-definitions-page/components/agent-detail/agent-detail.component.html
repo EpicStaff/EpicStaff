@@ -1,0 +1,281 @@
+﻿<form
+    class="detail"
+    [formGroup]="form"
+    (submit)="$event.preventDefault()"
+>
+    @if (!surfacesOnly()) {
+        <section
+            id="agent-section-basics"
+            class="section"
+        >
+            <div class="section__header-row">
+                <button
+                    type="button"
+                    class="section__header"
+                    (click)="toggleSection('basics')"
+                >
+                    <app-svg-icon
+                        class="section__chevron"
+                        [class.section__chevron--open]="isOpen('basics')"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                    <span class="section__title">Basics</span>
+                </button>
+
+                @if (!isCreating() && agent()) {
+                    <button
+                        type="button"
+                        class="section__settings"
+                        aria-label="Additional Settings"
+                        matTooltip="Additional Settings"
+                        matTooltipPosition="above"
+                        matTooltipClass="custom-tooltip"
+                        (click)="openAdditionalSettings()"
+                    >
+                        <app-svg-icon
+                            icon="settings"
+                            size="16px"
+                        />
+                    </button>
+                }
+            </div>
+
+            @if (isOpen('basics')) {
+                <div class="section__body">
+                    <div class="row row--name-llm">
+                        <div class="field">
+                            <label class="label"> Agent Name<span class="required">*</span> </label>
+                            <input
+                                type="text"
+                                class="text-input"
+                                formControlName="name"
+                                placeholder="e.g. CV Processor"
+                                appEnterBlur
+                                (blur)="autosaveName()"
+                            />
+                        </div>
+                        <div class="field">
+                            <label class="label">LLM</label>
+                            <app-llm-model-selector
+                                formControlName="llm_config"
+                                placeholder="Select LLM model"
+                                (modelSelected)="autosave()"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">About this Agent</label>
+                        <textarea
+                            #aboutTa
+                            class="text-area text-area--about"
+                            formControlName="description"
+                            appEnterBlur
+                            placeholder="Describe this agent for your team..."
+                            rows="1"
+                            (input)="adjustTextareaHeight(aboutTa, 400)"
+                            (focus)="adjustTextareaHeight(aboutTa, 400)"
+                            (blur)="autosave()"
+                        ></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Boot Instructions</label>
+
+                        @if (bootAsDoc()) {
+                            <button
+                                type="button"
+                                class="doc-chip"
+                                (click)="onOpenBootDoc()"
+                            >
+                                <app-svg-icon
+                                    class="doc-chip__icon"
+                                    icon="file"
+                                    size="0.9rem"
+                                />
+                                <span class="doc-chip__name">{{ bootDocName }}</span>
+                                <span
+                                    class="doc-chip__remove"
+                                    role="button"
+                                    aria-label="Remove document"
+                                    (click)="$event.stopPropagation(); removeBootDoc()"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="20px"
+                                    />
+                                </span>
+                            </button>
+                        } @else {
+                            <textarea
+                                #instrTa
+                                class="text-area text-area--boot"
+                                formControlName="instructions"
+                                appEnterBlur
+                                placeholder="Enter the core role and instructions your agent will read every time it boots..."
+                                rows="2"
+                                (input)="bootLength.set(instrTa.value.length); adjustBootHeight(instrTa)"
+                                (focus)="adjustBootHeight(instrTa)"
+                                (blur)="autosave()"
+                            ></textarea>
+
+                            @if (bootAtMaxHeight()) {
+                                <p class="boot-hint">
+                                    We recommend creating a document because this text is very long. Click 'Create
+                                    Markdown' so your team can edit it easily.
+                                </p>
+                            }
+
+                            <input
+                                #pcInput
+                                type="file"
+                                [accept]="acceptAttr"
+                                hidden
+                                (change)="onPcFileSelected($event)"
+                            />
+                            <div class="doc-actions">
+                                <button
+                                    type="button"
+                                    class="doc-actions__btn"
+                                    matTooltip="Convert text to .md file"
+                                    matTooltipPosition="above"
+                                    matTooltipClass="custom-tooltip"
+                                    [class.doc-actions__btn--suggest]="bootHintLevel() === 'suggest'"
+                                    [class.doc-actions__btn--urge]="bootHintLevel() === 'urge'"
+                                    (click)="createBootDoc()"
+                                >
+                                    <app-svg-icon
+                                        icon="create-doc"
+                                        size="12px"
+                                    />
+                                    Create Markdown
+                                </button>
+                                <button
+                                    type="button"
+                                    class="doc-actions__btn"
+                                    matTooltip="Read a text file from storage as instructions"
+                                    matTooltipPosition="above"
+                                    matTooltipClass="custom-tooltip"
+                                    [disabled]="isCreating()"
+                                    (click)="onExtractFromStorage()"
+                                >
+                                    <app-svg-icon
+                                        icon="extract-from-storage"
+                                        size="12px"
+                                    />
+                                    Extract Text from Storage
+                                </button>
+                                <button
+                                    type="button"
+                                    class="doc-actions__btn"
+                                    matTooltip="Read a text file from your computer as instructions"
+                                    matTooltipPosition="above"
+                                    matTooltipClass="custom-tooltip"
+                                    [disabled]="isCreating()"
+                                    (click)="onExtractFromPc(pcInput)"
+                                >
+                                    <app-svg-icon
+                                        icon="upload"
+                                        size="12px"
+                                    />
+                                    Extract Text from PC
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </section>
+    }
+
+    <section
+        id="agent-section-surfaces"
+        class="section"
+        [class.section--bare]="surfacesOnly()"
+    >
+        @if (!surfacesOnly()) {
+            <button
+                type="button"
+                class="section__header"
+                appHideInlineSubtitleOnOverflow
+                overflowTitleSelector=".section__title"
+                overflowInlineSelector=".section__title-hint"
+                overflowTrailingSelector=".section__title-summary"
+                overflowMeasureSelector=".section__title-row"
+                (click)="toggleSection('surfaces')"
+            >
+                <app-svg-icon
+                    class="section__chevron"
+                    [class.section__chevron--open]="isOpen('surfaces')"
+                    icon="chevron-down-filled"
+                    size="8px"
+                />
+                <span class="section__title-row">
+                    <span class="section__title">
+                        Surfaces
+                        <span class="section__title-hint">(Additional Instructions and Access in Defined Places)</span>
+                    </span>
+                    @if (!isOpen('surfaces')) {
+                        <span
+                            class="section__title-summary"
+                            aria-hidden="true"
+                        >
+                            <span class="section__title-summary-sep">=</span>
+                            <span class="section__title-summary-item">
+                                <app-svg-icon
+                                    icon="tools"
+                                    size="12px"
+                                />
+                                Tools
+                            </span>
+                            <span class="section__title-summary-sep">+</span>
+                            <span class="section__title-summary-item">
+                                <app-svg-icon
+                                    icon="files-tab"
+                                    size="12px"
+                                />
+                                Files
+                            </span>
+                            <span class="section__title-summary-sep">+</span>
+                            <span class="section__title-summary-item">
+                                <app-svg-icon
+                                    icon="knowledge-tab"
+                                    size="12px"
+                                />
+                                Collections
+                            </span>
+                        </span>
+                    }
+                </span>
+            </button>
+        }
+
+        @if (surfacesOnly() || isOpen('surfaces')) {
+            <div class="section__body">
+                <app-agent-surfaces-panel
+                    [surfaces]="surfaces()"
+                    [agentId]="agent()?.id ?? null"
+                    [defaultSurfaces]="agent()?.default_surfaces ?? []"
+                    [sharedSurfaceIds]="sharedSurfaceIds()"
+                    [saving]="saving()"
+                    [saveError]="surfaceSaveError()"
+                    [surfaceCreateErrorTick]="surfaceCreateErrorTick()"
+                    (createSurface)="createSurface.emit($event)"
+                    (addFromShared)="addFromShared.emit($event)"
+                    (dropSharedSurface)="dropSharedSurface.emit($event)"
+                    (setSurfacePlaces)="setSurfacePlaces.emit($event)"
+                    (makeSharedSurface)="makeSharedSurface.emit($event)"
+                    (detachSurface)="detachSurface.emit($event)"
+                    (deleteSurface)="deleteSurfaceFromPanel.emit($event)"
+                    (duplicateSurface)="duplicateSurface.emit($event)"
+                    (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit($event)"
+                    (openSource)="openSurfaceSource.emit($event)"
+                    (renameSurface)="renameSurface.emit($event)"
+                    (surfaceChange)="surfaceChange.emit($event)"
+                    (viewSummary)="viewSummary.emit($event)"
+                />
+            </div>
+        }
+    </section>
+</form>

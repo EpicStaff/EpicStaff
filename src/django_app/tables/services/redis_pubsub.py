@@ -16,7 +16,6 @@ from django_app.settings import (
     SCHEDULE_CHANNEL,
     SESSION_STATUS_CHANNEL,
     STORAGE_MUTATION_CHANNEL,
-    TELEGRAM_TRIGGER_PREFIX,
     WEBHOOK_MESSAGE_CHANNEL,
     REQUEST_WEBHOOK_UPDATE_CHANNEL,
 )
@@ -26,6 +25,7 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
+from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
 from tables.models.session_models import SessionTrigger
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
@@ -37,6 +37,7 @@ from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
     StorageMutationEvent,
+    UNAUTHENTICATED_FALLBACK_PRINCIPAL,
     WebhookEventData,
 )
 
@@ -186,24 +187,110 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error handling storage_mutations message: {e}")
 
+    @staticmethod
+    def _parse_auth_principal(
+        auth_principal: str | None,
+    ) -> tuple[str | None, int | None] | None:
+        """Split `"<model-label-lower>:<pk>"` (e.g. `"tables.webhooktriggernode:17"`)
+        into `(label, pk)`.
+
+        Three non-error shapes:
+          - `None` -> `(None, None)`: no auth configured anywhere on this
+            path, today's unrestricted fan-out.
+          - `UNAUTHENTICATED_FALLBACK_PRINCIPAL` -> `(sentinel, None)`: must
+            be recognized here, before the `rsplit(":", 1)` below, since it
+            contains no `:` and would otherwise be misclassified as
+            malformed and dropped (fail-closed).
+          - `"<label>:<pk>"` -> `(label, pk)`: restrict dispatch to that one
+            node.
+        Anything else is unparseable -> `None` (caller fails closed).
+        """
+        if auth_principal is None:
+            return (None, None)
+
+        if auth_principal == UNAUTHENTICATED_FALLBACK_PRINCIPAL:
+            return (UNAUTHENTICATED_FALLBACK_PRINCIPAL, None)
+
+        try:
+            label, pk_str = auth_principal.rsplit(":", 1)
+            return (label, int(pk_str))
+        except (ValueError, AttributeError):
+            logger.error(f"Unparseable auth_principal: {auth_principal!r}")
+            return None
+
     def webhook_events_handler(self, message: dict):
         try:
             logger.debug("Received webhook event: {}", message)
             data = WebhookEventData.model_validate_json(message["data"])
-            if data.path.startswith(TELEGRAM_TRIGGER_PREFIX):
-                TelegramTriggerService().handle_telegram_trigger(
-                    url_path=data.path[len(TELEGRAM_TRIGGER_PREFIX) : -1],
-                    payload=data.payload,
-                    config_id=data.config_id,
-                )
-            else:
-                WebhookTriggerService().handle_webhook_trigger(
-                    path=data.path,
-                    payload=data.payload,
-                    config_id=data.config_id,
-                )
         except Exception as e:
             logger.error(f"Error handling webhook_events_handler message: {e}")
+            return
+
+        path = data.path.rstrip("/")
+
+        parsed = self._parse_auth_principal(data.auth_principal)
+        if parsed is None:
+            logger.error(
+                f"Dropping webhook event for path={path}: unparseable auth_principal"
+            )
+            return
+        principal_label, principal_pk = parsed
+
+        if principal_label == UNAUTHENTICATED_FALLBACK_PRINCIPAL:
+            # Mixed-attach path: no credential matched, but at least one
+            # attached node has no enabled auth of its own. Restrict the
+            # generic webhook dispatch to only auth-free nodes; Telegram
+            # auth is mandatory and unconditional, so it always no-ops here
+            # (never treat this sentinel as unrestricted fan-out).
+            try:
+                WebhookTriggerService().handle_webhook_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    unauthenticated_only=True,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in generic webhook_trigger handling for path={path}"
+                )
+            try:
+                TelegramTriggerService().handle_telegram_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    unauthenticated_only=True,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in telegram_trigger handling for path={path}"
+                )
+            return
+
+        if principal_label is None or principal_label == WebhookTriggerNode._meta.label_lower:
+            try:
+                WebhookTriggerService().handle_webhook_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    node_id=principal_pk if principal_label is not None else None,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in generic webhook_trigger handling for path={path}"
+                )
+
+        if principal_label is None or principal_label == TelegramTriggerNode._meta.label_lower:
+            try:
+                TelegramTriggerService().handle_telegram_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    node_id=principal_pk if principal_label is not None else None,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in telegram_trigger handling for path={path}"
+                )
 
     def request_webhook_update_handler(self, message: dict):
         try:
@@ -280,6 +367,8 @@ class RedisPubSub:
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for key in cached_keys:
@@ -288,7 +377,7 @@ class RedisPubSub:
                 message_data = data.get("message_data", {})
 
                 if not message_data:
-                    return total_usage
+                    continue
 
                 token_usage = None
 
@@ -306,6 +395,12 @@ class RedisPubSub:
                     )
                     total_usage["successful_requests"] += token_usage.get(
                         "successful_requests", 0
+                    )
+                    total_usage["cached_prompt_tokens"] += token_usage.get(
+                        "cached_prompt_tokens", 0
+                    )
+                    total_usage["total_cost_usd"] += token_usage.get(
+                        "total_cost_usd", 0
                     )
 
             except Exception as e:
@@ -652,13 +747,15 @@ class RedisPubSub:
 
         Returns:
             Dict with total_tokens, prompt_tokens, completion_tokens,
-            successful_requests.
+            successful_requests, cached_prompt_tokens, total_cost_usd.
         """
         total_usage = {
             "total_tokens": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for msg in messages:
@@ -680,6 +777,10 @@ class RedisPubSub:
                 total_usage["successful_requests"] += token_usage.get(
                     "successful_requests", 0
                 )
+                total_usage["cached_prompt_tokens"] += token_usage.get(
+                    "cached_prompt_tokens", 0
+                )
+                total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
 
         return total_usage
 

@@ -1,14 +1,17 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { SliderWithStepperComponent } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 
 @Component({
     selector: 'app-execution-tab',
     templateUrl: './execution-tab.component.html',
-    styleUrls: ['../tab.component.scss'],
+    styleUrls: ['./execution-tab.component.scss'],
     imports: [FormsModule, ReactiveFormsModule, SliderWithStepperComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExecutionTabComponent {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     form = input.required<FormGroup>();
 }

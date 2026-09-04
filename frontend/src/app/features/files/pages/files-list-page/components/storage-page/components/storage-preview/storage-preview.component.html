@@ -34,7 +34,7 @@
                 </div>
             }
         </div>
-        @if (item()) {
+        @if (item() && !readOnly()) {
             <app-button
                 class="storage-preview__add-to-flow"
                 type="outline-primary"

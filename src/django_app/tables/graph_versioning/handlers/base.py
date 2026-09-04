@@ -13,6 +13,10 @@ class _MissingSets:
     subgraphs: set
     llm_configs: set
     webhooks: set
+    agent_definitions: set
+    surfaces: set
+    python_code_tools: set
+    mcp_tools: set
 
 
 class MissingDependencyHandler(ABC):

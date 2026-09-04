@@ -127,12 +127,23 @@
                 <!-- Pre-computation Tab -->
                 @if (activeTab() === 'precomputation') {
                     <div class="computation-section">
-                        <div class="computation-sidebar">
+                        <div
+                            #preSidebarColumn
+                            class="computation-sidebar"
+                            [style.flex-basis.px]="sidebarWidth.width()"
+                        >
                             <ng-container [formGroup]="preInputForm">
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map [activeColor]="activeColor"></app-input-map>
                                 </div>
                             </ng-container>
+                            <app-node-secrets-field
+                                [activeColor]="activeColor"
+                                [value]="preSelectedSecretIds()"
+                                tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                panelWidth="346px"
+                                (valueChange)="onPreSecretsChange($event)"
+                            />
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -148,9 +159,21 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
-                        <div class="code-editor-section">
+                        <app-column-resize-divider
+                            ariaLabel="Resize inputs and code columns"
+                            [column]="preSidebarColumn"
+                            [opposite]="preCodeColumn"
+                            [(width)]="sidebarWidth.width"
+                            [defaultWidth]="sidebarWidth.defaultWidth"
+                        />
+                        <div
+                            #preCodeColumn
+                            class="code-editor-section"
+                        >
                             <app-code-editor
                                 [pythonCode]="preCode"
+                                [secretNames]="preSecretNames()"
+                                [inputMapKeys]="preInputMapKeys()"
                                 (pythonCodeChange)="onPreCodeChange($event)"
                             ></app-code-editor>
                         </div>
@@ -160,12 +183,23 @@
                 <!-- Post-computation Tab -->
                 @if (activeTab() === 'postcomputation') {
                     <div class="computation-section">
-                        <div class="computation-sidebar">
+                        <div
+                            #postSidebarColumn
+                            class="computation-sidebar"
+                            [style.flex-basis.px]="sidebarWidth.width()"
+                        >
                             <ng-container [formGroup]="postInputForm">
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map [activeColor]="activeColor"></app-input-map>
                                 </div>
                             </ng-container>
+                            <app-node-secrets-field
+                                [activeColor]="activeColor"
+                                [value]="postSelectedSecretIds()"
+                                tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                panelWidth="346px"
+                                (valueChange)="onPostSecretsChange($event)"
+                            />
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -181,9 +215,21 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
-                        <div class="code-editor-section">
+                        <app-column-resize-divider
+                            ariaLabel="Resize inputs and code columns"
+                            [column]="postSidebarColumn"
+                            [opposite]="postCodeColumn"
+                            [(width)]="sidebarWidth.width"
+                            [defaultWidth]="sidebarWidth.defaultWidth"
+                        />
+                        <div
+                            #postCodeColumn
+                            class="code-editor-section"
+                        >
                             <app-code-editor
                                 [pythonCode]="postCode"
+                                [secretNames]="postSecretNames()"
+                                [inputMapKeys]="postInputMapKeys()"
                                 (pythonCodeChange)="onPostCodeChange($event)"
                             ></app-code-editor>
                         </div>

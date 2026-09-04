@@ -1,101 +1,21 @@
-from tables.serializers.utils.secret_fields import SecretCharField
-from loguru import logger
 from rest_framework import serializers
 
-from tables.models.webhook_models import (
-    NgrokWebhookConfig,
-    VoiceSettings,
-    WebhookTrigger,
-)
-
-
-class NgrokWebhookConfigModelSerializer(serializers.ModelSerializer):
-    auth_token = SecretCharField()
-    webhook_full_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = NgrokWebhookConfig
-        fields = [
-            "id",
-            "name",
-            "auth_token",
-            "domain",
-            "region",
-            "webhook_full_url",
-        ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance is None:
-            self.fields["auth_token"].required = True
-            self.fields["auth_token"].allow_null = False
-            self.fields["auth_token"].allow_blank = False
-
-    def get_webhook_full_url(self, instance: NgrokWebhookConfig):
-        from tables.services.webhook_trigger_service import WebhookTriggerService
-
-        try:
-            return WebhookTriggerService().get_tunnel_url(ngrok_webhook_config=instance)
-        except Exception as e:
-            logger.error(f"Failed to read tunnel URL for '{instance.name}': {e}")
-        return None
+from tables.models.webhook_models import WebhookTrigger
 
 
 class WebhookTriggerSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookTrigger
-        fields = "__all__"
+        fields = ["id", "path", "provider_type"]
 
     def validate(self, attrs):
-        # ngrok_webhook_config is global platform infrastructure managed by
-        # superadmins (the /api/ngrok-config/ endpoint is superadmin-only).
-        # Non-superadmins may not assign it — drop it from their input so a
-        # caller can't bind a webhook trigger to an arbitrary config by id (and
-        # can't probe which config ids exist).
-        #
-        # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
-        # this is a superadmin gate rather than org scoping. To make webhook
-        # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
-        # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
-        request = self.context.get("request")
-        is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
-        if not is_superadmin:
-            attrs.pop("ngrok_webhook_config", None)
-        return attrs
-
-
-class VoiceSettingsSerializer(serializers.ModelSerializer):
-    twilio_auth_token = SecretCharField()
-    voice_stream_url = serializers.SerializerMethodField(read_only=True)
-
-    class Meta:
-        model = VoiceSettings
-        fields = [
-            "twilio_account_sid",
-            "twilio_auth_token",
-            "voice_agent",
-            "ngrok_config",
-            "voice_stream_url",
-        ]
-
-    def get_voice_stream_url(self, obj):
-        if not obj.ngrok_config:
-            return None
-        from tables.services.webhook_trigger_service import WebhookTriggerService
-
+        instance = self.instance or WebhookTrigger()
+        for k, v in attrs.items():
+            setattr(instance, k, v)
         try:
-            base = WebhookTriggerService().get_tunnel_url(
-                ngrok_webhook_config=obj.ngrok_config
+            instance.validate_unique()
+        except serializers.ValidationError as e:
+            raise serializers.ValidationError(
+                e.message_dict if hasattr(e, "message_dict") else e.messages
             )
-        except Exception:
-            base = None
-        if not base and obj.ngrok_config.domain:
-            base = f"https://{obj.ngrok_config.domain}"
-        if base:
-            return (
-                base.rstrip("/")
-                .replace("https://", "wss://")
-                .replace("http://", "wss://")
-                + "/voice/stream"
-            )
-        return None
+        return attrs

@@ -3,10 +3,12 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
+import { downloadBlob } from '../../../../shared/utils/download-blob.util';
 import { SessionOutputFile } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { getFileExtension } from '../../utils/storage-file.utils';
@@ -113,9 +115,16 @@ export class ExportSessionFilesDialogComponent {
             return;
         }
         if (paths.length === 1) {
-            //TODO check downloading bug
-            this.storageApiService.download(paths[0]);
-            this.dialogRef.close();
+            this.storageApiService
+                .downloadBlob(paths[0])
+                .pipe(
+                    takeUntilDestroyed(this.destroyRef),
+                    finalize(() => this.dialogRef.close())
+                )
+                .subscribe({
+                    next: (blob) => downloadBlob(blob, selected[0]),
+                    error: () => this.toastService.error(`Failed to download "${selected[0]}"`),
+                });
             return;
         }
         this.downloadPathsAsZip(paths, 'session-outputs.zip');

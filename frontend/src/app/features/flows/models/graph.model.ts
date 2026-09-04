@@ -1,6 +1,6 @@
+import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
-import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
 import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
@@ -8,6 +8,7 @@ import { Edge } from '../../../pages/flows-page/components/flow-visual-programmi
 import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
 import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
 import { GraphNote } from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
+import { GetKnowledgeRetrieverNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/knowledge-retriever-node.model';
 import { GetLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
 import { PythonNode } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
 import {
@@ -16,6 +17,7 @@ import {
 } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { StartNode } from '../../../pages/flows-page/components/flow-visual-programming/models/start-node.model';
 import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
+import { TaskNode } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { FlowModel } from '../../../visual-programming/core/models/flow.model';
@@ -49,6 +51,8 @@ export interface GraphDto extends GetGraphLightRequest {
     start_node_list: StartNode[];
     crew_node_list: CrewNode[];
     python_node_list: PythonNode[];
+    task_node_list: TaskNode[];
+    agent_node_list?: AgentNode[];
     edge_list: Edge[];
     conditional_edge_list: ConditionalEdge[];
     llm_node_list: GetLLMNodeRequest[];
@@ -62,8 +66,8 @@ export interface GraphDto extends GetGraphLightRequest {
     metadata: FlowModel;
     audio_transcription_node_list: GetAudioToTextNodeRequest[];
     graph_note_list: GraphNote[];
-    code_agent_node_list: GetCodeAgentNodeRequest[];
     schedule_trigger_node_list: GetScheduleTriggerNodeRequest[];
+    knowledge_node_list: GetKnowledgeRetrieverNodeRequest[];
 }
 
 export interface CreateGraphDtoRequest {
@@ -85,6 +89,7 @@ export interface CreateGraphDtoRequest {
     subgraph_node_list?: SubGraphNode[];
     decision_table_node_list?: GetDecisionTableNodeRequest[];
     schedule_trigger_node_list?: CreateScheduleTriggerNodeRequest[];
+    knowledge_node_list?: GetKnowledgeRetrieverNodeRequest[];
 }
 
 export interface UpdateGraphDtoRequest {

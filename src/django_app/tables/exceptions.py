@@ -19,12 +19,6 @@ class CustomAPIExeption(APIException):
         super().__init__(detail=detail, code=code)
 
 
-class ToolConfigSerializerError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "Error occured in ToolConfigSerializer"
-    default_code = "tool_config_serializer_error"
-
-
 class GraphEntryPointException(CustomAPIExeption):
     status_code = 400
     default_detail = "No node connected to start node"
@@ -63,6 +57,11 @@ class EndNodeValidationError(CustomAPIExeption):
 class FileNodeValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "FileExtractorNode requires input arguments"
+
+
+class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "KnowledgeNode is not fully configured to run"
 
 
 class InvalidTaskOrderError(CustomAPIExeption):
@@ -345,6 +344,14 @@ class UnknownRagTypeException(RagException):
     def __init__(self, rag_type):
         self.rag_type = rag_type
         super().__init__(f"Unknown RAG type: '{rag_type}'")
+
+
+class KnowledgeNodeConfigurationError(RagException):
+    """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
+    or the rag_type has no built implementation to search."""
+
+    status_code = 400
+    default_code = "knowledge_node_misconfigured"
 
 
 class ScheduleTriggerValidationError(CustomAPIExeption):

@@ -10,7 +10,6 @@ class SecretCharField(serializers.CharField):
     Write: if a mask is received (the client returned it as is), the field is skipped.
     (SkipField), so on update, the old secret is preserved in the database.
     On create, the field is missing and the model default (null) is used.
-
     """
 
     def __init__(self, *args, visible_tail: int = 4, **kwargs):

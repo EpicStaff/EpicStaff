@@ -77,20 +77,24 @@ Before we start, make sure you have these two applications installed:
 * **[Download & Install Docker Desktop](https://www.docker.com/products/docker-desktop/)** (Required to run the app)
 
 ### Step 2: Download and Setup
-Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, configure the database, and start the system.
+Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, create its configuration file, generate the two required signing keys, configure the database, and start the system.
 
 #### 🪟 Windows (PowerShell)
 ```
-git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; $savefiles = "$HOME/savefiles"; $file = ".env"; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create graph_data; docker volume create crew_config; docker volume create media_data; docker network create mcp-network; docker-compose up --build
+git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; Copy-Item .env.example .env; $savefiles = "$HOME/savefiles"; $file = ".env"; $key = { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 60 | % {[char]$_}) }; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" -replace "^SECRET_KEY=.*", "SECRET_KEY=$(& $key)" -replace "^JWT_SECRET=.*", "JWT_SECRET=$(& $key)" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create graph_data; docker volume create crew_config; docker volume create media_data; docker network create mcp-network; docker-compose up --build
 ```
 #### 🍎 macOS (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i '' "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
 ```
 #### 🐧 Linux (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
 ```
+
+`SECRET_KEY` and `JWT_SECRET` are required — the stack refuses to start without them.
+Generate each once and keep it: changing them signs out every user, and see
+[docs/signing-keys.md](docs/signing-keys.md) for the full details.
 
 Once running, open http://localhost to start building.
 
@@ -106,6 +110,32 @@ EpicStaff can be configured and launched using alternative setup methods:
 
 **For more [details](https://github.com/EpicStaff/EpicStaff/wiki)**
 </details>
+
+---
+
+## How to verify a release
+
+From v1.2.0 onward, every EpicStaff-built image (`ghcr.io/epicstaff/*`) shipped in a tagged release is pinned by digest in that release's `docker-compose.yaml` and signed keylessly via [Sigstore cosign](https://github.com/sigstore/cosign), using GitHub Actions OIDC as the identity provider — no private key material is involved. Each image also carries an attached SPDX Software Bill of Materials (SBOM), generated with [syft](https://github.com/anchore/syft) and attested with cosign. To verify an image, install `cosign` and run it against the exact `image:` reference from the release's `docker-compose.yaml`, checking that it was signed by this repo's `build-and-push.yml` workflow via the GitHub Actions OIDC issuer:
+
+> **Note on the certificate identity:** `publish_release.yml` (which drives every release) can be started two ways — a `push` of a `vX.Y.Z` tag, or a manual `workflow_dispatch` run against an existing tag. The Fulcio certificate embedded in the signature encodes the git ref of the *top-level workflow run* at the moment it started, not the tag that was later checked out inside a job step. For a tag push that ref genuinely is `refs/tags/vX.Y.Z`. For a manual `workflow_dispatch` run it is whatever branch was selected in the "Run workflow" UI (`refs/heads/<branch>`, `main` by default — always dispatch releases from `main` unless you have a specific reason not to). The regexes below accept both forms so the verify command succeeds regardless of which trigger produced the release. The `heads/.+` alternative is not as open as it looks: `build-and-push.yml` only performs cosign signing when invoked with its `is_release` input set to `true`, and `publish_release.yml` is the sole caller that sets it — every other trigger, including ordinary branch/`main` pushes and ad-hoc manual runs of `build-and-push.yml` itself, produces no signature at all. So a `heads/<branch>` certificate identity can only ever come from a manual `workflow_dispatch` of `publish_release.yml`, never from an arbitrary test branch.
+
+```bash
+cosign verify \
+  --certificate-identity-regexp "^https://github.com/EpicStaff/EpicStaff/\.github/workflows/build-and-push\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/.+)$" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/epicstaff/django_app@sha256:<digest-from-compose-file>
+```
+
+To inspect the attached SBOM instead of (or in addition to) the signature, use `cosign verify-attestation` with the same identity flags and `--type spdxjson`:
+
+```bash
+cosign verify-attestation \
+  --type spdxjson \
+  --certificate-identity-regexp "^https://github.com/EpicStaff/EpicStaff/\.github/workflows/build-and-push\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/.+)$" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/epicstaff/django_app@sha256:<digest-from-compose-file> \
+  | jq -r '.payload | @base64d | fromjson | .predicate' > django_app.spdx.json
+```
 
 ---
 

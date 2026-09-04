@@ -73,15 +73,22 @@
             </div>
 
             <div>
-                <app-custom-input
+                <app-select
+                    formControlName="auth_secret_id"
                     label="Auth"
-                    placeholder="Bearer token or OAuth string (optional)"
-                    tooltipText="Authorization token, API key, or OAuth string for authenticating with the MCP server"
-                    formControlName="auth"
-                    type="secret"
-                    cautionMessage="You must enter the full new API key to change it. Partial updates aren't supported."
+                    variant="boxed"
+                    placeholder="Select a secret"
+                    tooltipText="The stored secret used to authenticate with the MCP server (optional)"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
                 />
-                <app-validation-errors [control]="form.get('auth')!" />
+                @if (!form.get('auth_secret_id')?.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
+                <app-validation-errors [control]="form.get('auth_secret_id')!" />
             </div>
 
             <div>

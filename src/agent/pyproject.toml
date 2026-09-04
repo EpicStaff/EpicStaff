@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "agent"
+version = "0.1.0"
+description = "EpicStaff agent execution runtime"
+authors = ["EpicStaff"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.12.10,<3.13"
+litellm = "1.85.1"
+loguru = "0.7.3"
+redis = "5.2.1"
+pydantic = "2.13.4"
+jsonschema = "4.26.0"
+fastmcp = "2.12.5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "9.0.3"
+pytest-asyncio = "1.4.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["poetry-core==2.4.0"]
+build-backend = "poetry.core.masonry.api"

@@ -27,7 +27,7 @@ def org_visible_q(model, org_id):
     - **hybrid** (`is_custom` flag, e.g. *Model): built-ins (is_custom=False) + own-org;
     - **strict** (has `org`, no flag, e.g. McpTool / PythonCodeToolConfig / configs):
       own-org rows only;
-    - **global** (no `org` field, e.g. the deprecated ToolConfig): ``None`` (no filter).
+    - **global** (no `org` field, e.g. legacy/global-scoped models): ``None`` (no filter).
     """
     field_names = {f.name for f in model._meta.get_fields()}
     if "org" not in field_names:
@@ -99,6 +99,17 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
             _warn_missing_request(self)
             return queryset.none()
         return queryset.filter(**{self.org_lookup: resolve_active_org_id(request)})
+
+
+class OrganizationScopedPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
+    """``OrgScopedPrimaryKeyRelatedField`` defaulted to ``org_lookup="organization_id"``.
+
+    For the newer ``agents`` app models (e.g. ``AgentDefinition``, ``Surface``)
+    whose org FK is named ``organization`` rather than ``org`` — see the
+    ``tables`` vs ``agents`` naming split noted on ``OrgScopedPrimaryKeyRelatedField``.
+    """
+
+    org_lookup = "organization_id"
 
 
 class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):

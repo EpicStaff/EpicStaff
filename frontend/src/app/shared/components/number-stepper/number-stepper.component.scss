@@ -56,31 +56,21 @@
         &--sm {
             width: 1.75rem;
             height: 100%;
-
-            svg {
-                width: 0.5rem;
-                height: 0.5rem;
-            }
         }
 
         &--md {
             width: 2rem;
             height: 100%;
-
-            svg {
-                width: 0.5rem;
-                height: 0.5rem;
-            }
         }
 
         &--lg {
             width: 2.5rem;
             height: 100%;
+        }
 
-            svg {
-                width: 0.625rem;
-                height: 0.625rem;
-            }
+        app-svg-icon {
+            display: block;
+            color: inherit;
         }
     }
 

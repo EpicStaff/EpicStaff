@@ -1,5 +1,5 @@
 """
-EST-3285: authoritative org_id resolution for sandbox callback tools.
+Authoritative org_id resolution for sandbox callback tools.
 
 main's RBAC merge made org-scoped Django endpoints (e.g. GET /sessions/<id>/,
 /schedule-trigger-nodes/) require X-Organization-Id. Sandbox callback tools
@@ -96,6 +96,37 @@ def test_convert_python_code_tool_config_to_pydantic_populates_org_id(converter)
         tool_config, graph_id=graph.pk, session_id=2
     )
 
+    assert data.python_code.org_id == org.pk
+
+
+@pytest.mark.django_db
+def test_convert_python_code_tool_to_pydantic_honors_storage_overrides_without_graph(
+    converter,
+):
+    """No graph_id at all (e.g. a realtime agent-definition session) --
+    storage_allowed_paths/storage_org_prefix/org_id must still resolve when
+    explicit overrides are supplied, instead of silently staying None."""
+    org = Organization.objects.create(name="Org F")
+    code = PythonCode.objects.create(code="def main(**kw): return kw")
+    tool = PythonCodeTool.objects.create(
+        name="tool-f",
+        description="desc",
+        python_code=code,
+        org=org,
+        variables=[],
+        use_storage=True,
+    )
+
+    data = converter.convert_python_code_tool_to_pydantic(
+        tool,
+        graph_id=None,
+        storage_allowed_paths_override=["notes/report.txt"],
+        storage_org_prefix_override=f"org_{org.pk}",
+        org_id_override=org.pk,
+    )
+
+    assert data.python_code.storage_allowed_paths == ["notes/report.txt"]
+    assert data.python_code.storage_org_prefix == f"org_{org.pk}"
     assert data.python_code.org_id == org.pk
 
 

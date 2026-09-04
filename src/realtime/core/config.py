@@ -22,9 +22,11 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: str = "knowledge:search:response"
     REALTIME_AGENTS_SCHEMA_CHANNEL: str = "realtime_agents:schema"
 
-    # --- Manager Service ---
-    MANAGER_HOST: str
-    MANAGER_PORT: int
+    CONNECTION_KEY_TTL_SECONDS: int = 300
+
+    # --- Twilio Media Stream WS auth (per-call single-use token) ---
+    STREAM_TOKEN_TTL_SECONDS: int = 120
+    MAX_CALL_DURATION_SECONDS: int = 1800
 
     # --- Django Auth ---
     DJANGO_AUTH_URL: str
@@ -48,9 +50,24 @@ class Settings(BaseSettings):
     DJANGO_HOST: str = "django_app"
     DJANGO_PORT: int = 8000
 
+    # --- CORS ---
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.CORS_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
+
+    @property
+    def DJANGO_API_BASE_URL(self) -> str:
+        return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api"
+
     @property
     def INIT_API_URL(self) -> str:
-        return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api/init-realtime/"
+        return f"{self.DJANGO_API_BASE_URL}/init-realtime/"
 
     @property
     def DATABASE_URL(self) -> str:
@@ -72,7 +89,7 @@ class Settings(BaseSettings):
 def get_settings():
     is_debug = "--debug" in sys.argv
 
-    env_file = BASE_DIR.parent / ("debug.env" if is_debug else ".env")
+    env_file = BASE_DIR.parent / (".debug.env" if is_debug else ".env")
 
     return Settings(
         _env_file=env_file, REALTIME_RELOAD=is_debug, REALTIME_DEBUG_MODE=is_debug

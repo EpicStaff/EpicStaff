@@ -107,6 +107,26 @@
         overflow-y: auto;
     }
 
+    .readonly-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+
+        &__label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+        }
+
+        &__value {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.4;
+            color: #fff;
+            word-break: break-word;
+        }
+    }
+
     .editor-pane {
         flex: 1 1 0;
         min-width: 0;
@@ -269,7 +289,8 @@
         }
     }
 
-    .parameters-mode-switch {
+    .parameters-mode-switch,
+    .storage-mode-switch {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -281,6 +302,11 @@
         app-toggle-switch {
             display: inline-flex;
         }
+    }
+
+    .storage-mode-switch {
+        justify-content: flex-end;
+        margin-top: 0.5rem;
     }
 
     .editor-card {

@@ -15,10 +15,16 @@ pydantic = ">=2.10.5,<3.0.0"
 pydantic-settings = "2.11.0"
 redis = "5.2.1"
 loguru = "0.7.3"
+passlib = "1.7.4"
 
 
 [tool.poetry.group.tests.dependencies]
 httpx = "^0.28.1"
+pytest = "^8.3.5"
+pytest-asyncio = "^0.25.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.poetry.group.dev.dependencies]
 watchfiles = "^1.1.1"

@@ -14,10 +14,10 @@ endif
         backup apply-backup stash-tags apply-tags switch \
         dev dev-init dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
         dev-voice dev-ngrok \
-        prod-setup prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
+        prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
         clean docker-generate-certs \
-        integration-test \
-        gen-env check-env
+        gen-env check-env \
+        django-makemigrations django-migrate django-manage django-tests crew-tests
 
 # --- Help ---
 
@@ -122,10 +122,6 @@ dev-ngrok: dev-init
 # PRODUCTION Environment
 # ==========================================
 
-prod-setup:
-	@echo "--- Setting up production environment ---"
-	@python3 make_scripts/setup_prod.py
-
 prod-init:
 	@echo "--- Creating external volumes and networks ---"
 	@docker volume create sandbox_venvs      || true
@@ -135,41 +131,39 @@ prod-init:
 	@docker network create mcp-network       || true
 	@echo "--- Done ---"
 
-PROD_ENV_ARG = $(shell test -f prod/prod.env && echo "--env-file ../prod/prod.env")
-
 prod: prod-build prod-up
 
 prod-build: prod-init
 	@echo "--- Building production images ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) build
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env build
 
 prod-up: prod-init
 	@echo "--- Starting production services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env up -d
 
 start-prod: prod
 
 prod-down:
 	@echo "--- Stopping production services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) down
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down
 
 prod-logs:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) logs -f
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env logs -f
 
 prod-voice:
 	@echo "--- Starting production services with voice (ngrok) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) --profile voice up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env --profile voice up -d
 
 prod-ngrok:
 	@echo "--- Starting ngrok tunnel (production) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) --profile voice up ngrok
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env --profile voice up ngrok
 
 # ==========================================
 # ENV FILE GENERATION
 # ==========================================
 
 gen-env:
-	@echo "--- Regenerating src/.dev.env, src/debug.env, src/.env.example from src/env.yaml ---"
+	@echo "--- Regenerating src/.dev.env, src/.debug.env, src/.env.example from src/env.yaml ---"
 	@python scripts/generate_env.py
 
 check-env:
@@ -195,54 +189,27 @@ docker-generate-certs:
 # LOCAL DJANGO DEVELOPMENT
 # ==========================================
 
-# ==========================================
-# INTEGRATION TESTS
-# ==========================================
-
-# Overridable defaults (set via env or on command line)
-DJANGO_URL           ?= http://127.0.0.1:8000/api
-OPENAI_KEY           ?=
-DJANGO_TEST_USERNAME ?= admin
-DJANGO_TEST_PASSWORD ?= admin123!
-
-# f=<file>    — run a specific test file (default: all)
-# k=<keyword> — filter tests by keyword (-k)
-# ARGS=       — any extra pytest flags (e.g. ARGS="-s --tb=short")
-_ITEST_FILE  = $(if $(f),$(f),)
-_ITEST_KFLAG = $(if $(k),-k "$(k)",)
-
-integration-test:
-	@echo "--- Installing integration test dependencies ---"
-	@pip install -r integration_tests/requirements.txt -q
-	@echo "--- Running integration tests ---"
+# Use each service's OWN venv interpreter explicitly so these targets work
+# regardless of which venv (if any) is currently activated on PATH.
 ifeq ($(OS),Windows_NT)
-	@cd integration_tests && set "DJANGO_URL=$(DJANGO_URL)" && set "OPENAI_KEY=$(OPENAI_KEY)" && set "DJANGO_TEST_USERNAME=$(DJANGO_TEST_USERNAME)" && set "DJANGO_TEST_PASSWORD=$(DJANGO_TEST_PASSWORD)" && pytest $(_ITEST_FILE) $(_ITEST_KFLAG) -v $(ARGS)
+VENV_PY := venv\Scripts\python.exe
 else
-	@cd integration_tests && \
-		DJANGO_URL=$(DJANGO_URL) \
-		OPENAI_KEY=$(OPENAI_KEY) \
-		DJANGO_TEST_USERNAME=$(DJANGO_TEST_USERNAME) \
-		DJANGO_TEST_PASSWORD=$(DJANGO_TEST_PASSWORD) \
-		pytest $(_ITEST_FILE) $(_ITEST_KFLAG) -v $(ARGS)
+VENV_PY := venv/bin/python
 endif
-
-# ==========================================
-# LOCAL DJANGO DEVELOPMENT
-# ==========================================
 
 django-makemigrations django-migrate django-manage django-tests: export PYTHONPATH = $(CURDIR)
 
 django-makemigrations:
-	@cd src/django_app && python manage.py makemigrations $(ARGS)
+	@cd src/django_app && $(VENV_PY) manage.py makemigrations $(ARGS)
 
 django-migrate:
-	@cd src/django_app && python manage.py migrate $(ARGS)
+	@cd src/django_app && $(VENV_PY) manage.py migrate $(ARGS)
 
 django-manage:
-	@cd src/django_app && python manage.py $(CMD)
+	@cd src/django_app && $(VENV_PY) manage.py $(CMD)
 
 django-tests:
-	@cd src/django_app && python -m pytest $(ARGS)
+	@cd src/django_app && $(VENV_PY) -m pytest $(ARGS)
 
 # ==========================================
 # LOCAL CREW DEVELOPMENT
@@ -251,4 +218,9 @@ django-tests:
 crew-tests: export PYTHONPATH = $(CURDIR)
 
 crew-tests:
-	@cd src/crew && python -m pytest $(ARGS)
+	@cd src/crew && $(VENV_PY) -m pytest $(ARGS)
+
+agent-tests: export PYTHONPATH = $(CURDIR)
+
+agent-tests:
+	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)

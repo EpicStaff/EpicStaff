@@ -60,7 +60,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 | `Role` | `rbac_role` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | One row per (role, resource_type) with an integer permission **bitmask**. |
 | `ApiKey` | — | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
-| `PasswordResetToken` | `rbac_password_reset_token` | Single-use UUID token, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). |
+| `PasswordResetToken` | `rbac_password_reset_token` | Single-use reset grant, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). Stores only `token_hash` (SHA-256 of a `secrets.token_urlsafe(32)` value) — the raw token exists once, in the emailed link, so a read of this table is not replayable. The row's existence *is* the grant: consuming or superseding one deletes it, so there is no `is_used` flag and no accumulation of spent verifiers. Generation, hashing and deletion live in `PasswordResetTokenRepository`. |
 | `OrgScopedModel` | abstract | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 
 ### 2.1 Enums (`rbac_enums.py`)
@@ -135,11 +135,31 @@ Two authentication classes (`tables/services/rbac/authentication.py`), both glob
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `tables/services/rbac/ticket_service.py`): `POST /api/auth/sse-ticket/`
 or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomically via
-`GETDEL`, passed as `?ticket=` on the stream URL.
+`GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
+`sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
 
-Throttling: `LoginThrottle` (5/min, `ip|email` bucket) on login/swagger-token,
-`PasswordResetRequestThrottle` (5/hour) on reset request, and the password-change request
-endpoint reuses the login throttle.
+Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
+
+| Throttle | Endpoint(s) | Bucket | Default rate |
+|---|---|---|---|
+| `LoginThrottle` | login, swagger-token, profile password-change request | `ip\|email` | 5/min |
+| `PasswordResetRequestThrottle` | password-reset request | `ip\|email` | 5/hour |
+| `PasswordResetConfirmThrottle` | password-reset confirm | `ip` | 10/hour |
+| `TokenRefreshThrottle` | token refresh | `ip` | 30/min |
+| `NotifyEmailThrottle` | notify/email | authenticated user id | 10/hour |
+
+The last two key on IP alone because their requests carry no identifier to compose with — the
+refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the
+token being guessed, so keying on it would give an attacker a fresh bucket per attempt. Both
+subclass DRF's `AnonRateThrottle`, which supplies the IP key; their views set
+`authentication_classes = []`, so every caller is anonymous and the throttle always applies.
+
+HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
+`settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403
+first_setup_disabled` unless the mode is `open`. The other creation path,
+always available regardless of the mode, is `manage.py create_superadmin`.
+See [auth_endpoints.md](auth_endpoints.md) and
+[first_setup_operations.md](first_setup_operations.md).
 
 ---
 
@@ -243,6 +263,11 @@ transactions with `SELECT FOR UPDATE`:
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
+- bootstrap advisory lock (`acquire_bootstrap_lock`,
+  `services/rbac/utils/bootstrap_lock.py`) — `FirstSetupService.setup()` and
+  `ResetUserService.reset()` both take a PostgreSQL transaction-scoped
+  advisory lock before checking whether a user exists, so concurrent callers
+  cannot race past that check and create two bootstrap superadmins.
 
 Follow the same pattern: view-level gate for the verb, service-level guard for the
 invariant.
@@ -456,6 +481,9 @@ path — the default org is only for bootstrap and data migrations.
 | Auth backend (JWT + API key) | `services/rbac/authentication.py` |
 | Login/logout/first-setup/reset-user/introspect views | `views/auth_views.py` |
 | First-time setup | `services/rbac/first_setup_service.py`, `utils/superadmin_bootstrap.py` |
+| First-setup mode gate | `services/rbac/first_setup_mode.py` |
+| Bootstrap advisory lock (first-setup + reset-user) | `services/rbac/utils/bootstrap_lock.py` |
+| CLI superadmin creation | `management/commands/create_superadmin.py` |
 | Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
 | Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs |

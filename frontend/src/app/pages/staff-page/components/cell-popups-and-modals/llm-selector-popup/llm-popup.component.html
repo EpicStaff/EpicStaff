@@ -12,124 +12,55 @@
         </div>
 
         <div class="menu-header">
-            <div class="menu-tabs">
-                <button
-                    [class.active]="activeTab() === 'llm'"
-                    (click)="setActiveTab('llm')"
-                >
-                    LLM Models
-                </button>
-                <button
-                    [class.active]="activeTab() === 'realtime'"
-                    (click)="setActiveTab('realtime')"
-                >
-                    Realtime Models
-                </button>
-            </div>
-
-            @if (activeTab() === 'llm') {
-                <app-button
-                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                    type="primary"
-                    mod="small"
-                    iconSize="0.9rem"
-                    [leftIcon]="'plus'"
-                    (click)="onCreateLlmModel()"
-                >
-                    Add LLM model
-                </app-button>
-            } @else if (activeTab() === 'realtime') {
-                <app-button
-                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                    type="primary"
-                    mod="small"
-                    iconSize="0.9rem"
-                    [leftIcon]="'plus'"
-                    (click)="onCreateRealtimeModel()"
-                >
-                    Add Realtime model
-                </app-button>
-            }
+            <app-button
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                type="primary"
+                mod="small"
+                iconSize="0.9rem"
+                [leftIcon]="'plus'"
+                (click)="onCreateLlmModel()"
+            >
+                Add LLM model
+            </app-button>
         </div>
     </div>
 
     <!-- Body -->
     <div class="body">
-        <!-- LLM Models Tab -->
-        @if (activeTab() === 'llm') {
-            <div class="llm-list-wrapper">
-                @if (loading()) {
-                    <div class="loading-spinner">
-                        <div class="dots">
-                            <div class="dot"></div>
-                            <div class="dot"></div>
-                            <div class="dot"></div>
-                        </div>
+        <div class="llm-list-wrapper">
+            @if (loading()) {
+                <div class="loading-spinner">
+                    <div class="dots">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
                     </div>
-                } @else {
-                    <ul class="llms-list">
-                        @for (item of filteredLLMs(); track item.id) {
-                            <app-llm-item
-                                [item]="item"
-                                [isSelected]="selectedLLMId() === item.id"
-                                itemType="llm"
-                                (itemSelected)="onSelectLLM($event)"
-                            />
-                        }
+                </div>
+            } @else {
+                <ul class="llms-list">
+                    @for (item of filteredLLMs(); track item.id) {
+                        <app-llm-item
+                            [item]="item"
+                            [isSelected]="selectedLLMId() === item.id"
+                            itemType="llm"
+                            (itemSelected)="onSelectLLM($event)"
+                        />
+                    }
 
-                        @if (filteredLLMs().length === 0) {
-                            <li class="no-results">
-                                <div class="empty-state">
-                                    <app-svg-icon
-                                        icon="search-off"
-                                        size="1.5rem"
-                                    />
-                                    <p>No matching LLM configurations found</p>
-                                </div>
-                            </li>
-                        }
-                    </ul>
-                }
-            </div>
-        }
-
-        <!-- Realtime Models Tab -->
-        @if (activeTab() === 'realtime') {
-            <div class="llm-list-wrapper">
-                @if (loading()) {
-                    <div class="loading-spinner">
-                        <div class="dots">
-                            <div class="dot"></div>
-                            <div class="dot"></div>
-                            <div class="dot"></div>
-                        </div>
-                    </div>
-                } @else {
-                    <ul class="llms-list">
-                        @for (item of filteredRealtimeModels(); track item.id) {
-                            <app-llm-item
-                                [item]="item"
-                                [isSelected]="selectedRealtimeId() === item.id"
-                                itemType="realtime"
-                                (itemSelected)="onSelectRealtime($event)"
-                            />
-                        }
-
-                        @if (filteredRealtimeModels().length === 0) {
-                            <li class="no-results">
-                                <div class="empty-state">
-                                    <app-svg-icon
-                                        icon="search-off"
-                                        size="1.5rem"
-                                    />
-                                    <p>No matching Realtime configurations found</p>
-                                </div>
-                            </li>
-                        }
-                    </ul>
-                }
-            </div>
-        }
+                    @if (filteredLLMs().length === 0) {
+                        <li class="no-results">
+                            <div class="empty-state">
+                                <app-svg-icon
+                                    icon="search-off"
+                                    size="1.5rem"
+                                />
+                                <p>No matching LLM configurations found</p>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
     </div>
 
     <div class="footer">
