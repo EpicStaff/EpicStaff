@@ -22,6 +22,7 @@ class EntityType(str, Enum):
     GRAPH = "Flow"
     SESSION = "Session"
     LABEL = "Label"
+    AUDIT_FILTER_PRESET = "AuditFilterPreset"
     AGENT_DEFINITION = "AgentDefinition"
     SURFACE = "Surface"
 

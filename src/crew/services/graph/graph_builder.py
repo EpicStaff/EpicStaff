@@ -135,9 +135,9 @@ class SessionGraphBuilder:
 
             result = json.loads(python_code_execution_data["result_data"])
 
-            assert isinstance(
-                result, str
-            ), "output should be a string for decision edge"
+            assert isinstance(result, str), (
+                "output should be a string for decision edge"
+            )
 
             return result
 
@@ -175,6 +175,7 @@ class SessionGraphBuilder:
             graph_builder=subgraph_builder,
             stop_event=self.stop_event,
             run_code_execution_service=self.python_code_executor_service,
+            redis_service=self.redis_service,
         )
         subgraph: CompiledStateGraph = builder.build()
 
@@ -224,6 +225,7 @@ class SessionGraphBuilder:
         subgraph_node_data: SubGraphNode,
         unique_subgraph_list: list[SubGraphData],
         stop_event,
+        org_id: int,
     ) -> str:
         """
         Adds a subgraph node to the graph builder.
@@ -235,6 +237,7 @@ class SessionGraphBuilder:
             graph_builder=StateGraph(State),
             session_graph_builder=self,
             stop_event=stop_event,
+            org_id=org_id,
         )
 
         async def inner(state: State, writer: StreamWriter):
@@ -405,6 +408,7 @@ class SessionGraphBuilder:
                 subgraph_node_data=subgraph_node_data,
                 unique_subgraph_list=session_data.unique_subgraph_list,
                 stop_event=self.stop_event,
+                org_id=session_data.org_id,
             )
 
         for webhook_trigger_node_data in schema.webhook_trigger_node_data_list:

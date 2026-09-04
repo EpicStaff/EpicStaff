@@ -18,6 +18,9 @@ from .agents import (
     TaskData,
     TaskMessageData,
 )
+from .audit.session_audit import (
+    SessionAuditEvent,
+)
 from .ai_providers import (
     LLMConfigData,
     EmbedderConfigData,
@@ -151,6 +154,8 @@ __all__ = [
     "CrewData",
     "TaskData",
     "TaskMessageData",
+    # session_audit
+    "SessionAuditEvent",
     # ai_providers
     "LLMConfigData",
     "EmbedderConfigData",

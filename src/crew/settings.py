@@ -14,6 +14,11 @@ _raw_token_budget = os.environ.get("TOKEN_BUDGET")
 DEFAULT_TOKEN_BUDGET: int | None = int(_raw_token_budget) if _raw_token_budget else None
 
 
+AUDIT_TRAIL_ENABLED = os.environ.get("AUDIT_TRAIL_ENABLED", "False").lower() == "true"
+AUDITOR_URL = os.environ.get("AUDITOR_URL", "http://auditor:8060")
+AUDITOR_INGEST_API_KEY = os.environ.get("AUDITOR_INGEST_API_KEY", "")
+
+
 PGVECTOR_MEMORY_CONFIG = {
     "provider": "local_mem0",
     "config": {"user_id": USER_ID, "run_id": SESSION_ID},

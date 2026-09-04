@@ -216,6 +216,10 @@ CORS_ALLOW_HEADERS = (
 
 JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 
+AUDIT_TRAIL_ENABLED = os.getenv("AUDIT_TRAIL_ENABLED", "False").lower() == "true"
+AUDITOR_URL = os.getenv("AUDITOR_URL", "http://auditor:8060")
+AUDITOR_INGEST_API_KEY = os.getenv("AUDITOR_INGEST_API_KEY", "")
+
 SIMPLE_JWT = {
     "SIGNING_KEY": JWT_SECRET,
     "ALGORITHM": "HS256",
@@ -404,6 +408,9 @@ FIRST_SETUP_MODE = FirstSetupMode.validate(
 PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(
     os.getenv("PASSWORD_CHANGE_TICKET_TTL_SECONDS", "300")
 )
+
+AUDIT_TOKEN_TTL_SECONDS = int(os.getenv("AUDIT_TOKEN_TTL_SECONDS", "300"))
+
 AVATAR_MAX_BYTES = int(os.getenv("AVATAR_MAX_BYTES", str(5 * 1024 * 1024)))
 AVATAR_ALLOWED_FORMATS = [
     fmt.strip()

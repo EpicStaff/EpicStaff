@@ -1,0 +1,34 @@
+[project]
+name = "auditor"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+requires-python = "^3.12"
+dependencies = [
+    "uvicorn (>=0.52.1,<0.53.0)",
+    "fastapi (>=0.141.1,<0.142.0)",
+    "loguru (>=0.7.3,<0.8.0)",
+    "pydantic-settings (>=2.15.0,<3.0.0)",
+    "opensearch-py[async] (>=3.2.0,<4.0.0)",
+    "pyjwt (>=2.13.0,<3.0.0)",
+    "watchfiles (>=1.1.1,<2.0.0)"
+]
+
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+pytest-asyncio = "^0.24.0"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires a live OpenSearch instance (see tests/test_search_integration.py) - skips itself if unreachable",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

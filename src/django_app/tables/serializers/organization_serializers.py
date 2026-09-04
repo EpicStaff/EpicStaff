@@ -15,13 +15,29 @@ class OrganizationRenameRequestSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
 
 
+class OrganizationSettingsUpdateSerializer(serializers.Serializer):
+    """Schema-only — real validation in OrganizationManagementService.
+
+    0 = unlimited (default), per EST-3341's explicit AC — free-form days,
+    no upper bound.
+    """
+
+    audit_retention_days = serializers.IntegerField(min_value=0)
+
+
 class OrganizationResponseSerializer(serializers.ModelSerializer):
     """Response shape for every Organization endpoint (list, create, rename,
-    deactivate, reactivate). `member_count` is supplied by the queryset
-    annotation in OrganizationManagementService.
+    deactivate, reactivate, settings). `member_count` is supplied by the
+    queryset annotation in OrganizationManagementService.
     """
 
     member_count = serializers.IntegerField(read_only=True)
+    # Lives on OrganizationConfig (1:1), not a direct Organization field -
+    # dotted source traversal, same as any other ModelSerializer relation.
+    # Relies on the service layer's select_related("config").
+    audit_retention_days = serializers.IntegerField(
+        source="config.audit_retention_days", read_only=True
+    )
 
     class Meta:
         model = Organization
@@ -30,6 +46,7 @@ class OrganizationResponseSerializer(serializers.ModelSerializer):
             "name",
             "is_active",
             "member_count",
+            "audit_retention_days",
             "created_at",
             "updated_at",
         ]

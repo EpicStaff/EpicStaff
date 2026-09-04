@@ -1,0 +1,36 @@
+## OpenSearch Dashboards - LOCAL DEVELOPMENT ONLY.
+##
+## Mounted by the `opensearch-dashboards` service in docker-compose.dev.yaml,
+## which exists purely so a developer can browse `audit_events` in a table view
+## while building the audit browser. It is deliberately absent from
+## docker-compose.yaml - the deployed stack's only read path into OpenSearch is
+## `auditor`'s own query/export routes.
+##
+## Telemetry note: Dashboards is the Kibana-derived component that historically
+## carried usage collection, so this was checked rather than assumed. In the
+## 2.19.1 image the telemetry and newsfeed plugins cannot load at all - their
+## plugin manifests are renamed (telemetry/opensearch_dashboards_back.json) or
+## absent entirely (newsfeed has no manifest), so the plugin loader never
+## registers them and `telemetry.*` / `newsfeed.enabled` are rejected as unknown
+## configuration keys. Do NOT add those keys back to "be safe"; they are a fatal
+## startup error, and their absence is a stronger guarantee than a flag would be.
+## Re-verify this if the image version is ever bumped.
+
+server.host: "0.0.0.0"
+server.name: epicstaff-audit-dashboards
+
+opensearch.hosts: ["https://opensearch:9200"]
+opensearch.username: "${OPENSEARCH_USERNAME}"
+opensearch.password: "${OPENSEARCH_PASSWORD}"
+# The dev OpenSearch node uses the security plugin's self-signed demo
+# certificates, so chain verification cannot succeed against `opensearch`.
+opensearch.ssl.verificationMode: none
+opensearch.requestHeadersAllowlist: ["authorization", "securitytenant"]
+
+# Single shared dev cluster - per-user tenants only add a "choose a tenant"
+# step in front of the table we actually want to look at.
+opensearch_security.multitenancy.enabled: false
+
+# The one usage-collection switch that IS a live config key in this build.
+data.search.usageTelemetry.enabled: false
+home.disableWelcomeScreen: true

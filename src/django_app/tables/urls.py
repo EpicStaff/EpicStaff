@@ -57,6 +57,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
     LabelViewSet,
+    AuditFilterPresetViewSet,
     ToolLabelViewSet,
     SecretViewSet,
     ScheduleTriggerNodeViewSet,
@@ -119,7 +120,10 @@ from tables.views.flow_assistant_views import (
     FlowAssistantStreamView,
 )
 
-from tables.views.organization_admin_views import OrganizationAdminViewSet
+from tables.views.organization_admin_views import (
+    OrganizationAdminViewSet,
+    OrganizationSelfServiceViewSet,
+)
 from tables.views.role_admin_views import (
     OrgScopedRoleAdminViewSet,
     RoleAdminViewSet,
@@ -208,6 +212,7 @@ router.register(r"graph-notes", GraphNoteViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
@@ -246,6 +251,11 @@ urlpatterns = [
         "admin/organizations/<int:org_id>/roles/",
         OrgScopedRoleAdminViewSet.as_view({"get": "list"}),
         name="admin-org-roles-list",
+    ),
+    path(
+        "organizations/me/settings/",
+        OrganizationSelfServiceViewSet.as_view({"patch": "partial_update"}),
+        name="organization-self-settings",
     ),
     path("admin/", include(admin_router.urls)),
     path("", include(router.urls)),

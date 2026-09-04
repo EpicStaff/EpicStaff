@@ -40,6 +40,7 @@ class TablesConfig(AppConfig):
             tags,
             session,
             label,
+            audit_filter_preset,
             surface,
             agent_definition,
         )
@@ -107,6 +108,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())
         entity_registry.register(label.LabelStrategy())
+        entity_registry.register(audit_filter_preset.AuditFilterPresetStrategy())
         entity_registry.register(webhook.WebhookTriggerStrategy())
         entity_registry.register(tags.AgentTagStrategy())
         entity_registry.register(tags.CrewTagStrategy())

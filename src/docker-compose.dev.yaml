@@ -30,6 +30,42 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:${REDIS_PORT:-6379}"
 
+  opensearch:
+    ports:
+      - "${OPENSEARCH_PORT:-9200}:9200"
+
+  # Dev-only table browser over OpenSearch (the pgAdmin equivalent for OpenSearch). 
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.19.1
+    container_name: opensearch-dashboards
+    profiles:
+      - audit
+    environment:
+      OPENSEARCH_USERNAME: admin
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
+    ports:
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
+    volumes:
+      - ./auditor/dev/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro
+    networks:
+      - backend-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  auditor:
+    command: >
+      sh -c "python -m app.index_setup.runner &&
+      watchfiles --filter python 'python run.py' /app/src/auditor"
+    ports:
+      - "${AUDITOR_PORT:-8060}:${AUDITOR_PORT:-8060}"
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./auditor/app:/app/src/auditor/app
+      - ./auditor/run.py:/app/src/auditor/run.py
+      - ./shared:/app/src/shared
+
   realtime:
     ports:
       - "${REALTIME_PORT:-8050}:${REALTIME_PORT:-8050}"
@@ -74,6 +110,7 @@ services:
       - ./crew/services:/app/src/crew/services:cached
       - ./crew/utils:/app/src/crew/utils:cached
       - ./crew/main.py:/app/src/crew/main.py:cached
+      - ./crew/settings.py:/app/src/crew/settings.py:cached
       - ./shared:/app/src/shared:cached
 
   frontend:

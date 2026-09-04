@@ -25,3 +25,7 @@ services:
     ports:
       - "${MINIO_PORT:-9000}:${MINIO_PORT:-9000}"
       - "${MINIO_CONSOLE_PORT:-9001}:${MINIO_CONSOLE_PORT:-9001}"
+
+  auditor:
+    ports:
+      - "${AUDITOR_PORT:-8060}:${AUDITOR_PORT:-8060}"
