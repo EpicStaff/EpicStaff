@@ -25,15 +25,18 @@
                 >
                     Collection Name
                 </label>
-                <input
-                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
-                    [formControl]="collectionName"
-                    type="text"
-                    id="collection-name"
-                    class="details__name-input"
-                    placeholder="Enter collection name"
-                />
-                <app-validation-errors [control]="collectionName" />
+                @if (canEditKnowledge) {
+                    <input
+                        [formControl]="collectionName"
+                        type="text"
+                        id="collection-name"
+                        class="details__name-input"
+                        placeholder="Enter collection name"
+                    />
+                    <app-validation-errors [control]="collectionName" />
+                } @else {
+                    <span class="details__name-readonly">{{ collectionName.value }}</span>
+                }
             </div>
             <app-svg-icon
                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"

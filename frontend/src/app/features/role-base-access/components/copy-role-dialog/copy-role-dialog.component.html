@@ -25,9 +25,6 @@
                 placeholder="Role name..."
                 formControlName="name"
             />
-            @if (form.controls.name.errors?.['conflict']) {
-                <span class="server-error">A role with this name already exists in the target organization.</span>
-            }
             <app-validation-errors [control]="form.controls.name" />
         </div>
 
@@ -57,7 +54,7 @@
         </app-button>
         <app-button
             type="primary"
-            [disabled]="!canSubmit()"
+            [disabled]="!canSubmit() || form.invalid"
             (click)="onCopy()"
         >
             Duplicate

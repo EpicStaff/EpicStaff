@@ -61,7 +61,7 @@ export class CopyRoleDialogComponent implements OnInit {
     readonly orgOptions = signal<SelectItem<number>[]>([]);
     readonly isSubmitting = signal(false);
 
-    readonly canSubmit = computed(() => !this.isSubmitting() && this.form.valid && this.targetOrgId() !== null);
+    readonly canSubmit = computed(() => !this.isSubmitting() && this.targetOrgId() !== null);
 
     ngOnInit(): void {
         this.loadCreatableOrgs();
@@ -136,10 +136,6 @@ export class CopyRoleDialogComponent implements OnInit {
 
     private handleError(err: HttpErrorResponse): void {
         const code: string | undefined = err.error?.code;
-        if (code === 'role_name_conflict') {
-            this.form.controls.name.setErrors({ conflict: true });
-            return;
-        }
         if (code === 'permission_escalation_denied') {
             this.toast.error("You can't duplicate this role — it grants permissions you don't have in the target org.");
             return;

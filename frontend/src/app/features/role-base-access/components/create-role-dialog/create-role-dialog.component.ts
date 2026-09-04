@@ -383,7 +383,8 @@ export class CreateRoleDialogComponent implements OnInit {
         if (code === 'invalid' && Array.isArray(err.error?.errors)) {
             for (const e of err.error.errors) {
                 const control = this.form.get(e.field);
-                control?.setErrors({ server: e.reason });
+                if (!control) continue;
+                control.setErrors({ server: [e.reason] });
             }
             return;
         }

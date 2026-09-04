@@ -113,6 +113,7 @@ export class ExportSessionFilesDialogComponent {
             return;
         }
         if (paths.length === 1) {
+            //TODO check downloading bug
             this.storageApiService.download(paths[0]);
             this.dialogRef.close();
             return;
