@@ -369,6 +369,16 @@ PASSWORD_RESET_TOKEN_TTL = int(os.getenv("PASSWORD_RESET_TOKEN_TTL", "900"))
 # Business-layer code that needs to branch on "should we advertise email
 # delivery to the end user?" must ask `SmtpConfigService.is_configured()`
 # rather than inspecting `EMAIL_BACKEND`.
+#
+# WARNING for agents/devs: `EMAIL_HOST` must never default to a live value
+# in the production env template (`src/.env.example` — generated from
+# `src/env.yaml`, leave it blank there). The `mailpit` dev SMTP catcher in
+# `docker-compose.yaml` is gated behind `profiles: ["dev"]`, activated only
+# via `COMPOSE_PROFILES=dev` (generated for the dev/debug env targets, kept
+# in sync with `DEBUG`). Do not remove that gate or point `EMAIL_HOST` at
+# mailpit outside the dev/debug targets — its web UI is unauthenticated and
+# would expose real password-reset tokens if ever reachable from a
+# production deployment.
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
