@@ -96,7 +96,11 @@ class QuickstartService(metaclass=SingletonMeta):
                         bundle_secret, config_name, org_id=org_id
                     )
 
-                self._apply_quickstart_tag(llm_config, embedding_config)
+                self._apply_quickstart_tag(
+                    llm_config=llm_config,
+                    embedding_config=embedding_config,
+                    org_id=org_id,
+                )
 
             logger.success(
                 f"Quickstart configuration: {config_name} created successfully!"
@@ -142,11 +146,10 @@ class QuickstartService(metaclass=SingletonMeta):
         self,
         llm_config: LLMConfig,
         embedding_config: EmbeddingConfig,
+        *,
+        org_id: int,
     ) -> None:
-        """
-        Moves the predefined 'quickstart' tag to the newly created configs.
-        Removes it from any previous quickstart configs first.
-        """
+        """Moves the predefined 'quickstart' tag to the newly created configs within one org."""
         tag_map = [
             (LLMConfigTag, LLMConfig, llm_config),
             (EmbeddingConfigTag, EmbeddingConfig, embedding_config),
@@ -156,10 +159,10 @@ class QuickstartService(metaclass=SingletonMeta):
             tag, _ = tag_model.objects.update_or_create(
                 name=self.QUICKSTART_TAG, defaults={"predefined": True}
             )
-            # Remove from previous holders
-            for old in config_model.objects.filter(tags=tag).exclude(
+            previous = config_model.objects.filter(tags=tag, org_id=org_id).exclude(
                 pk=new_config.pk if new_config else None
-            ):
+            )
+            for old in previous:
                 old.tags.remove(tag)
             if new_config:
                 new_config.tags.add(tag)
@@ -206,7 +209,7 @@ class QuickstartService(metaclass=SingletonMeta):
     def _create_llm_model_config(
         self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> LLMConfig:
-        llm_model = self._get_or_create_llm_model(provider=provider)
+        llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id)
         return LLMConfig.objects.create(
             model=llm_model,
             custom_name=config_name,
@@ -217,7 +220,9 @@ class QuickstartService(metaclass=SingletonMeta):
     def _create_embedder_config(
         self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> EmbeddingConfig:
-        embedder_model = self._get_or_create_embedder_model(provider=provider)
+        embedder_model = self._get_or_create_embedder_model(
+            provider=provider, org_id=org_id
+        )
         return EmbeddingConfig.objects.create(
             model=embedder_model,
             custom_name=config_name,
@@ -244,22 +249,33 @@ class QuickstartService(metaclass=SingletonMeta):
             org_id=org_id,
         )
 
-    def _get_or_create_llm_model(self, provider: Provider):
+    def _get_or_create_llm_model(self, *, provider: Provider, org_id: int):
         llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")
         if llm_model_name is None:
             raise KeyError(
                 f"Can not get 'llm_model' from PROVIDER_CONFIGS for {provider.name}"
             )
-        llm_model, created = LLMModel.objects.get_or_create(
-            llm_provider=provider, name=llm_model_name
+        candidates = LLMModel.objects.filter(llm_provider=provider, name=llm_model_name)
+        llm_model = (
+            candidates.filter(org_id=org_id).first()
+            or candidates.filter(org_id__isnull=True).first()
         )
-        if created:
+        if llm_model is None:
+            llm_model = LLMModel.objects.create(
+                llm_provider=provider,
+                name=llm_model_name,
+                org_id=org_id,
+                is_custom=True,
+            )
             logger.info(
-                f"Created LLM model: {llm_model.name}, provider: {provider.name}"
+                "Created custom LLM model {} for provider {} in org {}",
+                llm_model.name,
+                provider.name,
+                org_id,
             )
         return llm_model
 
-    def _get_or_create_embedder_model(self, provider: Provider):
+    def _get_or_create_embedder_model(self, *, provider: Provider, org_id: int):
         embedder_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get(
             "embedding_model"
         )
@@ -267,13 +283,26 @@ class QuickstartService(metaclass=SingletonMeta):
             raise KeyError(
                 f"Can not get 'embedding_model' from PROVIDER_CONFIGS for {provider.name}"
             )
-
-        embedder_model, created = EmbeddingModel.objects.get_or_create(
+        candidates = EmbeddingModel.objects.filter(
             embedding_provider=provider, name=embedder_model_name
         )
-        if created:
+        # Own-org precedence — see _get_or_create_llm_model.
+        embedder_model = (
+            candidates.filter(org_id=org_id).first()
+            or candidates.filter(org_id__isnull=True).first()
+        )
+        if embedder_model is None:
+            embedder_model = EmbeddingModel.objects.create(
+                embedding_provider=provider,
+                name=embedder_model_name,
+                org_id=org_id,
+                is_custom=True,
+            )
             logger.info(
-                f"Created embedding model: {embedder_model.name}, provider: {provider.name}"
+                "Created custom embedding model {} for provider {} in org {}",
+                embedder_model.name,
+                provider.name,
+                org_id,
             )
         return embedder_model
 
