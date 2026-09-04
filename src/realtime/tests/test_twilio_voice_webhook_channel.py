@@ -50,14 +50,16 @@ def _fake_request(
     )
 
 
-def _channel_with_nested_webhook_trigger(live_url: str | None, ngrok_domain: str | None):
+def _channel_with_nested_webhook_trigger(
+    live_url: str | None, ngrok_domain: str | None
+):
     """Mimics `RealtimeChannelInternalSerializer`/`_TwilioChannelInternalSerializer` output:
     `ngrok_config` and `live_url` live under `twilio.webhook_trigger`, not directly on
     `twilio` (see regression — they were previously read one level too shallow,
     always resolving to an empty string and forcing a 503).
     """
     return {
-        "realtime_agent": 42,
+        "realtime_agent_definition": 42,
         "twilio": {
             "account_sid": "AC123",
             "auth_token": AUTH_TOKEN,
@@ -92,7 +94,7 @@ async def test_voice_webhook_prefers_ngrok_domain_over_live_url(monkeypatch):
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -117,7 +119,7 @@ async def test_voice_webhook_falls_back_to_ngrok_domain_when_no_live_url(monkeyp
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -129,6 +131,36 @@ async def test_voice_webhook_falls_back_to_ngrok_domain_when_no_live_url(monkeyp
     assert response.status_code == 200
     assert (
         f"wss://fallback.example.ngrok.io/voice/{CHANNEL_TOKEN}/stream"
+        in response.body.decode()
+    )
+
+
+@pytest.mark.asyncio
+async def test_voice_webhook_falls_back_to_settings_voice_stream_url(monkeypatch):
+    """When neither `ngrok_domain` nor `live_url` is available, `voice_stream_url`
+    must still fall back to the static `settings.VOICE_STREAM_URL` env var
+    (distinct from the `live_url`-over-settings precedence covered below —
+    here there is no `live_url` to prefer in the first place)."""
+    from api.main import twilio_voice_webhook_channel
+    from core.config import settings
+
+    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
+
+    async def fake_resolve(channel_token):
+        return channel.get("realtime_agent_definition"), channel
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+    monkeypatch.setattr(
+        settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream"
+    )
+
+    response = await twilio_voice_webhook_channel(
+        CHANNEL_TOKEN, request=_fake_request()
+    )
+
+    assert response.status_code == 200
+    assert (
+        f"wss://static.example.com/voice/{CHANNEL_TOKEN}/stream"
         in response.body.decode()
     )
 
@@ -150,10 +182,12 @@ async def test_voice_webhook_prefers_live_url_over_settings_voice_stream_url(mon
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream")
+    monkeypatch.setattr(
+        settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream"
+    )
 
     response = await twilio_voice_webhook_channel(
         CHANNEL_TOKEN,
@@ -187,7 +221,7 @@ async def test_voice_webhook_resolves_voice_stream_url_from_live_url_when_no_ngr
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
     monkeypatch.setattr(settings, "VOICE_STREAM_URL", "")
@@ -226,7 +260,7 @@ async def test_voice_webhook_resolves_base_url_from_live_url_when_no_ngrok_domai
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
     # ngrok_domain is unset, so voice_stream_url falls back to settings —
@@ -251,7 +285,7 @@ async def test_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
     channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
     monkeypatch.setattr(settings, "VOICE_STREAM_URL", "")
@@ -277,7 +311,7 @@ async def test_voice_webhook_embeds_stream_token_bound_to_channel(monkeypatch):
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -316,7 +350,7 @@ async def test_voice_webhook_embeds_stream_token_as_twiml_parameter(monkeypatch)
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -327,7 +361,7 @@ async def test_voice_webhook_embeds_stream_token_as_twiml_parameter(monkeypatch)
     body = response.body.decode()
 
     match = re.search(r'<Parameter name="stream_token" value="([^"]+)"', body)
-    assert match, f"expected a <Parameter name=\"stream_token\"> element, got: {body}"
+    assert match, f'expected a <Parameter name="stream_token"> element, got: {body}'
     param_token = match.group(1)
     assert param_token
 
@@ -353,7 +387,7 @@ async def test_voice_webhook_xml_escapes_url_and_token(monkeypatch):
     )
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], channel.get("realtime_agent_definition"), channel
+        return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -367,7 +401,9 @@ async def test_voice_webhook_xml_escapes_url_and_token(monkeypatch):
     # this case, but exercised generally): verify no literal, unescaped `&`
     # appears anywhere as a bare ampersand not part of `&amp;`.
     for bare_amp in re.finditer(r"&(?!amp;)", body):
-        pytest.fail(f"found an unescaped '&' in TwiML body at pos {bare_amp.start()}: {body}")
+        pytest.fail(
+            f"found an unescaped '&' in TwiML body at pos {bare_amp.start()}: {body}"
+        )
 
     # And the produced XML must actually be well-formed.
     ET.fromstring(body)
@@ -392,7 +428,7 @@ async def test_voice_webhook_503s_when_auth_token_not_configured(monkeypatch):
     channel["twilio"]["auth_token"] = None
 
     async def fake_resolve(channel_token):
-        return channel["realtime_agent"], None, channel
+        return channel["realtime_agent_definition"], channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -403,3 +439,37 @@ async def test_voice_webhook_503s_when_auth_token_not_configured(monkeypatch):
 
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail == "Twilio auth not configured"
+
+
+# ---------------------------------------------------------------------------
+# Legacy `realtime_agent` alone is no longer a usable destination — Django's
+# `InitRealtimeSerializer` dropped `agent_id` entirely, so a channel still
+# pointing only at the removed legacy staff agent must be rejected up front.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_voice_webhook_404s_when_channel_only_has_legacy_agent(monkeypatch):
+    """A channel config with `realtime_agent` set and `realtime_agent_definition`
+    null has no usable destination and must be rejected with a clear 404
+    before any TwiML is generated or Django's init-realtime is ever called."""
+    from api.main import twilio_voice_webhook_channel
+    from fastapi import HTTPException
+
+    channel = {
+        "realtime_agent": 42,
+        "realtime_agent_definition": None,
+        "twilio": {"auth_token": AUTH_TOKEN},
+    }
+
+    async def fake_resolve(channel_token):
+        return channel.get("realtime_agent_definition"), channel
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
+
+    assert exc_info.value.status_code == 404
+    assert "legacy" in exc_info.value.detail.lower()
+    assert "42" in exc_info.value.detail

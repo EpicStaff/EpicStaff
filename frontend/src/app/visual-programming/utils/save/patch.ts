@@ -167,7 +167,6 @@ function buildCreatedNodeIdMap(
         }
     }
 
-    mapByNewIds(nodeDiff.crewNodes.toCreate, responseGraph.crew_node_list ?? [], existingIdsByType(NodeType.PROJECT));
     mapByNewIds(
         nodeDiff.pythonNodes.toCreate,
         responseGraph.python_node_list ?? [],

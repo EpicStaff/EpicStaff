@@ -129,12 +129,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     private loadAvailableNodes(): void {
         const groups: NodeGroup[] = [
             {
-                label: 'Crew Node',
-                icon: 'ti ti-users',
-                color: '#f0a500',
-                nodes: this.extractNodeNames(this.flow?.crew_node_list),
-            },
-            {
                 label: 'Python Node',
                 icon: 'ti ti-brand-python',
                 color: '#ffcf3f',

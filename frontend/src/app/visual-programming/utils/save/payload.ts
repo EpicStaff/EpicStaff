@@ -324,7 +324,6 @@ export function buildBulkSavePayload(
 
     const deleted = {
         start_node_ids: nodeDiff.startNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        crew_node_ids: nodeDiff.crewNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
@@ -360,15 +359,6 @@ export function buildBulkSavePayload(
             variables: n.data.initialState ?? {},
             metadata: toNodeMetadata(n),
         })),
-        crew_node_list: nodeItems(nodeDiff.crewNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            crew_id: n.data.id,
-            input_map: n.input_map || {},
-            output_variable_path: n.output_variable_path || null,
-            stream_config: n.stream_config ?? {},
-            metadata: toNodeMetadata(n),
-        })),
         python_node_list: nodeItems(nodeDiff.pythonNodes, (n) => {
             const { use_storage, ...pythonCode } = n.data;
             return {
@@ -377,7 +367,6 @@ export function buildBulkSavePayload(
                 python_code: pythonCode,
                 input_map: n.input_map || {},
                 output_variable_path: n.output_variable_path || null,
-                stream_config: n.stream_config ?? {},
                 use_storage: use_storage ?? false,
                 test_input: n.test_input ?? {},
                 metadata: toNodeMetadata(n),

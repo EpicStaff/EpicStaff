@@ -4,21 +4,11 @@ from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .agent_service import CollectionSpec, S3FileSpec
-from .agents import CrewData
 from .ai_providers import LLMData
 from .knowledge import RagSearchConfig
 from .tools import PythonCodeData
 from .surfaces import CombinedSurfaceData
 from .tools import BaseToolData
-
-
-class CrewNodeData(BaseModel):
-    node_name: str
-    crew: CrewData
-    input_map: dict[str, Any]
-    output_variable_path: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class PythonNodeData(BaseModel):
@@ -266,7 +256,6 @@ class SubGraphNodeData(BaseModel):
 class GraphData(BaseModel):
     graph_id: int | None = None
     name: str
-    crew_node_list: list[CrewNodeData] = []
     webhook_trigger_node_data_list: list[WebhookTriggerNodeData] = []
     python_node_list: list[PythonNodeData] = []
     knowledge_node_list: list[KnowledgeNodeData] = []

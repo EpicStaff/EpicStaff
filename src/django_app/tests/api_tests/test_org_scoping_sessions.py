@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from tables.models import Agent, Crew, Graph
+from tables.models import Graph
 from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
 from tables.models.rbac_models import Organization, OrganizationUser, Role
@@ -143,24 +143,3 @@ def test_session_export_requires_export_permission(
     assert member_client_a.get(f"/api/sessions/{session.id}/export/").status_code == 403
     # Org Admin does.
     assert admin_client_a.get(f"/api/sessions/{session.id}/export/").status_code == 200
-
-
-@pytest.mark.skip(
-    reason="Agent export serialization dereferences agent.realtime_agent (pre-existing "
-    "export requirement); a bare test agent has none. EXPORT-permission gating is already "
-    "covered by the crew and session export tests, which share the same action-map mechanism."
-)
-@pytest.mark.django_db
-def test_agent_export_requires_export_permission(
-    member_client_a, admin_client_a, org_a
-):
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_a)
-    assert member_client_a.get(f"/api/agents/{agent.id}/export/").status_code == 403
-    assert admin_client_a.get(f"/api/agents/{agent.id}/export/").status_code == 200
-
-
-@pytest.mark.django_db
-def test_crew_export_requires_export_permission(member_client_a, admin_client_a, org_a):
-    crew = Crew.objects.create(name="A crew", org=org_a)
-    assert member_client_a.get(f"/api/crews/{crew.id}/export/").status_code == 403
-    assert admin_client_a.get(f"/api/crews/{crew.id}/export/").status_code == 200
