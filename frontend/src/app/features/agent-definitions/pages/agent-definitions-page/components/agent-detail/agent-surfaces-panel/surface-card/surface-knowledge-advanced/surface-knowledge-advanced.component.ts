@@ -52,6 +52,9 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     /** The owning AgentDefinition's llm_config — forwarded to the embedded RAG tab
      * so suggested-params requests know which LLM's context window to use. */
     llmConfigId = input<number | null>(null);
+    /** Shared surfaces have no owning agent to source an LLM from — suggested
+     * params are out of scope for them by product decision (EST-3986). */
+    suggestionsDisabled = input<boolean>(false);
 
     readonly knowledgeChange = output<SurfaceKnowledge>();
 

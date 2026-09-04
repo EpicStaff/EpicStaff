@@ -187,6 +187,9 @@ export class RagTabComponent implements OnInit {
     // "Select Knowledge Source"/"Select Agent Rags" UI so the two don't duplicate.
     hideSourceSelectors = input<boolean>(false);
     readOnly = input<boolean>(false);
+    // Shared surfaces have no owning agent to source an LLM from — suggestions are
+    // out of scope for them by product decision (EST-3986): manual config only.
+    suggestionsDisabled = input<boolean>(false);
 
     selectedRagType = signal<'naive' | 'graph' | null>(null);
     activeGraphMethodSignal = signal<GraphSearchMethod | null>(null);
@@ -208,6 +211,7 @@ export class RagTabComponent implements OnInit {
     private lastNonPromptSnapshot: string | null = null;
 
     featureAvailable = computed<boolean>(() => this.llmConfigId() != null);
+    manualConfigAvailable = computed<boolean>(() => this.featureAvailable() || this.suggestionsDisabled());
 
     tokenLimitsLoading = signal<boolean>(false);
     tokenLimitsError = signal<string | null>(null);
@@ -323,6 +327,14 @@ export class RagTabComponent implements OnInit {
             if (id !== this.lastLlmConfigId) {
                 this.lastLlmConfigId = id;
                 this.maybeFetchSearchMetadata();
+            }
+        });
+
+        // Force off even if a surface saved before this policy existed loaded as suggested.
+        effect(() => {
+            if (this.suggestionsDisabled()) {
+                this.useSuggestedParams.set(false);
+                this.syncSuggestedFlagToActiveTarget(false, true);
             }
         });
     }
@@ -854,7 +866,7 @@ export class RagTabComponent implements OnInit {
             return;
         }
         this.useSuggestedParams.set(checked);
-        this.syncSuggestedFlagToActiveTarget(checked);
+        this.syncSuggestedFlagToActiveTarget(checked, true);
         if (checked) {
             this.suggestErrorFor.set(null);
             this.fetchAndApply(this.activeKey());
@@ -908,7 +920,7 @@ export class RagTabComponent implements OnInit {
                 this.suggestErrorFor.set(key);
                 this.suggestingFor.set(null);
                 this.useSuggestedParams.set(false);
-                this.syncSuggestedFlagToActiveTarget(false);
+                this.syncSuggestedFlagToActiveTarget(false, true);
             },
         });
     }
@@ -1114,14 +1126,17 @@ export class RagTabComponent implements OnInit {
         this.suggestErrorFor.set(null);
         this.recommendedSearchMethod.set(null);
         this.useSuggestedParams.set(false);
-        this.syncSuggestedFlagToActiveTarget(false);
+        this.syncSuggestedFlagToActiveTarget(false, true);
         this.lastRecommendationKey = null;
     }
 
-    private syncSuggestedFlagToActiveTarget(value: boolean): void {
+    // Default false: most callers run inside searchConfigsFormGroup's own
+    // valueChanges subscription, where emitting would re-enter it. Callers outside
+    // it must pass true or the change never reaches the parent surface's listener.
+    private syncSuggestedFlagToActiveTarget(value: boolean, emitEvent = false): void {
         const key = this.activeKey();
         const target =
             key === 'naive' ? this.searchConfigsFormGroup : (this.searchConfigsFormGroup?.get(key) as FormGroup | null);
-        target?.get('is_suggested')?.setValue(value, { emitEvent: false });
+        target?.get('is_suggested')?.setValue(value, { emitEvent });
     }
 }

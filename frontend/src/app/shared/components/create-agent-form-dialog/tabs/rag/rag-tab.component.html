@@ -28,7 +28,7 @@
         }
 
         @if (searchConfigsFormGroup) {
-            @if (!featureAvailable()) {
+            @if (!manualConfigAvailable()) {
                 <div class="lock-notice">
                     <app-svg-icon
                         icon="lock"
@@ -81,7 +81,9 @@
 
                 <div [formGroup]="searchConfigsFormGroup">
                     @if (selectedRagType() === 'naive') {
-                        <ng-container *ngTemplateOutlet="suggestedToggle" />
+                        @if (!suggestionsDisabled()) {
+                            <ng-container *ngTemplateOutlet="suggestedToggle" />
+                        }
 
                         <div class="form-group">
                             @if (useSuggestedParams()) {
@@ -132,7 +134,9 @@
                             />
                         </div>
 
-                        <ng-container *ngTemplateOutlet="suggestedToggle" />
+                        @if (!suggestionsDisabled()) {
+                            <ng-container *ngTemplateOutlet="suggestedToggle" />
+                        }
 
                         @if (activeMaxContextTokensControl; as anchorControl) {
                             <div class="form-group">

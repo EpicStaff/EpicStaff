@@ -33,3 +33,21 @@ export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
         updated_at: inline.updated_at ?? '',
     };
 }
+
+/**
+ * Whether any of this inline surface's RAG search configs are currently using
+ * suggested (rather than manually-edited) params — used to decide whether
+ * switching the node's agent (and therefore its LLM) should warn that the
+ * suggestions may now be stale (EST-3986 follow-up).
+ */
+export function hasSuggestedRagParams(surface: InlineSurface | null): boolean {
+    if (!surface) return false;
+    return surface.knowledge.some(
+        (k) =>
+            k.naive_search_config?.is_suggested ||
+            k.graph_basic_search_config?.is_suggested ||
+            k.graph_local_search_config?.is_suggested ||
+            k.graph_global_search_config?.is_suggested ||
+            k.graph_drift_search_config?.is_suggested
+    );
+}
