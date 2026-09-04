@@ -51,6 +51,15 @@
     }
 }
 
+// app-select's :host defaults to flex-grow: 1, meant for horizontal flex-row
+// toolbars where it should stretch to fill available width. Inside this
+// vertical (column) sidebar, the same flex-grow instead stretches it to fill
+// all leftover vertical space, pushing the collections list down (EST-3983).
+::ng-deep app-select.rag-select {
+    flex-grow: 0;
+    flex-shrink: 0;
+}
+
 ::ng-deep .collections-sidebar__header > app-button {
     flex: 0 1 auto;
     min-width: 0;
