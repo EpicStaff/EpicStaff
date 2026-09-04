@@ -2,9 +2,7 @@ import pytest
 from copy import deepcopy
 
 from tables.models import (
-    Agent,
     AgentNode,
-    Crew,
     Graph,
     LLMConfig,
     McpTool,
@@ -50,76 +48,6 @@ def _build_identity_mapper(export_data):
                         entity_type, entity["id"], entity["id"], was_created=False
                     )
     return mapper
-
-
-# ──────────────────────────────────────────
-# Agent Strategy
-# ──────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestAgentStrategy:
-    def test_export_entity(self, rich_seeded_db):
-        agent = rich_seeded_db["agents"][0]
-        strategy = _get_strategy(EntityType.AGENT)
-        data = strategy.export_entity(agent)
-
-        assert data["role"] == "agent1"
-        assert data["goal"] == "goal1"
-        assert data["llm_config"] == agent.llm_config_id
-        assert "realtime_agent" in data
-        assert "tools" in data
-
-    def test_extract_dependencies(self, rich_seeded_db):
-        agent = rich_seeded_db["agents"][0]
-        strategy = _get_strategy(EntityType.AGENT)
-        deps = strategy.extract_dependencies_from_instance(agent)
-
-        assert agent.llm_config_id in deps[EntityType.LLM_CONFIG]
-        assert len(deps[EntityType.PYTHON_CODE_TOOL]) >= 1
-        assert EntityType.REALTIME_CONFIG in deps
-
-    def test_create_entity(self, rich_seeded_db, export_service, default_org):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
-
-        mapper = _build_identity_mapper(export_data)
-        strategy = _get_strategy(EntityType.AGENT)
-        agent_data = deepcopy(export_data[EntityType.AGENT][0])
-
-        agent_count_before = Agent.objects.count()
-        new_agent = strategy.create_entity(agent_data, mapper, org_id=default_org.id)
-
-        assert Agent.objects.count() == agent_count_before + 1
-        assert new_agent.role == agent.role
-        assert new_agent.goal == agent.goal
-        assert new_agent.llm_config_id is not None
-
-    def test_find_existing_match(self, rich_seeded_db, export_service):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
-
-        mapper = _build_identity_mapper(export_data)
-        strategy = _get_strategy(EntityType.AGENT)
-        agent_data = deepcopy(export_data[EntityType.AGENT][0])
-        agent_data.pop("id", None)
-
-        found = strategy.find_existing(agent_data, mapper)
-        assert found is not None
-        assert found.id == agent.id
-
-    def test_find_existing_no_match(self, rich_seeded_db, export_service):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
-
-        mapper = _build_identity_mapper(export_data)
-        strategy = _get_strategy(EntityType.AGENT)
-        agent_data = deepcopy(export_data[EntityType.AGENT][0])
-        agent_data.pop("id", None)
-        agent_data["role"] = "completely_different_role_xyz"
-
-        found = strategy.find_existing(agent_data, mapper)
-        assert found is None
 
 
 # ──────────────────────────────────────────
@@ -380,60 +308,6 @@ class TestAgentDefinitionAndSurfaceDedupOnReimport:
 
 
 # ──────────────────────────────────────────
-# Crew Strategy
-# ──────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestCrewStrategy:
-    def test_export_entity(self, rich_seeded_db):
-        crew = rich_seeded_db["crews"][0]
-        strategy = _get_strategy(EntityType.CREW)
-        data = strategy.export_entity(crew)
-
-        assert data["name"] == "crew1"
-        assert len(data["agents"]) == 2
-        assert "tasks" in data
-        assert len(data["tasks"]) == 2
-
-    def test_extract_dependencies(self, rich_seeded_db):
-        crew = rich_seeded_db["crews"][0]
-        strategy = _get_strategy(EntityType.CREW)
-        deps = strategy.extract_dependencies_from_instance(crew)
-
-        assert EntityType.AGENT in deps
-        assert len(deps[EntityType.AGENT]) == 2
-        assert EntityType.LLM_CONFIG in deps
-        assert EntityType.EMBEDDING_CONFIG in deps
-
-    def test_create_entity(self, rich_seeded_db, export_service, default_org):
-        crew = rich_seeded_db["crews"][0]
-        export_data = export_service.export_entities(EntityType.CREW, [crew.id])
-
-        mapper = _build_identity_mapper(export_data)
-        strategy = _get_strategy(EntityType.CREW)
-        crew_data = deepcopy(export_data[EntityType.CREW][0])
-
-        crew_count_before = Crew.objects.count()
-        new_crew = strategy.create_entity(crew_data, mapper, org_id=default_org.id)
-
-        assert Crew.objects.count() == crew_count_before + 1
-        assert new_crew.agents.count() == 2
-        assert new_crew.task_set.count() == 2
-
-    def test_name_uniqueness(self, rich_seeded_db, export_service, default_org):
-        crew = rich_seeded_db["crews"][0]
-        export_data = export_service.export_entities(EntityType.CREW, [crew.id])
-
-        mapper = _build_identity_mapper(export_data)
-        strategy = _get_strategy(EntityType.CREW)
-        crew_data = deepcopy(export_data[EntityType.CREW][0])
-
-        new_crew = strategy.create_entity(crew_data, mapper, org_id=default_org.id)
-        assert new_crew.name == "crew1 (2)"
-
-
-# ──────────────────────────────────────────
 # Graph Strategy
 # ──────────────────────────────────────────
 
@@ -454,9 +328,9 @@ class TestGraphStrategy:
         strategy = _get_strategy(EntityType.GRAPH)
         deps = strategy.extract_dependencies_from_instance(graph)
 
-        assert EntityType.CREW in deps
-        crew_ids = list(deps[EntityType.CREW])
-        assert rich_seeded_db["crews"][0].id in crew_ids
+        # A legacy CrewNode has no node strategy anymore, so it contributes no
+        # dependency of its own.
+        assert EntityType.CREW not in deps
 
     def test_create_entity(self, rich_seeded_db, export_service, default_org):
         graph = rich_seeded_db["graph"]
@@ -471,8 +345,8 @@ class TestGraphStrategy:
 
         assert Graph.objects.count() == graph_count_before + 1
         assert new_graph.name == "graph1 (2)"
-        assert new_graph.crew_node_list.count() >= 1
-        assert new_graph.edge_list.count() >= 1
+        # The source graph's legacy CrewNode is skipped, not recreated.
+        assert new_graph.crew_node_list.count() == 0
 
 
 # ──────────────────────────────────────────
@@ -539,9 +413,12 @@ class TestLLMConfigStrategy:
         assert data["custom_name"] == "MyGPT-4o"
         assert data["temperature"] == 0.5
 
-    def test_create_entity(self, rich_seeded_db, export_service, default_org):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+    def test_create_entity(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         strategy = _get_strategy(EntityType.LLM_CONFIG)
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
@@ -556,9 +433,12 @@ class TestLLMConfigStrategy:
         assert new_config.custom_name == "MyGPT-4o (2)"
 
     @pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
-    def test_find_existing(self, rich_seeded_db, export_service):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+    def test_find_existing(
+        self, rich_seeded_db, exportable_agent_definition, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.LLM_CONFIG)

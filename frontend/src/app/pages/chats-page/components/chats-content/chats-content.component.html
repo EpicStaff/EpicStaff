@@ -6,21 +6,14 @@
     <ng-template #noAgentSelected>
         <div class="no-agent-message">
             <h3>No Agents Available</h3>
-            @if (isAgentsTab) {
-                <p>
-                    No agent definitions have a realtime model configured. Open an agent on the Agents page and set its
-                    Realtime Config in Additional Settings.
-                </p>
-            } @else {
-                <p>
-                    There are currently no agents available for selection. Please visit the Staff page to create a new
-                    agent and assign a realtime model.
-                </p>
-            }
+            <p>
+                No agents have a realtime model configured. Open an agent on the Agents page and set its Realtime Config
+                in Additional Settings.
+            </p>
             <a
-                [routerLink]="emptyCtaLink"
+                routerLink="/agents"
                 class="action-button"
-                >{{ emptyCtaLabel }}</a
+                >Go to Agents</a
             >
         </div>
     </ng-template>

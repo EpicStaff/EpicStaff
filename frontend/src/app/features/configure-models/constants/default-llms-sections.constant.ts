@@ -29,50 +29,6 @@ export const DEFAULT_LLMS_SECTIONS: DefaultLlmsSection[] = [
             },
         ],
     },
-    {
-        id: 'crew',
-        title: 'For Crew',
-        cards: [
-            {
-                id: 'project-manager-llm',
-                field: 'project_manager_llm_config',
-                title: 'Project Manager LLM',
-                description:
-                    'The Crew Manager LLM coordinates and manages the team workflow within a hierarchical structure.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'project-manager',
-                configType: ModelTypes.LLM,
-            },
-            // {
-            //     id: 'planning-llm',
-            //     title: 'Planning LLM',
-            //     description:
-            //         'Planning LLM guides agents in creating and organizing plans to achieve goals efficiently.',
-            //     selectLabel: 'Select LLM from Library',
-            //     icon: 'llm-agents/planning',
-            // },
-            {
-                id: 'memory-embedding-model',
-                field: 'memory_embedding_config',
-                title: 'Memory Embedding Model',
-                description:
-                    "The Crew Embedding LLM manages your team's memory by handling short-term, long-term, and entity memory.",
-                selectLabel: 'Select LLM from Library',
-                icon: 'memory-embedding',
-                configType: ModelTypes.EMBEDDING,
-            },
-            {
-                id: 'memory-llm',
-                field: 'memory_llm_config',
-                title: 'Memory LLM',
-                description:
-                    'Memory LLM manages how your agents store and retrieve information, providing reliable context handling.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'memory',
-                configType: ModelTypes.LLM,
-            },
-        ],
-    },
     // {
     //     id: 'tools',
     //     title: 'For Tools',

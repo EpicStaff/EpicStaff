@@ -1,6 +1,3 @@
-import { GetProjectRequest } from '../../../features/projects/models/project.model';
-import { GetAgentRequest } from '../../../features/staff/models/agent.model';
-import { GetTaskRequest } from '../../../features/tasks/models/task.model';
 
 // Base GraphMessage interface
 export interface GraphMessage {
@@ -21,11 +18,6 @@ export enum MessageType {
     ERROR = 'error',
     PYTHON = 'python',
     LLM = 'llm',
-    AGENT = 'agent',
-    AGENT_FINISH = 'agent_finish',
-    USER = 'user',
-    TASK = 'task',
-    UPDATE_SESSION_STATUS = 'update_session_status',
     EXTRACTED_CHUNKS = 'extracted_chunks',
     SUBGRAPH_START = 'subgraph_start',
     SUBGRAPH_FINISH = 'subgraph_finish',
@@ -60,7 +52,6 @@ export interface FinishMessageData {
     state: Record<string, Record<string, unknown>>;
     message_type: MessageType.FINISH;
     additional_data?: Record<string, unknown> | null;
-    sse_visible?: boolean;
 }
 
 export interface StartMessageData {
@@ -83,59 +74,6 @@ export interface LLMMessageData {
     message_type: MessageType.LLM; // Using snake_case from API
 }
 
-export interface AgentMessageData {
-    crew_id: number; // Using snake_case from API
-    agent_id: number; // Using snake_case from API
-    thought: string;
-    tool: string;
-    tool_input: string; // Using snake_case from API
-    text: string;
-    result: string;
-    message_type: MessageType.AGENT; // Using snake_case from API
-    associatedAgent?: GetAgentRequest;
-    associatedProject?: GetProjectRequest;
-}
-
-export interface AgentFinishMessageData {
-    crew_id: number; // Using snake_case from API
-    agent_id: number; // Using snake_case from API
-    thought: string;
-    text: string;
-    output: string;
-    message_type: MessageType.AGENT_FINISH; // Using snake_case from API
-    associatedAgent?: GetAgentRequest;
-    associatedProject?: GetProjectRequest;
-}
-
-export interface UserMessageData {
-    crew_id: number; // Using snake_case from API
-    text: string;
-    message_type: MessageType.USER; // Using snake_case from API
-
-    associatedProject?: GetProjectRequest;
-}
-
-export interface TaskMessageData {
-    crew_id: number; // Using snake_case from API
-    task_id: number; // Using snake_case from API
-    description: string;
-    raw: string;
-    name: string;
-    expected_output: string; // Using snake_case from API
-    agent: string;
-    message_type: MessageType.TASK; // Using snake_case from API
-    associatedTask?: GetTaskRequest;
-    associatedProject?: GetProjectRequest;
-}
-
-export interface UpdateSessionStatusMessageData {
-    crew_id: number; // Using snake_case from API
-    status: string;
-    status_data: Record<string, unknown>; // Using snake_case from API
-    message_type: MessageType.UPDATE_SESSION_STATUS; // Using snake_case from API
-    associatedProject?: GetProjectRequest;
-}
-
 export interface ExtractedChunk {
     chunk_text: string;
     chunk_order: number;
@@ -150,14 +88,14 @@ export interface RagSearchConfig {
 }
 
 export interface ExtractedChunksMessageData {
-    crew_id: number;
+    /** CrewAI leftover the backend still stamps on knowledge-search payloads. */
+    crew_id?: number;
     agent_id: number;
     collection_id: number;
     retrieved_chunks: number;
     knowledge_query: string;
     chunks: ExtractedChunk[];
     message_type: MessageType.EXTRACTED_CHUNKS;
-    associatedProject?: GetProjectRequest;
     rag_search_config: RagSearchConfig;
 }
 
@@ -290,7 +228,6 @@ interface NodeStreamMessageDataBase {
     event: 'task_start' | 'tool_call' | 'tool_result' | 'task_finish';
     step_id: number;
     is_final: boolean;
-    sse_visible?: boolean;
     data: NodeStreamToolCallData | NodeStreamToolResultData | NodeStreamTaskStartData | NodeStreamTaskFinishData;
 }
 
@@ -309,11 +246,6 @@ export type MessageData =
     | ErrorMessageData
     | PythonMessageData
     | LLMMessageData
-    | AgentMessageData
-    | AgentFinishMessageData
-    | UserMessageData
-    | TaskMessageData
-    | UpdateSessionStatusMessageData
     | ExtractedChunksMessageData
     | StartSubflowMessageData
     | FinishSubflowMessageData

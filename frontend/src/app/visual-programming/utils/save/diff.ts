@@ -13,7 +13,6 @@ import {
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -115,17 +114,6 @@ function toStartComparable(node: StartNodeModel): unknown {
     return { variables: node.data.initialState ?? {}, metadata: toNodeMetadata(node) };
 }
 
-function toCrewComparable(node: ProjectNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        crew_id: node.data.id,
-        input_map: node.input_map || {},
-        output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
-        metadata: toNodeMetadata(node),
-    };
-}
-
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
@@ -135,7 +123,6 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
         metadata: toNodeMetadata(node),
     };
@@ -379,11 +366,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<StartNodeModel>(previous.nodes, NodeType.START),
             nodesByType<StartNodeModel>(current.nodes, NodeType.START),
             toStartComparable
-        ),
-        crewNodes: diffNodesByBackendId(
-            nodesByType<ProjectNodeModel>(previous.nodes, NodeType.PROJECT),
-            nodesByType<ProjectNodeModel>(current.nodes, NodeType.PROJECT),
-            toCrewComparable
         ),
         pythonNodes: diffNodesByBackendId(
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),

@@ -2,21 +2,17 @@
 when editing some entity fields'). Each test drives an org_a client that tries
 to reference an org_b resource and expects a 400 rejection."""
 
-from unittest.mock import patch
-
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent, Crew, Graph
+from tables.models import Graph
 from tables.models.graph_models import (
+    AgentNode,
     ConditionGroup,
-    CrewNode,
     DecisionTableNode,
-    Edge,
     StartNode,
 )
 from tables.models.label_models import Label
-from tables.models.llm_models import LLMConfig
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
@@ -54,29 +50,7 @@ def _graph(org, name="g"):
     return Graph.objects.create(name=name, metadata={"nodes": [], "edges": []}, org=org)
 
 
-# ---- A1: crew planning_llm_config ----
-
-
-@pytest.mark.django_db
-def test_crew_planning_llm_config_cross_org_rejected(client_a, org_a, org_b):
-    other = LLMConfig.objects.create(custom_name="b-cfg", org=org_b)
-    resp = client_a.post(
-        "/api/crews/", {"name": "c1", "planning_llm_config": other.id}, format="json"
-    )
-    assert resp.status_code == 400
-    assert "planning_llm_config" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_crew_planning_llm_config_same_org_ok(client_a, org_a):
-    mine = LLMConfig.objects.create(custom_name="a-cfg", org=org_a)
-    resp = client_a.post(
-        "/api/crews/", {"name": "c1", "planning_llm_config": mine.id}, format="json"
-    )
-    assert resp.status_code == 201, resp.data
-
-
-# ---- A2: graph label_ids ----
+# ---- A: graph label_ids ----
 
 
 @pytest.mark.django_db
@@ -113,13 +87,12 @@ def test_graph_label_ids_rejects_tool_scope_label(client_a, org_a):
 
 
 @pytest.mark.django_db
-def test_crew_node_graph_repoint_cross_org_rejected(client_a, org_a, org_b):
+def test_agent_node_graph_repoint_cross_org_rejected(client_a, org_a, org_b):
     graph_a = _graph(org_a, "a")
     graph_b = _graph(org_b, "b")
-    crew = Crew.objects.create(name="crew", org=org_a)
-    node = CrewNode.objects.create(crew=crew, graph=graph_a, node_name="n1")
+    node = AgentNode.objects.create(graph=graph_a, node_name="n1")
     resp = client_a.patch(
-        f"/api/crewnodes/{node.id}/", {"graph": graph_b.id}, format="json"
+        f"/api/agentnodes/{node.id}/", {"graph": graph_b.id}, format="json"
     )
     assert resp.status_code == 400
     assert "graph" in str(resp.data)
@@ -257,31 +230,6 @@ def test_decision_table_condition_group_next_node_same_graph_ok(client_a, org_a)
     )
     assert resp.status_code == 201, resp.data
 
-
-# ---- C: init-realtime agent ----
-
-
-@pytest.mark.django_db
-def test_init_realtime_cross_org_agent_rejected(client_a, org_a, org_b):
-    other_agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_b)
-    resp = client_a.post(
-        "/api/init-realtime/", {"agent_id": other_agent.id}, format="json"
-    )
-    assert resp.status_code == 400
-    assert "agent_id" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_init_realtime_same_org_agent_allowed(client_a, org_a):
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_a)
-    with patch(
-        "tables.views.views.realtime_service.init_realtime", return_value="conn-1"
-    ) as init:
-        resp = client_a.post(
-            "/api/init-realtime/", {"agent_id": agent.id}, format="json"
-        )
-    assert resp.status_code == 201, resp.data
-    assert resp.data["connection_key"] == "conn-1"
-    # The active org must reach the service: it is what binds decryption to the
-    # org the caller was authorized for.
-    assert init.call_args.kwargs["org_id"] == org_a.id
+    # Cross-org and same-org init-realtime coverage lives in
+    # tests/api_tests/init_realtime_agent_definition_test.py, which exercises
+    # the agent_definition_id path (the only path init-realtime accepts).

@@ -23,31 +23,13 @@
             />
         </div>
 
-        <app-radio-button
-            label="Destination Type"
-            formControlName="destination_kind"
-            mod="segmented"
-            tooltipText="Route calls to a legacy Realtime Agent or to a new Realtime Agent Definition. Exactly one may be set per channel."
-            [options]="destinationKindOptions"
+        <app-select
+            label="Realtime Agent"
+            formControlName="realtime_agent_definition"
+            [items]="agentDefinitionItems()"
+            placeholder="Select an agent"
+            tooltipText="The realtime agent that will handle calls on this channel"
         />
-
-        @if (form.get('destination_kind')?.value === 'agent') {
-            <app-select
-                label="Realtime Agent"
-                formControlName="realtime_agent"
-                [items]="agentItems()"
-                placeholder="Select an agent"
-                tooltipText="The realtime agent that will handle calls on this channel"
-            />
-        } @else {
-            <app-select
-                label="Realtime Agent Definition"
-                formControlName="realtime_agent_definition"
-                [items]="agentDefinitionItems()"
-                placeholder="Select an agent definition"
-                tooltipText="Only agent definitions that have realtime voice enabled are listed."
-            />
-        }
 
         <div class="dialog__section-divider">
             <span class="dialog__section-label">Twilio Settings</span>
@@ -59,6 +41,7 @@
                 formControlName="account_sid"
                 placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 tooltipText="Your Twilio Account SID"
+                [required]="true"
             />
         </div>
 

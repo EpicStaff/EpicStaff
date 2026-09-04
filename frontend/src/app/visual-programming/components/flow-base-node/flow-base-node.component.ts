@@ -31,7 +31,6 @@ import {
     GraphNoteModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -88,7 +87,6 @@ export class FlowBaseNodeComponent {
     @Input() showVariables: boolean = false;
     multiSelectActive = input<boolean>(false);
 
-    @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
     @Output() portMouseenter = new EventEmitter<void>();
     @Output() portMouseleave = new EventEmitter<void>();
 
@@ -147,8 +145,6 @@ export class FlowBaseNodeComponent {
                 return 'type-agent';
             case NodeType.TASK:
                 return 'type-task';
-            case NodeType.PROJECT:
-                return 'type-project';
             case NodeType.TOOL:
                 return 'type-tool';
             case NodeType.LLM:
@@ -257,10 +253,6 @@ export class FlowBaseNodeComponent {
         return this.hasMissingAgent
             ? 'This node has no agent assigned (the agent may have been deleted). Assign an agent to this node.'
             : '';
-    }
-
-    public onExpandProjectClick(): void {
-        this.projectExpandToggled.emit(this.node as ProjectNodeModel);
     }
 
     public getNodeTitle(): string {

@@ -59,7 +59,7 @@ def _build_identity_mapper(export_data):
 @pytest.mark.django_db
 class TestImportedLLMConfigApiKeyNotLeaked:
     def test_create_entity_does_not_copy_api_key_from_existing_config(
-        self, rich_seeded_db, export_service
+        self, rich_seeded_db, exportable_agent_definition, export_service
     ):
         """
         Another LLMConfig with a credential attached for the same provider exists
@@ -74,8 +74,9 @@ class TestImportedLLMConfigApiKeyNotLeaked:
         )
         existing_config.save()
 
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         mapper = _build_identity_mapper(export_data)
         strategy = entity_registry.get_strategy(EntityType.LLM_CONFIG)
