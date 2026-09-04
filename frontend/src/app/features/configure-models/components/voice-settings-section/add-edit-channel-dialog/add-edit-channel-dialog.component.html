@@ -86,7 +86,9 @@
         <app-webhook-trigger-field
             formControlName="webhook_trigger"
             [pathRequired]="false"
-            [allowLocalhost]="false"
+            [allowedProviders]="['ngrok']"
+            [showAuth]="false"
+            [existingAuthKindFilter]="'twilio'"
             (triggerResolved)="onTriggerResolved($event)"
         ></app-webhook-trigger-field>
     </form>

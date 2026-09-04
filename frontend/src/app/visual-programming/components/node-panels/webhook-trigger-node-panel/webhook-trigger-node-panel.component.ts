@@ -5,11 +5,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
-    AppSvgIconComponent,
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
-    ToggleSwitchComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
 import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
@@ -33,8 +31,6 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         NodeSecretsFieldComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
-        ToggleSwitchComponent,
-        AppSvgIconComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -70,17 +66,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     webhookInvalid = computed<boolean>(() => {
         const t = this.selectedTrigger();
         return !!t && !t.live_url;
-    });
-
-    public readonly webhookAuthEnabled = signal<boolean>(false);
-    // Detail fields (header names, signing secret) are server-generated and only exist once
-    // the backend has created this node's auth row -- null for a node not yet saved.
-    public readonly webhookAuthDetails = computed(() => this.node().data.webhook_node_auth ?? null);
-    public readonly secretCopied = signal<boolean>(false);
-    public readonly secretMasked = signal<boolean>(true);
-    public readonly secretDisplayValue = computed(() => {
-        const secret = this.webhookAuthDetails()?.signing_secret ?? '';
-        return this.secretMasked() ? '•'.repeat(Math.max(secret.length, 12)) : secret;
     });
 
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
@@ -146,11 +131,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.notifyExternalChange();
     }
 
-    onWebhookAuthToggle(enabled: boolean): void {
-        this.webhookAuthEnabled.set(enabled);
-        this.notifyExternalChange();
-    }
-
     initializeForm(): FormGroup {
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -160,8 +140,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
         this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
-        this.webhookAuthEnabled.set(this.node().data.webhook_node_auth?.enabled ?? false);
-        this.secretMasked.set(true);
         return form;
     }
 
@@ -181,7 +159,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             data: {
                 ...this.node().data,
                 webhook_trigger: this.form.value.webhook_trigger ?? null,
-                webhook_node_auth: { ...this.node().data.webhook_node_auth, enabled: this.webhookAuthEnabled() },
                 python_code: {
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
@@ -199,18 +176,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
         this.clipboard.copy(url);
         this.copied.set(true);
-    }
-
-    copySigningSecret(): void {
-        const secret = this.webhookAuthDetails()?.signing_secret;
-        if (!secret) return;
-
-        this.clipboard.copy(secret);
-        this.secretCopied.set(true);
-    }
-
-    toggleSecretVisibility(): void {
-        this.secretMasked.update((value) => !value);
     }
 
     toggleCodeEditorFullWidth(): void {

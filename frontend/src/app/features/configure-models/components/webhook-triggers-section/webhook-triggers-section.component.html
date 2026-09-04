@@ -33,6 +33,15 @@
                             @if (trigger.provider_type) {
                                 <span class="trigger-card__badge">{{ trigger.provider_type }}</span>
                             }
+                            @if (trigger.auth) {
+                                <span class="trigger-card__badge">
+                                    {{
+                                        trigger.auth.kind === 'twilio' && trigger.auth.secret_tail == null
+                                            ? 'twilio (reserved)'
+                                            : trigger.auth.kind
+                                    }}
+                                </span>
+                            }
                         </div>
                         <div class="trigger-card__actions">
                             <button
