@@ -42,7 +42,7 @@ if (lcResult.status !== 0) {
 }
 const data = JSON.parse(lcResult.stdout);
 
-const OWN_PKG_PREFIX = 'frontend-crewai@';
+const OWN_PKG_PREFIX = 'epicstaff-frontend@';
 
 // Build entries
 const entries = [];
@@ -160,6 +160,44 @@ for (const e of entries) {
 
 lines.push('---');
 lines.push('');
+lines.push('## Vendored code');
+lines.push('');
+lines.push('Third-party code copied into this repository rather than installed as a dependency. `license-checker` cannot see it, so these entries are maintained by hand in the generator.');
+lines.push('');
+lines.push('### ngx-json-viewer');
+lines.push('');
+lines.push('`frontend/src/app/shared/components/json-viewer/` is derived from [ngx-json-viewer](https://github.com/hivivo/ngx-json-viewer) 3.2.1. The library was unmaintained since November 2022, declared no peer dependency ranges and was built for Angular 14, so it gave no compatibility signal on framework upgrades; it was vendored and rewritten for standalone components and block control flow. The segment model, type detection and CSS class contract come from the original and are reproduced below under its licence.');
+lines.push('');
+lines.push('```');
+lines.push('MIT License');
+lines.push('');
+lines.push('Copyright (c) 2022 Vivo Xu');
+lines.push('');
+lines.push('Permission is hereby granted, free of charge, to any person obtaining a copy');
+lines.push('of this software and associated documentation files (the "Software"), to deal');
+lines.push('in the Software without restriction, including without limitation the rights');
+lines.push('to use, copy, modify, merge, publish, distribute, sublicense, and/or sell');
+lines.push('copies of the Software, and to permit persons to whom the Software is');
+lines.push('furnished to do so, subject to the following conditions:');
+lines.push('');
+lines.push('The above copyright notice and this permission notice shall be included in all');
+lines.push('copies or substantial portions of the Software.');
+lines.push('');
+lines.push('THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR');
+lines.push('IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,');
+lines.push('FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE');
+lines.push('AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER');
+lines.push('LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,');
+lines.push('OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE');
+lines.push('SOFTWARE.');
+lines.push('```');
+lines.push('');
+lines.push('### JSON-js cycle.js');
+lines.push('');
+lines.push('The cycle-removal helper in the same component follows [Douglas Crockford\'s cycle.js](https://github.com/douglascrockford/JSON-js/blob/master/cycle.js), which its author released into the public domain. No licence notice is required for it; it is recorded here for completeness.');
+lines.push('');
+lines.push('---');
+lines.push('');
 lines.push('## How to refresh this file');
 lines.push('');
 lines.push('Whenever frontend production dependencies change (additions, version bumps, removals in `frontend/package.json`), regenerate this notices file.');
@@ -183,7 +221,7 @@ lines.push('- Sorts entries alphabetically and groups them by SPDX identifier in
 lines.push('');
 lines.push('### Manual overrides applied');
 lines.push('');
-lines.push('- The EpicStaff frontend project itself (`frontend-crewai`) is filtered out of the list — this notices file only covers third-party code.');
+lines.push('- The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the list — this notices file only covers third-party code.');
 lines.push('');
 
 const md = lines.join('\n');

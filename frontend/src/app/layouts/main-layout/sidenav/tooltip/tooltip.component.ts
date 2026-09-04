@@ -1,18 +1,17 @@
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal, PortalModule } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
     selector: 'app-tooltip-content',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="tooltip-container">
             {{ text }}
             <span class="tooltip-arrow"></span>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./tooltip.component.scss'],
 })
 export class TooltipContentComponent {
@@ -21,8 +20,7 @@ export class TooltipContentComponent {
 
 @Component({
     selector: 'app-tooltip',
-    standalone: true,
-    imports: [CommonModule, OverlayModule, PortalModule],
+    imports: [OverlayModule, PortalModule],
     template: ``,
     styleUrls: ['./tooltip.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

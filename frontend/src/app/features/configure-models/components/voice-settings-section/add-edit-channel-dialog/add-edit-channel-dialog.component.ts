@@ -23,7 +23,6 @@ import {
 import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../../agent-definitions/services/agent-definitions-api.service';
 
-
 export interface AddEditChannelDialogData {
     channel: RealtimeChannel | null;
     action: 'create' | 'update';

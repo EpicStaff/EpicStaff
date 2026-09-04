@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -21,8 +20,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
 
 @Component({
     selector: 'app-nodes-search',
-    standalone: true,
-    imports: [CommonModule, FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="nodes-search-container">
@@ -42,60 +40,53 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 </button>
 
                 <!-- Search input field (appears to the right of the icon) -->
-                <div
-                    class="search-input-container"
-                    *ngIf="isSearchVisible()"
-                >
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search nodes..."
-                        [(ngModel)]="searchQuery"
-                        (ngModelChange)="updateSearch($event)"
-                        #searchInputRef
-                    />
-                    <button
-                        *ngIf="searchQuery"
-                        class="clear-button"
-                        (click)="clearSearch()"
-                        matTooltip="Clear search"
-                        matTooltipPosition="right"
-                    >
-                        <app-svg-icon icon="x"></app-svg-icon>
-                    </button>
-                </div>
+                @if (isSearchVisible()) {
+                    <div class="search-input-container">
+                        <input
+                            type="text"
+                            class="search-input"
+                            placeholder="Search nodes..."
+                            [(ngModel)]="searchQuery"
+                            (ngModelChange)="updateSearch($event)"
+                            #searchInputRef
+                        />
+                        @if (searchQuery) {
+                            <button
+                                class="clear-button"
+                                (click)="clearSearch()"
+                                matTooltip="Clear search"
+                                matTooltipPosition="right"
+                            >
+                                <app-svg-icon icon="x"></app-svg-icon>
+                            </button>
+                        }
+                    </div>
+                }
             </div>
 
             <!-- Search results (visible when expanded) -->
-            <div
-                class="search-results"
-                *ngIf="isSearchVisible() && (filteredNodes.length > 0 || searchQuery)"
-            >
-                <!-- Add panel title -->
-                <div class="panel-title">
-                    <h3>Search nodes ({{ filteredNodes.length }} found)</h3>
+            @if (isSearchVisible() && (filteredNodes.length > 0 || searchQuery)) {
+                <div class="search-results">
+                    <!-- Add panel title -->
+                    <div class="panel-title">
+                        <h3>Search nodes ({{ filteredNodes.length }} found)</h3>
+                    </div>
+                    <ul class="node-list">
+                        @if (filteredNodes.length === 0 && searchQuery) {
+                            <li class="no-results">No nodes match your search</li>
+                        }
+                        @for (node of filteredNodes; track node; let last = $last) {
+                            <li [class.last-node]="last">
+                                <app-search-node-item
+                                    [node]="node"
+                                    (nodeSelected)="onNodeSelected($event)"
+                                    (nodeDoubleClicked)="onNodeDoubleClicked($event)"
+                                ></app-search-node-item>
+                            </li>
+                        }
+                    </ul>
                 </div>
-
-                <ul class="node-list">
-                    <li
-                        class="no-results"
-                        *ngIf="filteredNodes.length === 0 && searchQuery"
-                    >
-                        No nodes match your search
-                    </li>
-
-                    <li
-                        *ngFor="let node of filteredNodes; let last = last"
-                        [class.last-node]="last"
-                    >
-                        <app-search-node-item
-                            [node]="node"
-                            (nodeSelected)="onNodeSelected($event)"
-                            (nodeDoubleClicked)="onNodeDoubleClicked($event)"
-                        ></app-search-node-item>
-                    </li>
-                </ul>
-            </div>
+            }
         </div>
     `,
     styles: [

@@ -12,10 +12,9 @@
         [disabled]="isSubmitDisabled"
         (click)="onSubmit()"
     >
-        <div
-            *ngIf="isSubmitting"
-            class="spinner"
-        ></div>
+        @if (isSubmitting) {
+            <div class="spinner"></div>
+        }
 
         <div>Create</div>
     </button>

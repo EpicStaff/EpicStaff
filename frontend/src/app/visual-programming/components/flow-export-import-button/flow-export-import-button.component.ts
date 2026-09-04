@@ -8,7 +8,6 @@ import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app
 
 @Component({
     selector: 'app-flow-export-import-button',
-    standalone: true,
     imports: [OverlayModule, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './flow-export-import-button.component.html',
     styleUrls: ['./flow-export-import-button.component.scss'],

@@ -1,16 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-error-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="error-container">
             <div
@@ -34,8 +31,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="error-content">
                     <!-- Error Details Section -->
@@ -51,54 +48,57 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                             Error Details
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isErrorExpanded"
                         >
-                            <div
-                                class="result-content"
-                                [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
-                            >
-                                <app-copy-button [text]="getFormattedErrorDetails()" />
-                                <pre>{{ getFormattedErrorDetails() }}</pre>
+                            <div class="grid-collapsible__inner">
+                                <div
+                                    class="result-content"
+                                    [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
+                                >
+                                    <app-copy-button [text]="getFormattedErrorDetails()" />
+                                    <pre>{{ getFormattedErrorDetails() }}</pre>
+                                </div>
+                                @if (shouldShowToggle() && isErrorExpanded) {
+                                    <button
+                                        class="toggle-button"
+                                        (click)="toggleCollapse($event)"
+                                    >
+                                        {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                    </button>
+                                }
                             </div>
-                            <button
-                                *ngIf="shouldShowToggle() && isErrorExpanded"
-                                class="toggle-button"
-                                (click)="toggleCollapse($event)"
-                            >
-                                {{ isCollapsed ? 'Show more' : 'Show less' }}
-                            </button>
                         </div>
                     </div>
 
                     <!-- Optional Data Subsection -->
-                    <div
-                        class="error-data-container"
-                        *ngIf="hasErrorData()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleDataSection($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Data
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isDataExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="result-content">
-                                <pre>{{ getFormattedErrorData() }}</pre>
+                    @if (hasErrorData()) {
+                        <div class="error-data-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleDataSection($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Data
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isDataExpanded"
+                            >
+                                <div class="result-content">
+                                    <pre>{{ getFormattedErrorData() }}</pre>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .error-container {
@@ -154,10 +154,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-
-                &.ng-animating {
-                    overflow: hidden;
-                }
             }
 
             .error-content {

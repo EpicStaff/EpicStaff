@@ -44,8 +44,57 @@ jobs:
       - name: Check for runtime CDN / external URL references
         run: node scripts/check-external-urls.mjs
 
+  frontend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      # The `prepare` script installs husky git hooks, which CI has no use for.
+      HUSKY: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `npm run lint` is eslint only and does not check formatting, so an unformatted
+      # diff can reach review and be silently rewritten by the pre-commit hook.
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check for imports missing from package.json
+        working-directory: .
+        run: node scripts/check-undeclared-imports.mjs
+
+      # Licence attribution has to follow the production dependency set. Compares the
+      # lockfile hash stamped in the notices header, so it needs neither network nor
+      # a license-checker run.
+      - name: Check third-party notices are in sync
+        working-directory: .
+        run: node scripts/check-third-party-notices.mjs
+
+      - name: Unit tests
+        run: npm test
+
+      # Dependency drift is what produced the EST-3802 backlog: half of it was stale
+      # lockfile entries rather than genuinely outdated direct dependencies.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
   build:
-    needs: [check-cla, check-external-urls]
+    needs: [check-cla, check-external-urls, frontend-checks]
     uses: ./.github/workflows/compose-build.yml
     with:
       compose-file: src/docker-compose.yaml

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -19,8 +18,7 @@ import { FlowAssistantService } from '../../flow-assistant.service';
 
 @Component({
     selector: 'app-flow-assistant-settings',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, AppSvgIconComponent],
+    imports: [ReactiveFormsModule, AppSvgIconComponent],
     templateUrl: './flow-assistant-settings.component.html',
     styleUrls: ['./flow-assistant-settings.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

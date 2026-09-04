@@ -1,61 +1,56 @@
 <!-- Editor Header -->
-<div
-    *ngIf="showHeader"
-    class="editor-header"
->
-    <div class="left-section">
-        <span class="editor-title">
-            <app-svg-icon
-                icon="brackets"
-                size="1.2rem"
-                class="json-icon"
-            />
-            {{ title }}
-        </span>
-        <span
-            class="editor-subtitle"
-            *ngIf="subtitle"
-        >
-            {{ subtitle }}
-        </span>
-        <span
-            class="validation-message"
-            *ngIf="!jsonIsValid"
-        >
-            Invalid JSON format
-        </span>
+@if (showHeader) {
+    <div class="editor-header">
+        <div class="left-section">
+            <span class="editor-title">
+                <app-svg-icon
+                    icon="brackets"
+                    size="1.2rem"
+                    class="json-icon"
+                />
+                {{ title }}
+            </span>
+            @if (subtitle) {
+                <span class="editor-subtitle">
+                    {{ subtitle }}
+                </span>
+            }
+            @if (!jsonIsValid) {
+                <span class="validation-message"> Invalid JSON format </span>
+            }
+        </div>
+        <div class="right-section">
+            @if (collapsible) {
+                <app-svg-icon
+                    class="action-icon"
+                    [icon]="collapsed ? 'preview' : 'preview-hidden'"
+                    size="1rem"
+                    [matTooltip]="collapsed ? 'Show editor' : 'Hide editor'"
+                    matTooltipPosition="above"
+                    (click)="onToggle()"
+                />
+            }
+            @if (allowCopy) {
+                <app-svg-icon
+                    class="action-icon"
+                    icon="copy"
+                    size="1rem"
+                    matTooltip="Copy to clipboard"
+                    matTooltipPosition="above"
+                    (click)="onCopy()"
+                />
+            }
+            @if (allowExpand) {
+                <app-svg-icon
+                    class="action-icon"
+                    icon="editor-expand"
+                    size="0.875rem"
+                    (click)="onExpand()"
+                />
+            }
+        </div>
     </div>
-    <div class="right-section">
-        @if (collapsible) {
-            <app-svg-icon
-                class="action-icon"
-                [icon]="collapsed ? 'preview' : 'preview-hidden'"
-                size="1rem"
-                [matTooltip]="collapsed ? 'Show editor' : 'Hide editor'"
-                matTooltipPosition="above"
-                (click)="onToggle()"
-            />
-        }
-        @if (allowCopy) {
-            <app-svg-icon
-                class="action-icon"
-                icon="copy"
-                size="1rem"
-                matTooltip="Copy to clipboard"
-                matTooltipPosition="above"
-                (click)="onCopy()"
-            />
-        }
-        @if (allowExpand) {
-            <app-svg-icon
-                class="action-icon"
-                icon="editor-expand"
-                size="0.875rem"
-                (click)="onExpand()"
-            />
-        }
-    </div>
-</div>
+}
 
 <!-- Editor Container -->
 <div
@@ -107,21 +102,21 @@
     }
 
     <!-- Loading Overlay -->
-    <div
-        class="editor-loading-overlay"
-        *ngIf="!editorLoaded"
-    >
-        <div class="spinner"></div>
-        <span>Loading editor...</span>
-    </div>
+    @if (!editorLoaded) {
+        <div class="editor-loading-overlay">
+            <div class="spinner"></div>
+            <span>Loading editor...</span>
+        </div>
+    }
 </div>
 
 <!-- Resize Handle with the directive -->
-<div
-    class="editor-resize-handle"
-    appResizable
-    (heightChange)="onResize($event)"
-    *ngIf="!fullHeight"
->
-    <div class="little-handle"></div>
-</div>
+@if (!fullHeight) {
+    <div
+        class="editor-resize-handle"
+        appResizable
+        (heightChange)="onResize($event)"
+    >
+        <div class="little-handle"></div>
+    </div>
+}

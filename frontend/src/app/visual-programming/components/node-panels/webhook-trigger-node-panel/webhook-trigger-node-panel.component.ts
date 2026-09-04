@@ -1,5 +1,4 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -25,7 +24,6 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         ReactiveFormsModule,
         CustomInputComponent,
         CodeEditorComponent,
-        CommonModule,
         ClipboardModule,
         MatTooltipModule,
         NodeSecretsFieldComponent,

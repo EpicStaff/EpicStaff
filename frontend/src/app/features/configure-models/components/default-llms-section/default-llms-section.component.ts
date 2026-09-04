@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LlmConfigStorageService } from '@shared/services';
@@ -13,7 +12,7 @@ import { DefaultLlmsCardComponent } from '../default-llms-card/default-llms-card
 
 @Component({
     selector: 'app-default-llms-section',
-    imports: [CommonModule, DefaultLlmsCardComponent],
+    imports: [DefaultLlmsCardComponent],
     templateUrl: './default-llms-section.component.html',
     styleUrls: ['./default-llms-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

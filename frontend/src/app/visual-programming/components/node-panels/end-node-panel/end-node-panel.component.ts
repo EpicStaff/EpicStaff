@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 
@@ -7,9 +6,8 @@ import { EndNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 
 @Component({
-    standalone: true,
     selector: 'app-end-node-panel',
-    imports: [ReactiveFormsModule, JsonEditorComponent, CommonModule],
+    imports: [ReactiveFormsModule, JsonEditorComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">

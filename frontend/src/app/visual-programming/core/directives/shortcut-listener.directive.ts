@@ -2,7 +2,7 @@ import { Directive, EventEmitter, NgZone, OnDestroy, OnInit, Output } from '@ang
 import { fromEvent, Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
-@Directive({ selector: '[appShortcutListener]', standalone: true })
+@Directive({ selector: '[appShortcutListener]' })
 export class ShortcutListenerDirective implements OnInit, OnDestroy {
     @Output() copy = new EventEmitter<void>();
     @Output() paste = new EventEmitter<void>();

@@ -12,7 +12,6 @@ export interface ToolPillEntry {
 
 @Component({
     selector: 'app-flow-assistant-tool-pill',
-    standalone: true,
     imports: [AppSvgIconComponent],
     templateUrl: './flow-assistant-tool-pill.component.html',
     styleUrls: ['./flow-assistant-tool-pill.component.scss'],

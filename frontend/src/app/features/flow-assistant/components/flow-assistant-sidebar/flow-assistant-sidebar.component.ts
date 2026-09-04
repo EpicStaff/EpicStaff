@@ -24,7 +24,6 @@ function formatRelativeDate(isoString: string | null | undefined): string {
 
 @Component({
     selector: 'app-flow-assistant-sidebar',
-    standalone: true,
     imports: [AppSvgIconComponent],
     templateUrl: './flow-assistant-sidebar.component.html',
     styleUrls: ['./flow-assistant-sidebar.component.scss'],

@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -11,10 +11,6 @@ import { DeleteDocumentResponse, UploadDocumentResponse } from '../models/docume
 export class DocumentsApiService {
     private http = inject(HttpClient);
     private configService = inject(ConfigService);
-
-    private readonly httpHeaders = new HttpHeaders({
-        'Content-Type': 'application/json',
-    });
 
     private get apiUrl(): string {
         return `${this.configService.apiUrl}documents`;

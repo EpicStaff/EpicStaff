@@ -1,6 +1,5 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -53,8 +52,7 @@ const DROPDOWN_NAV_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Esca
  */
 @Component({
     selector: 'app-variable-highlight-textarea',
-    standalone: true,
-    imports: [CommonModule, TooltipComponent],
+    imports: [TooltipComponent],
     templateUrl: './variable-highlight-textarea.component.html',
     styleUrls: ['./variable-highlight-textarea.component.scss'],
     providers: [

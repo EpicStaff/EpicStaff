@@ -1,4 +1,4 @@
-import { Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
@@ -15,7 +15,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
 
 @Component({
     selector: 'app-main-layout',
-    standalone: true,
     imports: [LeftSidebarComponent, RouterOutlet],
     styles: [
         `
@@ -58,6 +57,7 @@ const TABBED_ROUTES: Record<string, string[]> = {
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: `
         <div class="sidebar-wrapper">
             <app-left-sidebar></app-left-sidebar>

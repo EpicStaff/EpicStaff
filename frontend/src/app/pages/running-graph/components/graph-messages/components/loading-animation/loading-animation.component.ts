@@ -1,10 +1,8 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
     selector: 'app-loading-dots',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="processing-indicator">
             <div class="dots-container">
@@ -81,7 +79,7 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/
             }
         `,
     ],
-    changeDetection: ChangeDetectionStrategy.Default,
+    changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class LoadingDotsComponent implements OnInit, OnDestroy {
     private processingTexts = ['Processing', 'Executing', 'Running', 'Computing'];

@@ -6,7 +6,6 @@ import { ImportFlowSettingsService } from '../../services/import-flow-settings.s
 
 @Component({
     selector: 'app-import-flow-options-popover',
-    standalone: true,
     imports: [OverlayModule, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './import-flow-options-popover.component.html',
