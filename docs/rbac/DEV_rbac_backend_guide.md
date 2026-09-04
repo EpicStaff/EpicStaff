@@ -135,7 +135,8 @@ Two authentication classes (`tables/services/rbac/authentication.py`), both glob
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `tables/services/rbac/ticket_service.py`): `POST /api/auth/sse-ticket/`
 or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomically via
-`GETDEL`, passed as `?ticket=` on the stream URL.
+`GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
+`sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
 
 Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
 

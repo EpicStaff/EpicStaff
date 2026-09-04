@@ -1,0 +1,33 @@
+:host {
+    display: contents;
+}
+
+.status-badge {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    height: 28px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+
+    &.status-reviewed {
+        background-color: var(--transparent-green-8);
+        color: var(--color-ks-status-new);
+        border: none;
+        cursor: pointer;
+    }
+
+    &.status-needs-review {
+        background-color: var(--transparent-orange-8);
+        color: var(--orange);
+        border: none;
+        cursor: pointer;
+    }
+}

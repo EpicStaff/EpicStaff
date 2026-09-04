@@ -23,6 +23,7 @@ import {
 import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../../agent-definitions/services/agent-definitions-api.service';
 
+
 export interface AddEditChannelDialogData {
     channel: RealtimeChannel | null;
     action: 'create' | 'update';
@@ -61,7 +62,7 @@ export class AddEditChannelDialogComponent implements OnInit {
     /** Id of a trigger we created during this dialog session, so retries update instead of duplicating. */
     private createdTriggerId = signal<number | null>(null);
 
-    private agents = signal<AgentDefinition[]>([]);
+    private agentDefinitions = signal<AgentDefinition[]>([]);
     private phoneNumbers = signal<TwilioPhoneNumber[]>([]);
     private phonesFetched = signal<boolean>(false);
     phoneNumbersLoading = signal<boolean>(false);
@@ -69,9 +70,11 @@ export class AddEditChannelDialogComponent implements OnInit {
 
     private readonly PHONE_CACHE_KEY = 'twilio_phone_numbers_cache_v2';
 
-    agentItems = computed<SelectItem[]>(() => [
+    agentDefinitionItems = computed<SelectItem[]>(() => [
         { name: '— None —', value: null },
-        ...this.agents().map((a) => ({ name: a.name, value: a.id })),
+        ...this.agentDefinitions()
+            .filter((d) => d.has_realtime_definition)
+            .map((d) => ({ name: d.name, value: d.id })),
     ]);
 
     secretItems = computed<SelectItem[]>(() =>
@@ -106,15 +109,10 @@ export class AddEditChannelDialogComponent implements OnInit {
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
 
-        // No server-side filter for this — the flag comes inline on the read model.
         this.agentDefinitionsApi
             .getAgentDefinitions()
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (agents) =>
-                    this.agents.set(agents.filter((a) => a.agent_definition_realtime_config_id != null)),
-                error: () => {},
-            });
+            .subscribe({ next: (defs) => this.agentDefinitions.set(defs), error: () => {} });
 
         this.secretsStorageService
             .getSecrets()

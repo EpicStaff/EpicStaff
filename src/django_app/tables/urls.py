@@ -60,9 +60,7 @@ from tables.views.model_view_sets import (
 from tables.views.views import (
     NotifyEmailView,
     InitRealtimeAPIView,
-    RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
-    RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
     SessionViewSet,
@@ -394,16 +392,6 @@ urlpatterns = [
         "telegram-trigger-available-fields/",
         TelegramTriggerNodeAvailableFieldsView.as_view(),
         name="telegram-trigger-available-fields",
-    ),
-    path(
-        "register-telegram-trigger/",
-        RegisterTelegramTriggerApiView.as_view(),
-        name="register-telegram-trigger",
-    ),
-    path(
-        "register-webhooks/",
-        RegisterWebhooksApiView.as_view(),
-        name="register-webhooks",
     ),
     path(
         "realtime-voices/",

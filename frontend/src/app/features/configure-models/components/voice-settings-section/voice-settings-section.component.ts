@@ -32,9 +32,11 @@ export class VoiceSettingsSectionComponent implements OnInit {
     status = signal<LoadingState>(LoadingState.IDLE);
 
     channels = signal<RealtimeChannel[]>([]);
-    private agents = signal<AgentDefinition[]>([]);
+    private agentDefinitions = signal<AgentDefinition[]>([]);
 
-    agentMap = computed<Map<number, string>>(() => new Map(this.agents().map((a) => [a.id, a.name])));
+    agentDefinitionMap = computed<Map<number, string>>(
+        () => new Map(this.agentDefinitions().map((d) => [d.id, d.name]))
+    );
 
     ngOnInit(): void {
         this.loadAll();
@@ -58,15 +60,10 @@ export class VoiceSettingsSectionComponent implements OnInit {
                 error: () => this.status.set(LoadingState.ERROR),
             });
 
-        // No server-side filter for this — the flag comes inline on the read model.
         this.agentDefinitionsApi
             .getAgentDefinitions()
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (agents) =>
-                    this.agents.set(agents.filter((a) => a.agent_definition_realtime_config_id != null)),
-                error: () => {},
-            });
+            .subscribe({ next: (defs) => this.agentDefinitions.set(defs), error: () => {} });
     }
 
     getStreamUrl(channel: RealtimeChannel): string | null {

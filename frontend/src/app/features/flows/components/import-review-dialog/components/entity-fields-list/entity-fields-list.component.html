@@ -1,0 +1,11 @@
+<div
+    class="item-details"
+    [@collapseExpand]="expanded() ? 'expanded' : 'collapsed'"
+>
+    <div class="item-details-grid">
+        @for (entry of fields(); track entry.label) {
+            <div class="detail-key">{{ entry.label }}</div>
+            <div class="detail-value">{{ entry.value }}</div>
+        }
+    </div>
+</div>

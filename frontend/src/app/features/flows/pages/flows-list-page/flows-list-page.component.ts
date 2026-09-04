@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -44,10 +45,22 @@ import {
     TranscriptionModelsStorageService,
 } from '@shared/services';
 import { LABELS_STORE } from '@shared/services';
-import { forkJoin, Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged, take } from 'rxjs/operators';
+import {
+    buildPreviewImportResult,
+    enrichImportResult,
+    extractHttpErrorMessage,
+    ImportFileData,
+    JsonObject,
+} from '@shared/utils';
+import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap, take } from 'rxjs/operators';
 
-import { EntityTypeResult, ImportResult, ImportResultItem } from '../../../../core/models/import-result.model';
+import { ImportFlowRequestOptions, ImportResult } from '../../../../core/models/import-result.model';
+import {
+    FlowNodesByFile,
+    hasReviewableItems,
+    ImportReviewDialogCloseResult,
+} from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
@@ -58,25 +71,13 @@ import {
 } from '../../components/filter/flows-filter-menu/flows-filter-menu.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
+import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow-filter-url.utils';
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
-
-interface ImportFileEntity {
-    id?: number | string;
-    name?: string;
-    role?: string;
-    custom_name?: string;
-    [field: string]: JsonValue | undefined;
-}
-
-type ImportFileData = Record<string, ImportFileEntity[]>;
 
 @Component({
     standalone: true,
@@ -429,18 +430,6 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         });
     }
 
-    private readonly ENTITY_FILE_FIELDS: Record<string, string[]> = {
-        Flow: ['description', 'time_to_live', 'persistent_variables'],
-        Project: ['description', 'process', 'memory', 'max_rpm', 'planning'],
-        Agent: ['goal', 'backstory', 'max_iter', 'memory', 'allow_delegation', 'allow_code_execution'],
-        LLMModel: ['provider_name', 'predefined', 'is_custom', 'description'],
-        LLMConfig: ['custom_name', 'temperature', 'max_tokens', 'timeout'],
-        PythonCodeTool: ['description'],
-        MCPTool: ['description'],
-        RealtimeModel: ['provider_name', 'is_custom'],
-        RealtimeConfig: ['custom_name'],
-    };
-
     public toggleImportOptions(): void {
         this.importOptionsOpen.update((v) => !v);
     }
@@ -459,37 +448,96 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
-            file.text().then((text: string) => {
-                let fileData: ImportFileData = {};
-                try {
-                    fileData = JSON.parse(text) as ImportFileData;
-                } catch {}
-
-                this.importExportService.importFlow(file, settings).subscribe({
-                    next: (result) => {
-                        const enriched = this._enrichImportResult(result, fileData);
-
-                        this.dialog.open(ImportResultDialogComponent, {
-                            width: '80vw',
-                            data: { importResult: enriched },
-                        });
-
-                        this.invalidateStorages(result);
-                        this.labelsStorage.setActiveLabelFilter('all');
-                        this.flowStorageService.getFlows(true).subscribe(() => {});
-                        this.labelsStorage.loadLabels(true).subscribe(() => {});
-                    },
-                    error: (error) => {
-                        const message =
-                            error?.error?.detail ||
-                            error?.error?.message ||
-                            'Failed to import flow. Please check the file and try again.';
-                        this.toastService.error(message);
-                    },
-                });
-            });
+            from(file.text())
+                .pipe(
+                    map((text) => this._parseFileData(text)),
+                    switchMap((fileData) => this._importFlowFile(file, fileData, settings)),
+                    catchError((error: HttpErrorResponse) => {
+                        this.toastService.error(
+                            extractHttpErrorMessage(
+                                error,
+                                'Failed to read the flow file. Please check the file and try again.'
+                            )
+                        );
+                        return EMPTY;
+                    }),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe(({ result, fileData }) => this._finishFlowImport(result, fileData));
         };
         input.click();
+    }
+
+    private _parseFileData(text: string): ImportFileData {
+        try {
+            return JSON.parse(text) as ImportFileData;
+        } catch {
+            return {};
+        }
+    }
+
+    private _importFlowFile(
+        file: File,
+        fileData: ImportFileData,
+        settings: ImportFlowRequestOptions
+    ): Observable<{ result: ImportResult; fileData: ImportFileData }> {
+        return this.importExportService.inspectFlow(file).pipe(
+            switchMap((inspection) => {
+                if (!hasReviewableItems(inspection.review_items)) {
+                    return this.importExportService.importFlow(file, settings).pipe(
+                        map((result) => ({ result, fileData })),
+                        catchError((error: HttpErrorResponse) => {
+                            this.toastService.error(
+                                extractHttpErrorMessage(
+                                    error,
+                                    'Failed to import flow. Please check the file and try again.'
+                                )
+                            );
+                            return EMPTY;
+                        })
+                    );
+                }
+
+                const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
+                    width: 'calc(100vw - 2rem)',
+                    height: 'calc(100vh - 2rem)',
+                    data: {
+                        importResult: buildPreviewImportResult(fileData),
+                        reviewItems: inspection.review_items,
+                        allFlowNodes: this._extractFlowNodesFromFile(fileData),
+                        importFn: () => this.importExportService.importFlow(file, settings),
+                    },
+                });
+
+                return reviewRef.closed.pipe(
+                    switchMap((closeResult) =>
+                        closeResult?.action === 'imported'
+                            ? of({ result: closeResult.result as ImportResult, fileData })
+                            : EMPTY
+                    )
+                );
+            }),
+            catchError((error: HttpErrorResponse) => {
+                this.toastService.error(
+                    extractHttpErrorMessage(error, 'Failed to read the flow file. Please check the file and try again.')
+                );
+                return EMPTY;
+            })
+        );
+    }
+
+    private _finishFlowImport(result: ImportResult, fileData: ImportFileData): void {
+        const enriched = enrichImportResult(result, fileData);
+
+        this.dialog.open(ImportResultDialogComponent, {
+            width: '80vw',
+            data: { importResult: enriched },
+        });
+
+        this.invalidateStorages(result);
+        this.labelsStorage.setActiveLabelFilter('all');
+        this.flowStorageService.getFlows(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private invalidateStorages(result: ImportResult): void {
@@ -500,56 +548,27 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         this.appStorage.invalidate(storagesToInvalidate);
     }
 
-    // Per entity type: which field in the file serves as the display name
-    // (used as fallback when id doesn't match, e.g. for newly created entities)
-    private readonly ENTITY_NAME_KEY: Record<string, string> = {
-        Agent: 'role',
-        LLMConfig: 'custom_name',
-        RealtimeConfig: 'custom_name',
-    };
+    private static readonly EXCLUDED_NODE_TYPES = new Set(['StartNode', 'EndNode']);
 
-    private _enrichImportResult(result: ImportResult, fileData: ImportFileData): ImportResult {
-        const enriched: ImportResult = {};
+    private _extractFlowNodesFromFile(fileData: ImportFileData): FlowNodesByFile {
+        const result: FlowNodesByFile = {};
+        const flows = fileData['Flow'];
+        if (!flows) return result;
 
-        for (const [entityType, entityResult] of Object.entries(result) as [string, EntityTypeResult][]) {
-            const fields = this.ENTITY_FILE_FIELDS[entityType];
-            const fileEntities: ImportFileEntity[] | undefined = fileData[entityType];
+        for (const flow of flows) {
+            const flowName = String(flow['name'] ?? '');
+            const rawNodes = flow['nodes'];
+            if (!flowName || !Array.isArray(rawNodes)) continue;
 
-            if (!fields || !fileEntities) {
-                enriched[entityType] = entityResult;
-                continue;
-            }
-
-            const nameKey = this.ENTITY_NAME_KEY[entityType] ?? 'name';
-            const lookupById = new Map<number | string, ImportFileEntity>();
-            for (const e of fileEntities) {
-                if (e.id !== undefined) lookupById.set(e.id, e);
-            }
-            const lookupByName = new Map<string, ImportFileEntity>(
-                fileEntities.map((e) => [String(e[nameKey] ?? ''), e])
-            );
-
-            const enrichItems = (items: ImportResultItem[]) =>
-                items.map((item) => {
-                    const baseName = item.name.replace(/\s*\(\d+\)$/, '').trim();
-                    const source = lookupById.get(item.id) ?? lookupByName.get(baseName);
-                    if (!source) return item;
-                    const extra: JsonObject = {};
-                    for (const field of fields) {
-                        const val = source[field];
-                        if (val !== undefined) extra[field] = val;
-                    }
-                    return { ...item, ...extra };
-                });
-
-            enriched[entityType] = {
-                ...entityResult,
-                created: { ...entityResult.created, items: enrichItems(entityResult.created.items) },
-                reused: { ...entityResult.reused, items: enrichItems(entityResult.reused.items) },
-            };
+            result[flowName] = rawNodes
+                .filter((node): node is JsonObject => typeof node === 'object' && node !== null && !Array.isArray(node))
+                .filter((node) => !FlowsListPageComponent.EXCLUDED_NODE_TYPES.has(String(node['node_type'] ?? '')))
+                .map((node) => ({
+                    name: String(node['node_name'] ?? node['node_type'] ?? 'Node'),
+                    node_type: String(node['node_type'] ?? ''),
+                }));
         }
-
-        return enriched;
+        return result;
     }
 
     public onExportClick(): void {

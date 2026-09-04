@@ -6,29 +6,27 @@ logger = logging.getLogger(__name__)
 
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
-    CharFilter,
     DjangoFilterBackend,
     FilterSet,
+    CharFilter,
     NumberFilter,
 )
-from rest_framework import filters as drf_filters
-from rest_framework import generics, mixins, status, viewsets, serializers
+from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    NotFound,
-    PermissionDenied,
     ValidationError as DRFValidationError,
+    PermissionDenied,
+    NotFound,
 )
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -37,20 +35,11 @@ from tables.serializers.model_serializers.embedding_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
-    RealtimeConfigSerializer,
-    RealtimeModelSerializer,
-    RealtimeTranscriptionConfigSerializer,
-    RealtimeTranscriptionModelSerializer,
-)
-from tables.serializers.model_serializers.provider_serializers import (
-    ProviderSerializer,
 )
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
-    GraphSaveVersionConflictError,
 )
-from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
@@ -81,7 +70,6 @@ from tables.models import (
     LLMConfig,
     LLMModel,
     Provider,
-    PythonCode,
     PythonCodeResult,
     PythonCodeTool,
     PythonNode,
@@ -197,6 +185,7 @@ from tables.services.copy_services import (
 )
 from tables.views.mixins import (
     CopyActionMixin,
+    InspectActionMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
@@ -204,9 +193,8 @@ from tables.views.mixins import (
     ToolUsageActionsMixin,
 )
 from tables.models.rbac_models import ApiKey, Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permissions import (
-    HasOrgPermission,
     IsSuperadmin,
     IsSystemApiKeyAuthenticated,
     DenyApiKeyAuth,
@@ -216,9 +204,6 @@ from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
-from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
-    validate_classification_condition_group_names,
-)
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
     AgentNodeSerializer,
@@ -306,8 +291,8 @@ from tables.swagger_schemas.webhook_schemas import (
     WEBHOOK_TRIGGER_NODE_UPDATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
 )
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.services.rbac.org_context_service import OrgContextService
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -478,6 +463,7 @@ class ContentHashPreconditionMixin:
 class PythonCodeToolViewSet(
     OrgScopedHybridViewSetMixin,
     CopyActionMixin,
+    InspectActionMixin,
     ToolUsageActionsMixin,
     viewsets.ModelViewSet,
 ):
@@ -499,6 +485,7 @@ class PythonCodeToolViewSet(
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
     }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
@@ -659,7 +646,7 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -669,6 +656,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         "bulk_export": Permission.EXPORT,
         "partial_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
     }
@@ -1545,7 +1533,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_definition"]
-    permission_classes = [IsAuthenticatedOrApiKey]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1570,16 +1558,6 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         through `self.get_queryset()` (which requires an active org via
         `OrgContextService`/`X-Organization-Id`) the way `destroy`/`retrieve`
         are.
-
-        Restricted to `key_type=SYSTEM` API-key callers
-        (`IsSystemApiKeyAuthenticated`)
-        `RealtimeChannelViewSet.lookup_by_token` / `InitRealtimeAPIView`. Do
-        not widen this to `IsAuthenticated` or the class-level
-        `IsAuthenticatedOrApiKey`: either would let a caller who has no
-        relationship to the chat's org (a plain JWT session, or a self-issued
-        `key_type=USER` API key any org member can mint) end/mutate another
-        org's realtime chat by guessing/observing its `connection_key`, since
-        the lookup below performs no org filter of its own.
         """
         from django.utils import timezone
 
@@ -1741,7 +1719,14 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         return Response({"results": numbers})
 
 
-class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class ConversationRecordingViewSet(
+    OrgScopedChildViewSetMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     """
     Scoped through the recording's chat -> realtime agent to its agent's org
     (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
@@ -1769,7 +1754,8 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     filterset_fields = ["rt_agent_chat", "recording_type"]
     rbac_resource_type = ResourceType.VOICE
     org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
-    permission_classes = [IsAuthenticatedOrApiKey]
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def _is_system_api_key_request(self) -> bool:
         return (
@@ -2077,7 +2063,11 @@ class ClassificationDecisionTableNodeModelViewSet(
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class McpToolViewSet(
-    OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
@@ -2091,6 +2081,7 @@ class McpToolViewSet(
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
     }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
