@@ -13,6 +13,7 @@ from tables.serializers.serializers import (
 )
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permissions import IsSuperadmin
+from tables.services.rbac.rbac_exceptions import BuiltInModelImmutableError
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
 
 
@@ -168,6 +169,22 @@ class OrgScopedHybridViewSetMixin(OrgScopedResolverMixin):
             created_by=self.request.user,
             **self.custom_create_values,
         )
+
+
+class BuiltInWriteProtectedMixin:
+    """Blocks updates and deletes on shared built-in rows (org IS NULL) of a hybrid registry."""
+
+    def _assert_not_built_in(self, instance) -> None:
+        if instance.org_id is None:
+            raise BuiltInModelImmutableError()
+
+    def perform_update(self, serializer):
+        self._assert_not_built_in(serializer.instance)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        self._assert_not_built_in(instance)
+        super().perform_destroy(instance)
 
 
 class OrgScopedQuerysetMixin(OrgScopedResolverMixin):
