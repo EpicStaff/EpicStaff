@@ -1,12 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { FullRealtimeConfigService } from '@shared/services';
 
-import {
-    ChatAgent,
-    chatAgentRealtimeConfigId,
-    chatAgentTitle,
-    ChatAgentVM,
-} from '../models/chat-agent.model';
+import { ChatAgent, chatAgentRealtimeConfigId, chatAgentTitle, ChatAgentVM } from '../models/chat-agent.model';
 
 @Injectable({
     providedIn: 'root',

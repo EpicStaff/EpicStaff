@@ -8,7 +8,6 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 
 @Component({
     selector: 'app-flows-menu',
-    standalone: true,
     template: `
         <ul>
             @for (flow of filteredFlows(); track flow.id) {

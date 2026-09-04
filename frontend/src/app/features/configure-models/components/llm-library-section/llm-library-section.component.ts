@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -59,7 +58,6 @@ interface VoiceProvider {
 @Component({
     selector: 'app-llm-library-section',
     imports: [
-        CommonModule,
         FormsModule,
         LlmLibraryCardComponent,
         AppSvgIconComponent,

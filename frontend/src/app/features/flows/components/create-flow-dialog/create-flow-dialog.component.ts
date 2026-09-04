@@ -1,7 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, LabelDropdownComponent } from '@shared/components';
@@ -18,16 +17,9 @@ export interface FlowDialogData {
 
 @Component({
     selector: 'app-create-flow-dialog',
-    standalone: true,
-    imports: [
-        CommonModule,
-        ReactiveFormsModule,
-        MatTooltipModule,
-        ButtonComponent,
-        AppSvgIconComponent,
-        LabelDropdownComponent,
-    ],
+    imports: [ReactiveFormsModule, MatTooltipModule, ButtonComponent, AppSvgIconComponent, LabelDropdownComponent],
     templateUrl: './create-flow-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./create-flow-dialog.component.scss'],
 })
 export class CreateFlowDialogComponent implements OnInit, OnDestroy {

@@ -2,7 +2,6 @@ import { AfterViewInit, Directive, ElementRef, input, NgZone, OnDestroy, Rendere
 
 @Directive({
     selector: '[appHideInlineSubtitleOnOverflow]',
-    standalone: true,
 })
 export class HideInlineSubtitleOnOverflowDirective implements AfterViewInit, OnDestroy {
     overflowTitleSelector = input('.title');

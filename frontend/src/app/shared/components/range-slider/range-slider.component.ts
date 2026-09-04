@@ -1,12 +1,11 @@
-import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 @Component({
     selector: 'app-range-slider',
-    standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [FormsModule],
     templateUrl: './range-slider.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./range-slider.component.scss'],
 })
 export class RangeSliderComponent {

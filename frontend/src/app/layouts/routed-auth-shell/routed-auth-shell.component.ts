@@ -3,7 +3,6 @@ import { RouterOutlet } from '@angular/router';
 
 @Component({
     selector: 'app-routed-auth-shell',
-    standalone: true,
     imports: [RouterOutlet],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: '<router-outlet></router-outlet>',

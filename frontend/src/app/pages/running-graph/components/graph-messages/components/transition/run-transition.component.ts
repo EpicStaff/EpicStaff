@@ -1,11 +1,9 @@
-import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 
 /** Horizontal divider drawn between two consecutive runs in the same session. */
 @Component({
     selector: 'app-run-transition',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="run-transition">
             <div class="divider">
@@ -14,6 +12,7 @@ import { Component } from '@angular/core';
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .run-transition {

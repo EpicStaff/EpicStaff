@@ -1,4 +1,4 @@
-import { NgIf, NgStyle, NgTemplateOutlet } from '@angular/common';
+import { NgStyle, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -50,10 +50,8 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
     selector: 'app-flow-base-node',
     templateUrl: './flow-base-node.component.html',
     styleUrls: ['./flow-base-node.component.scss'],
-    standalone: true,
     imports: [
         FFlowModule,
-        NgIf,
         NgStyle,
         NgTemplateOutlet,
         ClickOrDragDirective,

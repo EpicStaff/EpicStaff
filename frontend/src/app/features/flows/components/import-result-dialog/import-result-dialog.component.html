@@ -185,155 +185,155 @@
 
                         <!-- Entity Items List -->
                         <div
-                            class="entity-items"
-                            [@collapseExpand]="isGroupCollapsed(entityType) ? 'collapsed' : 'expanded'"
+                            class="entity-items grid-collapsible"
+                            [class.expanded]="!isGroupCollapsed(entityType)"
                         >
-                            <!-- Created Items -->
-                            @if (result!.created.items.length > 0) {
-                                <div class="entity-subgroup">
-                                    <div class="entity-items-list">
-                                        @for (item of result!.created.items; track item.id) {
-                                            <div class="entity-item-wrapper">
-                                                <div
-                                                    class="entity-item"
-                                                    [class.expandable]="hasExpandableFields(entityType, item)"
-                                                    [class.expanded]="isItemExpanded(entityType, 'created', item.id)"
-                                                    (click)="
-                                                        hasExpandableFields(entityType, item) &&
-                                                            toggleItem(entityType, 'created', item.id)
-                                                    "
-                                                >
-                                                    @if (hasExpandableFields(entityType, item)) {
-                                                        <app-icon
-                                                            icon="ui/chevron-down"
-                                                            size="0.7rem"
-                                                            class="item-collapse-icon"
-                                                            [class.collapsed]="
-                                                                !isItemExpanded(entityType, 'created', item.id)
-                                                            "
-                                                        ></app-icon>
-                                                    }
-                                                    <span class="item-name">{{ item.name }}</span>
-                                                    <span
-                                                        class="status-badge"
-                                                        [ngClass]="getStatusClass('created')"
+                            <div class="grid-collapsible__inner">
+                                <!-- Created Items -->
+                                @if (result!.created.items.length > 0) {
+                                    <div class="entity-subgroup">
+                                        <div class="entity-items-list">
+                                            @for (item of result!.created.items; track item.id) {
+                                                <div class="entity-item-wrapper">
+                                                    <div
+                                                        class="entity-item"
+                                                        [class.expandable]="hasExpandableFields(entityType, item)"
+                                                        [class.expanded]="
+                                                            isItemExpanded(entityType, 'created', item.id)
+                                                        "
+                                                        (click)="
+                                                            hasExpandableFields(entityType, item) &&
+                                                                toggleItem(entityType, 'created', item.id)
+                                                        "
                                                     >
-                                                        <app-icon
-                                                            icon="ui/created-imported-item"
-                                                            size="1.2rem"
-                                                            class="created"
-                                                        ></app-icon>
-                                                        Created
-                                                    </span>
-                                                    @if (isNavigable(entityType)) {
-                                                        <button
-                                                            type="button"
-                                                            class="navigate-button"
-                                                            (click)="
-                                                                navigateToEntity(entityType, item.id);
-                                                                $event.stopPropagation()
-                                                            "
-                                                            [attr.aria-label]="'View ' + item.name"
-                                                            matTooltip="Open"
-                                                            matTooltipPosition="above"
+                                                        @if (hasExpandableFields(entityType, item)) {
+                                                            <app-icon
+                                                                icon="ui/chevron-down"
+                                                                size="0.7rem"
+                                                                class="item-collapse-icon"
+                                                                [class.collapsed]="
+                                                                    !isItemExpanded(entityType, 'created', item.id)
+                                                                "
+                                                            ></app-icon>
+                                                        }
+                                                        <span class="item-name">{{ item.name }}</span>
+                                                        <span
+                                                            class="status-badge"
+                                                            [ngClass]="getStatusClass('created')"
                                                         >
                                                             <app-icon
-                                                                icon="ui/arrow-right"
-                                                                size="1rem"
-                                                                class="navigate-arrow"
+                                                                icon="ui/created-imported-item"
+                                                                size="1.2rem"
+                                                                class="created"
                                                             ></app-icon>
-                                                        </button>
-                                                    }
-                                                </div>
-                                                @if (hasExpandableFields(entityType, item)) {
-                                                    <div
-                                                        class="item-details"
-                                                        [@collapseExpand]="
-                                                            isItemExpanded(entityType, 'created', item.id)
-                                                                ? 'expanded'
-                                                                : 'collapsed'
-                                                        "
-                                                    >
-                                                        <div class="item-details-grid">
-                                                            @for (
-                                                                entry of getEntityFields(entityType, item);
-                                                                track entry.label
-                                                            ) {
-                                                                <div class="detail-key">{{ entry.label }}</div>
-                                                                <div class="detail-value">{{ entry.value }}</div>
-                                                            }
-                                                        </div>
+                                                            Created
+                                                        </span>
+                                                        @if (isNavigable(entityType)) {
+                                                            <button
+                                                                type="button"
+                                                                class="navigate-button"
+                                                                (click)="
+                                                                    navigateToEntity(entityType, item.id);
+                                                                    $event.stopPropagation()
+                                                                "
+                                                                [attr.aria-label]="'View ' + item.name"
+                                                                matTooltip="Open"
+                                                                matTooltipPosition="above"
+                                                            >
+                                                                <app-icon
+                                                                    icon="ui/arrow-right"
+                                                                    size="1rem"
+                                                                    class="navigate-arrow"
+                                                                ></app-icon>
+                                                            </button>
+                                                        }
                                                     </div>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            }
-
-                            <!-- Reused Items -->
-                            @if (result!.reused.items.length > 0) {
-                                <div class="entity-subgroup">
-                                    <div class="entity-items-list">
-                                        @for (item of result!.reused.items; track item.id) {
-                                            <div class="entity-item-wrapper">
-                                                <div
-                                                    class="entity-item"
-                                                    [class.expandable]="hasExpandableFields(entityType, item)"
-                                                    [class.expanded]="isItemExpanded(entityType, 'reused', item.id)"
-                                                    (click)="
-                                                        hasExpandableFields(entityType, item) &&
-                                                            toggleItem(entityType, 'reused', item.id)
-                                                    "
-                                                >
                                                     @if (hasExpandableFields(entityType, item)) {
-                                                        <app-icon
-                                                            icon="ui/chevron-down"
-                                                            size="0.7rem"
-                                                            class="item-collapse-icon"
-                                                            [class.collapsed]="
-                                                                !isItemExpanded(entityType, 'reused', item.id)
+                                                        <div
+                                                            class="item-details grid-collapsible"
+                                                            [class.expanded]="
+                                                                isItemExpanded(entityType, 'created', item.id)
                                                             "
-                                                        ></app-icon>
+                                                        >
+                                                            <div class="item-details-grid">
+                                                                @for (
+                                                                    entry of getEntityFields(entityType, item);
+                                                                    track entry.label
+                                                                ) {
+                                                                    <div class="detail-key">{{ entry.label }}</div>
+                                                                    <div class="detail-value">{{ entry.value }}</div>
+                                                                }
+                                                            </div>
+                                                        </div>
                                                     }
-                                                    <span class="item-name">{{ item.name }}</span>
-                                                    <span
-                                                        class="status-badge"
-                                                        [ngClass]="getStatusClass('reused')"
-                                                    >
-                                                        <app-icon
-                                                            icon="ui/reused-imported-item"
-                                                            size="1.2rem"
-                                                            class="reused"
-                                                        ></app-icon>
-                                                        Reused
-                                                    </span>
                                                 </div>
-                                                @if (hasExpandableFields(entityType, item)) {
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                <!-- Reused Items -->
+                                @if (result!.reused.items.length > 0) {
+                                    <div class="entity-subgroup">
+                                        <div class="entity-items-list">
+                                            @for (item of result!.reused.items; track item.id) {
+                                                <div class="entity-item-wrapper">
                                                     <div
-                                                        class="item-details"
-                                                        [@collapseExpand]="
-                                                            isItemExpanded(entityType, 'reused', item.id)
-                                                                ? 'expanded'
-                                                                : 'collapsed'
+                                                        class="entity-item"
+                                                        [class.expandable]="hasExpandableFields(entityType, item)"
+                                                        [class.expanded]="isItemExpanded(entityType, 'reused', item.id)"
+                                                        (click)="
+                                                            hasExpandableFields(entityType, item) &&
+                                                                toggleItem(entityType, 'reused', item.id)
                                                         "
                                                     >
-                                                        <div class="item-details-grid">
-                                                            @for (
-                                                                entry of getEntityFields(entityType, item);
-                                                                track entry.label
-                                                            ) {
-                                                                <div class="detail-key">{{ entry.label }}</div>
-                                                                <div class="detail-value">{{ entry.value }}</div>
-                                                            }
-                                                        </div>
+                                                        @if (hasExpandableFields(entityType, item)) {
+                                                            <app-icon
+                                                                icon="ui/chevron-down"
+                                                                size="0.7rem"
+                                                                class="item-collapse-icon"
+                                                                [class.collapsed]="
+                                                                    !isItemExpanded(entityType, 'reused', item.id)
+                                                                "
+                                                            ></app-icon>
+                                                        }
+                                                        <span class="item-name">{{ item.name }}</span>
+                                                        <span
+                                                            class="status-badge"
+                                                            [ngClass]="getStatusClass('reused')"
+                                                        >
+                                                            <app-icon
+                                                                icon="ui/reused-imported-item"
+                                                                size="1.2rem"
+                                                                class="reused"
+                                                            ></app-icon>
+                                                            Reused
+                                                        </span>
                                                     </div>
-                                                }
-                                            </div>
-                                        }
+                                                    @if (hasExpandableFields(entityType, item)) {
+                                                        <div
+                                                            class="item-details grid-collapsible"
+                                                            [class.expanded]="
+                                                                isItemExpanded(entityType, 'reused', item.id)
+                                                            "
+                                                        >
+                                                            <div class="item-details-grid">
+                                                                @for (
+                                                                    entry of getEntityFields(entityType, item);
+                                                                    track entry.label
+                                                                ) {
+                                                                    <div class="detail-key">{{ entry.label }}</div>
+                                                                    <div class="detail-value">{{ entry.value }}</div>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
                                     </div>
-                                </div>
-                            }
+                                }
+                            </div>
                         </div>
                     </div>
                 }

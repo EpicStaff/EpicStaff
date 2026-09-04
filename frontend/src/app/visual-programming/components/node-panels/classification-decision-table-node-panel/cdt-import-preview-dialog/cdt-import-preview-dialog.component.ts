@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { CdtExportData } from '../cdt-export-import.service';
@@ -8,8 +7,7 @@ export type CdtImportPreviewResult = 'confirm' | 'cancel';
 
 @Component({
     selector: 'app-cdt-import-preview-dialog',
-    standalone: true,
-    imports: [CommonModule, DialogModule],
+    imports: [DialogModule],
     templateUrl: './cdt-import-preview-dialog.component.html',
     styleUrls: ['./cdt-import-preview-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

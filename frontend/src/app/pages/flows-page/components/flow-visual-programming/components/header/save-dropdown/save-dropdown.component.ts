@@ -4,7 +4,6 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
 
 @Component({
     selector: 'app-save-dropdown',
-    standalone: true,
     imports: [AppSvgIconComponent],
     templateUrl: './save-dropdown.component.html',
     styleUrls: ['./save-dropdown.component.scss'],

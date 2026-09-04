@@ -1,6 +1,6 @@
-import { DOCUMENT } from '@angular/common';
 import {
     Directive,
+    DOCUMENT,
     ElementRef,
     EventEmitter,
     Inject,
@@ -13,7 +13,6 @@ import {
 
 @Directive({
     selector: '[appResizable]',
-    standalone: true,
 })
 export class ResizableDirective implements OnInit, OnDestroy {
     @Output() heightChange = new EventEmitter<number>();

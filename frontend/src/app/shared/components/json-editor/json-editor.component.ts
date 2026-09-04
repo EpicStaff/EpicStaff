@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -30,11 +29,10 @@ export interface JsonError {
 
 @Component({
     selector: 'app-json-editor',
-    imports: [FormsModule, NgIf, MonacoEditorModule, ResizableDirective, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, MonacoEditorModule, ResizableDirective, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './json-editor.component.html',
     styleUrls: ['./json-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    standalone: true,
 })
 export class JsonEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) public editorContainer!: ElementRef;
@@ -249,10 +247,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     private registerSchema(): void {
         const monaco = this.monacoGlobal;
         const modelUri = this.monacoEditor?.getModel()?.uri?.toString();
-        if (!monaco?.languages?.json || !modelUri) {
+        if (!monaco?.json || !modelUri) {
             return;
         }
-        const defaults = monaco.languages.json.jsonDefaults;
+        const defaults = monaco.json.jsonDefaults;
         const current = defaults.diagnosticsOptions?.schemas ?? [];
         const others = current.filter((s: { uri?: string }) => s.uri !== this.schemaId);
         defaults.setDiagnosticsOptions({
@@ -265,10 +263,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
 
     private unregisterSchema(): void {
         const monaco = this.monacoGlobal;
-        if (!monaco?.languages?.json) {
+        if (!monaco?.json) {
             return;
         }
-        const defaults = monaco.languages.json.jsonDefaults;
+        const defaults = monaco.json.jsonDefaults;
         const current = defaults.diagnosticsOptions?.schemas ?? [];
         defaults.setDiagnosticsOptions({
             ...defaults.diagnosticsOptions,

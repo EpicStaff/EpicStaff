@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -69,7 +68,6 @@ const GRAPH_LOCAL_DEFAULTS: GraphLocalSearchConfig = {
 @Component({
     selector: 'app-knowledge-retriever-node-panel',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         MatTooltipModule,
         CustomInputComponent,

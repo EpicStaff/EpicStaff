@@ -18,7 +18,6 @@ import { SELECTED_MICROPHONE_STORAGE_KEY, WavRecorderService } from '../../../..
     selector: 'app-microphone-selector',
     templateUrl: './microphone-selector.component.html',
     styleUrls: ['./microphone-selector.component.scss'],
-    standalone: true,
     imports: [SelectComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

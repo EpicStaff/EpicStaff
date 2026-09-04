@@ -2,7 +2,6 @@ import { Directive, ElementRef, EventEmitter, NgZone, OnDestroy, Output, Rendere
 
 @Directive({
     selector: '[appClickOutside]',
-    standalone: true,
 })
 export class ClickOutsideDirective implements OnDestroy {
     @Output() appClickOutside = new EventEmitter<Event>();

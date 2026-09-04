@@ -1,5 +1,4 @@
 import { Overlay } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -26,7 +25,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-enable-filter-header',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div class="enable-header">
             <span class="enable-label">{{ label }}</span>

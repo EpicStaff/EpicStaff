@@ -80,7 +80,6 @@ import { LabelsStorageService } from '../../services/labels-storage.service';
 import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow-filter-url.utils';
 
 @Component({
-    standalone: true,
     templateUrl: './flows-list-page.component.html',
     styleUrls: ['./flows-list-page.component.scss'],
     imports: [

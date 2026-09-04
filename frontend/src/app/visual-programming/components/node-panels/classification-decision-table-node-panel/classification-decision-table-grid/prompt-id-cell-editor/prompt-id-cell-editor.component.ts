@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ICellEditorParams } from 'ag-grid-community';
@@ -23,7 +22,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
 
 @Component({
     selector: 'app-prompt-id-cell-editor',
-    imports: [CommonModule, FormsModule],
+    imports: [FormsModule],
     template: `
         <div
             class="prompt-editor-popup"
@@ -53,58 +52,56 @@ interface PromptIdEditorParams extends ICellEditorParams {
             </div>
 
             <!-- Options list -->
-            <div
-                class="pe-list"
-                *ngIf="filteredPrompts.length > 0"
-            >
-                <div
-                    *ngFor="let p of filteredPrompts"
-                    class="pe-item"
-                    [class.pe-item-selected]="p.id === value"
-                    (click)="selectPrompt(p.id)"
-                >
-                    <div class="pe-item-left">
-                        <span class="pe-item-name">{{ p.id }}</span>
-                        <span
-                            class="pe-item-var"
-                            *ngIf="p.config.result_variable"
-                            >{{ p.config.result_variable }}</span
+            @if (filteredPrompts.length > 0) {
+                <div class="pe-list">
+                    @for (p of filteredPrompts; track p) {
+                        <div
+                            class="pe-item"
+                            [class.pe-item-selected]="p.id === value"
+                            (click)="selectPrompt(p.id)"
                         >
-                    </div>
-                    <div class="pe-item-right">
-                        <span class="pe-item-llm">{{ resolveLlmLabel(p.config.llm_config) }}</span>
-                        <button
-                            class="pe-item-open-btn"
-                            type="button"
-                            title="Open in Prompt Library"
-                            (click)="openPromptForEdit(p.id, $event)"
-                        >
-                            <i class="ti ti-arrow-up-right"></i>
-                        </button>
-                    </div>
+                            <div class="pe-item-left">
+                                <span class="pe-item-name">{{ p.id }}</span>
+                                @if (p.config.result_variable) {
+                                    <span class="pe-item-var">{{ p.config.result_variable }}</span>
+                                }
+                            </div>
+                            <div class="pe-item-right">
+                                <span class="pe-item-llm">{{ resolveLlmLabel(p.config.llm_config) }}</span>
+                                <button
+                                    class="pe-item-open-btn"
+                                    type="button"
+                                    title="Open in Prompt Library"
+                                    (click)="openPromptForEdit(p.id, $event)"
+                                >
+                                    <i class="ti ti-arrow-up-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
                 </div>
-            </div>
+            }
 
             <!-- Empty state -->
-            <div
-                class="pe-empty"
-                *ngIf="filteredPrompts.length === 0"
-            >
-                <span class="pe-empty-title">Prompt not found</span>
-                <span class="pe-empty-hint"
-                    >You can enter a different name for the prompt or click "+" to create a new one</span
-                >
-            </div>
+            @if (filteredPrompts.length === 0) {
+                <div class="pe-empty">
+                    <span class="pe-empty-title">Prompt not found</span>
+                    <span class="pe-empty-hint"
+                        >You can enter a different name for the prompt or click "+" to create a new one</span
+                    >
+                </div>
+            }
 
             <!-- Clear selection -->
-            <button
-                *ngIf="value"
-                type="button"
-                class="pe-clear"
-                (click)="clearSelection()"
-            >
-                Clear
-            </button>
+            @if (value) {
+                <button
+                    type="button"
+                    class="pe-clear"
+                    (click)="clearSelection()"
+                >
+                    Clear
+                </button>
+            }
         </div>
     `,
     styles: [

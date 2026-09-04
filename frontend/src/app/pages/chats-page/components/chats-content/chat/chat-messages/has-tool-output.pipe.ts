@@ -5,7 +5,6 @@ import { GroupedMessage } from './chat-messages.component';
 // Pipe to check if a tool has output
 @Pipe({
     name: 'hasToolOutput',
-    standalone: true,
 })
 export class HasToolOutputPipe implements PipeTransform {
     transform(groups: GroupedMessage[], toolCallId: string): boolean {

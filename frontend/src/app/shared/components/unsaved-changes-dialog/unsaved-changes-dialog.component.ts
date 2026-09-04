@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, Inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
@@ -23,9 +23,9 @@ export interface UnsavedChangesDialogData {
 
 @Component({
     selector: 'app-unsaved-changes-dialog',
-    standalone: true,
     imports: [CommonModule, DialogModule, IconButtonComponent, Spinner2Component, AppSvgIconComponent],
     templateUrl: './unsaved-changes-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./unsaved-changes-dialog.component.scss'],
 })
 export class UnsavedChangesDialogComponent {

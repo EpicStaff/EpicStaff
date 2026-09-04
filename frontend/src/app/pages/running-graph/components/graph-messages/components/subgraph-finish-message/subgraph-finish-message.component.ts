@@ -1,8 +1,6 @@
-import { CommonModule } from '@angular/common';
-import { Component, Input, ViewEncapsulation } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
@@ -14,10 +12,8 @@ import {
 
 @Component({
     selector: 'app-subgraph-finish-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
-    animations: [expandCollapseAnimation],
     template: `
         <div class="subgraph-finish-container">
             <div
@@ -43,67 +39,65 @@ import {
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="subgraph-finish-content">
                     <!-- Final Output Section -->
-                    <div
-                        class="output-container"
-                        *ngIf="hasOutput()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleOutput($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Final Output
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="output-content">
-                                <app-copy-button [text]="outputJson" />
-                                <ngx-json-viewer
-                                    [json]="getOutput()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasOutput()) {
+                        <div class="output-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleOutput($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Final Output
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isOutputExpanded"
+                            >
+                                <div class="output-content">
+                                    <app-copy-button [text]="outputJson" />
+                                    <app-json-viewer
+                                        [json]="getOutput()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Variables Section -->
-                    <div
-                        class="variables-container"
-                        *ngIf="hasVariables()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleVariables($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Variables
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="variables-content">
-                                <app-copy-button [text]="variablesJson" />
-                                <ngx-json-viewer
-                                    [json]="getVariables()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasVariables()) {
+                        <div class="variables-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleVariables($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Variables
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isVariablesExpanded"
+                            >
+                                <div class="variables-content">
+                                    <app-copy-button [text]="variablesJson" />
+                                    <app-json-viewer
+                                        [json]="getVariables()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- State History Section (commented out) -->
                     <!-- <div class="state-history-container" *ngIf="hasStateHistory()"> ... </div> -->
@@ -111,6 +105,7 @@ import {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .subgraph-finish-container {
@@ -171,10 +166,6 @@ import {
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .subgraph-finish-content {

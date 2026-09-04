@@ -111,7 +111,6 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 
 @Component({
     selector: 'app-flow-visual-programming',
-    standalone: true,
     imports: [
         AppSvgIconComponent,
         FlowHeaderComponent,

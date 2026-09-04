@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -85,7 +84,6 @@ interface AgentFormValue {
 @Component({
     selector: 'app-agent-detail',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         AppSvgIconComponent,
         LlmModelSelectorComponent,

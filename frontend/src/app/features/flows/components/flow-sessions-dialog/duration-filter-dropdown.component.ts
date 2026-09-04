@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -17,8 +16,7 @@ import { DurationFilter, DurationOperator } from '../../services/flows-sessions.
 
 @Component({
     selector: 'app-duration-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [FormsModule, ClickOutsideDirective, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './duration-filter-dropdown.component.html',
     styleUrls: ['./duration-filter-dropdown.component.scss'],

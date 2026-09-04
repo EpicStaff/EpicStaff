@@ -8,21 +8,24 @@
     >
         <div class="dialog-title-row">
             <span class="dialog-icon">
-                <app-svg-icon
-                    *ngIf="data.type === 'danger'"
-                    icon="warning"
-                    size="1.25rem"
-                />
-                <app-svg-icon
-                    *ngIf="data.type === 'warning'"
-                    icon="alert-circle"
-                    size="1.25rem"
-                />
-                <app-svg-icon
-                    *ngIf="!data.type || data.type === 'info'"
-                    icon="info-circle"
-                    size="1.25rem"
-                />
+                @if (data.type === 'danger') {
+                    <app-svg-icon
+                        icon="warning"
+                        size="1.25rem"
+                    />
+                }
+                @if (data.type === 'warning') {
+                    <app-svg-icon
+                        icon="alert-circle"
+                        size="1.25rem"
+                    />
+                }
+                @if (!data.type || data.type === 'info') {
+                    <app-svg-icon
+                        icon="info-circle"
+                        size="1.25rem"
+                    />
+                }
             </span>
             <h2 class="dialog-title">{{ data.title }}</h2>
         </div>
