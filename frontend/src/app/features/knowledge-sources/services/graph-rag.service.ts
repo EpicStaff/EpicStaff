@@ -42,6 +42,10 @@ export class GraphRagService {
         return this.http.get<CollectionGraphRag>(`${this.apiUrl}${ragId}/`);
     }
 
+    deleteGraphRag(ragId: number): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}${ragId}/`);
+    }
+
     getRagDocuments(ragId: number): Observable<GraphRagDocumentListResponse> {
         return this.http.get<GraphRagDocumentListResponse>(`${this.apiUrl}${ragId}/documents/list/`);
     }
@@ -55,10 +59,6 @@ export class GraphRagService {
 
     deleteFileById(ragId: number, fileId: number): Observable<void> {
         return this.http.delete<void>(`${this.apiUrl}${ragId}/documents/${fileId}/`);
-    }
-
-    deleteGraphRag(ragId: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${ragId}/`);
     }
 
     bulkDeleteDocuments(ragId: number, fileIds: number[]): Observable<{ document_ids: number[] }> {

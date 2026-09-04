@@ -137,11 +137,11 @@ export class AppGraphRagParametersComponent implements OnInit {
             chunk_strategy: [config?.chunk_strategy || 'tokens', [Validators.required]],
             chunk_size: [config?.chunk_size || 1200, [Validators.required, Validators.min(100), Validators.max(10000)]],
             chunk_overlap: [
-                config?.chunk_overlap || 100,
+                config?.chunk_overlap ?? 100,
                 [Validators.required, Validators.min(0), Validators.max(5000)],
             ],
             entity_types: [config?.entity_types || ['organization', 'person', 'geo', 'event'], [Validators.required]],
-            max_gleanings: [config?.max_gleanings || 1, [Validators.required, Validators.min(0), Validators.max(10)]],
+            max_gleanings: [config?.max_gleanings ?? 1, [Validators.required, Validators.min(0), Validators.max(10)]],
             max_cluster_size: [
                 config?.max_cluster_size || 10,
                 [Validators.required, Validators.min(1), Validators.max(100)],

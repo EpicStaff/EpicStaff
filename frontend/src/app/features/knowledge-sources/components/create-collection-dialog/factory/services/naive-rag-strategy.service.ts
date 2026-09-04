@@ -21,8 +21,22 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     readonly canIndex: Signal<boolean> = this._canIndex.asReadonly();
 
     readonly isIndexing: Signal<boolean> = computed(() => {
+        const ragId = this.naiveRagSignal()?.naive_rag_id;
+        const status = ragId != null ? this.collectionsStorage.getRagStatus(ragId, 'naive') : null;
+        if (status != null) return status === 'processing';
+
+        // Fallback for the brief window before the collection detail poll has
+        // resolved at least once (e.g. right after the rag is created).
         const processing = this.collectionsStorage.processingConfigIds();
-        return this.documentsStorageService.documents().some((d) => processing.has(d.naive_rag_document_id));
+        return this.documentsStorageService
+            .documents()
+            .some(
+                (d) =>
+                    processing.has(d.naive_rag_document_id) &&
+                    d.status !== 'completed' &&
+                    d.status !== 'failed' &&
+                    d.status !== 'outdated'
+            );
     });
 
     constructor(
@@ -64,6 +78,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
             tap(() => {
                 this.toastService.success('Indexing started');
                 this.collectionsStorage.markConfigsAsProcessing(configIds);
+                this.collectionsStorage.markRagAsProcessing(naiveRagId);
             }),
             map(() => true)
         );

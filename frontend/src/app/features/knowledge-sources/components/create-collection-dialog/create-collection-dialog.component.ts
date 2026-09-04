@@ -4,8 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ButtonComponent, ConfirmationDialogService, StepConfig } from '@shared/components';
-import { AppSvgIconComponent, StepperComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, ConfirmationDialogService, StepConfig, StepperComponent } from '@shared/components';
 import { EMPTY, filter, Observable, of } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 
@@ -61,7 +60,12 @@ export class CreateCollectionDialogComponent {
     selectedLLM = signal<number | null>(null);
     selectedDocuments = signal<DisplayedListDocument[]>([]);
 
-    private strategy = signal<RagCreationStrategy | null>(null);
+    // `RagStrategyFactory.create()` returns the same root-provided singleton on every
+    // call (there's one NaiveRagStrategy/GraphRagStrategy instance for the whole app),
+    // so re-setting it after replacing a rag is a no-op under default `Object.is`
+    // equality — dependents like `configurationInputs` would never see the new rag id.
+    // Force every `.set()` to be treated as a change instead.
+    private strategy = signal<RagCreationStrategy | null>(null, { equal: () => false });
 
     collection = computed(
         () => this.collectionsStorageService.fullCollections().find((c) => c.collection_id === this.data.collection_id)!

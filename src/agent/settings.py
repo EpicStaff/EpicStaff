@@ -18,8 +18,7 @@ class Settings:
     sandbox_result_channel: str
     agent_drop_unsupported_llm_params: bool
     agent_context_warning_ratio: float
-    knowledge_search_request_channel: str
-    knowledge_search_response_channel: str
+    knowledge_base_url: str
 
 
 def load_settings() -> Settings:
@@ -45,10 +44,7 @@ def load_settings() -> Settings:
         agent_context_warning_ratio=float(
             os.environ.get("AGENT_CONTEXT_WARNING_RATIO", "0.8")
         ),
-        knowledge_search_request_channel=os.environ.get(
-            "KNOWLEDGE_SEARCH_GET_CHANNEL", "knowledge:search:get"
-        ),
-        knowledge_search_response_channel=os.environ.get(
-            "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
+        knowledge_base_url=os.environ.get(
+            "KNOWLEDGE_BASE_URL", "http://knowledge_new:8100"
         ),
     )

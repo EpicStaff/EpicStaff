@@ -16,49 +16,53 @@
     </div>
 }
 <div class="dual-slider">
-    <div class="controls">
-        <button
-            type="button"
-            class="btn"
-            (click)="onFirstStepDown()"
-            [disabled]="firstValue() <= min()"
-        >
-            <svg
-                width="10"
-                height="2"
-                viewBox="0 0 10 2"
-                fill="none"
+    @if (disabled()) {
+        <span class="dual-slider__readonly-value">{{ firstPercentLabel() }}</span>
+    } @else {
+        <div class="controls">
+            <button
+                type="button"
+                class="btn"
+                (click)="onFirstStepDown()"
+                [disabled]="firstValue() <= min()"
             >
-                <path
-                    d="M0 1H10"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                />
-            </svg>
-        </button>
+                <svg
+                    width="10"
+                    height="2"
+                    viewBox="0 0 10 2"
+                    fill="none"
+                >
+                    <path
+                        d="M0 1H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
+                </svg>
+            </button>
 
-        <span class="value">{{ firstDisplayValue() }}</span>
+            <span class="value">{{ firstDisplayValue() }}</span>
 
-        <button
-            type="button"
-            class="btn"
-            (click)="onFirstStepUp()"
-            [disabled]="firstValue() >= max()"
-        >
-            <svg
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                fill="none"
+            <button
+                type="button"
+                class="btn"
+                (click)="onFirstStepUp()"
+                [disabled]="firstValue() >= max()"
             >
-                <path
-                    d="M5 0V10M0 5H10"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                />
-            </svg>
-        </button>
-    </div>
+                <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                >
+                    <path
+                        d="M5 0V10M0 5H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
+                </svg>
+            </button>
+        </div>
+    }
     <div class="track">
         <input
             type="range"
@@ -69,6 +73,7 @@
             [max]="max()"
             [step]="step()"
             [ngModel]="firstValue()"
+            [disabled]="disabled()"
             (input)="updateFirst($any($event.target).valueAsNumber)"
             (mousedown)="activeThumb.set('left')"
         />
@@ -82,51 +87,56 @@
             [max]="max()"
             [step]="step()"
             [ngModel]="secondValue()"
+            [disabled]="disabled()"
             (input)="updateSecond($any($event.target).valueAsNumber)"
             (mousedown)="activeThumb.set('right')"
         />
     </div>
-    <div class="controls">
-        <button
-            type="button"
-            class="btn"
-            (click)="onSecondStepDown()"
-            [disabled]="secondValue() <= min()"
-        >
-            <svg
-                width="10"
-                height="2"
-                viewBox="0 0 10 2"
-                fill="none"
+    @if (disabled()) {
+        <span class="dual-slider__readonly-value">{{ secondPercentLabel() }}</span>
+    } @else {
+        <div class="controls">
+            <button
+                type="button"
+                class="btn"
+                (click)="onSecondStepDown()"
+                [disabled]="secondValue() <= min()"
             >
-                <path
-                    d="M0 1H10"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                />
-            </svg>
-        </button>
+                <svg
+                    width="10"
+                    height="2"
+                    viewBox="0 0 10 2"
+                    fill="none"
+                >
+                    <path
+                        d="M0 1H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
+                </svg>
+            </button>
 
-        <span class="value">{{ secondDisplayValue() }}</span>
+            <span class="value">{{ secondDisplayValue() }}</span>
 
-        <button
-            type="button"
-            class="btn"
-            (click)="onSecondStepUp()"
-            [disabled]="secondValue() >= max()"
-        >
-            <svg
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                fill="none"
+            <button
+                type="button"
+                class="btn"
+                (click)="onSecondStepUp()"
+                [disabled]="secondValue() >= max()"
             >
-                <path
-                    d="M5 0V10M0 5H10"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                />
-            </svg>
-        </button>
-    </div>
+                <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                >
+                    <path
+                        d="M5 0V10M0 5H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
+                </svg>
+            </button>
+        </div>
+    }
 </div>

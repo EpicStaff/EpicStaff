@@ -70,16 +70,6 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, attrs):
-        # `agent_definition` is this model's own primary key (a OneToOneField).
-        # It is writable so `create()` can specify which AgentDefinition a new
-        # row belongs to, but on `update()` it must never actually change: if
-        # a caller ever sent a value different from the instance being
-        # updated, `setattr()` + `instance.save()` would attempt an UPDATE
-        # that affects 0 rows, and Django's save() silently falls back to an
-        # INSERT — creating an orphan row while leaving the real target
-        # completely untouched (looks exactly like "the update didn't save").
-        # Reject the mismatch explicitly instead of allowing that silent
-        # fallback.
         if self.instance is not None and "agent_definition" in attrs:
             new_agent_definition = attrs["agent_definition"]
             if new_agent_definition.pk != self.instance.pk:
@@ -250,7 +240,13 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TwilioChannel
-        fields = ["channel", "account_sid", "auth_token_secret_id", "phone_number", "webhook_trigger"]
+        fields = [
+            "channel",
+            "account_sid",
+            "auth_token_secret_id",
+            "phone_number",
+            "webhook_trigger",
+        ]
 
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):

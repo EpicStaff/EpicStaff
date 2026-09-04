@@ -37,6 +37,8 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         "knowledge__naive_search_config",
         "knowledge__graph_basic_search_config",
         "knowledge__graph_local_search_config",
+        "knowledge__graph_global_search_config",
+        "knowledge__graph_drift_search_config",
     )
 
     def _get_organization(self):

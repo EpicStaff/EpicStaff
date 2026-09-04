@@ -266,6 +266,7 @@ class ToolRegistryBuilder:
                 rag_type=entry.rag_type,
                 search_config=entry.search_config,
                 embedder_api_key=entry.embedder.config.api_key,
+                llm_api_key=entry.llm.config.api_key if entry.llm else None,
             )
 
         methods = sorted(targets.keys())

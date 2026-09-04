@@ -1,4 +1,4 @@
-import { Directive, ElementRef, HostListener, inject, input } from '@angular/core';
+import { Directive, ElementRef, HostListener, inject, input, OnInit } from '@angular/core';
 
 import { MultiSelectComponent } from './multi-select.component';
 
@@ -16,10 +16,17 @@ import { MultiSelectComponent } from './multi-select.component';
 @Directive({
     selector: '[appMultiSelectTrigger]',
 })
-export class MultiSelectTriggerDirective {
+export class MultiSelectTriggerDirective implements OnInit {
     private readonly elementRef = inject(ElementRef<HTMLElement>);
 
     readonly multiSelect = input.required<MultiSelectComponent>({ alias: 'appMultiSelectTrigger' });
+
+    // Required input signals aren't populated until after construction, so this
+    // can't run in the constructor (would throw NG0950) — ngOnInit is the earliest
+    // safe point to read multiSelect().
+    ngOnInit(): void {
+        this.multiSelect().registerTrigger(this.elementRef);
+    }
 
     @HostListener('click')
     onClick(): void {

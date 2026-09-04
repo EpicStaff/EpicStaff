@@ -4,7 +4,9 @@ from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiRespo
 from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
-    ChunkingResponseSerializer, ChunkingConfigSerializer, DocumentConfigBulkUpdateSerializer,
+    ChunkingResponseSerializer,
+    ChunkingConfigSerializer,
+    DocumentConfigBulkUpdateSerializer,
 )
 from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
@@ -754,7 +756,7 @@ NAIVE_RAG_DELETE = dict(
     },
 )
 
-# 
+#
 NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     summary="Trigger document chunking and wait for completion",
     description=(
@@ -856,6 +858,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE = dict(
         "always returns 204 whether or not a prechunk was actually running.\n\n"
         "URL: DELETE /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
     ),
+    request=ChunkingConfigSerializer,
     parameters=[
         OpenApiParameter(
             name="naive_rag_id",

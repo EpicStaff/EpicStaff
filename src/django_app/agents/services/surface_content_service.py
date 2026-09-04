@@ -6,6 +6,8 @@ from django.db import models
 
 from agents.models.surface_models import (
     AgentInlineSurfaceGraphBasicSearchConfig,
+    AgentInlineSurfaceGraphDriftSearchConfig,
+    AgentInlineSurfaceGraphGlobalSearchConfig,
     AgentInlineSurfaceGraphLocalSearchConfig,
     AgentInlineSurfaceKnowledge,
     AgentInlineSurfaceMcpTool,
@@ -13,6 +15,8 @@ from agents.models.surface_models import (
     AgentInlineSurfacePythonTool,
     AgentInlineSurfaceStorageItem,
     InlineSurfaceGraphBasicSearchConfig,
+    InlineSurfaceGraphDriftSearchConfig,
+    InlineSurfaceGraphGlobalSearchConfig,
     InlineSurfaceGraphLocalSearchConfig,
     InlineSurfaceKnowledge,
     InlineSurfaceMcpTool,
@@ -21,6 +25,8 @@ from agents.models.surface_models import (
     InlineSurfaceStorageItem,
     StorageAccess,
     SurfaceGraphBasicSearchConfig,
+    SurfaceGraphDriftSearchConfig,
+    SurfaceGraphGlobalSearchConfig,
     SurfaceGraphLocalSearchConfig,
     SurfaceKnowledge,
     SurfaceMcpTool,
@@ -46,6 +52,8 @@ class SurfaceContentModels:
     naive_config: type[models.Model]
     graph_basic_config: type[models.Model]
     graph_local_config: type[models.Model]
+    graph_global_config: type[models.Model]
+    graph_drift_config: type[models.Model]
 
 
 CATALOG_SURFACE_CONTENT = SurfaceContentModels(
@@ -57,6 +65,8 @@ CATALOG_SURFACE_CONTENT = SurfaceContentModels(
     naive_config=SurfaceNaiveSearchConfig,
     graph_basic_config=SurfaceGraphBasicSearchConfig,
     graph_local_config=SurfaceGraphLocalSearchConfig,
+    graph_global_config=SurfaceGraphGlobalSearchConfig,
+    graph_drift_config=SurfaceGraphDriftSearchConfig,
 )
 
 INLINE_SURFACE_CONTENT = SurfaceContentModels(
@@ -68,6 +78,8 @@ INLINE_SURFACE_CONTENT = SurfaceContentModels(
     naive_config=InlineSurfaceNaiveSearchConfig,
     graph_basic_config=InlineSurfaceGraphBasicSearchConfig,
     graph_local_config=InlineSurfaceGraphLocalSearchConfig,
+    graph_global_config=InlineSurfaceGraphGlobalSearchConfig,
+    graph_drift_config=InlineSurfaceGraphDriftSearchConfig,
 )
 
 AGENT_INLINE_SURFACE_CONTENT = SurfaceContentModels(
@@ -79,6 +91,8 @@ AGENT_INLINE_SURFACE_CONTENT = SurfaceContentModels(
     naive_config=AgentInlineSurfaceNaiveSearchConfig,
     graph_basic_config=AgentInlineSurfaceGraphBasicSearchConfig,
     graph_local_config=AgentInlineSurfaceGraphLocalSearchConfig,
+    graph_global_config=AgentInlineSurfaceGraphGlobalSearchConfig,
+    graph_drift_config=AgentInlineSurfaceGraphDriftSearchConfig,
 )
 
 
@@ -154,6 +168,8 @@ class SurfaceContentService:
             naive_config_data = item.get("naive_search_config")
             graph_basic_data = item.get("graph_basic_search_config")
             graph_local_data = item.get("graph_local_search_config")
+            graph_global_data = item.get("graph_global_search_config")
+            graph_drift_data = item.get("graph_drift_search_config")
 
             if naive_config_data is not None:
                 content.naive_config.objects.create(
@@ -171,4 +187,16 @@ class SurfaceContentService:
                 content.graph_local_config.objects.create(
                     surface_knowledge=knowledge,
                     **graph_local_data,
+                )
+
+            if graph_global_data is not None:
+                content.graph_global_config.objects.create(
+                    surface_knowledge=knowledge,
+                    **graph_global_data,
+                )
+
+            if graph_drift_data is not None:
+                content.graph_drift_config.objects.create(
+                    surface_knowledge=knowledge,
+                    **graph_drift_data,
                 )

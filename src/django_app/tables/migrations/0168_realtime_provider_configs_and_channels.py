@@ -44,7 +44,6 @@ def migrate_realtime_agent_configs(apps, schema_editor):
     ElevenLabsRealtimeConfig = apps.get_model("tables", "ElevenLabsRealtimeConfig")
     GeminiRealtimeConfig = apps.get_model("tables", "GeminiRealtimeConfig")
 
-    # Map old realtime_config id → new provider config object (to avoid duplicates)
     openai_cache: dict[int, object] = {}
     elevenlabs_cache: dict[int, object] = {}
     gemini_cache: dict[int, object] = {}
@@ -83,7 +82,6 @@ def migrate_realtime_agent_configs(apps, schema_editor):
             agent.gemini_config = gemini_cache[old_cfg_id]
 
         else:
-            # Default: OpenAI
             if old_cfg_id not in openai_cache:
                 transcription_cfg = agent.realtime_transcription_config
                 openai_cfg = OpenAIRealtimeConfig.objects.create(
@@ -107,7 +105,6 @@ def migrate_realtime_agent_configs(apps, schema_editor):
             "openai_config", "elevenlabs_config", "gemini_config"
         ])
 
-    # Now migrate RealtimeAgentChat sessions — look up by the old FK ids
     for chat in RealtimeAgentChat.objects.select_related(
         "realtime_config__realtime_model__provider",
     ).all():
@@ -155,7 +152,6 @@ def migrate_voice_settings(apps, schema_editor):
             ngrok_config=vs.ngrok_config,
         )
     except Exception:
-        # VoiceSettings might not have data; non-fatal
         pass
 
 
@@ -166,9 +162,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # -----------------------------------------------------------------------
-        # 1. Create provider-specific config tables
-        # -----------------------------------------------------------------------
         migrations.CreateModel(
             name="OpenAIRealtimeConfig",
             fields=[
@@ -216,9 +209,6 @@ class Migration(migrations.Migration):
             options={"db_table": "gemini_realtime_config"},
         ),
 
-        # -----------------------------------------------------------------------
-        # 2. Create RealtimeChannel + TwilioChannel
-        # -----------------------------------------------------------------------
         migrations.CreateModel(
             name="RealtimeChannel",
             fields=[
@@ -264,9 +254,6 @@ class Migration(migrations.Migration):
             options={"db_table": "twilio_channel"},
         ),
 
-        # -----------------------------------------------------------------------
-        # 3. Add new FK columns to RealtimeAgent
-        # -----------------------------------------------------------------------
         migrations.AddField(
             model_name="realtimeagent",
             name="openai_config",
@@ -298,9 +285,6 @@ class Migration(migrations.Migration):
             ),
         ),
 
-        # -----------------------------------------------------------------------
-        # 4. Add new FK columns + metadata to RealtimeAgentChat
-        # -----------------------------------------------------------------------
         migrations.AddField(
             model_name="realtimeagentchat",
             name="openai_config",
@@ -354,9 +338,6 @@ class Migration(migrations.Migration):
             ),
         ),
 
-        # -----------------------------------------------------------------------
-        # 5. Data migration
-        # -----------------------------------------------------------------------
         migrations.RunPython(
             migrate_realtime_agent_configs,
             reverse_code=migrations.RunPython.noop,
@@ -366,31 +347,19 @@ class Migration(migrations.Migration):
             reverse_code=migrations.RunPython.noop,
         ),
 
-        # -----------------------------------------------------------------------
-        # 6. Remove old fields from RealtimeAgent
-        # -----------------------------------------------------------------------
         migrations.RemoveField(model_name="realtimeagent", name="language"),
         migrations.RemoveField(model_name="realtimeagent", name="voice_recognition_prompt"),
         migrations.RemoveField(model_name="realtimeagent", name="realtime_config"),
         migrations.RemoveField(model_name="realtimeagent", name="realtime_transcription_config"),
 
-        # -----------------------------------------------------------------------
-        # 7. Remove old fields from RealtimeAgentChat
-        # -----------------------------------------------------------------------
         migrations.RemoveField(model_name="realtimeagentchat", name="realtime_config"),
         migrations.RemoveField(model_name="realtimeagentchat", name="realtime_transcription_config"),
 
-        # -----------------------------------------------------------------------
-        # 8. Remove old fields from DefaultRealtimeAgentConfig
-        # -----------------------------------------------------------------------
         migrations.RemoveField(model_name="defaultrealtimeagentconfig", name="language"),
         migrations.RemoveField(model_name="defaultrealtimeagentconfig", name="voice_recognition_prompt"),
         migrations.RemoveField(model_name="defaultrealtimeagentconfig", name="realtime_config"),
         migrations.RemoveField(model_name="defaultrealtimeagentconfig", name="realtime_transcription_config"),
 
-        # -----------------------------------------------------------------------
-        # 9. Create ConversationRecording
-        # -----------------------------------------------------------------------
         migrations.CreateModel(
             name="ConversationRecording",
             fields=[
@@ -413,9 +382,6 @@ class Migration(migrations.Migration):
             options={"db_table": "conversation_recording"},
         ),
 
-        # -----------------------------------------------------------------------
-        # 10. Alter voice field default on RealtimeAgent/Chat (VoiceChoices → plain str)
-        # -----------------------------------------------------------------------
         migrations.AlterField(
             model_name="realtimeagent",
             name="voice",
@@ -432,9 +398,6 @@ class Migration(migrations.Migration):
             field=models.CharField(default="alloy", max_length=100),
         ),
 
-        # -----------------------------------------------------------------------
-        # 11. Widen language field on RealtimeAgentChat (2 → 10 chars for BCP-47)
-        # -----------------------------------------------------------------------
         migrations.AlterField(
             model_name="realtimeagentchat",
             name="language",

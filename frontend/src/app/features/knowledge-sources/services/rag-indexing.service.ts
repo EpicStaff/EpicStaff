@@ -14,7 +14,9 @@ export class RagIndexingService {
         return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
     }
 
-    stopIndexing({ rag_id, rag_type }: StopIndexingDtoRequest): Observable<void> {
-        return this.http.delete<void>(`${this.configService.apiUrl}process-rag-indexing/${rag_type}/${rag_id}/cancel/`);
+    stopIndexing(dto: StopIndexingDtoRequest): Observable<void> {
+        return this.http.delete<void>(
+            `${this.configService.apiUrl}process-rag-indexing/${dto.rag_type}/${dto.rag_id}/cancel/`
+        );
     }
 }

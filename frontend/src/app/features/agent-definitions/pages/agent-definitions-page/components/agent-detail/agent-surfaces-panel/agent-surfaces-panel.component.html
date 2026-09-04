@@ -156,6 +156,7 @@
                             [isCreating]="true"
                             [hideHeader]="true"
                             [expanded]="true"
+                            [llmConfigId]="llmConfigId()"
                             (draftContentChanged)="onDraftContentChanged()"
                         />
                     </div>
@@ -183,12 +184,15 @@
                                 [draggable]="true"
                                 [isShared]="isShared(surface)"
                                 [readOnly]="isShared(surface)"
+                                [llmConfigId]="llmConfigId()"
                                 [currentPlace]="category.id"
                                 [surfacePlaces]="placesForSurface(surface.id)"
                                 [placesBusy]="saving()"
                                 [saveError]="saveError()"
                                 [expanded]="isExpanded(surface)"
                                 (expandedChange)="onCardExpanded(surface, $event)"
+                                [activeTab]="activeTabFor(surface)"
+                                (activeTabChange)="onCardActiveTabChange(surface, $event)"
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
                                 (surfaceChange)="surfaceChange.emit({ id: surface.id, patch: $event })"
                                 (openSource)="openSource.emit(surface.id)"

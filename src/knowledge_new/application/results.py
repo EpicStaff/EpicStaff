@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from domain.models import FoundChunk
 
 __all__ = [
+    "MetricsResult",
     "Result",
     "SearchResult",
 ]
@@ -23,3 +24,9 @@ class PrechunkResult:
     rag_id: int
     document_id: int
     chunk_count: int
+
+
+@dataclass(frozen=True)
+class MetricsResult(Result):
+    total_chunks: int
+    avg_chunk_size: float

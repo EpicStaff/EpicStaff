@@ -18,6 +18,8 @@ from src.shared.models import (
     CombinedSurfaceData,
     CombinedSurfaceKnowledgeData,
     GraphRagBasicSearchParams,
+    GraphRagDriftSearchParams,
+    GraphRagGlobalSearchParams,
     GraphRagLocalSearchParams,
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
@@ -261,6 +263,8 @@ class BaseNodePayloadService:
         if (
             knowledge.graph_basic_search_config is not None
             or knowledge.graph_local_search_config is not None
+            or knowledge.graph_global_search_config is not None
+            or knowledge.graph_drift_search_config is not None
         ):
             entries.extend(
                 self._build_graph_search_config_entries(collection_id, knowledge)
@@ -321,6 +325,7 @@ class BaseNodePayloadService:
         embedder = self.converter_service.convert_embedding_config_to_pydantic(
             graph_rag.embedder
         )
+        llm = self.converter_service.convert_llm_config_to_pydantic(graph_rag.llm)
         entries: list[SearchConfigEntry] = []
 
         basic_config = knowledge.graph_basic_search_config
@@ -337,6 +342,7 @@ class BaseNodePayloadService:
                         )
                     ),
                     embedder=embedder,
+                    llm=llm,
                 )
             )
 
@@ -358,6 +364,39 @@ class BaseNodePayloadService:
                         )
                     ),
                     embedder=embedder,
+                    llm=llm,
+                )
+            )
+
+        global_config = knowledge.graph_global_search_config
+        if global_config is not None:
+            entries.append(
+                SearchConfigEntry(
+                    rag_id=graph_rag.graph_rag_id,
+                    rag_type="graph",
+                    search_config=GraphRagSearchConfig(
+                        search_params=GraphRagGlobalSearchParams(
+                            **global_config.model_dump()
+                        )
+                    ),
+                    embedder=embedder,
+                    llm=llm,
+                )
+            )
+
+        drift_config = knowledge.graph_drift_search_config
+        if drift_config is not None:
+            entries.append(
+                SearchConfigEntry(
+                    rag_id=graph_rag.graph_rag_id,
+                    rag_type="graph",
+                    search_config=GraphRagSearchConfig(
+                        search_params=GraphRagDriftSearchParams(
+                            **drift_config.model_dump()
+                        )
+                    ),
+                    embedder=embedder,
+                    llm=llm,
                 )
             )
 

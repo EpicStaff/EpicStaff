@@ -66,6 +66,7 @@ export * from './spinner-type2/spinner.component';
 export * from './status-badge/status-badge.component';
 export * from './stepper/step-config.interface';
 export * from './stepper/stepper.component';
+export * from './suggested-value/suggested-value.component';
 export * from './tab-button/tab-button.component';
 export * from './table';
 export * from './textarea/textarea.component';

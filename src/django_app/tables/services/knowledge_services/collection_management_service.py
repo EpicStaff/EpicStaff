@@ -1,11 +1,32 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Literal
 from django.db import transaction, models
-from django.db.models import Prefetch, Count
+from django.db.models import Prefetch, Count, Avg
 from loguru import logger
 
+from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
+from tables.clients import KnowledgeClient
+from tables.clients.errors import (
+    ClientBadGatewayError,
+    ClientNotAvailableError,
+    ClientTimeoutError,
+)
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
 from tables.models.knowledge_models import BaseRagType, NaiveRag, GraphRag
-from tables.exceptions import CollectionNotFoundException
+from tables.models.knowledge_models.naive_rag_models import (
+    NaiveRagChunk,
+    NaiveRagDocumentConfig,
+)
+from tables.exceptions import (
+    CollectionNotFoundException,
+    NoGraphRagForCollectionException,
+    GraphRagIndexNotReadyException,
+    GraphRagMetricsUnavailableException,
+    NoNaiveRagForCollectionException,
+    NaiveRagIndexNotReadyException,
+)
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
 
 class CollectionManagementService:
@@ -36,6 +57,57 @@ class CollectionManagementService:
             return SourceCollection.objects.get(collection_id=collection_id)
         except SourceCollection.DoesNotExist:
             raise CollectionNotFoundException(collection_id)
+
+    @staticmethod
+    def get_collection_metrics(
+        collection_id: int,
+        rag_type: Literal["naive", "graph"],
+    ) -> SuggestedCollectionMetrics:
+        CollectionManagementService.get_collection(collection_id)
+        if rag_type == "naive":
+            return CollectionManagementService._get_naive_metrics(collection_id)
+        return CollectionManagementService._get_graph_metrics(collection_id)
+
+    @staticmethod
+    def _get_naive_metrics(collection_id: int) -> SuggestedCollectionMetrics:
+        naive_rag = NaiveRagService.get_or_none_naive_rag_by_collection(collection_id)
+        if naive_rag is None:
+            raise NoNaiveRagForCollectionException(collection_id)
+        if naive_rag.rag_status != NaiveRag.NaiveRagStatus.COMPLETED:
+            raise NaiveRagIndexNotReadyException(collection_id)
+        chunk_agg = NaiveRagChunk.objects.filter(
+            naive_rag_document_config__naive_rag__base_rag_type__source_collection_id=collection_id,
+        ).aggregate(total=Count("chunk_id"), avg=Avg("token_count"))
+        total_documents = NaiveRagDocumentConfig.objects.filter(
+            naive_rag__base_rag_type__source_collection_id=collection_id,
+        ).count()
+        return SuggestedCollectionMetrics(
+            total_documents=total_documents,
+            total_chunks=chunk_agg["total"] or 0,
+            avg_chunk_size=float(chunk_agg["avg"] or 0),
+        )
+
+    @staticmethod
+    def _get_graph_metrics(collection_id: int) -> SuggestedCollectionMetrics:
+        graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
+        if graph_rag is None:
+            raise NoGraphRagForCollectionException(collection_id)
+        if graph_rag.rag_status != GraphRag.GraphRagStatus.COMPLETED:
+            raise GraphRagIndexNotReadyException(collection_id)
+        try:
+            with KnowledgeClient() as client:
+                metrics = client.metrics(RAGStrategy.GRAPH, graph_rag.graph_rag_id)
+        except (
+            ClientNotAvailableError,
+            ClientTimeoutError,
+            ClientBadGatewayError,
+        ) as e:
+            raise GraphRagMetricsUnavailableException(collection_id) from e
+        return SuggestedCollectionMetrics(
+            total_documents=graph_rag.graph_rag_documents.count(),
+            total_chunks=metrics["total_chunks"],
+            avg_chunk_size=metrics["avg_chunk_size"],
+        )
 
     @staticmethod
     @transaction.atomic

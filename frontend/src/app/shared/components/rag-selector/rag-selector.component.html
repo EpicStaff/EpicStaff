@@ -58,11 +58,13 @@
             <span class="dropdown__name dropdown__name--accent">No RAG</span>
         </button>
 
-        @for (rag of rags(); track rag.rag_id) {
+        @for (rag of rags(); track rag.rag_type + ':' + rag.rag_id) {
             <button
                 type="button"
                 class="dropdown__option"
-                [class.dropdown__option--selected]="rag.rag_id === value()?.rag_id"
+                [class.dropdown__option--selected]="
+                    rag.rag_id === value()?.rag_id && rag.rag_type === value()?.rag_type
+                "
                 (click)="select(rag)"
             >
                 <span class="dropdown__name">{{ getRagTypeName(rag.rag_type) }}</span>

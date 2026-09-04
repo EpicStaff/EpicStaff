@@ -1,297 +1,150 @@
 """
-Tests for KnowledgeClient.
+Tests for the REST KnowledgeClient.
 
-Mocks redis.asyncio so no real Redis is needed.
+Uses ``httpx.MockTransport`` so no real knowledge_new service is needed.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.knowledge.client import KnowledgeClient
 from app.knowledge.target import KnowledgeSearchTarget
 from shared.models.knowledge import (
-    BaseKnowledgeSearchMessageResponse,
-    KnowledgeChunkResponse,
+    GraphRagBasicSearchParams,
+    GraphRagSearchConfig,
     NaiveRagSearchConfig,
 )
 
-
-def _make_client() -> KnowledgeClient:
-    return KnowledgeClient(
-        host="127.0.0.1",
-        port=6379,
-        password=None,
-        request_channel="knowledge:search:get",
-        response_channel="knowledge:search:response",
-    )
+BASE_URL = "http://knowledge_new:8100"
 
 
-def _make_target(unique_name: str = "naive:1") -> KnowledgeSearchTarget:
+def _naive_target() -> KnowledgeSearchTarget:
     return KnowledgeSearchTarget(
         collection_id=10,
         rag_id=1,
         rag_type="naive",
-        search_config=NaiveRagSearchConfig(),
+        search_config=NaiveRagSearchConfig(search_limit=5, similarity_threshold=0.3),
+        embedder_api_key="emb-key",
     )
 
 
-def _response_message(search_uuid: str) -> dict:
-    payload = BaseKnowledgeSearchMessageResponse(
-        rag_id=1,
-        rag_type="naive",
+def _graph_target() -> KnowledgeSearchTarget:
+    return KnowledgeSearchTarget(
         collection_id=10,
-        uuid=search_uuid,
-        retrieved_chunks=1,
-        query="hello",
-        chunks=[
-            KnowledgeChunkResponse(
-                chunk_order=0,
-                chunk_similarity=0.9,
-                chunk_text="relevant content",
-                chunk_source="doc.pdf",
-            )
-        ],
-        rag_search_config=NaiveRagSearchConfig(),
-    )
-    return {"type": "message", "data": payload.model_dump_json().encode()}
-
-
-async def _make_async_generator(items):
-    for item in items:
-        yield item
-
-
-@pytest.fixture
-def mock_redis_factory():
-    def factory(messages: list[dict] | None = None):
-        messages = messages or []
-        pubsub = MagicMock()
-        pubsub.subscribe = AsyncMock()
-        pubsub.close = AsyncMock()
-        pubsub.listen = MagicMock(return_value=_make_async_generator(messages))
-
-        redis_mock = MagicMock()
-        redis_mock.publish = AsyncMock()
-        redis_mock.aclose = AsyncMock()
-        redis_mock.pubsub = MagicMock(return_value=pubsub)
-
-        return redis_mock, pubsub
-
-    return factory
-
-
-async def test_start_subscribes_to_response_channel(mock_redis_factory):
-    redis_mock, pubsub = mock_redis_factory()
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-
-        pubsub.subscribe.assert_called_once_with("knowledge:search:response")
-
-    await client.stop()
-
-
-async def test_start_is_idempotent(mock_redis_factory):
-    redis_mock, pubsub = mock_redis_factory()
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-        await client.start()
-
-        pubsub.subscribe.assert_called_once()
-
-    await client.stop()
-
-
-async def test_search_publishes_correct_message(mock_redis_factory):
-    search_uuid = "test-uuid-1"
-    target = _make_target()
-    response_msg = _response_message(search_uuid)
-
-    redis_mock, pubsub = mock_redis_factory(
-        messages=[
-            {"type": "subscribe", "data": 1},
-            response_msg,
-        ]
+        rag_id=7,
+        rag_type="graph",
+        search_config=GraphRagSearchConfig(
+            search_params=GraphRagBasicSearchParams(prompt="p", k=8)
+        ),
+        embedder_api_key="emb-key",
+        llm_api_key="llm-key",
     )
 
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
 
-        with patch("app.knowledge.client.uuid4", return_value=search_uuid):
-            result = await asyncio.wait_for(
-                client.search(target, "hello", timeout=2.0), timeout=3.0
-            )
-
-        redis_mock.publish.assert_called_once()
-        call_args = redis_mock.publish.call_args
-        assert call_args[0][0] == "knowledge:search:get"
-
-        published = json.loads(call_args[0][1])
-        assert published["uuid"] == search_uuid
-        assert published["query"] == "hello"
-        assert published["collection_id"] == target.collection_id
-        assert published["rag_id"] == target.rag_id
-        assert published["rag_type"] == "naive"
-
-        assert result.uuid == search_uuid
-        assert len(result.chunks) == 1
-        assert result.chunks[0].chunk_text == "relevant content"
-
-    await client.stop()
-
-
-async def test_search_resolves_on_matching_uuid(mock_redis_factory):
-    search_uuid = "match-uuid"
-    target = _make_target()
-    response_msg = _response_message(search_uuid)
-
-    redis_mock, pubsub = mock_redis_factory(messages=[response_msg])
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-
-        with patch("app.knowledge.client.uuid4", return_value=search_uuid):
-            result = await asyncio.wait_for(
-                client.search(target, "query", timeout=2.0), timeout=3.0
-            )
-
-        assert result.uuid == search_uuid
-
-    await client.stop()
-
-
-async def test_search_ignores_non_matching_uuid(mock_redis_factory):
-    target = _make_target()
-    wrong_msg = _response_message("wrong-uuid")
-
-    redis_mock, pubsub = mock_redis_factory(messages=[wrong_msg])
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-
-        with patch("app.knowledge.client.uuid4", return_value="expected-uuid"):
-            with pytest.raises(asyncio.TimeoutError):
-                await client.search(target, "query", timeout=0.1)
-
-    await client.stop()
-
-
-async def test_search_raises_on_timeout(mock_redis_factory):
-    target = _make_target()
-    redis_mock, pubsub = mock_redis_factory(messages=[])
-
-    async def never_ending():
-        while True:
-            yield {"type": "subscribe", "data": 1}
-            await asyncio.sleep(10)
-
-    pubsub.listen = MagicMock(return_value=never_ending())
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-
-        with pytest.raises(asyncio.TimeoutError):
-            await client.search(target, "query", timeout=0.05)
-
-    await client.stop()
-
-
-async def test_stop_fails_pending_futures(mock_redis_factory):
-    target = _make_target()
-    redis_mock, pubsub = mock_redis_factory(messages=[])
-
-    async def never_ending():
-        while True:
-            yield {"type": "subscribe", "data": 1}
-            await asyncio.sleep(10)
-
-    pubsub.listen = MagicMock(return_value=never_ending())
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-
-        search_task = asyncio.create_task(client.search(target, "query", timeout=10.0))
-        await asyncio.sleep(0.01)
-        await client.stop()
-
-        with pytest.raises(ConnectionError, match="KnowledgeClient stopped"):
-            await search_task
-
-
-async def test_malformed_message_is_skipped(mock_redis_factory):
-    search_uuid = "after-malformed"
-    target = _make_target()
-    valid_msg = _response_message(search_uuid)
-    malformed_msg = {"type": "message", "data": b"not valid json {{{"}
-
-    redis_mock, pubsub = mock_redis_factory(messages=[malformed_msg, valid_msg])
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-
-        with patch("app.knowledge.client.uuid4", return_value=search_uuid):
-            result = await asyncio.wait_for(
-                client.search(target, "query", timeout=2.0), timeout=3.0
-            )
-
-        assert result.uuid == search_uuid
-
-    await client.stop()
-
-
-async def test_stop_closes_redis_and_pubsub(mock_redis_factory):
-    redis_mock, pubsub = mock_redis_factory()
-
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
-        await client.stop()
-
-        pubsub.close.assert_called_once()
-        redis_mock.aclose.assert_called_once()
-
-
-async def test_wire_message_shape(mock_redis_factory):
-    """Wire message must contain collection_id, rag_id, rag_type, uuid, query, rag_search_config."""
-    search_uuid = "wire-shape-uuid"
-    target = _make_target()
-    response_msg = _response_message(search_uuid)
-
-    redis_mock, pubsub = mock_redis_factory(
-        messages=[{"type": "subscribe", "data": 1}, response_msg]
+def _client_with_handler(handler) -> KnowledgeClient:
+    client = KnowledgeClient(base_url=BASE_URL)
+    client._client = httpx.AsyncClient(
+        base_url=BASE_URL, transport=httpx.MockTransport(handler)
     )
+    return client
 
-    with patch("app.knowledge.client.aioredis.Redis", return_value=redis_mock):
-        client = _make_client()
-        await client.start()
 
-        with patch("app.knowledge.client.uuid4", return_value=search_uuid):
-            await asyncio.wait_for(
-                client.search(target, "wire test", timeout=2.0), timeout=3.0
-            )
+async def test_naive_search_posts_and_parses_chunks():
+    captured: dict = {}
 
-        published = json.loads(redis_mock.publish.call_args[0][1])
-        assert "collection_id" in published
-        assert "rag_id" in published
-        assert "rag_type" in published
-        assert "uuid" in published
-        assert "query" in published
-        assert "rag_search_config" in published
-        # embedder must NOT be in the wire message
-        assert "embedder" not in published
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {
+                        "order": 0,
+                        "similarity": 0.9,
+                        "text": "relevant content",
+                        "source": "doc.pdf",
+                    }
+                ]
+            },
+        )
+
+    client = _client_with_handler(handler)
+    result = await client.search(_naive_target(), "hello", timeout=2.0)
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/rags/naive/1/search/"
+    assert captured["body"]["query"] == "hello"
+    assert captured["body"]["embedding_api_key"] == "emb-key"
+    assert captured["body"]["llm_api_key"] is None
+    assert captured["body"]["search_config"] == {
+        "rag_strategy": "naive",
+        "search_limit": 5,
+        "similarity_threshold": 0.3,
+    }
+
+    assert isinstance(result, list)
+    assert result[0].text == "relevant content"
+    assert result[0].source == "doc.pdf"
 
     await client.stop()
+
+
+async def test_graph_search_maps_method_and_returns_answer():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"result": "the synthesised answer"})
+
+    client = _client_with_handler(handler)
+    result = await client.search(_graph_target(), "why", timeout=2.0)
+
+    assert captured["path"] == "/rags/graph/7/search/"
+    assert captured["body"]["llm_api_key"] == "llm-key"
+    search_config = captured["body"]["search_config"]
+    assert search_config["rag_strategy"] == "graph"
+    assert search_config["method"] == "basic"
+    assert search_config["prompt"] == "p"
+    assert search_config["k"] == 8
+    assert "search_method" not in search_config
+
+    assert result == "the synthesised answer"
+
+    await client.stop()
+
+
+async def test_search_raises_on_error_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    client = _client_with_handler(handler)
+    with pytest.raises(httpx.HTTPStatusError):
+        await client.search(_naive_target(), "hello", timeout=2.0)
+
+    await client.stop()
+
+
+async def test_start_is_idempotent():
+    client = KnowledgeClient(base_url=BASE_URL)
+    await client.start()
+    first = client._client
+    await client.start()
+
+    assert client._client is first
+
+    await client.stop()
+
+
+async def test_stop_closes_client():
+    client = KnowledgeClient(base_url=BASE_URL)
+    await client.start()
+    await client.stop()
+
+    assert client._client is None

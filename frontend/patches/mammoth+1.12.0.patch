@@ -1,0 +1,12 @@
+diff --git a/node_modules/mammoth/lib/docx/styles-reader.js b/node_modules/mammoth/lib/docx/styles-reader.js
+index 28c809b..47dd3d2 100644
+--- a/node_modules/mammoth/lib/docx/styles-reader.js
++++ b/node_modules/mammoth/lib/docx/styles-reader.js
+@@ -1,6 +1,6 @@
+ exports.readStylesXml = readStylesXml;
+ exports.Styles = Styles;
+-exports.defaultStyles = new Styles({}, {});
++exports.defaultStyles = new Styles({}, {}, {}, {});
+ 
+ function Styles(paragraphStyles, characterStyles, tableStyles, numberingStyles) {
+     return {

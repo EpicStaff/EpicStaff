@@ -17,6 +17,7 @@ from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
+from infrastructure.grounding_guard import apply_grounding_guard
 from pydantic import BaseModel as PydanticModel
 
 
@@ -27,7 +28,22 @@ class SearchSpecification:
     config_model: type[PydanticModel]
     required_files: Iterable[str]
     optional_files: Iterable[str] | None = None
-    extra_kwargs: dict[str, Any] = field(default_factory=dict)
+    extra_kwargs: Callable[..., dict[str, Any]] | dict[str, Any] = field(
+        default_factory=dict
+    )
+
+
+def _drift_extra_kwargs(search_config, method_config, files) -> dict[str, Any]:
+    # Empty primer folds cause the primer to hallucinate from entity names if folds
+    # exceed the number of available community reports — limit folds to the report count.
+    usable_reports = min(
+        search_config.drift_k_followups, len(files["community_reports"])
+    )
+    method_config.primer_folds = max(1, min(method_config.primer_folds, usable_reports))
+    return {
+        "response_type": GraphSearchOrchestrator.DEFAULT_RESPONSE_TYPE,
+        "community_level": search_config.community_level,
+    }
 
 
 class GraphSearchOrchestrator(AbstractSearchOrchestrator):
@@ -55,9 +71,9 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
                 "entities",
             ],
             optional_files=["covariates"],
-            extra_kwargs={
-                "response_type": DEFAULT_RESPONSE_TYPE,
-                "community_level": DEFAULT_COMMUNITY_LEVEL,
+            extra_kwargs=lambda search_config, method_config, files: {
+                "response_type": GraphSearchOrchestrator.DEFAULT_RESPONSE_TYPE,
+                "community_level": search_config.community_level,
             },
         ),
         GraphSearchMethodEnum.GLOBAL: SearchSpecification(
@@ -69,10 +85,10 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
                 "communities",
                 "community_reports",
             ],
-            extra_kwargs={
-                "response_type": DEFAULT_RESPONSE_TYPE,
-                "community_level": DEFAULT_COMMUNITY_LEVEL,
-                "dynamic_community_selection": DEFAULT_DYNAMIC_COMMUNITY_SELECTION,
+            extra_kwargs=lambda search_config, method_config, files: {
+                "response_type": GraphSearchOrchestrator.DEFAULT_RESPONSE_TYPE,
+                "community_level": search_config.dynamic_search_max_level,
+                "dynamic_community_selection": search_config.dynamic_community_selection,
             },
         ),
         GraphSearchMethodEnum.DRIFT: SearchSpecification(
@@ -86,10 +102,7 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
                 "relationships",
                 "entities",
             ],
-            extra_kwargs={
-                "response_type": DEFAULT_RESPONSE_TYPE,
-                "community_level": DEFAULT_COMMUNITY_LEVEL,
-            },
+            extra_kwargs=_drift_extra_kwargs,
         ),
     }
 
@@ -97,8 +110,12 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
 
-        config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
-        config.completion_models["default_completion_model"].api_key = command.llm_api_key
+        config.embedding_models[
+            "default_embedding_model"
+        ].api_key = command.embedding_api_key
+        config.completion_models[
+            "default_completion_model"
+        ].api_key = command.llm_api_key
 
         if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
@@ -107,21 +124,37 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             )
 
         specs = self._SEARCH_MAP[command.search_config.method]
+        method_config = specs.config_model.model_validate(
+            command.search_config.model_dump()
+        )
         setattr(
             config,
             specs.config_field,
-            specs.config_model.model_validate(command.search_config.model_dump()),
+            method_config,
         )
         files = await self._resolve_files(
             config=config,
             required_files=specs.required_files,
             optional_files=specs.optional_files,
         )
-        result, _ = await specs.searcher(
+
+        extra_kwargs = specs.extra_kwargs
+        if callable(extra_kwargs):
+            extra_kwargs = extra_kwargs(command.search_config, method_config, files)
+
+        result, context = await specs.searcher(
             query=command.query,
             config=config,
             **files,
-            **specs.extra_kwargs,
+            **extra_kwargs,
+        )
+
+        result = await apply_grounding_guard(
+            query=command.query,
+            response=result,
+            context=context,
+            config=config,
+            method=command.search_config.method,
         )
 
         return SearchResult(result=result)
@@ -137,5 +170,14 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         reader = DataReader(table_provider)
         files = {n: await getattr(reader, n)() for n in required_files}
         if optional_files:
-            files.update({n: await getattr(reader, n, None)() for n in optional_files})
+            for n in optional_files:
+                reader_fn = getattr(reader, n, None)
+                if reader_fn is None:
+                    files[n] = None
+                    continue
+                try:
+                    files[n] = await reader_fn()
+                except (ValueError, FileNotFoundError):
+                    # optional layer (e.g. covariates) absent from this index
+                    files[n] = None
         return files

@@ -874,11 +874,13 @@ export class AgentsTableComponent {
     openSettingsDialog(agentData: TableFullAgent) {
         if (this.shouldBlockInteraction()) return;
         const before = this.normalizeAdvancedSettings(agentData);
+        const llmConfigId = agentData.mergedConfigs?.find((c) => c.type === 'llm')?.id ?? null;
         const dialogRef = this.dialog.open(AdvancedSettingsDialogComponent, {
             disableClose: true,
             data: {
                 id: agentData.id,
                 role: agentData.role,
+                llm_config: llmConfigId,
                 fcm_llm_config: agentData.fcm_llm_config,
                 max_iter: agentData.max_iter ?? 20,
                 max_rpm: agentData.max_rpm ?? 10,

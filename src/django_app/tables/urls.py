@@ -105,6 +105,10 @@ from tables.views.knowledge_views.naive_rag_views import (
 from tables.views.knowledge_views.graph_rag_views import (
     GraphRagViewSet,
 )
+from tables.views.knowledge_views.search_config_views import (
+    GraphRagSuggestParamsView,
+    NaiveRagSuggestParamsView,
+)
 
 
 from tables.views.storage_views import StorageAPIView
@@ -436,6 +440,16 @@ urlpatterns = [
         "twilio/configure-webhook/",
         TwilioConfigureWebhookView.as_view(),
         name="twilio-configure-webhook",
+    ),
+    path(
+        "naive-rag/suggest-search-params/",
+        NaiveRagSuggestParamsView.as_view(),
+        name="naive-rag-suggest-search-params",
+    ),
+    path(
+        "graph-rag/suggest-search-params/",
+        GraphRagSuggestParamsView.as_view(),
+        name="graph-rag-suggest-search-params",
     ),
     # Flow Assistant endpoints
     path(

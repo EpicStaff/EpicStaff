@@ -42,6 +42,10 @@ from tables.services.rag_assignment_service import (
     RagAssignmentService,
     SearchConfigService,
 )
+from tables.services.knowledge_services.search_config_service import (
+    resolve_token_field_cap,
+    validate_graph_token_fields,
+)
 from tables.serializers.utils.mixins import ToolsConnectionMixin
 
 
@@ -223,6 +227,21 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
             ),
             McpTool: (AgentMcpTools, "mcp-tool", "mcptool_id"),
         }
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+
+        search_configs = attrs.get("search_configs")
+        if search_configs and search_configs.get("graph"):
+            # llm_config may be absent on partial update — fall back to instance.
+            llm_config = attrs.get("llm_config")
+            if llm_config is None and self.instance is not None:
+                llm_config = self.instance.llm_config
+            cap = resolve_token_field_cap(llm_config)
+            errors = validate_graph_token_fields(search_configs["graph"], cap)
+            if errors:
+                raise serializers.ValidationError({"search_configs": {"graph": errors}})
+        return attrs
 
     def create(self, validated_data: dict):
         tool_ids = validated_data.pop("tool_ids", [])

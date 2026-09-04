@@ -76,14 +76,18 @@ class NaiveRag(models.Model):
         self.outdated_reasons.clear()
 
     def update_rag_status(self) -> bool:
-        config_statuses = set(self.naive_rag_configs.values_list("status", flat=True).distinct())
+        config_statuses = set(
+            self.naive_rag_configs.values_list("status", flat=True).distinct()
+        )
         config_status_enum = NaiveRagDocumentConfig.NaiveRagDocumentStatus
 
         if config_status_enum.OUTDATED in config_statuses or self.outdated_reasons:
             new_status = self.NaiveRagStatus.OUTDATED
         elif config_status_enum.PROCESSING in config_statuses:
             new_status = self.NaiveRagStatus.PROCESSING
-        elif config_statuses.issuperset([config_status_enum.COMPLETED, config_status_enum.FAILED]):
+        elif config_statuses.issuperset(
+            [config_status_enum.COMPLETED, config_status_enum.FAILED]
+        ):
             new_status = self.NaiveRagStatus.PARTIAL
         elif config_status_enum.COMPLETED in config_statuses:
             new_status = self.NaiveRagStatus.COMPLETED
@@ -358,6 +362,10 @@ class NaiveRagSearchConfig(models.Model):
         default=0.2,
         blank=True,
         help_text="Float between 0.00 and 1.00 for knowledge",
+    )
+    is_suggested = models.BooleanField(
+        default=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 

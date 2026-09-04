@@ -1,186 +1,842 @@
 <div [formGroup]="form()">
     <div class="form-section">
         <h3 class="section-title">RETRIEVAL SETTINGS</h3>
-        <div class="form-group">
-            <app-knowledge-selector
-                formControlName="knowledge_collection"
-                label="Select Knowledge Source"
-                tooltipText="Choose a knowledge source to provide additional context and information for this agent."
-                placeholder="Select Knowledge Source"
-                [collections]="allKnowledgeSources()"
-                [loading]="loadingKnowledgeSources()"
-            />
-        </div>
+        @if (!hideSourceSelectors()) {
+            <div class="form-group">
+                <app-knowledge-selector
+                    formControlName="knowledge_collection"
+                    label="Select Knowledge Source"
+                    tooltipText="Choose a knowledge source to provide additional context and information for this agent."
+                    placeholder="Select Knowledge Source"
+                    [collections]="allKnowledgeSources()"
+                    [loading]="loadingKnowledgeSources()"
+                />
+            </div>
 
-        <div class="form-group">
-            <app-rag-selector
-                formControlName="rag"
-                label="Select Agent Rags"
-                placeholder="Select Rag"
-                tooltipText="Choose a agent rag to provide additional context and information for this agent."
-                [invalid]="isKnowledgeControlInvalid() && isRagControlInvalid()"
-                [rags]="agentRags()"
-                [loading]="loadingRags()"
-            />
-            <app-validation-errors [control]="form().get('rag')!" />
-        </div>
+            <div class="form-group">
+                <app-rag-selector
+                    formControlName="rag"
+                    label="Select Agent Rags"
+                    placeholder="Select Rag"
+                    tooltipText="Choose a agent rag to provide additional context and information for this agent."
+                    [invalid]="isKnowledgeControlInvalid() && isRagControlInvalid()"
+                    [rags]="agentRags()"
+                    [loading]="loadingRags()"
+                />
+                <app-validation-errors [control]="form().get('rag')!" />
+            </div>
+        }
 
         @if (searchConfigsFormGroup) {
-            <div [formGroup]="searchConfigsFormGroup">
-                @if (selectedRagType() === 'naive') {
-                    <div class="form-group">
-                        <app-slider-with-stepper
-                            formControlName="similarity_threshold"
-                            label="Similarity Threshold"
-                            tooltipText="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."
-                            [min]="0"
-                            [max]="1"
-                            [step]="0.1"
-                            [decimals]="1"
-                        />
+            @if (!manualConfigAvailable()) {
+                <div class="lock-notice">
+                    <app-svg-icon
+                        icon="lock"
+                        size="1.1rem"
+                    />
+                    <span>{{ lockReason() }}</span>
+                </div>
+            } @else {
+                @if (tokenLimitsLoading()) {
+                    <div class="metadata-status metadata-status--loading">
+                        <span
+                            class="metadata-status__spinner"
+                            aria-hidden="true"
+                        ></span>
+                        <span>Loading token limits for this LLM…</span>
                     </div>
+                } @else if (tokenLimitsError()) {
+                    <div class="metadata-status metadata-status--error">
+                        <app-svg-icon
+                            icon="warning"
+                            size="1.1rem"
+                        />
+                        <span>{{ tokenLimitsError() }}</span>
+                        <button
+                            type="button"
+                            class="metadata-status__retry"
+                            (click)="retryMetadataFetch()"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                }
 
-                    <div class="form-group">
-                        <app-slider-with-stepper
-                            formControlName="search_limit"
-                            label="Search Limit"
-                            tooltipText="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
-                            [min]="1"
-                            [max]="1000"
-                            [step]="1"
-                            [decimals]="0"
+                <ng-template #suggestedToggle>
+                    <div class="suggested-params-toggle">
+                        <app-toggle-switch
+                            label="Use Suggest Params for Search Type"
+                            tooltipText="Fetches AI-recommended search parameters for the selected search type and fills the fields below. Editing any field afterward turns this back off automatically."
+                            [checked]="useSuggestedParams()"
+                            [disabled]="!canToggleSuggested() || suggestingFor() === activeKey()"
+                            (checkedChange)="onSuggestedParamsToggle($event)"
                         />
+                        @if (suggestingFor() === activeKey()) {
+                            <small class="suggest-status">Fetching…</small>
+                        } @else if (suggestErrorFor() === activeKey()) {
+                            <small class="suggest-status error">Failed to fetch suggestions</small>
+                        }
                     </div>
-                } @else if (selectedRagType() === 'graph') {
-                    <div class="form-group">
-                        <app-radio-button
-                            formControlName="search_method"
-                            label="Search Type"
-                            tooltipText="Basic Search - uses vector-based RAG to find relevant information and generate accurate responses. Local search generates answers by combining relevant data from the AI-extracted knowledge-graph with text chunks of the raw documents. This method is suitable for questions that require an understanding of specific entities mentioned in the documents"
-                            [options]="searchTypes"
-                        />
-                    </div>
+                </ng-template>
 
-                    @switch (searchConfigsFormGroup.get('search_method')?.value) {
-                        @case ('basic') {
-                            <div formGroupName="basic">
-                                <div class="form-group">
-                                    <app-textarea
-                                        formControlName="prompt"
-                                        label="Prompt"
-                                        tooltipText="Prompt"
-                                        placeholder="Custom general knowledge instruction... Leave empty for default."
+                <div [formGroup]="searchConfigsFormGroup">
+                    @if (selectedRagType() === 'naive') {
+                        @if (!suggestionsDisabled()) {
+                            <ng-container *ngTemplateOutlet="suggestedToggle" />
+                        }
+
+                        <div class="form-group">
+                            @if (useSuggestedParams()) {
+                                <app-suggested-value
+                                    label="Similarity Threshold"
+                                    tooltipText="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."
+                                    [value]="searchConfigsFormGroup.get('similarity_threshold')?.value"
+                                />
+                            } @else {
+                                <app-slider-with-stepper
+                                    formControlName="similarity_threshold"
+                                    label="Similarity Threshold"
+                                    tooltipText="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."
+                                    [min]="0"
+                                    [max]="1"
+                                    [step]="0.01"
+                                    [decimals]="2"
+                                />
+                            }
+                        </div>
+
+                        <div class="form-group">
+                            @if (useSuggestedParams()) {
+                                <app-suggested-value
+                                    label="Search Limit"
+                                    tooltipText="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
+                                    [value]="searchConfigsFormGroup.get('search_limit')?.value"
+                                />
+                            } @else {
+                                <app-slider-with-stepper
+                                    formControlName="search_limit"
+                                    label="Search Limit"
+                                    tooltipText="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
+                                    [min]="1"
+                                    [max]="1000"
+                                    [step]="1"
+                                    [decimals]="0"
+                                />
+                            }
+                        </div>
+                    } @else if (selectedRagType() === 'graph') {
+                        <div class="form-group">
+                            <app-radio-button
+                                formControlName="search_method"
+                                label="Search Type"
+                                tooltipText="Basic Search - uses vector-based RAG to find relevant information and generate accurate responses. Local search generates answers by combining relevant data from the AI-extracted knowledge-graph with text chunks of the raw documents. Global search runs a map-reduce across community reports. DRIFT search drills down iteratively for highest quality."
+                                [options]="searchTypes()"
+                            />
+                        </div>
+
+                        @if (!suggestionsDisabled()) {
+                            <ng-container *ngTemplateOutlet="suggestedToggle" />
+                        }
+
+                        @if (activeMaxContextTokensControl; as anchorControl) {
+                            <div class="form-group">
+                                <app-tooltip
+                                    [label]="anchorFieldLabel"
+                                    [tooltipText]="anchorFieldTooltip"
+                                />
+                                <div class="max-context-tokens-anchor">
+                                    <app-input-number
+                                        [formControl]="anchorControl"
+                                        [alwaysShowSteps]="true"
+                                        [min]="100"
+                                        [max]="effectiveLlmContextWindow() ?? 100000"
+                                        [warningMax]="baselineSafeTokenBudget()"
+                                        [warningMessage]="baselineTokenWarningMsg()"
+                                        [errorMessage]="tokenErrorMsg()"
                                     />
-                                </div>
-                                <div class="form-group-container">
-                                    <div class="form-group">
-                                        <app-input-number
-                                            formControlName="k"
-                                            label="K"
-                                            tooltipText="Number of text units to retrieve from the vector store for context building"
-                                            [alwaysShowSteps]="true"
-                                            [min]="1"
-                                            [max]="100"
-                                        />
-                                    </div>
-                                    <div class="form-group">
-                                        <app-input-number
-                                            formControlName="max_context_tokens"
-                                            label="Max Context Tokens"
-                                            tooltipText="The maximum context size to create, in tokens"
-                                            [alwaysShowSteps]="true"
-                                            [min]="100"
-                                            [max]="100000"
-                                        />
-                                    </div>
+                                    @if (useSuggestedParams()) {
+                                        <button
+                                            type="button"
+                                            class="max-context-tokens-anchor__apply"
+                                            [disabled]="
+                                                !maxContextTokensDirty() || suggestingFor() === activeGraphMethod
+                                            "
+                                            matTooltip="Recalculate suggested values for this token budget"
+                                            matTooltipPosition="above"
+                                            (click)="onApplyMaxContextTokens()"
+                                        >
+                                            <app-svg-icon
+                                                icon="apply-check"
+                                                size="0.65rem"
+                                            />
+                                        </button>
+                                    }
                                 </div>
                             </div>
                         }
-                        @case ('local') {
-                            <div formGroupName="local">
-                                <div class="form-group">
-                                    <app-textarea
-                                        formControlName="prompt"
-                                        label="Prompt"
-                                        tooltipText="Prompt"
-                                        placeholder="Custom general knowledge instruction... Leave empty for default."
-                                    />
-                                </div>
 
-                                @if (textUnitProportionControl && communityProportionControl) {
+                        @switch (searchConfigsFormGroup.get('search_method')?.value) {
+                            @case ('basic') {
+                                <div formGroupName="basic">
                                     <div class="form-group">
-                                        <app-dual-slider
-                                            firstLabel="Text Unit Proportion"
-                                            firstTooltipText="The text unit proportion"
-                                            secondLabel="Community Proportion"
-                                            secondTooltipText="The community proportion"
-                                            [firstValue]="textUnitProportionControl.value"
-                                            [secondValue]="communityProportionControl.value"
-                                            (firstValueChange)="onTextUnitPropUpdate($event)"
-                                            (secondValueChange)="onCommunityPropUpdate($event)"
-                                            [min]="0"
-                                            [max]="1"
-                                            [step]="0.01"
+                                        <app-textarea
+                                            formControlName="prompt"
+                                            label="Prompt"
+                                            tooltipText="Prompt"
+                                            placeholder="Custom general knowledge instruction... Leave empty for default."
                                         />
                                     </div>
-                                }
-
-                                <div class="form-group-container">
-                                    <div class="form-group">
-                                        <app-input-number
-                                            formControlName="conversation_history_max_turns"
-                                            label="Conversation History max Turns"
-                                            tooltipText="The conversation history maximum turns"
-                                            [alwaysShowSteps]="true"
-                                            [min]="1"
-                                            [max]="50"
-                                        />
-                                    </div>
-                                    <div class="form-group">
-                                        <app-input-number
-                                            formControlName="max_context_tokens"
-                                            label="Max Context Tokens"
-                                            tooltipText="The maximum tokens to use building the request context"
-                                            [alwaysShowSteps]="true"
-                                            [min]="100"
-                                            [max]="100000"
-                                        />
+                                    <div class="form-group-container">
+                                        <div class="form-group form-group--narrow">
+                                            @if (useSuggestedParams()) {
+                                                <app-suggested-value
+                                                    label="K"
+                                                    tooltipText="Number of text units to retrieve from the vector store for context building"
+                                                    [value]="basicGroup?.get('k')?.value"
+                                                />
+                                            } @else {
+                                                <app-input-number
+                                                    formControlName="k"
+                                                    label="K"
+                                                    tooltipText="Number of text units to retrieve from the vector store for context building"
+                                                    [alwaysShowSteps]="true"
+                                                    [min]="1"
+                                                    [max]="100"
+                                                />
+                                            }
+                                        </div>
                                     </div>
                                 </div>
-
-                                <div class="form-group-container">
+                            }
+                            @case ('local') {
+                                <div formGroupName="local">
                                     <div class="form-group">
-                                        <app-input-number
-                                            formControlName="top_k_entities"
-                                            label="Top K Entities"
-                                            tooltipText="The top k mapped entities"
-                                            [alwaysShowSteps]="true"
-                                            [min]="1"
-                                            [max]="100"
+                                        <app-textarea
+                                            formControlName="prompt"
+                                            label="Prompt"
+                                            tooltipText="Prompt"
+                                            placeholder="Custom general knowledge instruction... Leave empty for default."
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <app-input-number
-                                            formControlName="top_k_relationships"
-                                            label="Top K Relationships"
-                                            tooltipText="The top k mapped relations"
-                                            [alwaysShowSteps]="true"
-                                            [min]="1"
-                                            [max]="100"
-                                        />
+
+                                    @if (textUnitProportionControl && communityProportionControl) {
+                                        <div class="form-group">
+                                            <app-dual-slider
+                                                firstLabel="Text Unit Proportion"
+                                                firstTooltipText="The text unit proportion"
+                                                secondLabel="Community Proportion"
+                                                secondTooltipText="The community proportion"
+                                                [firstValue]="textUnitProportionControl.value"
+                                                [secondValue]="communityProportionControl.value"
+                                                (firstValueChange)="onTextUnitPropUpdate($event)"
+                                                (secondValueChange)="onCommunityPropUpdate($event)"
+                                                [min]="0"
+                                                [max]="1"
+                                                [step]="0.01"
+                                                [disabled]="useSuggestedParams()"
+                                            />
+                                        </div>
+                                    }
+
+                                    <div class="form-group-container">
+                                        <div class="form-group form-group--narrow">
+                                            @if (useSuggestedParams()) {
+                                                <app-suggested-value
+                                                    label="Conversation History max Turns"
+                                                    tooltipText="The conversation history maximum turns"
+                                                    [value]="localGroup?.get('conversation_history_max_turns')?.value"
+                                                />
+                                            } @else {
+                                                <app-input-number
+                                                    formControlName="conversation_history_max_turns"
+                                                    label="Conversation History max Turns"
+                                                    tooltipText="The conversation history maximum turns"
+                                                    [alwaysShowSteps]="true"
+                                                    [min]="1"
+                                                    [max]="50"
+                                                />
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group-container">
+                                        <div class="form-group">
+                                            @if (useSuggestedParams()) {
+                                                <app-suggested-value
+                                                    label="Top K Entities"
+                                                    tooltipText="The top k mapped entities"
+                                                    [value]="localGroup?.get('top_k_entities')?.value"
+                                                />
+                                            } @else {
+                                                <app-input-number
+                                                    formControlName="top_k_entities"
+                                                    label="Top K Entities"
+                                                    tooltipText="The top k mapped entities"
+                                                    [alwaysShowSteps]="true"
+                                                    [min]="1"
+                                                    [max]="100"
+                                                />
+                                            }
+                                        </div>
+                                        <div class="form-group">
+                                            @if (useSuggestedParams()) {
+                                                <app-suggested-value
+                                                    label="Top K Relationships"
+                                                    tooltipText="The top k mapped relations"
+                                                    [value]="localGroup?.get('top_k_relationships')?.value"
+                                                />
+                                            } @else {
+                                                <app-input-number
+                                                    formControlName="top_k_relationships"
+                                                    label="Top K Relationships"
+                                                    tooltipText="The top k mapped relations"
+                                                    [alwaysShowSteps]="true"
+                                                    [min]="1"
+                                                    [max]="100"
+                                                />
+                                            }
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        }
-                        @case ('global') {
-                            <h3>Not available yet</h3>
-                        }
-                        @case ('drift') {
-                            <h3>Not available yet</h3>
+                            }
+                            @case ('global') {
+                                <div formGroupName="global">
+                                    <div class="form-group">
+                                        <app-textarea
+                                            formControlName="map_prompt"
+                                            label="Map Prompt"
+                                            tooltipText="Custom map-stage prompt. Leave empty for default."
+                                            placeholder="Leave empty for default."
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <app-textarea
+                                            formControlName="reduce_prompt"
+                                            label="Reduce Prompt"
+                                            tooltipText="Custom reduce-stage prompt. Leave empty for default."
+                                            placeholder="Leave empty for default."
+                                        />
+                                    </div>
+
+                                    <div class="form-group-container">
+                                        <div class="form-group form-group--keep-margin">
+                                            <app-toggle-switch
+                                                formControlName="dynamic_community_selection"
+                                                label="Dynamic Community Selection"
+                                                tooltipText="Enable dynamic selection of community reports per query."
+                                                [disabled]="useSuggestedParams()"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        class="advanced-settings"
+                                        [class.advanced-settings--open]="globalAdvancedOpen()"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="advanced-settings__summary"
+                                            (click)="globalAdvancedOpen.set(!globalAdvancedOpen())"
+                                        >
+                                            <app-svg-icon
+                                                class="chevron"
+                                                icon="chevron-down"
+                                                size="1.1rem"
+                                            /><span>Advanced settings</span>
+                                        </button>
+
+                                        <div class="advanced-settings__content-wrapper">
+                                            <div class="advanced-settings__content">
+                                                <div class="form-group">
+                                                    <app-textarea
+                                                        formControlName="knowledge_prompt"
+                                                        label="General Knowledge Prompt"
+                                                        tooltipText="Custom general-knowledge prompt. Leave empty for default."
+                                                        placeholder="Leave empty for default."
+                                                    />
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Data Max Tokens"
+                                                                tooltipText="Token limit for the data stage"
+                                                                [value]="globalGroup?.get('data_max_tokens')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="data_max_tokens"
+                                                                label="Data Max Tokens"
+                                                                tooltipText="Token limit for the data stage"
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="100"
+                                                                [max]="effectiveLlmContextWindow() ?? 100000"
+                                                                [warningMax]="safeTokenBudget()"
+                                                                [warningMessage]="tokenWarningMsg()"
+                                                                [errorMessage]="tokenErrorMsg()"
+                                                            />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Map Max Length"
+                                                                tooltipText="Max length of a map-stage answer (words)"
+                                                                [value]="globalGroup?.get('map_max_length')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="map_max_length"
+                                                                label="Map Max Length"
+                                                                tooltipText="Max length of a map-stage answer (words)"
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="10000"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Reduce Max Length"
+                                                                tooltipText="Max length of a reduce-stage answer (words)"
+                                                                [value]="globalGroup?.get('reduce_max_length')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="reduce_max_length"
+                                                                label="Reduce Max Length"
+                                                                tooltipText="Max length of a reduce-stage answer (words)"
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="10000"
+                                                            />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Dynamic Search Threshold"
+                                                                tooltipText="Rating threshold to include a community report."
+                                                                [value]="
+                                                                    globalGroup?.get('dynamic_search_threshold')?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="dynamic_search_threshold"
+                                                                label="Dynamic Search Threshold"
+                                                                tooltipText="Rating threshold to include a community report."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="0"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Dynamic Search Repeats"
+                                                                tooltipText="Number of rating repeats per report."
+                                                                [value]="
+                                                                    globalGroup?.get('dynamic_search_num_repeats')
+                                                                        ?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="dynamic_search_num_repeats"
+                                                                label="Dynamic Search Repeats"
+                                                                tooltipText="Number of rating repeats per report."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                            />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Dynamic Search Max Level"
+                                                                tooltipText="Max community hierarchy level (0–10)."
+                                                                [value]="
+                                                                    globalGroup?.get('dynamic_search_max_level')?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="dynamic_search_max_level"
+                                                                label="Dynamic Search Max Level"
+                                                                tooltipText="Max community hierarchy level (0–10)."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="0"
+                                                                [max]="10"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        <app-toggle-switch
+                                                            formControlName="dynamic_search_keep_parent"
+                                                            label="Keep Parent Community"
+                                                            tooltipText="Keep parent community in the selection."
+                                                            [disabled]="useSuggestedParams()"
+                                                        />
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <app-toggle-switch
+                                                            formControlName="dynamic_search_use_summary"
+                                                            label="Use Community Summary"
+                                                            tooltipText="Use community summary instead of full context."
+                                                            [disabled]="useSuggestedParams()"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            @case ('drift') {
+                                <div formGroupName="drift">
+                                    <div class="form-group">
+                                        <app-textarea
+                                            formControlName="prompt"
+                                            label="Local Stage Prompt"
+                                            tooltipText="Custom local-stage prompt for DRIFT. Leave empty for default."
+                                            placeholder="Leave empty for default."
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <app-textarea
+                                            formControlName="reduce_prompt"
+                                            label="Reduce Prompt"
+                                            tooltipText="Custom reduce-stage prompt for DRIFT. Leave empty for default."
+                                            placeholder="Leave empty for default."
+                                        />
+                                    </div>
+
+                                    <div class="form-group-container">
+                                        <div class="form-group">
+                                            @if (useSuggestedParams()) {
+                                                <app-suggested-value
+                                                    label="Search Depth"
+                                                    tooltipText="Depth of DRIFT search steps (1–10)."
+                                                    [value]="driftGroup?.get('n_depth')?.value"
+                                                />
+                                            } @else {
+                                                <app-input-number
+                                                    formControlName="n_depth"
+                                                    label="Search Depth"
+                                                    tooltipText="Depth of DRIFT search steps (1–10)."
+                                                    [alwaysShowSteps]="true"
+                                                    [min]="1"
+                                                    [max]="10"
+                                                />
+                                            }
+                                        </div>
+                                        <div class="form-group">
+                                            @if (useSuggestedParams()) {
+                                                <app-suggested-value
+                                                    label="K Followups"
+                                                    tooltipText="Top-global results used as drift seeds (1–100)."
+                                                    [value]="driftGroup?.get('drift_k_followups')?.value"
+                                                />
+                                            } @else {
+                                                <app-input-number
+                                                    formControlName="drift_k_followups"
+                                                    label="K Followups"
+                                                    tooltipText="Top-global results used as drift seeds (1–100)."
+                                                    [alwaysShowSteps]="true"
+                                                    [min]="1"
+                                                    [max]="100"
+                                                />
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        class="advanced-settings"
+                                        [class.advanced-settings--open]="driftAdvancedOpen()"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="advanced-settings__summary"
+                                            (click)="driftAdvancedOpen.set(!driftAdvancedOpen())"
+                                        >
+                                            <app-svg-icon
+                                                class="chevron"
+                                                icon="chevron-down"
+                                                size="1.1rem"
+                                            /><span>Advanced settings</span>
+                                        </button>
+
+                                        <div class="advanced-settings__content-wrapper">
+                                            <div class="advanced-settings__content">
+                                                <div class="form-group-container">
+                                                    <div class="form-group form-group--narrow">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Primer LLM Max Tokens"
+                                                                tooltipText="Token limit for the primer LLM call."
+                                                                [value]="
+                                                                    driftGroup?.get('primer_llm_max_tokens')?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="primer_llm_max_tokens"
+                                                                label="Primer LLM Max Tokens"
+                                                                tooltipText="Token limit for the primer LLM call."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="100"
+                                                                [max]="effectiveLlmContextWindow() ?? 100000"
+                                                                [warningMax]="safeTokenBudget()"
+                                                                [warningMessage]="tokenWarningMsg()"
+                                                                [errorMessage]="tokenErrorMsg()"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Concurrency"
+                                                                tooltipText="Parallel LLM requests (1–256)."
+                                                                [value]="driftGroup?.get('concurrency')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="concurrency"
+                                                                label="Concurrency"
+                                                                tooltipText="Parallel LLM requests (1–256)."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="256"
+                                                            />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Primer Folds"
+                                                                tooltipText="Folds for search priming (1–100)."
+                                                                [value]="driftGroup?.get('primer_folds')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="primer_folds"
+                                                                label="Primer Folds"
+                                                                tooltipText="Folds for search priming (1–100)."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="100"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                @if (driftLocalTextUnitPropControl && driftLocalCommunityPropControl) {
+                                                    <div class="form-group">
+                                                        <app-dual-slider
+                                                            firstLabel="Local Text Unit Proportion"
+                                                            firstTooltipText="Context share for text units (0–1)."
+                                                            secondLabel="Local Community Proportion"
+                                                            secondTooltipText="Context share for community (0–1)."
+                                                            [firstValue]="driftLocalTextUnitPropControl.value"
+                                                            [secondValue]="driftLocalCommunityPropControl.value"
+                                                            (firstValueChange)="onDriftLocalTextUnitPropUpdate($event)"
+                                                            (secondValueChange)="
+                                                                onDriftLocalCommunityPropUpdate($event)
+                                                            "
+                                                            [min]="0"
+                                                            [max]="1"
+                                                            [step]="0.01"
+                                                            [disabled]="useSuggestedParams()"
+                                                        />
+                                                    </div>
+                                                }
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Local Top K Entities"
+                                                                tooltipText="Top-K mapped entities for local stage (1–100)."
+                                                                [value]="
+                                                                    driftGroup?.get(
+                                                                        'local_search_top_k_mapped_entities'
+                                                                    )?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="local_search_top_k_mapped_entities"
+                                                                label="Local Top K Entities"
+                                                                tooltipText="Top-K mapped entities for local stage (1–100)."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="100"
+                                                            />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Local Top K Relationships"
+                                                                tooltipText="Top-K relationships for local stage (1–100)."
+                                                                [value]="
+                                                                    driftGroup?.get('local_search_top_k_relationships')
+                                                                        ?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="local_search_top_k_relationships"
+                                                                label="Local Top K Relationships"
+                                                                tooltipText="Top-K relationships for local stage (1–100)."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="100"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Local Max Data Tokens"
+                                                                tooltipText="Context limit for the local stage."
+                                                                [value]="
+                                                                    driftGroup?.get('local_search_max_data_tokens')
+                                                                        ?.value
+                                                                "
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="local_search_max_data_tokens"
+                                                                label="Local Max Data Tokens"
+                                                                tooltipText="Context limit for the local stage."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="100"
+                                                                [max]="effectiveLlmContextWindow() ?? 100000"
+                                                                [warningMax]="safeTokenBudget()"
+                                                                [warningMessage]="tokenWarningMsg()"
+                                                                [errorMessage]="tokenErrorMsg()"
+                                                            />
+                                                        }
+                                                    </div>
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Local N Completions"
+                                                                tooltipText="Number of completions in local (1–10)."
+                                                                [value]="driftGroup?.get('local_search_n')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-input-number
+                                                                formControlName="local_search_n"
+                                                                label="Local N Completions"
+                                                                tooltipText="Number of completions in local (1–10)."
+                                                                [alwaysShowSteps]="true"
+                                                                [min]="1"
+                                                                [max]="10"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        @if (useSuggestedParams()) {
+                                                            <app-suggested-value
+                                                                label="Local Top P"
+                                                                tooltipText="Top-p for local generation (0.0–1.0)."
+                                                                [value]="driftGroup?.get('local_search_top_p')?.value"
+                                                            />
+                                                        } @else {
+                                                            <app-slider-with-stepper
+                                                                formControlName="local_search_top_p"
+                                                                label="Local Top P"
+                                                                tooltipText="Top-p for local generation (0.0–1.0)."
+                                                                [min]="0"
+                                                                [max]="1"
+                                                                [step]="0.05"
+                                                                [decimals]="2"
+                                                            />
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        <app-input-number
+                                                            formControlName="reduce_max_tokens"
+                                                            label="Reduce Max Tokens"
+                                                            tooltipText="Reduce-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <app-input-number
+                                                            formControlName="reduce_max_completion_tokens"
+                                                            label="Reduce Max Completion Tokens"
+                                                            tooltipText="Reduce completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group-container">
+                                                    <div class="form-group">
+                                                        <app-input-number
+                                                            formControlName="local_search_llm_max_gen_tokens"
+                                                            label="Local LLM Max Gen Tokens"
+                                                            tooltipText="Local LLM-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <app-input-number
+                                                            formControlName="local_search_llm_max_gen_completion_tokens"
+                                                            label="Local LLM Max Completion Tokens"
+                                                            tooltipText="Local completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
                         }
                     }
-                }
-            </div>
+                </div>
+            }
         }
     </div>
 </div>

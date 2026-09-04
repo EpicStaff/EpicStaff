@@ -14,6 +14,8 @@ from .surface_models import (
     SurfaceNaiveSearchConfig,
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,
+    SurfaceGraphGlobalSearchConfig,
+    SurfaceGraphDriftSearchConfig,
     InlineSurface,
     InlineSurfacePythonTool,
     InlineSurfaceMcpTool,
@@ -22,6 +24,8 @@ from .surface_models import (
     InlineSurfaceNaiveSearchConfig,
     InlineSurfaceGraphBasicSearchConfig,
     InlineSurfaceGraphLocalSearchConfig,
+    InlineSurfaceGraphGlobalSearchConfig,
+    InlineSurfaceGraphDriftSearchConfig,
     AgentInlineSurface,
     AgentInlineSurfacePythonTool,
     AgentInlineSurfaceMcpTool,
@@ -30,6 +34,8 @@ from .surface_models import (
     AgentInlineSurfaceNaiveSearchConfig,
     AgentInlineSurfaceGraphBasicSearchConfig,
     AgentInlineSurfaceGraphLocalSearchConfig,
+    AgentInlineSurfaceGraphGlobalSearchConfig,
+    AgentInlineSurfaceGraphDriftSearchConfig,
 )
 
 __all__ = [
@@ -46,6 +52,8 @@ __all__ = [
     "SurfaceNaiveSearchConfig",
     "SurfaceGraphBasicSearchConfig",
     "SurfaceGraphLocalSearchConfig",
+    "SurfaceGraphGlobalSearchConfig",
+    "SurfaceGraphDriftSearchConfig",
     "InlineSurface",
     "InlineSurfacePythonTool",
     "InlineSurfaceMcpTool",
@@ -54,6 +62,8 @@ __all__ = [
     "InlineSurfaceNaiveSearchConfig",
     "InlineSurfaceGraphBasicSearchConfig",
     "InlineSurfaceGraphLocalSearchConfig",
+    "InlineSurfaceGraphGlobalSearchConfig",
+    "InlineSurfaceGraphDriftSearchConfig",
     "AgentInlineSurface",
     "AgentInlineSurfacePythonTool",
     "AgentInlineSurfaceMcpTool",
@@ -62,4 +72,6 @@ __all__ = [
     "AgentInlineSurfaceNaiveSearchConfig",
     "AgentInlineSurfaceGraphBasicSearchConfig",
     "AgentInlineSurfaceGraphLocalSearchConfig",
+    "AgentInlineSurfaceGraphGlobalSearchConfig",
+    "AgentInlineSurfaceGraphDriftSearchConfig",
 ]

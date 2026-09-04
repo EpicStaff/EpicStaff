@@ -247,9 +247,9 @@ class ConverterService(metaclass=SingletonMeta):
                 task=task, graph_id=graph_id, session_id=session_id
             )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (crew.process == "sequential" and task.agent is None), (
-                f"Task {task.name} has no agent, but it's required for sequential process."
-            )
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
 
             task_data_list.append(
                 TaskData(
@@ -411,16 +411,6 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
     ) -> list[BaseToolData]:
-        configured_tools = [
-            entry.tool for entry in task.task_configured_tool_list.all()
-        ]
-        if configured_tools:
-            logger.warning(
-                "Task {} has {} configured tool(s) attached, but the "
-                "configured-tool mechanism was removed; skipping them.",
-                task.pk,
-                len(configured_tools),
-            )
         tools = (
             [entry.tool for entry in task.task_python_code_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
@@ -553,11 +543,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if (
-            rt_provider is None
-            or rt_model_name is None
-            or rt_api_key_secret_id is None
-        ):
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
@@ -631,11 +617,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if (
-            rt_provider is None
-            or rt_model_name is None
-            or rt_api_key_secret_id is None
-        ):
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
@@ -783,9 +765,9 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(python_configuration, dict), (
-            "Error reading python tool configuration. How did you even pass validation?"
-        )
+        assert isinstance(
+            python_configuration, dict
+        ), "Error reading python tool configuration. How did you even pass validation?"
 
         storage_allowed_paths = None
         storage_org_prefix = None

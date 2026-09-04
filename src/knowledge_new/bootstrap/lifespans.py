@@ -5,11 +5,14 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Literal
 
 from infrastructure.processing_run import set_process_pool
+from infrastructure.prompt_patching import patch_graphrag_prompts
 from settings import settings
 
 __all__ = ["get_lifespans"]
 
-_lifespans: dict[Literal["on_startup", "on_shutdown"], list[Callable]] = defaultdict(list)
+_lifespans: dict[Literal["on_startup", "on_shutdown"], list[Callable]] = defaultdict(
+    list
+)
 _handler_tasks: set[asyncio.Task] = set()
 
 
@@ -31,3 +34,8 @@ def on_shutdown(fn: Callable):
 def init_process_pool():
     process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
     set_process_pool(process_pool)
+
+
+@on_startup
+def init_graphrag_prompt_patches():
+    patch_graphrag_prompts()

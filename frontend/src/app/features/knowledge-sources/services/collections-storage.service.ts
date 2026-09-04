@@ -3,6 +3,7 @@ import { StorageService } from '@shared/services';
 import { catchError, delay, Observable, of, Subject, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { RagStatus, RagType } from '../models/base-rag.model';
 import {
     CreateCollectionDtoResponse,
     DeleteCollectionResponse,
@@ -44,6 +45,21 @@ export class CollectionsStorageService implements StorageService {
 
     markConfigsAsProcessing(configIds: number[]): void {
         this.processingConfigIdsSignal.update((ids) => new Set([...ids, ...configIds]));
+    }
+
+    // Looks up a rag's status from the polled collection details, regardless of which
+    // collection it belongs to. Returns null when the rag hasn't been seen by a poll
+    // yet (e.g. right after creation, before markRagAsProcessing/the next tick land).
+    // `ragType` is required: naive_rag_id and graph_rag_id are independent auto-increment
+    // primary keys on separate backend tables, so the same numeric id can refer to a
+    // naive rag in one collection and a graph rag in another — matching on id alone
+    // could silently return the wrong rag's status.
+    getRagStatus(ragId: number, ragType: RagType): RagStatus | null {
+        for (const c of this.fullCollectionsSignal()) {
+            const found = c.rag_configurations.find((r) => r.rag_id === ragId && r.rag_type === ragType);
+            if (found) return found.status;
+        }
+        return null;
     }
 
     // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.
@@ -106,8 +122,14 @@ export class CollectionsStorageService implements StorageService {
     }
 
     setCollections(collections: GetCollectionRequest[]) {
-        this.collectionsSignal.set(collections);
+        this.collectionsSignal.set(this.sortByCreatedAtDesc(collections));
         this.collectionsLoaded.set(true);
+    }
+
+    // Backend has no guaranteed ORDER BY on the collections list endpoint (EST-3983),
+    // so newest-first is enforced here rather than relying on array/insertion order.
+    private sortByCreatedAtDesc<T extends { created_at: string }>(items: T[]): T[] {
+        return [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
 
     getFullCollection(id: number, forceRefresh = false): Observable<CreateCollectionDtoResponse | null> {
@@ -171,15 +193,18 @@ export class CollectionsStorageService implements StorageService {
         this.collectionsSignal.update((collections) => {
             const index = collections.findIndex((c) => c.collection_id === rest.collection_id);
             if (index >= 0) {
-                collections[index] = {
+                const updatedCollections = [...collections];
+                updatedCollections[index] = {
                     ...collections[index],
                     ...rest,
                     rag_configurations: rag_configurations ?? collections[index].rag_configurations,
                 };
-            } else {
-                collections.push({ ...rest, rag_configurations: rag_configurations ?? [] });
+                return updatedCollections;
             }
-            return [...collections];
+            return this.sortByCreatedAtDesc([
+                ...collections,
+                { ...rest, rag_configurations: rag_configurations ?? [] },
+            ]);
         });
 
         this.fullCollectionsSignal.update((collections) => {
