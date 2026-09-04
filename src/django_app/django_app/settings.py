@@ -33,6 +33,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes", "on")
 
+# Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
+SOFT_DELETE = os.getenv("SOFT_DELETE", "False").lower() in ("true", "1", "yes", "on")
+
 
 def _require_env(name: str) -> str:
     """Return the environment variable's stripped value, refusing to start when it is missing or blank."""

@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Self
 
 from django.apps import apps
+from django.conf import settings
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
@@ -129,30 +130,81 @@ class CrewSessionMessage(BaseSessionMessage):
         abstract = True
 
 
-class SoftDeleteMixin(models.Model):
-    deleted_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        default=None,
-        editable=False,
+class ActiveManager(models.Manager):
+    """
+    Manager for models that using SoftDeleteFields.
+    Filters the active records
+    """
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .filter(is_soft_deleted=False, soft_deleted_at__isnull=True)
+        )
+
+
+def soft_delete_consistency_constraint() -> models.CheckConstraint:
+    """
+    Reject any row where is_soft_deleted/soft_deleted_at disagree.
+
+    Django does not merge Meta options (constraints included) from more
+    than one abstract base class onto a concrete model that has its own
+    Meta — confirmed empirically. Every concrete SoftDeleteFields
+    model must therefore call this in its own Meta.constraints; it
+    cannot be relied on from SoftDeleteFields.Meta alone.
+    """
+    return models.CheckConstraint(
+        check=(
+            models.Q(is_soft_deleted=False, soft_deleted_at__isnull=True)
+            | models.Q(is_soft_deleted=True, soft_deleted_at__isnull=False)
+        ),
+        name="%(app_label)s_%(class)s_soft_delete_consistency",
     )
-    is_active = models.BooleanField(default=True)
+
+
+class SoftDeleteFields(models.Model):
+    """
+    Only the fields required for soft deletion. No delete() override —
+    a direct .delete() on a model that only has this mixin (no SoftDeleteMixin)
+    performs a normal, unconditional Django hard delete.
+    """
+
+    is_soft_deleted = models.BooleanField(default=False, db_default=False)
+    soft_deleted_at = models.DateTimeField(null=True, blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
+
+class SoftDeleteMixin(SoftDeleteFields):
+    """
+    Full soft-delete support: delete() delegates to DeleteService, which
+    cascades through reverse relations. For the 4 soft-delete roots
+    (Graph, GraphVersion, SourceCollection, PythonCodeTool).
+    """
 
     class Meta:
         abstract = True
 
     def delete(self, using=None, keep_parents=False):
-        self.is_active = False
-        self.deleted_at = timezone.now()
-        self.save(update_fields=["is_active", "deleted_at"])
+        if settings.SOFT_DELETE:
+            return self.soft_delete(using)
+        return self.hard_delete(using, keep_parents)
 
-    def hard_delete(self):
-        super().delete()
+    def soft_delete(self, using=None):
+        from tables.services.soft_delete import DeleteService
 
-    def restore(self):
-        self.is_active = True
-        self.deleted_at = None
-        self.save(update_fields=["is_active", "deleted_at"])
+        return DeleteService.delete(self, using=using)
+
+    def hard_delete(self, using=None, keep_parents=False):
+        return super().delete(using=using, keep_parents=keep_parents)
 
 
 class TimestampMixin(models.Model):
@@ -277,7 +329,7 @@ class BaseGlobalNode(models.Model):
         return node_models
 
     @classmethod
-    def find_globally(cls, node_id) -> Self:
+    def find_globally(cls, node_id) -> Self | None:
         """
         Executes a single SQL UNION query to find which table contains the given ID
         and returns the actual model instance.
@@ -302,6 +354,6 @@ class BaseGlobalNode(models.Model):
         if row:
             table_name = row[0]
             target_model = table_to_model[table_name]
-            return target_model.objects.get(id=node_id)
+            return target_model.objects.filter(id=node_id).first()
 
         return None

@@ -3,9 +3,10 @@ import os
 import sys
 
 from dotenv import find_dotenv, load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session, Session
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker, scoped_session, Session, with_loader_criteria
 
+from models.orm.mixins import SoftDeleteColumnsMixin
 from storage import ORMNaiveRagStorage, ORMGraphRagStorage
 
 
@@ -50,6 +51,22 @@ ENGINE = create_engine(DATABASE_URL, echo=False, pool_size=10, max_overflow=20)
 
 # Scoped session
 SessionLocal = scoped_session(sessionmaker(bind=ENGINE))
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _exclude_soft_deleted(execute_state):
+    if (
+        execute_state.is_select
+        and not execute_state.is_column_load
+        and not execute_state.is_relationship_load
+    ):
+        execute_state.statement = execute_state.statement.options(
+            with_loader_criteria(
+                SoftDeleteColumnsMixin,
+                lambda cls: cls.is_soft_deleted.is_(False),
+                include_aliases=True,
+            )
+        )
 
 
 class UnitOfWork:

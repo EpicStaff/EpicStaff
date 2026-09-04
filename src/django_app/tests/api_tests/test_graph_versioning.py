@@ -140,7 +140,7 @@ def test_delete_version_soft_deletes(auth_client, make_graph_version):
 
     assert not GraphVersion.objects.filter(id=version_id).exists()
     assert GraphVersion.all_objects.filter(id=version_id).exists()
-    assert GraphVersion.all_objects.get(id=version_id).deleted_at is not None
+    assert GraphVersion.all_objects.get(id=version_id).soft_deleted_at is not None
 
 
 @pytest.mark.django_db

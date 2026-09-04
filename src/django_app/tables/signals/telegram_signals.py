@@ -37,6 +37,10 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 
     _resync_tunnel_registration(id_)
 
+    if getattr(instance, "is_soft_deleted", False):
+        logger.info(f"TelegramTriggerNode {id_} is soft-deleted, skipping registration")
+        return
+
     try:
         TelegramTriggerService().register_telegram_trigger(
             telegram_trigger_instance=instance
@@ -50,6 +54,10 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 
 
 @receiver(post_delete, sender=TelegramTriggerNode)
-def telegram_trigger_post_delete_handler(sender, instance: TelegramTriggerNode, **kwargs):
-    logger.info(f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}")
+def telegram_trigger_post_delete_handler(
+    sender, instance: TelegramTriggerNode, **kwargs
+):
+    logger.info(
+        f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}"
+    )
     _resync_tunnel_registration(instance.pk)

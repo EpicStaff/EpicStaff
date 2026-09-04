@@ -621,11 +621,12 @@ def python_code_tool(python_code) -> PythonCodeTool:
 
 
 @pytest.fixture
-def python_code_tool_config(python_code_tool) -> PythonCodeToolConfig:
+def python_code_tool_config(python_code_tool, default_org) -> PythonCodeToolConfig:
     return PythonCodeToolConfig.objects.create(
         name="config1",
         tool=python_code_tool,
         configuration={"arg1": "value1", "arg2": 10},
+        org=default_org,
     )
 
 

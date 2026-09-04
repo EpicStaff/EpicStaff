@@ -718,7 +718,12 @@ class GraphVersioningManager:
 
     def _wipe_graph_children(self, graph: Graph) -> None:
         """
-        Wipe all graph related nodes
+        Wipe all graph related nodes.
+
+        Intentionally hard-deletes and is NOT routed through the soft-delete
+        cascade (DeleteService): this replaces a graph's content during a
+        version restore, it does not delete the graph itself, so soft-delete
+        semantics don't apply here. Do not "fix" this to go through .delete().
         """
         python_code_ids: set[int] = set()
         python_code_ids.update(

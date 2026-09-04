@@ -6,7 +6,11 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 from django.contrib.auth.hashers import check_password
 
-from tables.models.base_models import DefaultBaseModel
+from tables.models.base_models import (
+    DefaultBaseModel,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -96,7 +100,7 @@ class WebhookAuthScheme(models.TextChoices):
     # window + Redis-backed replay check (see `webhook_routes.handle_webhook`)
 
 
-class WebhookNodeAuth(models.Model):
+class WebhookNodeAuth(SoftDeleteFields):
     enabled = models.BooleanField(default=True)
     scheme = models.CharField(max_length=32, choices=WebhookAuthScheme.choices)
 
@@ -161,7 +165,10 @@ class WebhookNodeAuth(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.CheckConstraint(
                 condition=(
                     models.Q(
@@ -279,7 +286,10 @@ class RealtimeChannel(OrgScopedModel, models.Model):
     def clean(self):
         # A channel answers to exactly one destination — either a staff
         # RealtimeAgent or a RealtimeAgentDefinition — never both.
-        if self.realtime_agent_id is not None and self.realtime_agent_definition_id is not None:
+        if (
+            self.realtime_agent_id is not None
+            and self.realtime_agent_definition_id is not None
+        ):
             raise ValidationError(
                 "A RealtimeChannel may have at most one destination set "
                 "(realtime_agent or realtime_agent_definition)."
@@ -359,4 +369,3 @@ class TwilioChannel(models.Model):
                 "Use ngrok or a publicly accessible provider."
             )
         return None
-

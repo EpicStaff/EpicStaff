@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional, List
+from django.conf import settings
 from django.db import transaction, models
 from loguru import logger
 
@@ -136,6 +137,19 @@ class CollectionManagementService:
 
         collection_name = collection.collection_name
 
+        if settings.SOFT_DELETE:
+            # Soft delete keeps documents/content intact for restoration.
+            collection.delete()
+            logger.info(
+                f"Soft-deleted collection '{collection_name}' (ID: {collection_id})"
+            )
+            return {
+                "collection_id": collection_id,
+                "collection_name": collection_name,
+                "deleted_documents": 0,
+                "deleted_content": 0,
+            }
+
         # Get all document IDs in this collection
         document_ids = list(collection.documents.values_list("document_id", flat=True))
 
@@ -215,6 +229,25 @@ class CollectionManagementService:
             }
             for col in collections
         ]
+
+        if settings.SOFT_DELETE:
+            # Soft delete keeps documents/content intact for restoration. Deleting
+            # per-instance (rather than a queryset .update()) routes each collection
+            # through SoftDeleteMixin.delete() -> DeleteService, so the cascade
+            # mechanism actually fires for every collection's dependents.
+            deleted_count = 0
+            for collection in collections:
+                collection.delete()
+                deleted_count += 1
+
+            logger.info(f"Bulk soft-deleted {deleted_count} collections")
+
+            return {
+                "deleted_count": deleted_count,
+                "collections": deleted_info,
+                "deleted_documents": 0,
+                "deleted_content": 0,
+            }
 
         # Count documents across all collections
         total_documents = DocumentMetadata.objects.filter(

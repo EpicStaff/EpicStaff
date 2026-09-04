@@ -28,6 +28,7 @@ services:
     environment:
       <<: *common_env
       DEBUG: ${DEBUG:-False}
+      SOFT_DELETE: ${SOFT_DELETE:-False}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
