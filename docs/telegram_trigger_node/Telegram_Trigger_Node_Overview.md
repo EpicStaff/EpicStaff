@@ -72,10 +72,13 @@ The `handle_telegram_trigger` method:
 Every Telegram webhook is authenticated automatically and mandatorily --
 there is nothing for the API consumer to configure. When
 `register_telegram_trigger` calls Telegram's `setWebhook`, it also generates
-a random per-node secret and registers it as Telegram's `secret_token`
-parameter. Telegram then echoes that value back on every update as the
+a random secret and stores it on the trigger's `WebhookTriggerAuth` row
+(`kind="telegram"`), passing it to Telegram as the `secret_token` parameter.
+Telegram then echoes that value back on every update as the
 `X-Telegram-Bot-Api-Secret-Token` header, which the `webhook` service
 verifies before the request is ever forwarded to Django. See the Webhook
-Developer Guide's "Webhook Inbound Authentication (`WebhookNodeAuth`)"
-section for the full mechanism, including how this differs from the
-opt-out HMAC signing used by generic `WebhookTriggerNode`s.
+Developer Guide's "Webhook Inbound Authentication (`WebhookTriggerAuth`)"
+section for the full mechanism. Generic `WebhookTriggerNode`s use the same
+trigger-level model but a different, user-settable strategy
+(`kind="webhook"`, `EPICSTAFF_API_KEY` header) -- both are mandatory and
+fail-closed; there is no opt-out for either.

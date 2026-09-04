@@ -262,8 +262,12 @@ class TestTelegramTriggerServiceLocalhostGuard:
         self, default_org, mocker
     ):
         """Regression: an ngrok-backed trigger must still register normally
-        after the localhost guard was added."""
-        from tables.models.webhook_models import NgrokWebhookConfig, ProviderType
+        after the EST-3632 localhost guard was added."""
+        from tables.models.webhook_models import (
+            NgrokWebhookConfig,
+            ProviderType,
+            WebhookTriggerAuthKind,
+        )
 
         trigger = WebhookTrigger.objects.create(
             path="tg-ngrok-ok", provider_type=ProviderType.NGROK, org=default_org
@@ -277,6 +281,18 @@ class TestTelegramTriggerServiceLocalhostGuard:
         )
         secret = secret_service.create(
             text="123456:fake", org=default_org, name="tg-ngrok-ok-key"
+        )
+        # EST-3939: the Telegram `secret_token` is now user-settable via
+        # `WebhookTriggerAuth(kind=telegram)` -- registration fails loudly
+        # without one, so it must be set here before the node is created.
+        WebhookTriggerService().set_trigger_auth_secret(
+            trigger,
+            secret_service.create(
+                text="tg-ngrok-ok-secret-token",
+                org=default_org,
+                name="tg-ngrok-ok-auth-secret",
+            ),
+            kind=WebhookTriggerAuthKind.TELEGRAM,
         )
 
         mocker.patch(

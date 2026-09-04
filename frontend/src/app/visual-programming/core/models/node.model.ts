@@ -12,7 +12,7 @@ import { NodeType } from '../enums/node-type';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
-import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
+import { WebhookTriggerWrite } from './webhook-trigger.model';
 
 export interface BaseNodeModel {
     id: string;
@@ -101,7 +101,6 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
         webhook_trigger: WebhookTriggerWrite | null;
-        webhook_node_auth: WebhookNodeAuthModel | null;
         python_code: CustomPythonCode;
     };
 }

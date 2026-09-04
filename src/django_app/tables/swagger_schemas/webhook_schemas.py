@@ -1,38 +1,38 @@
-from drf_spectacular.utils import extend_schema_serializer
-from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
-    WebhookNodeAuthInputSerializer,
-    WebhookTriggerNodeSerializer,
-)
-
-
-@extend_schema_serializer(component_name="WebhookTriggerNodeWrite")
-class WebhookTriggerNodeWriteRequestSerializer(WebhookTriggerNodeSerializer):
-    """drf-spectacular-only shape declaration for
-    `WebhookTriggerNodeViewSet`'s create/update/partial_update request
-    body. Never instantiated by the viewset for real request handling --
-    wired via `request=` in `WEBHOOK_TRIGGER_NODE_CREATE`/`_UPDATE`/
-    `_PARTIAL_UPDATE` below so the generated `WebhookTriggerNodeWriteRequest`
-    / `PatchedWebhookTriggerNodeWriteRequest` OpenAPI components document
-    the actual write shape (`{"enabled": bool}`) instead of omitting
-    `webhook_node_auth` entirely.
-    """
-
-    webhook_node_auth = WebhookNodeAuthInputSerializer(required=False)
-
-
 WEBHOOK_TRIGGER_NODE_CREATE = dict(
-    request=WebhookTriggerNodeWriteRequestSerializer,
     description=(
-        '`webhook_node_auth` accepts only `{"enabled": bool}` on write -- '
-        "other sub-fields (scheme/header_name/signing_secret/etc.) are "
-        "server-generated and any extra keys sent alongside `enabled` are "
-        "silently ignored, not rejected. Omitting `webhook_node_auth` "
-        "entirely leaves the default (auto-enabled) protection in place."
+        "Auth for this node's inbound webhook is not configured here -- it "
+        "lives on the linked `webhook_trigger` (see `/webhook-triggers/`), "
+        "not on the node."
     ),
 )
 
-WEBHOOK_TRIGGER_NODE_UPDATE = dict(request=WebhookTriggerNodeWriteRequestSerializer)
+WEBHOOK_TRIGGER_NODE_UPDATE = dict()
 
-WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = dict(
-    request=WebhookTriggerNodeWriteRequestSerializer
+WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = dict()
+
+_WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
+    "`auth_secret_id` sets/updates this trigger's user-settable auth "
+    "strategy secret (write-only; the resolved state is echoed back "
+    "read-only as `auth`: `{kind, secret_tail}`). `auth_kind` picks which "
+    "strategy -- `webhook` (`EPICSTAFF_API_KEY`, default if omitted and no "
+    "auth exists yet) or `telegram` (`X-Telegram-Bot-Api-Secret-Token`; "
+    "must be 1-256 characters using only `A-Z a-z 0-9 _ -`, a constraint "
+    "from Telegram's own Bot API). Setting a `telegram` secret immediately "
+    "resyncs (re-calls `setWebhook` for) any Telegram trigger nodes already "
+    "attached to this trigger. A trigger already used by a Twilio channel "
+    "manages its own auth automatically and rejects `auth_secret_id`. "
+    "There is no disable toggle: auth is mandatory once a secret is set. "
+    "If a `telegram` secret update saves successfully but the immediate "
+    "`setWebhook` resync fails for one or more attached nodes (e.g. tunnel "
+    "not up yet, Telegram API error), the response still returns 200/201 "
+    "with the new secret persisted, plus a `telegram_registration_warning` "
+    "string field describing which node(s) failed and that a retry is "
+    "needed -- the request is not failed outright since the user's secret "
+    "was correctly saved."
 )
+
+WEBHOOK_TRIGGER_CREATE = dict(description=_WEBHOOK_TRIGGER_AUTH_DESCRIPTION)
+
+WEBHOOK_TRIGGER_UPDATE = dict(description=_WEBHOOK_TRIGGER_AUTH_DESCRIPTION)
+
+WEBHOOK_TRIGGER_PARTIAL_UPDATE = dict(description=_WEBHOOK_TRIGGER_AUTH_DESCRIPTION)

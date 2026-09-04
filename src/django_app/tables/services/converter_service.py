@@ -33,7 +33,7 @@ from src.shared.models import (
     SubGraphNodeData,
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
-    WebhookNodeAuthData,
+    WebhookTriggerAuthData,
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
@@ -72,6 +72,7 @@ from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     WebhookTrigger,
+    WebhookTriggerAuth,
 )
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
@@ -686,62 +687,22 @@ class ConverterService(metaclass=SingletonMeta):
             output_map=end_node.output_map,
         )
 
-    def _get_node_auths_for_trigger(
-        self, trigger: WebhookTrigger
-    ) -> tuple[list[WebhookNodeAuthData], bool]:
-        """Collect enabled WebhookNodeAuths from nodes attached to this
-        trigger, and report whether at least one attached node has NO
-        enabled auth configured.
-
-        The second element (`has_unauthenticated_node`) drives
-        `BaseTunnelConfigData.has_unauthenticated_node`: when a path mixes an
-        authenticated node (e.g. Telegram, mandatory auth) with an auth-free
-        node, `webhook_routes.handle_webhook` must let an unauthenticated
-        request through -- scoped only to the auth-free node(s) via
-        `UNAUTHENTICATED_FALLBACK_PRINCIPAL` -- instead of 401ing the whole
-        path just because `auths` is non-empty.
-        """
-        nodes = [
-            *trigger.telegram_trigger_nodes.all(),
-            *trigger.webhook_trigger_nodes.all(),
-        ]
-        auth_data_list: list[WebhookNodeAuthData] = []
-        has_unauthenticated_node = False
-        for node in nodes:
-            auth_data = self._convert_node_auth(node)
-            if auth_data is None:
-                has_unauthenticated_node = True
-            else:
-                auth_data_list.append(auth_data)
-        return auth_data_list, has_unauthenticated_node
-
     @staticmethod
-    def _convert_node_auth(
-        node: TelegramTriggerNode | WebhookTriggerNode,
-    ) -> WebhookNodeAuthData | None:
-        """Convert `node.webhook_node_auth` (a reverse OneToOne) to
-        `WebhookNodeAuthData`, or `None` if there's no enabled auth row.
-
-        `getattr(node, "webhook_node_auth", None)` is deliberate, not a
-        simplification-for-its-own-sake: accessing a reverse OneToOne
-        descriptor with no related row raises `RelatedObjectDoesNotExist`
-        (a subclass of `AttributeError`), and `getattr(..., None)` -- like
-        `hasattr` -- swallows that specific `AttributeError` and returns the
-        default. Using `getattr` instead of `hasattr` + a second attribute
-        access avoids triggering that descriptor lookup twice.
-        """
-        auth = getattr(node, "webhook_node_auth", None)
-        if not auth or not auth.enabled:
+    def _convert_trigger_auth(
+        trigger: WebhookTrigger,
+    ) -> WebhookTriggerAuthData | None:
+        auth: WebhookTriggerAuth | None = getattr(trigger, "auth", None)
+        if not auth or auth.header_name is None:
             return None
-        return WebhookNodeAuthData(
-            enabled=auth.enabled,
-            scheme=auth.scheme,
+        secret = secret_resolver.resolve(
+            secret_id=auth.secret_id,
+            org_id=trigger.org_id,
+            context="WebhookTriggerAuth.secret",
+        )
+        return WebhookTriggerAuthData(
+            kind=auth.kind,
             header_name=auth.header_name,
-            timestamp_header_name=auth.timestamp_header_name,
-            tolerance_seconds=auth.tolerance_seconds,
-            secret_hash=auth.secret_hash,
-            signing_secret=auth.signing_secret,
-            principal=f"{node._meta.label_lower}:{node.pk}",
+            secret=secret,
         )
 
     def convert_webhook_trigger_node_to_pydantic(
@@ -890,9 +851,7 @@ class ConverterService(metaclass=SingletonMeta):
             )
             or ""
         )
-        auths, has_unauthenticated_node = self._get_node_auths_for_trigger(
-            ngrok_webhook_config.trigger
-        )
+        auth = self._convert_trigger_auth(ngrok_webhook_config.trigger)
 
         return NgrokConfigData(
             name=ngrok_webhook_config.trigger.path,
@@ -900,21 +859,17 @@ class ConverterService(metaclass=SingletonMeta):
             auth_token=auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
-            auths=auths,
-            has_unauthenticated_node=has_unauthenticated_node,
+            auth=auth,
         )
 
     def convert_localhost_webhook_config_to_pydantic(
         self, localhost_webhook_config: LocalhostWebhookConfig
     ) -> LocalhostConfigData:
-        auths, has_unauthenticated_node = self._get_node_auths_for_trigger(
-            localhost_webhook_config.trigger
-        )
+        auth = self._convert_trigger_auth(localhost_webhook_config.trigger)
 
         return LocalhostConfigData(
             name=localhost_webhook_config.trigger.path,
             org_id=localhost_webhook_config.trigger.org_id,
             domain=localhost_webhook_config.domain,
-            auths=auths,
-            has_unauthenticated_node=has_unauthenticated_node,
+            auth=auth,
         )
