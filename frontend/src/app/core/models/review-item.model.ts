@@ -68,7 +68,6 @@ const BACKEND_NODE_TYPE_MAP: Record<string, NodeType> = {
     TelegramTriggerNode: NodeType.TELEGRAM_TRIGGER,
     AgentNode: NodeType.AGENT,
     TaskNode: NodeType.TASK,
-    CrewNode: NodeType.PROJECT,
     SubgraphNode: NodeType.SUBGRAPH,
     StartNode: NodeType.START,
     EndNode: NodeType.END,

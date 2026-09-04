@@ -269,6 +269,7 @@ async def test_per_task_output_schema_uses_enforcer():
     final = emitter.finals[0]
     assert json.loads(final.final_text) == {"x": "result"}
     assert final.stop_reason == "schema_satisfied"
+    assert final.tasks[0].structured_output == {"x": "result"}
 
 
 async def test_invalid_schema_on_second_task_fails_after_first_completes():

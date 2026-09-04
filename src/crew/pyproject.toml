@@ -1,42 +1,25 @@
 [tool.poetry]
-name = "crewai-sheets-ui"
-version = "0.6.0"
-description = "Web CrewAI"
+name = "epicstaff-graph"
+version = "1.0.0"
+description = "This service is inteded to build and run EpicStaff Flows."
 authors = ["Epicstaff"]
 license = "MIT"
 readme = "README.md"
 package-mode = false
 packages = [
-    { include = "src" },
-    { include = "libraries/crewAI" }
+    { include = "src" }
 ]
 
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-pandas = "2.2.3"
-ollama = "0.4.7"
-google-generativeai = "0.8.6"
-langchain-anthropic = "0.2.4"
-anthropic = "0.40.0"
-langchain-groq = "0.2.4"
-langchain-community = "0.3.16"
-rich = "13.9.4"
-sentry-sdk = "2.20.0"
 langgraph = "^0.5.4"
 pyyaml = "6.0.2"
 python-dotenv = "==1.2.2"
 datamodel-code-generator = "0.26.0"
 redis = "==5.3.1"
 loguru = "0.7.2"
-psycopg2 = "2.9.10"
 litellm = "1.75.7"
-openai = {extras = ["voice-helpers"], version = "1.99.9"}
-fastmcp = "^2.12.2"
-
-[tool.poetry.group.crew.dependencies]
-mem0ai = { path = "libraries/mem0" }
-crewai = {path = "libraries/crewAI"}
 
 [tool.poetry.group.dotdict.dependencies]
 dotdict = { path = "../shared/dotdict" }
@@ -64,20 +47,15 @@ build-backend = "poetry.core.masonry.api"
 select = ["F","E"]
 ignore = ["E402","E501"]
 
+
 [tool.poetry.group.secfloor.dependencies]
 urllib3 = "==2.7.0"
 requests = "==2.34.2"
 jinja2 = "==3.1.6"
 certifi = "==2026.7.22"
 aiohttp = "==3.14.3"
-cryptography = "==50.0.1"
 idna = "==3.18"
 pyjwt = "==2.13.0"
 charset-normalizer = "==3.4.7"
 yarl = "==1.24.5"
 anyio = "==4.14.2"
-sqlalchemy = "==2.0.49"
-authlib = "==1.7.2"
-uvicorn = "==0.49.0"
-fastapi = "==0.120.1"
-python-multipart = "==0.0.32"

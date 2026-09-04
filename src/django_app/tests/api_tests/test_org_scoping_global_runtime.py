@@ -6,12 +6,12 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent
+from agents.models import AgentDefinition
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.realtime_models import (
     ConversationRecording,
-    RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
 from tables.models.rbac_models import Organization, OrganizationUser, Role
@@ -35,6 +35,15 @@ def _member(django_user_model, org, email):
     return user
 
 
+def _org_admin(django_user_model, org, email):
+    role = Role.objects.get(
+        name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
 def _client(user, org):
     c = APIClient()
     c.force_authenticate(user=user)
@@ -45,6 +54,14 @@ def _client(user, org):
 @pytest.fixture
 def client_member(db, django_user_model, org_a):
     return _client(_member(django_user_model, org_a, "gm@example.com"), org_a)
+
+
+@pytest.fixture
+def client_org_admin(db, django_user_model, org_a):
+    # VOICE is read-only for Member/Viewer (seeded bitmask=2, EST-3962) — the
+    # `conversation_recording_create_*` org-scoping tests below need CREATE,
+    # so they exercise an Org Admin (bitmask=15) rather than `client_member`.
+    return _client(_org_admin(django_user_model, org_a, "voice-admin@example.com"), org_a)
 
 
 @pytest.fixture
@@ -98,9 +115,13 @@ def test_default_models_write_permitted_for_superadmin(client_super):
 
 
 def _chat(org):
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org)
-    rt = RealtimeAgent.objects.create(agent=agent)
-    return RealtimeAgentChat.objects.create(rt_agent=rt, connection_key="k")
+    agent_definition = AgentDefinition.objects.create(organization=org, name="a")
+    rt_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=agent_definition
+    )
+    return RealtimeAgentChat.objects.create(
+        rt_agent_definition=rt_definition, connection_key="k"
+    )
 
 
 @pytest.mark.django_db
@@ -115,7 +136,7 @@ def test_realtime_agent_chat_own_org_visible(client_member, org_a):
     assert client_member.get(f"/api/realtime-agent-chats/{chat.id}/").status_code == 200
 
 
-# ---- ConversationRecording: scoped via rt_agent_chat -> rt_agent -> agent -> org ----
+# ---- ConversationRecording: scoped via rt_agent_chat -> rt_agent_definition -> agent_definition -> org ----
 
 
 def _recording(org):
@@ -164,13 +185,13 @@ def _fake_audio_file():
 
 @pytest.mark.django_db
 def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
-    client_member, org_b
+    client_org_admin, org_b
 ):
     """A caller must not be able to attach a recording to another org's
     RealtimeAgentChat by supplying its id directly as `rt_agent_chat`."""
     other_chat = _chat(org_b)
 
-    resp = client_member.post(
+    resp = client_org_admin.post(
         "/api/conversation-recordings/",
         {
             "rt_agent_chat": other_chat.id,
@@ -185,13 +206,13 @@ def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
 
 @pytest.mark.django_db
 def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat(
-    client_member, org_b
+    client_org_admin, org_b
 ):
     """The connection_key resolution path (used by the realtime service)
     must be subject to the same parent-org check as a direct FK reference."""
     other_chat = _chat(org_b)
 
-    resp = client_member.post(
+    resp = client_org_admin.post(
         "/api/conversation-recordings/",
         {
             "connection_key": other_chat.connection_key,
@@ -206,8 +227,28 @@ def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat
 
 @pytest.mark.django_db
 def test_conversation_recording_create_allowed_for_own_orgs_chat(
-    client_member, org_a
+    client_org_admin, org_a
 ):
+    own_chat = _chat(org_a)
+
+    resp = client_org_admin.post(
+        "/api/conversation-recordings/",
+        {
+            "rt_agent_chat": own_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_denied_for_member(client_member, org_a):
+    """EST-3962: VOICE is read-only for Member (seeded bitmask=2) — a Member
+    must not be able to create a recording even for their own org's chat,
+    now that `ConversationRecordingViewSet` wires `HasOrgPermission`."""
     own_chat = _chat(org_a)
 
     resp = client_member.post(
@@ -219,8 +260,8 @@ def test_conversation_recording_create_allowed_for_own_orgs_chat(
         },
         format="multipart",
     )
-    assert resp.status_code == 201, resp.data
-    assert ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
+    assert resp.status_code == 403, resp.data
+    assert not ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
 
 
 def _viewer(django_user_model, org, email):

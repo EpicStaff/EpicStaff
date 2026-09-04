@@ -1,10 +1,4 @@
-from drf_spectacular.utils import (
-    OpenApiResponse,
-    OpenApiExample,
-    extend_schema_serializer,
-)
-from drf_spectacular.types import OpenApiTypes
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from drf_spectacular.utils import extend_schema_serializer
 from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
     WebhookNodeAuthInputSerializer,
     WebhookTriggerNodeSerializer,
@@ -41,34 +35,4 @@ WEBHOOK_TRIGGER_NODE_UPDATE = dict(request=WebhookTriggerNodeWriteRequestSeriali
 
 WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = dict(
     request=WebhookTriggerNodeWriteRequestSerializer
-)
-
-REGISTER_WEBHOOKS_POST = dict(
-    summary="Register webhooks",
-    description="Triggers registration of all webhooks via the webhook trigger service.",
-    responses={
-        200: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="OK",
-            examples=[
-                OpenApiExample(
-                    "Webhooks registered",
-                    value={},
-                    response_only=True,
-                ),
-            ],
-        ),
-        400: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Bad Request - Failed to register webhooks.",
-            examples=[
-                OpenApiExample(
-                    "Registration error",
-                    value={"error": "Failed to register webhooks."},
-                    response_only=True,
-                ),
-            ],
-        ),
-        401: UNAUTHORIZED_401_RESPONSE,
-    },
 )

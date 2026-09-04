@@ -8,5 +8,4 @@ export * from './http-error.util';
 export * from './import-preview.util';
 export * from './json-parser.util';
 export * from './role-permissions-to-set.util';
-export * from './tool-ids-builder.util';
 export * from './unique-name.util';

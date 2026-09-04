@@ -4,7 +4,6 @@ import { ChangeDetectionStrategy, Component, computed, EventEmitter, inject, Inp
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { RealtimeAgentDefinition } from '../../../../../features/agent-definitions/models/realtime-agent-definition.model';
-import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
 import { ChatAgent, chatAgentTitle, sameChatAgent } from '../../../models/chat-agent.model';
 import { ChatsService } from '../../../services/chats.service';
 import { ConsoleService } from '../../../services/console.service';
@@ -12,7 +11,6 @@ import {
     AgentDefinitionRealtimeSettingsDialogComponent,
     AgentDefinitionRealtimeSettingsDialogData,
 } from './agent-definition-realtime-settings-dialog/agent-definition-realtime-settings-dialog.component';
-import { RealtimeSettingsDialogComponent } from './realtime-settings-dialog/realtime-settings-dialog.component';
 
 @Component({
     selector: 'app-chats-sidebar-item',
@@ -45,39 +43,12 @@ export class ChatsSidebarItemComponent {
 
     public openSettings(event: Event): void {
         event.stopPropagation();
-        if (this.chatAgent.kind === 'staff') {
-            this.openStaffSettings(this.chatAgent.agent);
-        } else {
-            this.openDefinitionSettings(this.chatAgent.agent.id, this.chatAgent.agent.name, this.chatAgent.realtime);
-        }
-    }
-
-    private openStaffSettings(agent: FullAgent): void {
-        const dialogRef = this.dialog.open<FullAgent>(RealtimeSettingsDialogComponent, {
-            data: { agent },
-            width: '100%',
-            maxWidth: '550px',
-            height: '100%',
-            maxHeight: '90vh',
-        });
-
-        dialogRef.closed.subscribe((updatedAgent) => {
-            if (!updatedAgent) return;
-            const merged: FullAgent = {
-                ...updatedAgent,
-                tools: agent.tools,
-                python_code_tools: agent.python_code_tools,
-            };
-            this.agentUpdated.emit({ kind: 'staff', agent: merged });
-        });
-    }
-
-    private openDefinitionSettings(
-        definitionId: number,
-        definitionName: string,
-        realtime: RealtimeAgentDefinition
-    ): void {
-        const data: AgentDefinitionRealtimeSettingsDialogData = { definitionId, definitionName, realtime };
+        const { agent, realtime } = this.chatAgent;
+        const data: AgentDefinitionRealtimeSettingsDialogData = {
+            definitionId: agent.id,
+            definitionName: agent.name,
+            realtime,
+        };
         const dialogRef = this.dialog.open<RealtimeAgentDefinition>(AgentDefinitionRealtimeSettingsDialogComponent, {
             data,
             width: '100%',
@@ -87,8 +58,8 @@ export class ChatsSidebarItemComponent {
         });
 
         dialogRef.closed.subscribe((updated) => {
-            if (!updated || this.chatAgent.kind !== 'definition') return;
-            this.agentUpdated.emit({ kind: 'definition', agent: this.chatAgent.agent, realtime: updated });
+            if (!updated) return;
+            this.agentUpdated.emit({ agent: this.chatAgent.agent, realtime: updated });
         });
     }
 }

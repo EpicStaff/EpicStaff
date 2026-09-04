@@ -3,7 +3,6 @@ import { FullRealtimeConfigService } from '@shared/services';
 
 import {
     ChatAgent,
-    ChatAgentKind,
     chatAgentRealtimeConfigId,
     chatAgentTitle,
     ChatAgentVM,
@@ -17,8 +16,6 @@ export class ChatsService {
 
     private selectedChatAgent = signal<ChatAgent | null>(null);
 
-    readonly activeTab = signal<ChatAgentKind>('staff');
-
     readonly selectedChatAgent$ = computed(() => this.selectedChatAgent());
 
     readonly selectedAgentVM$ = computed<ChatAgentVM | null>(() => {
@@ -29,14 +26,7 @@ export class ChatsService {
         let modelName: string | null = null;
         let customName: string | null = null;
 
-        if (sel.kind === 'staff') {
-            const rt = sel.agent.realtime_agent;
-            const slot = rt?.openai_config ?? rt?.elevenlabs_config ?? rt?.gemini_config ?? null;
-            if (slot != null && typeof slot === 'object') {
-                modelName = slot.model_name ?? null;
-                customName = slot.custom_name ?? null;
-            }
-        } else if (realtimeConfigId != null) {
+        if (realtimeConfigId != null) {
             const full =
                 this.fullRealtimeConfigService.fullRealtimeConfigs().find((c) => c.id === realtimeConfigId) ?? null;
             modelName = full?.modelDetails?.name ?? null;
@@ -44,7 +34,6 @@ export class ChatsService {
         }
 
         return {
-            kind: sel.kind,
             id: sel.agent.id,
             title: chatAgentTitle(sel),
             realtimeConfigId,
@@ -55,9 +44,5 @@ export class ChatsService {
 
     setSelectedChatAgent(agent: ChatAgent | null): void {
         this.selectedChatAgent.set(agent);
-    }
-
-    setActiveTab(tab: ChatAgentKind): void {
-        this.activeTab.set(tab);
     }
 }

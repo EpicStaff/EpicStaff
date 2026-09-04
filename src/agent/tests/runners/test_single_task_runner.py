@@ -336,6 +336,7 @@ async def test_output_schema_no_tools_skips_plain_loop():
     assert len(emitter.finals) == 1
     final = emitter.finals[0]
     assert json.loads(final.final_text) == {"x": "result"}
+    assert final.structured_output == {"x": "result"}
     assert final.stop_reason == "schema_satisfied"
     # Enforcer uses 1 loop call; the plain loop is never called
     assert answer_loop.call_count == 1
@@ -372,6 +373,7 @@ async def test_output_schema_with_tools_runs_loop_then_enforces():
     assert len(emitter.finals) == 1
     final = emitter.finals[0]
     assert json.loads(final.final_text) == {"y": 42}
+    assert final.structured_output == {"y": 42}
     assert final.stop_reason == "schema_satisfied"
     # Total token usage = plain_usage + enforce_usage
     assert final.token_usage.prompt_tokens == 8
@@ -422,6 +424,7 @@ async def test_no_output_schema_uses_single_plain_loop():
 
     assert emitter.errors == []
     assert emitter.finals == [CANNED_RESULT]
+    assert emitter.finals[0].structured_output is None
     assert len(fake_loop.received_messages) == 1
 
 

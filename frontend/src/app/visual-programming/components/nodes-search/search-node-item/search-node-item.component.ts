@@ -8,7 +8,6 @@ import {
     AgentNodeModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     TaskNodeModel,
     ToolNodeModel,
@@ -183,8 +182,6 @@ export class SearchNodeItemComponent {
                 return 'Start';
             case NodeType.AGENT:
                 return (this.node as AgentNodeModel).data?.name || this.node.node_name;
-            case NodeType.PROJECT:
-                return (this.node as ProjectNodeModel).data?.name || this.node.node_name;
             case NodeType.TASK:
                 return (this.node as TaskNodeModel).data?.name || this.node.node_name;
             case NodeType.PYTHON:
