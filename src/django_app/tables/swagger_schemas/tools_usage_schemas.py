@@ -27,13 +27,21 @@ def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> d
         summary=f"{model_name} usage aggregation",
         description=(
             f"Returns raw usage counts for `{model_name}` rows visible to the "
-            "active org. For each tool: `projects_count` (distinct "
-            "Crews/Projects with a Task using the tool — derived from "
-            "Task-level tool usage, not Agent membership), `staff_count` "
-            "(distinct Agents referencing the tool), and `is_built_in` so "
-            "the FE can gate orphan-highlighting on `!is_built_in`. Does not "
-            "exclude built-in or orphaned rows itself and does not return "
-            "reference detail lists — counts only.\n\n"
+            "active org, computed against the agents domain "
+            "(`AgentDefinition` + `Surface`). For each tool: `agents_count` "
+            "(distinct `AgentDefinition`s reached through an allow-mode "
+            "surface attachment — either as the surface's owner, via an "
+            "`AgentDefaultSurface` assignment, or via a direct "
+            "`TaskNode`/`AgentNode` surface attachment), `surfaces_count` (distinct "
+            "surface/flow-node attachments across catalog surfaces, "
+            "task-node inline surfaces, and agent-node inline surfaces), and "
+            "`is_built_in` so the FE can gate orphan-highlighting on "
+            "`!is_built_in`. `mode=\"deny\"` attachments never count. Note: "
+            "task-node/agent-node inline surfaces count toward "
+            "`surfaces_count` but never toward `agents_count` — those "
+            "surfaces belong to a flow node, not to any `AgentDefinition`. "
+            "Does not exclude built-in or orphaned rows itself and does not "
+            "return reference detail lists — counts only.\n\n"
             "Optional `ids` in the request body: a list of numeric ids to "
             "scope the response to only those tools, e.g. after the FE "
             "paginates its own tools list. Omitted or empty returns all rows "
@@ -51,8 +59,8 @@ def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> d
                         value=[
                             {
                                 "id": example_id,
-                                "projects_count": 1,
-                                "staff_count": 0,
+                                "agents_count": 1,
+                                "surfaces_count": 0,
                                 "is_built_in": False,
                             },
                         ],
@@ -74,22 +82,34 @@ def _usage_detail_get_schema(*, model_name: str) -> dict:
     return dict(
         summary=f"{model_name} usage detail ('Where is this used?')",
         description=(
-            f"Returns the actual referencing Projects (Crews) and Staff "
-            f"(Agents) for a single `{model_name}`, identified by its id in "
-            "the URL — the same agent/task traversal as the usage "
-            "aggregation endpoint but returning ids + names instead of "
-            "counts. Does not exclude built-in tools."
+            f"Returns the actual referencing Agents and Surfaces for a "
+            f"single `{model_name}`, identified by its id in the URL — the "
+            "same agents-domain traversal as the usage aggregation endpoint "
+            "but returning ids + names instead of counts. `surfaces` mixes "
+            "two kinds: `kind=\"surface\"` entries (a catalog `Surface`) and "
+            "`kind=\"flow_node\"` entries (a `TaskNode`/`AgentNode` inline "
+            "surface, `id` is the owning graph's id). `flow_node` entries "
+            "appear in `surfaces` but never contribute to `agents` — those "
+            "surfaces belong to a flow node, not to any `AgentDefinition`. "
+            "Does not exclude built-in tools."
         ),
         responses={
             200: OpenApiResponse(
                 response=ToolUsageDetailSerializer(),
-                description="Projects and staff referencing the tool",
+                description="Agents and surfaces referencing the tool",
                 examples=[
                     OpenApiExample(
                         "Usage detail",
                         value={
-                            "projects": [{"id": 12, "name": "My Project"}],
-                            "staff": [{"id": 5, "role": "Researcher"}],
+                            "agents": [{"id": 12, "name": "Researcher"}],
+                            "surfaces": [
+                                {"id": 5, "name": "Research Bundle", "kind": "surface"},
+                                {
+                                    "id": 8,
+                                    "name": "My Flow - task_node_3",
+                                    "kind": "flow_node",
+                                },
+                            ],
                         },
                         response_only=True,
                     ),

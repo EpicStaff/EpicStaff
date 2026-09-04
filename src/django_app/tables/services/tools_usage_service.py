@@ -1,35 +1,71 @@
-"""Aggregates per-tool usage counts (staff/projects) for the Tools page's
-opt-in "Show usage & orphans" view (EST-3264), plus the per-tool reference
-DETAIL lookup (EST-3270) for the "Where is this used?" modal.
+"""Aggregates per-tool usage counts (agents/surfaces) for the Tools page's, plus the per-tool reference
+DETAIL lookup for the "Where is this used?" modal.
+
+Note: `InlineSurface`/`AgentInlineSurface` entries count toward `surfaces_count`/
+`surfaces` but are deliberately excluded from `agents_count`/`agents` — see the
+comment above `_agents_by_tool`'s reachability-path merge for why.
+
+- Catalog `Surface` (via `SurfacePythonTool`/`SurfaceMcpTool`) — reached by an
+  `AgentDefinition` as the surface's `owner_agent` (agent-specific surface),
+  or — for a shared surface (`owner_agent` null) — via an
+  `AgentDefaultSurface` assignment OR a direct `TaskNode.surface_list`/
+  `AgentNode.surface_list` M2M attachment on a node whose `agent_definition`
+  is set. All three are independent, additive reachability paths for the
+  same catalog surface (see `surface-tool-attachment-contract` in
+  `wiki/topics/agent-definitions.md`).
+- `InlineSurface` on a `TaskNode` (via `InlineSurfacePythonTool`/
+  `InlineSurfaceMcpTool`).
+- `AgentInlineSurface` on an `AgentNode` (via
+  `AgentInlineSurfacePythonTool`/`AgentInlineSurfaceMcpTool`).
+
+`mode="deny"` rows never count as usage — a deny row exists to *suppress* a
+tool, so counting it would invert its meaning.
 
 Deliberately query-shaped as a small, fixed number of bulk queries + Python
-set merging (rather than annotate()-ing multiple Count(distinct=True)
+set/dict merging (rather than annotate()-ing multiple Count(distinct=True)
 aggregates in one query, which silently multiplies rows across independent
 reverse joins) and rather than a per-tool query loop.
 
 Split per tool kind (python-code-tool / mcp-tool) rather than dispatched
-through a shared `unique_name` prefix — each kind now has its own
-usage/usage-detail actions on its own ViewSet (EST-3207 follow-up: Tools
-Redesign), scoped to plain numeric ids instead of `<prefix>:<id>` strings.
+through a shared `unique_name` prefix — each kind has its own usage/
+usage-detail actions on its own ViewSet, scoped to plain numeric ids instead
+of `<prefix>:<id>` strings.
 """
 
 from collections import defaultdict
 
 from django.db.models import Q
 
-from tables.models import (
-    Agent,
-    AgentMcpTools,
-    AgentPythonCodeTools,
-    AgentPythonCodeToolConfigs,
-    Crew,
-    McpTool,
-    PythonCodeTool,
-    Task,
-    TaskMcpTools,
-    TaskPythonCodeTools,
-    TaskPythonCodeToolConfigs,
+from agents.models import (
+    AgentDefaultSurface,
+    AgentDefinition,
+    AgentInlineSurfaceMcpTool,
+    AgentInlineSurfacePythonTool,
+    InlineSurfaceMcpTool,
+    InlineSurfacePythonTool,
+    SurfaceMcpTool,
+    SurfacePythonTool,
+    ToolMode,
 )
+from tables.models import McpTool, PythonCodeTool
+from tables.models.graph_models import AgentNode, TaskNode
+
+_CATALOG_TOOL_MODEL = {
+    PythonCodeTool: SurfacePythonTool,
+    McpTool: SurfaceMcpTool,
+}
+_TASK_INLINE_TOOL_MODEL = {
+    PythonCodeTool: InlineSurfacePythonTool,
+    McpTool: InlineSurfaceMcpTool,
+}
+_AGENT_INLINE_TOOL_MODEL = {
+    PythonCodeTool: AgentInlineSurfacePythonTool,
+    McpTool: AgentInlineSurfaceMcpTool,
+}
+_TOOL_FIELD = {
+    PythonCodeTool: "python_tool_id",
+    McpTool: "mcp_tool_id",
+}
 
 
 class ToolNotFoundError(Exception):
@@ -56,12 +92,7 @@ def _get_python_code_tool_usage(org_id: int, id_q: dict) -> list[dict]:
             Q(built_in=True) | Q(org_id=org_id), **id_q
         ).values_list("id", "built_in")
     )
-    return _get_tool_usage(
-        org_id,
-        tool_built_in=tool_built_in,
-        agents_by_tool_fn=_python_tool_agents_by_tool,
-        tasks_by_tool_fn=_python_tool_tasks_by_tool,
-    )
+    return _get_tool_usage(org_id, tool_built_in, PythonCodeTool)
 
 
 def _get_mcp_tool_usage(org_id: int, id_q: dict) -> list[dict]:
@@ -69,97 +100,193 @@ def _get_mcp_tool_usage(org_id: int, id_q: dict) -> list[dict]:
         McpTool.objects.filter(org_id=org_id, **id_q).values_list("id", flat=True),
         False,
     )
-    return _get_tool_usage(
-        org_id,
-        tool_built_in=tool_built_in,
-        agents_by_tool_fn=_mcp_tool_agents_by_tool,
-        tasks_by_tool_fn=_mcp_tool_tasks_by_tool,
-    )
+    return _get_tool_usage(org_id, tool_built_in, McpTool)
 
 
 def _get_tool_usage(
     org_id: int,
     tool_built_in: dict[int, bool],
-    agents_by_tool_fn,
-    tasks_by_tool_fn,
+    tool_class: type,
 ) -> list[dict]:
     """Shared aggregation body for `_get_python_code_tool_usage`/
     `_get_mcp_tool_usage`: given the per-kind `{tool_id: is_built_in}` map
-    (already scoped/filtered by the caller) and the kind's own
-    agents-by-tool/tasks-by-tool join functions, builds the usage rows."""
+    (already scoped/filtered by the caller), builds the usage rows."""
     tool_ids = list(tool_built_in.keys())
 
-    agents_by_tool = agents_by_tool_fn(org_id, tool_ids)
-    tasks_by_tool = tasks_by_tool_fn(org_id, tool_ids)
-    task_crews = _task_crew_map(org_id, _all_task_ids(tasks_by_tool))
+    agents_by_tool = _agents_by_tool(org_id, tool_ids, tool_class)
+    surfaces_by_tool = _surfaces_by_tool(org_id, tool_ids, tool_class)
 
     return _build_rows(
         tool_ids,
         agents_by_tool,
-        tasks_by_tool,
-        task_crews,
+        surfaces_by_tool,
         is_built_in=lambda tool_id: tool_built_in.get(tool_id, False),
     )
 
 
-def _python_tool_agents_by_tool(
-    org_id: int, tool_ids: list[int]
+def _agents_by_tool(
+    org_id: int, tool_ids: list[int], tool_class: type
 ) -> dict[int, set[int]]:
-    """Python-code tools merge two join paths (direct + via config)."""
-    python_agents = _pairs_by_tool(
-        AgentPythonCodeTools.objects.filter(
-            agent__org_id=org_id, pythoncodetool_id__in=tool_ids
-        ).values_list("pythoncodetool_id", "agent_id")
+    """Distinct `AgentDefinition` ids reached through an allow-mode catalog
+    surface attachment for each tool id, merging three reachability paths:
+    the surface's own `owner_agent` (agent-specific surface) and, for a
+    shared surface (`owner_agent` null), every `AgentDefinition` it's
+    assigned to via `AgentDefaultSurface` OR attached to directly through a
+    `TaskNode.surface_list`/`AgentNode.surface_list` M2M row (an independent
+    attachment mechanism used at runtime by
+    `agents.services.node_surface_service.build_combined_surface`). Deduped
+    by agent id.
+
+    Deliberately excludes `InlineSurface`/`AgentInlineSurface` entries: those
+    surfaces belong to a flow node (`TaskNode`/`AgentNode`), not to any
+    `AgentDefinition`, so they don't represent agent-reachability even
+    though they DO count toward `surfaces_count`/`surfaces` (see
+    `_surfaces_by_tool`)."""
+    catalog_model = _CATALOG_TOOL_MODEL[tool_class]
+    tool_field = _TOOL_FIELD[tool_class]
+
+    rows = list(
+        catalog_model.objects.filter(
+            mode=ToolMode.ALLOW,
+            surface__organization_id=org_id,
+            **{f"{tool_field}__in": tool_ids},
+        ).values_list(tool_field, "surface_id", "surface__owner_agent_id")
     )
-    _merge_pairs_by_tool(
-        python_agents,
-        AgentPythonCodeToolConfigs.objects.filter(
-            agent__org_id=org_id,
-            pythoncodetoolconfig__tool_id__in=tool_ids,
-        ).values_list("pythoncodetoolconfig__tool_id", "agent_id"),
+    if not rows:
+        return {}
+
+    agents_by_tool: dict[int, set[int]] = defaultdict(set)
+    surface_ids_by_tool: dict[int, set[int]] = defaultdict(set)
+    all_surface_ids: set[int] = set()
+    for tool_id, surface_id, owner_agent_id in rows:
+        surface_ids_by_tool[tool_id].add(surface_id)
+        all_surface_ids.add(surface_id)
+        if owner_agent_id is not None:
+            agents_by_tool[tool_id].add(owner_agent_id)
+
+    agents_by_surface: dict[int, set[int]] = defaultdict(set)
+    for surface_id, agent_id in AgentDefaultSurface.objects.filter(
+        surface_id__in=all_surface_ids,
+        agent_definition__organization_id=org_id,
+    ).values_list("surface_id", "agent_definition_id"):
+        agents_by_surface[surface_id].add(agent_id)
+
+    for surface_id, agent_id in TaskNode.objects.filter(
+        surface_list__id__in=all_surface_ids,
+        agent_definition_id__isnull=False,
+        graph__org_id=org_id,
+    ).values_list("surface_list__id", "agent_definition_id"):
+        agents_by_surface[surface_id].add(agent_id)
+
+    for surface_id, agent_id in AgentNode.objects.filter(
+        surface_list__id__in=all_surface_ids,
+        agent_definition_id__isnull=False,
+        graph__org_id=org_id,
+    ).values_list("surface_list__id", "agent_definition_id"):
+        agents_by_surface[surface_id].add(agent_id)
+
+    for tool_id, surface_ids in surface_ids_by_tool.items():
+        for surface_id in surface_ids:
+            agents_by_tool[tool_id].update(agents_by_surface.get(surface_id, ()))
+
+    return agents_by_tool
+
+
+def _surfaces_by_tool(
+    org_id: int, tool_ids: list[int], tool_class: type
+) -> dict[int, list[dict]]:
+    """Distinct surface/flow-node entries across the three attachment
+    families for each tool id. Unlike `_agents_by_tool`, entries are NOT
+    deduped across families/rows — each through-row is its own distinct
+    surface or node (at most one row per `(owner, tool)` per the model's
+    `UniqueConstraint`)."""
+    surfaces_by_tool: dict[int, list[dict]] = defaultdict(list)
+    for entries_by_tool in (
+        _catalog_surface_entries_by_tool(org_id, tool_ids, tool_class),
+        _task_inline_surface_entries_by_tool(org_id, tool_ids, tool_class),
+        _agent_inline_surface_entries_by_tool(org_id, tool_ids, tool_class),
+    ):
+        for tool_id, entries in entries_by_tool.items():
+            surfaces_by_tool[tool_id].extend(entries)
+    return surfaces_by_tool
+
+
+def _catalog_surface_entries_by_tool(
+    org_id: int, tool_ids: list[int], tool_class: type
+) -> dict[int, list[dict]]:
+    catalog_model = _CATALOG_TOOL_MODEL[tool_class]
+    tool_field = _TOOL_FIELD[tool_class]
+
+    rows = catalog_model.objects.filter(
+        mode=ToolMode.ALLOW,
+        surface__organization_id=org_id,
+        **{f"{tool_field}__in": tool_ids},
+    ).values_list(tool_field, "surface_id", "surface__name")
+
+    entries_by_tool: dict[int, list[dict]] = defaultdict(list)
+    for tool_id, surface_id, surface_name in rows:
+        entries_by_tool[tool_id].append(
+            {"kind": "surface", "id": surface_id, "name": surface_name}
+        )
+    return entries_by_tool
+
+
+def _task_inline_surface_entries_by_tool(
+    org_id: int, tool_ids: list[int], tool_class: type
+) -> dict[int, list[dict]]:
+    inline_model = _TASK_INLINE_TOOL_MODEL[tool_class]
+    tool_field = _TOOL_FIELD[tool_class]
+
+    rows = inline_model.objects.filter(
+        mode=ToolMode.ALLOW,
+        inline_surface__task_node__graph__org_id=org_id,
+        **{f"{tool_field}__in": tool_ids},
+    ).values_list(
+        tool_field,
+        "inline_surface__task_node__graph_id",
+        "inline_surface__task_node__graph__name",
+        "inline_surface__task_node__node_name",
     )
-    return python_agents
+
+    entries_by_tool: dict[int, list[dict]] = defaultdict(list)
+    for tool_id, graph_id, graph_name, node_name in rows:
+        entries_by_tool[tool_id].append(
+            {
+                "kind": "flow_node",
+                "id": graph_id,
+                "name": f"{graph_name} - {node_name}",
+            }
+        )
+    return entries_by_tool
 
 
-def _mcp_tool_agents_by_tool(org_id: int, tool_ids: list[int]) -> dict[int, set[int]]:
-    return _pairs_by_tool(
-        AgentMcpTools.objects.filter(
-            agent__org_id=org_id, mcptool_id__in=tool_ids
-        ).values_list("mcptool_id", "agent_id")
+def _agent_inline_surface_entries_by_tool(
+    org_id: int, tool_ids: list[int], tool_class: type
+) -> dict[int, list[dict]]:
+    agent_inline_model = _AGENT_INLINE_TOOL_MODEL[tool_class]
+    tool_field = _TOOL_FIELD[tool_class]
+
+    rows = agent_inline_model.objects.filter(
+        mode=ToolMode.ALLOW,
+        agent_inline_surface__agent_node__graph__org_id=org_id,
+        **{f"{tool_field}__in": tool_ids},
+    ).values_list(
+        tool_field,
+        "agent_inline_surface__agent_node__graph_id",
+        "agent_inline_surface__agent_node__graph__name",
+        "agent_inline_surface__agent_node__node_name",
     )
 
-
-def _python_tool_tasks_by_tool(org_id: int, tool_ids: list[int]) -> dict[int, set[int]]:
-    """Python-code tools merge two join paths (direct + via config), mirroring
-    `_python_tool_agents_by_tool`."""
-    python_tasks = _pairs_by_tool(
-        TaskPythonCodeTools.objects.filter(
-            task__crew__org_id=org_id, tool_id__in=tool_ids
-        ).values_list("tool_id", "task_id")
-    )
-    _merge_pairs_by_tool(
-        python_tasks,
-        TaskPythonCodeToolConfigs.objects.filter(
-            task__crew__org_id=org_id,
-            tool__tool_id__in=tool_ids,
-        ).values_list("tool__tool_id", "task_id"),
-    )
-    return python_tasks
-
-
-def _mcp_tool_tasks_by_tool(org_id: int, tool_ids: list[int]) -> dict[int, set[int]]:
-    return _pairs_by_tool(
-        TaskMcpTools.objects.filter(
-            task__crew__org_id=org_id, tool_id__in=tool_ids
-        ).values_list("tool_id", "task_id")
-    )
-
-
-def _all_task_ids(tasks_by_tool: dict[int, set[int]]) -> set[int]:
-    all_task_ids: set[int] = set()
-    for task_ids in tasks_by_tool.values():
-        all_task_ids.update(task_ids)
-    return all_task_ids
+    entries_by_tool: dict[int, list[dict]] = defaultdict(list)
+    for tool_id, graph_id, graph_name, node_name in rows:
+        entries_by_tool[tool_id].append(
+            {
+                "kind": "flow_node",
+                "id": graph_id,
+                "name": f"{graph_name} - {node_name}",
+            }
+        )
+    return entries_by_tool
 
 
 def _python_tool_exists(tool_id: int, org_id: int) -> bool:
@@ -183,36 +310,28 @@ def _tool_exists(model: type, tool_id: int, visibility_q: Q) -> bool:
 
 def get_python_code_tool_usage_detail(tool_id: int, org_id: int) -> dict:
     """Return the "Where is this used?" detail for a single `PythonCodeTool`:
-    `{"projects": [{"id", "name"}, ...], "staff": [{"id", "role"}, ...]}`.
-
-    `staff` are the Agents referencing the tool directly (Agent-level join).
-    `projects` are the distinct Crews (the FE "Project") reached from the
-    tool's *Tasks* (Task-level join, via each Task's direct `crew` FK) — NOT
-    derived from Agent/Crew membership, since that would make `projects`
-    trivially correlated with `staff` (EST-3207 design fix; see module
-    docstring). Raises `ToolNotFoundError` if the tool doesn't exist / isn't
-    visible to `org_id`.
+    `{"agents": [{"id", "name"}, ...], "surfaces": [{"id", "name", "kind"}, ...]}`.
+    Raises `ToolNotFoundError` if the tool doesn't exist / isn't visible to
+    `org_id`.
     """
     return _get_tool_usage_detail(
         tool_id,
         org_id,
         exists_fn=_python_tool_exists,
-        agents_by_tool_fn=_python_tool_agents_by_tool,
-        tasks_by_tool_fn=_python_tool_tasks_by_tool,
+        tool_class=PythonCodeTool,
         not_found_message=f"python-code-tool:{tool_id} not found",
     )
 
 
 def get_mcp_tool_usage_detail(tool_id: int, org_id: int) -> dict:
     """MCP-tool counterpart of `get_python_code_tool_usage_detail`. See its
-    docstring for the `projects`/`staff` semantics (unchanged for MCP tools).
+    docstring for the `agents`/`surfaces` semantics (unchanged for MCP tools).
     """
     return _get_tool_usage_detail(
         tool_id,
         org_id,
         exists_fn=_mcp_tool_exists,
-        agents_by_tool_fn=_mcp_tool_agents_by_tool,
-        tasks_by_tool_fn=_mcp_tool_tasks_by_tool,
+        tool_class=McpTool,
         not_found_message=f"mcp-tool:{tool_id} not found",
     )
 
@@ -221,74 +340,41 @@ def _get_tool_usage_detail(
     tool_id: int,
     org_id: int,
     exists_fn,
-    agents_by_tool_fn,
-    tasks_by_tool_fn,
+    tool_class: type,
     not_found_message: str,
 ) -> dict:
     """Shared body for `get_python_code_tool_usage_detail`/
-    `get_mcp_tool_usage_detail`: existence check + agent/task join lookups +
-    projects/staff shaping, parameterized on the kind's own exists-check and
-    agents-by-tool/tasks-by-tool functions."""
+    `get_mcp_tool_usage_detail`: existence check + agent/surface lookups,
+    parameterized on the kind's own exists-check and tool_class."""
     if not exists_fn(tool_id, org_id):
         raise ToolNotFoundError(not_found_message)
 
-    agent_ids = agents_by_tool_fn(org_id, [tool_id]).get(tool_id, set())
-    staff = list(Agent.objects.filter(id__in=agent_ids).values("id", "role"))
-
-    task_ids = tasks_by_tool_fn(org_id, [tool_id]).get(tool_id, set())
-    task_crews = _task_crew_map(org_id, task_ids)
-    projects = list(
-        Crew.objects.filter(id__in=set(task_crews.values())).values("id", "name")
+    agent_ids = _agents_by_tool(org_id, [tool_id], tool_class).get(tool_id, set())
+    agents = list(
+        AgentDefinition.objects.filter(
+            id__in=agent_ids, organization_id=org_id
+        ).values("id", "name")
     )
-    return {"projects": projects, "staff": staff}
 
-
-def _pairs_by_tool(pairs) -> dict[int, set[int]]:
-    by_tool: dict[int, set[int]] = defaultdict(set)
-    for tool_id, value_id in pairs:
-        by_tool[tool_id].add(value_id)
-    return by_tool
-
-
-def _merge_pairs_by_tool(by_tool: dict[int, set[int]], pairs) -> None:
-    for tool_id, value_id in pairs:
-        by_tool.setdefault(tool_id, set()).add(value_id)
-
-
-def _task_crew_map(org_id: int, task_ids: set[int]) -> dict[int, int]:
-    """Map each relevant task id to its (single) Crew id, scoped to
-    `org_id`. `Task.crew` is a direct, single-valued FK (unlike
-    Agent<->Crew, which is many-valued), so this is a plain
-    `{task_id: crew_id}` dict, not a dict of sets."""
-    if not task_ids:
-        return {}
-
-    return dict(
-        Task.objects.filter(id__in=task_ids, crew__org_id=org_id).values_list(
-            "id", "crew_id"
-        )
-    )
+    surfaces = _surfaces_by_tool(org_id, [tool_id], tool_class).get(tool_id, [])
+    return {"agents": agents, "surfaces": surfaces}
 
 
 def _build_rows(
     tool_ids: list[int],
     agents_by_tool: dict[int, set[int]],
-    tasks_by_tool: dict[int, set[int]],
-    task_crews: dict[int, int],
+    surfaces_by_tool: dict[int, list[dict]],
     is_built_in,
 ) -> list[dict]:
     rows: list[dict] = []
     for tool_id in tool_ids:
         agent_ids = agents_by_tool.get(tool_id, set())
-        task_ids = tasks_by_tool.get(tool_id, set())
-        crew_ids = {
-            task_crews[task_id] for task_id in task_ids if task_id in task_crews
-        }
+        surfaces = surfaces_by_tool.get(tool_id, [])
         rows.append(
             {
                 "id": tool_id,
-                "projects_count": len(crew_ids),
-                "staff_count": len(agent_ids),
+                "agents_count": len(agent_ids),
+                "surfaces_count": len(surfaces),
                 "is_built_in": bool(is_built_in(tool_id)),
             }
         )

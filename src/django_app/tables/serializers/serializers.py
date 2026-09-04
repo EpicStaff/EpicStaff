@@ -11,26 +11,25 @@ from tables.import_export.services.partial_export_service import (
 
 class ToolUsageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    projects_count = serializers.IntegerField()
-    staff_count = serializers.IntegerField()
+    agents_count = serializers.IntegerField()
+    surfaces_count = serializers.IntegerField()
     is_built_in = serializers.BooleanField()
 
 
-class ToolUsageProjectSerializer(serializers.Serializer):
+class ToolUsageAgentSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
 
 
-class ToolUsageStaffSerializer(serializers.Serializer):
-    # Agent has no `name` field — `role` is its display identity
-    # (see tables.models.crew_models.Agent.__str__).
+class ToolUsageSurfaceSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    role = serializers.CharField()
+    name = serializers.CharField()
+    kind = serializers.CharField()
 
 
 class ToolUsageDetailSerializer(serializers.Serializer):
-    projects = ToolUsageProjectSerializer(many=True)
-    staff = ToolUsageStaffSerializer(many=True)
+    agents = ToolUsageAgentSerializer(many=True)
+    surfaces = ToolUsageSurfaceSerializer(many=True)
 
 
 class RunSessionSerializer(serializers.Serializer):
