@@ -26,7 +26,6 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
     class Meta:
         model = EmbeddingModel
-        # Explicit rather than "__all__" — see LLMModelSerializer.
         fields = [
             "id",
             "name",
