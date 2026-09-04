@@ -5,6 +5,16 @@ closed. The audit's frontend items were an end-of-life Angular runtime (B‑01) 
 advisories in the build toolchain (H‑05). Both are addressed by moving off Angular 19 and
 regenerating the dependency tree.
 
+The counts here are larger than the audit's because they are counted differently, not
+because the scope grew. The audit reported 48 build-toolchain advisories; measuring on
+`c2472d77b` gives 61 build-time advisories out of 114 total. Two causes: `npm audit` groups
+findings by affected package while this document counts distinct GHSA identifiers, and the
+advisory database moved between the audit and the measurement. Of the eleven packages the
+audit named individually, nine appear in the before-state advisory inventory; the remaining
+two, `serialize-javascript` and `node-forge`, were present in the lockfile at `c2472d77b`
+but carried no advisory at measurement time. Both are gone from the tree now, having arrived
+through the webpack toolchain that this work removed.
+
 Scope is the `frontend/` workspace only. Backend and Python lockfiles are tracked
 separately.
 
@@ -112,6 +122,24 @@ Four `overrides` entries are required and cannot be removed. The first was neede
 upgrade itself: `monaco-editor` pins `dompurify@3.2.7`, which is vulnerable, and moving monaco
 to 0.56.0 does not help because it pins 3.4.8. The override forces `^3.4.14`.
 
+Worth stating because the audit assumed otherwise: `npm audit fix` does not clear this one,
+and `--force` actively misleads. It proposes monaco 0.56.0, which pins the equally vulnerable
+3.4.8, so the command reports progress while the advisory stays. `overrides` is the only
+mechanism that works here.
+
+The audit also attributed the two critical build-time advisories, `websocket-driver` and
+`shell-quote`, to the Karma stack. That attribution is wrong: both arrived through
+`webpack-dev-server`, pulled in by `@angular-devkit/build-angular`, and removing that package
+in the first commit cleared both while Karma was still installed.
+
+Karma's own contribution was measured directly, by resolving the `d7338534d` state twice,
+once with the seven Karma and Jasmine packages and once without: 32 findings against 30, the
+difference being two moderate advisories in `body-parser` and `qs` reached through
+`karma`'s own Express server. So Karma was not the source of anything critical, and it was
+left in place for the first commit — the `unit-test` builder that replaces it does not exist
+before v22. It was removed in the upgrade commit instead, which is where Vitest became
+available.
+
 The other three were added later, when `main` was merged back into the branch — see
 Advisories published after the measurement.
 
@@ -170,6 +198,15 @@ advisory, so there was no security reason to move them. The coupling is one-dire
 ag-grid 36 requires Angular ≥ 20, but Angular 22 does not require ag-grid 36 — and putting
 three grid majors in the same commit as the framework upgrade would have made a regression
 impossible to attribute. Both have since been taken as separate steps, described below.
+
+This is a deliberate departure from the audit, which asked for the coupled majors to move in
+the same pass. Taking them separately is what made one defect attributable at all. ag-grid 36
+restructured its internal DOM, and `.ag-body-viewport` — read through a runtime
+`querySelector`, not an import — stopped existing. On `null` the calling code took a correct
+early return, so the column-group collapse chevrons in the classification decision table
+would simply have been absent: no crash, no console output, no compiler error. Inside a
+combined commit that symptom would have had the framework upgrade, three grid majors and the
+Material re-theming as candidate causes.
 
 ## Deferred at the time of the upgrade, none of it required by it
 
