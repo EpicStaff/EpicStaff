@@ -56,6 +56,7 @@ _GRAPH_RELATION_NAMES = (
     "graph_note_list",
     "agent_node_list",
     "task_node_list",
+    "knowledge_node_list",
     "edge_list",
     "conditional_edge_list",
 )

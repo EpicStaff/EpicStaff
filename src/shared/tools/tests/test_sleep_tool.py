@@ -82,7 +82,7 @@ class TestSleepToolClamping:
         assert not result.startswith("Error")
 
     def test_max_seconds_passed_as_stray_kwarg_is_absorbed_and_global_wins(self, mock_sleep):
-        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        """Regression test (smoke test): python_code.global_kwargs
         folds user_input config (max_seconds) into func_kwargs, so main()
         may also receive it as a kwarg. The global remains the source of
         truth; the stray kwarg must be swallowed by **kwargs without a

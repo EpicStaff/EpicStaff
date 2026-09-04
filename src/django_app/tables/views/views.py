@@ -4,18 +4,12 @@ from collections import defaultdict
 import uuid
 import base64
 from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
-from tables.services.webhook_trigger_service import WebhookTriggerService
-from tables.models.graph_models import TelegramTriggerNode
-from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.serializers.model_serializers import TelegramTriggerNodeDataFieldsSerializer
 
-from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
-    TelegramTriggerNode,
     PythonNode,
     GraphSessionMessage,
 )
-from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
@@ -78,7 +72,6 @@ from tables.serializers.serializers import (
     NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
-    RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
@@ -143,9 +136,7 @@ from tables.swagger_schemas.sessions_schema import (
 )
 from tables.swagger_schemas.telegram_schemas import (
     TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET,
-    REGISTER_TELEGRAM_TRIGGER_POST,
 )
-from tables.swagger_schemas.webhook_schemas import REGISTER_WEBHOOKS_POST
 from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
 from .default_config import *
 
@@ -644,7 +635,7 @@ class AnswerToLLM(APIView):
 
 
 class NotifyEmailView(APIView):
-    """EST-3285 4.8: sends a notification email via notification_tool
+    """sends a notification email via notification_tool
     (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
     EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
     parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
@@ -786,8 +777,7 @@ class InitRealtimeAPIView(APIView):
             # request.auth is only an ApiKey instance for API-key-authenticated
             # requests (see IsApiKeyAuthenticated / ApiKeyAuthentication).
             #
-            # Restricted to key_type=SYSTEM (same EST-3633 pattern as
-            # RealtimeChannelViewSet.lookup_by_token / IsSystemApiKeyAuthenticated):
+            # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it
             # would let any org member start a realtime session on ANY org's
             # agent (org is derived here from the agent's own row, with no
@@ -1092,41 +1082,6 @@ class TelegramTriggerNodeAvailableFieldsView(APIView):
         data = load_telegram_trigger_fields()
         serializer = TelegramTriggerNodeDataFieldsSerializer({"data": data})
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class RegisterTelegramTriggerApiView(APIView):
-    @extend_schema(**REGISTER_TELEGRAM_TRIGGER_POST)
-    def post(self, request):
-        serializer = RegisterTelegramTriggerSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
-            telegram_trigger_node_id = serializer.validated_data[
-                "telegram_trigger_node_id"
-            ]
-            telegram_trigger_node = TelegramTriggerNode.objects.filter(
-                pk=telegram_trigger_node_id
-            ).first()
-            if not telegram_trigger_node:
-                return Response(
-                    {"error": "TelegramTriggerNode not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            telegram_trigger_service = TelegramTriggerService()
-
-            telegram_trigger_service.register_telegram_trigger(
-                telegram_trigger_instance=telegram_trigger_node,
-                force=True,
-            )
-
-            return Response(status=status.HTTP_200_OK)
-
-
-class RegisterWebhooksApiView(APIView):
-    @extend_schema(**REGISTER_WEBHOOKS_POST)
-    def post(self, request):
-        webhook_trigger_service = WebhookTriggerService()
-        webhook_trigger_service.register_webhooks()
-        return Response(status=status.HTTP_200_OK)
 
 
 class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):

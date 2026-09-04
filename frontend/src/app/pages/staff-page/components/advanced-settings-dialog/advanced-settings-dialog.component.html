@@ -17,56 +17,99 @@
         >
         </app-icon-button>
     </div>
-    <div class="tabs">
-        @for (tab of tabs; track tab.id) {
-            <app-tab-button
-                mod="sm"
-                [active]="tab.id === activeTab()"
-                (click)="activeTab.set(tab.id)"
-            >
-                {{ tab.label }}
-            </app-tab-button>
-            @if (!$last) {
-                <div class="divider">/</div>
-            }
-        }
-    </div>
+    <form
+        [formGroup]="form"
+        class="body"
+    >
+        <div class="content">
+            <div>
+                <app-custom-input
+                    formControlName="role"
+                    label="Agent Role"
+                    placeholder="Enter agent role"
+                    tooltipText="Agent role"
+                    [required]="true"
+                />
+                <app-validation-errors [control]="form.get('role')!" />
+            </div>
 
-    <div class="scrollable-content">
-        <app-general-tab
-            class="tab-content"
-            [class.visible-tab]="activeTab() === TabId.GENERAL"
-            [form]="form"
-            [combinedLLMs]="combinedLLMs"
-            [loadingLLMs]="loadingLLMs()"
-        />
-        <app-rag-tab
-            class="tab-content"
-            [class.visible-tab]="activeTab() === TabId.RAG"
-            [form]="form"
-            [allKnowledgeSources]="allKnowledgeSources"
-            [agentRags]="agentRags"
-            [searchConfigs]="data.search_configs"
-            [loadingKnowledgeSources]="loadingKnowledgeSources()"
-            [loadingRags]="loadingRags()"
-        />
-        <!--    Might be used in the future-->
-        <!--    <app-llm-params-tab-->
-        <!--        class="tab-content"-->
-        <!--        [class.visible-tab]="activeTab() === TabId.LLM_PARAMS"-->
-        <!--        [form]="form"-->
-        <!--    />-->
-        <app-execution-tab
-            class="tab-content"
-            [class.visible-tab]="activeTab() === TabId.EXECUTION"
-            [form]="form"
-        />
-        <app-advanced-tab
-            class="tab-content"
-            [class.visible-tab]="activeTab() === TabId.ADVANCED"
-            [form]="form"
-        />
-    </div>
+            <div>
+                <app-textarea
+                    formControlName="goal"
+                    label="Goal"
+                    placeholder="Enter agent goal"
+                    tooltipText="Goal"
+                    [required]="true"
+                />
+                <app-validation-errors [control]="form.get('goal')!" />
+            </div>
+
+            <div>
+                <app-textarea
+                    formControlName="backstory"
+                    label="Backstory"
+                    placeholder="Enter agent backstory"
+                    tooltipText="Backstory"
+                    [required]="true"
+                />
+                <app-validation-errors [control]="form.get('backstory')!" />
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="tabs">
+                @for (tab of tabs; track tab.id) {
+                    <app-tab-button
+                        mod="sm"
+                        [active]="tab.id === activeTab()"
+                        (click)="activeTab.set(tab.id)"
+                    >
+                        {{ tab.label }}
+                    </app-tab-button>
+                    @if (!$last) {
+                        <div class="divider">/</div>
+                    }
+                }
+            </div>
+
+            <div class="scrollable-content">
+                <app-general-tab
+                    class="tab-content"
+                    [class.visible-tab]="activeTab() === TabId.GENERAL"
+                    [form]="form"
+                    [combinedLLMs]="combinedLLMs"
+                    [loadingLLMs]="loadingLLMs()"
+                    (mergedToolsChange)="onMergedToolsChange($event)"
+                />
+                <app-rag-tab
+                    class="tab-content"
+                    [class.visible-tab]="activeTab() === TabId.RAG"
+                    [form]="form"
+                    [allKnowledgeSources]="allKnowledgeSources"
+                    [agentRags]="agentRags"
+                    [searchConfigs]="data.search_configs"
+                    [loadingKnowledgeSources]="loadingKnowledgeSources()"
+                    [loadingRags]="loadingRags()"
+                />
+                <!--    Might be used in the future-->
+                <!--    <app-llm-params-tab-->
+                <!--        class="tab-content"-->
+                <!--        [class.visible-tab]="activeTab() === TabId.LLM_PARAMS"-->
+                <!--        [form]="form"-->
+                <!--    />-->
+                <app-execution-tab
+                    class="tab-content"
+                    [class.visible-tab]="activeTab() === TabId.EXECUTION"
+                    [form]="form"
+                />
+                <app-advanced-tab
+                    class="tab-content"
+                    [class.visible-tab]="activeTab() === TabId.ADVANCED"
+                    [form]="form"
+                />
+            </div>
+        </div>
+    </form>
 
     <!-- Action Buttons -->
     <div class="actions">
@@ -79,7 +122,7 @@
         <button
             class="btn-save"
             [disabled]="form.invalid"
-            (click)="save()"
+            (click)="save(true)"
         >
             Save Changes
         </button>

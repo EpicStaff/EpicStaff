@@ -16,7 +16,6 @@ export * from './llms/llm-provider.model';
 export * from './llms/transcription-config.model';
 export * from './realtime-voice/realtime-llm-config.model';
 export * from './realtime-voice/realtime-model.model';
-export * from './realtime-voice/voice-settings.model';
 export * from './role-based-access';
 export * from './RunCrewSession.model';
 export * from './secrets/secret.model';

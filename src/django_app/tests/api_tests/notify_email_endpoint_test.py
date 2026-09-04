@@ -1,6 +1,5 @@
 """
-Tests for POST /api/notify/email/ (EST-3285 item 4.8: notification_tool,
-channel='email'). Uses Django's mail test outbox (console/locmem backend)
+Tests for POST /api/notify/email/. Uses Django's mail test outbox (console/locmem backend)
 rather than mocking send_mail directly, since that's the standard Django way
 to assert on dispatched mail without touching a real SMTP server.
 """
@@ -108,9 +107,7 @@ def test_throttle_blocks_after_limit_and_sends_no_mail(auth_client, monkeypatch)
         NotifyEmailThrottle, "THROTTLE_RATES", {"notify_email": "2/hour"}
     )
 
-    with patch(
-        "tables.services.notification_email_sender.send_mail"
-    ) as mock_send_mail:
+    with patch("tables.services.notification_email_sender.send_mail") as mock_send_mail:
         for _ in range(2):
             resp = auth_client.post(
                 _url(),

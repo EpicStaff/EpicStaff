@@ -7,6 +7,8 @@ import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
 import { RealtimeChannel } from '../../../../shared/models/realtime-voice/realtime-channel.model';
 import { RealtimeChannelService } from '../../../../shared/services/realtime-channel.service';
+import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
+import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
 import { GetAgentRequest } from '../../../staff/models/agent.model';
 import { AgentsService } from '../../../staff/services/staff.service';
 import {
@@ -24,6 +26,7 @@ import {
 export class VoiceSettingsSectionComponent implements OnInit {
     private channelService = inject(RealtimeChannelService);
     private agentsService = inject(AgentsService);
+    private agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
     private toastService = inject(ToastService);
@@ -33,8 +36,12 @@ export class VoiceSettingsSectionComponent implements OnInit {
 
     channels = signal<RealtimeChannel[]>([]);
     private agents = signal<GetAgentRequest[]>([]);
+    private agentDefinitions = signal<AgentDefinition[]>([]);
 
     agentMap = computed<Map<number, string>>(() => new Map(this.agents().map((a) => [a.id, a.role])));
+    agentDefinitionMap = computed<Map<number, string>>(
+        () => new Map(this.agentDefinitions().map((d) => [d.id, d.name]))
+    );
 
     ngOnInit(): void {
         this.loadAll();
@@ -62,6 +69,11 @@ export class VoiceSettingsSectionComponent implements OnInit {
             .getAgentsWithRealtimeConfig()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ next: (agents) => this.agents.set(agents), error: () => {} });
+
+        this.agentDefinitionsApi
+            .getAgentDefinitions()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ next: (defs) => this.agentDefinitions.set(defs), error: () => {} });
     }
 
     getStreamUrl(channel: RealtimeChannel): string | null {

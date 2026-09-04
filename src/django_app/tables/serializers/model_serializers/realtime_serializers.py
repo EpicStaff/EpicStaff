@@ -154,6 +154,7 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
             "custom_name",
             "api_key_secret_id",
             "model_name",
+            "base_url",
             "transcription_model_name",
             "transcription_api_key_secret_id",
             "voice_recognition_prompt",
@@ -315,7 +316,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     never a logged-in user AND never a self-issued `key_type=USER` API key). That
     caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
     Twilio webhook requests. Do NOT reuse this serializer for any user-facing
-    endpoint — that would reopen the EST-3633 leak.
+    endpoint
 
     `TwilioChannel.auth_token` is now a Secret reference (`auth_token_secret`), so
     it must be resolved at the point of use rather than read as a plain model

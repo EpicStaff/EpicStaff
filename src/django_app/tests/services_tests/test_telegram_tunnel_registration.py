@@ -1,5 +1,5 @@
 """
-EST-1869: prefix-based exclusivity routing for webhook/telegram triggers has
+Prefix-based exclusivity routing for webhook/telegram triggers has
 been removed in favor of DB-driven fan-out. `WebhookTrigger`s no longer carry
 a `telegram-trigger/`-prefixed tunnel-registration name -- both
 `WebhookTriggerNode` and `TelegramTriggerNode` register and resolve under the
@@ -70,7 +70,7 @@ class _FakeRedis:
 
 @pytest.mark.django_db
 class TestTunnelRegistrationNameIsAlwaysBarePath:
-    """EST-1869: `tunnel_registration_name` was removed -- both converters
+    """`tunnel_registration_name` was removed -- both converters
     now always register the bare `WebhookTrigger.path`, regardless of which
     (or how many) trigger node types are attached."""
 
@@ -177,7 +177,7 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
     def test_trigger_attached_to_both_node_types_keeps_bare_tunnel_name(
         self, default_org
     ):
-        """New in EST-1869: dual-attach is now legitimate and must not
+        """Dual-attach is now legitimate and must not
         change the registered tunnel name either."""
         trigger = WebhookTrigger.objects.create(
             path="dual-path", provider_type=ProviderType.NGROK, org=default_org
@@ -224,7 +224,7 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
 
 @pytest.mark.django_db
 class TestRedisPubsubTelegramDispatch:
-    """EST-1869: `webhook_events_handler` fans a single inbound event out to
+    """`webhook_events_handler` fans a single inbound event out to
     both `WebhookTriggerService` and `TelegramTriggerService` independently,
     keyed by the bare `WebhookTrigger.path` -- no more prefix-based routing
     exclusivity."""
@@ -322,7 +322,7 @@ class TestRedisPubsubTelegramDispatch:
     def test_trigger_attached_to_both_node_types_fans_out_to_both(
         self, default_org, monkeypatch
     ):
-        """New in EST-1869: a single event for a `WebhookTrigger` attached to
+        """A single event for a `WebhookTrigger` attached to
         BOTH a `WebhookTriggerNode` and a `TelegramTriggerNode` must start a
         session for each -- zero/one/two fan-out, no prefix-based exclusivity."""
         graph = Graph.objects.create(name="dual-e2e", org=default_org)

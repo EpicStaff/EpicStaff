@@ -19,6 +19,7 @@ from tables.views.model_view_sets import (
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
+    KnowledgeNodeViewSet,
     AudioTranscriptionNodeViewSet,
     StartNodeModelViewSet,
     RealtimeConfigModelViewSet,
@@ -65,9 +66,7 @@ from tables.views.views import (
     AnswerToLLM,
     NotifyEmailView,
     InitRealtimeAPIView,
-    RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
-    RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
     SessionViewSet,
@@ -157,6 +156,7 @@ router.register(r"graphs", GraphViewSet, basename="graphs")
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
+router.register(r"knowledge-nodes", KnowledgeNodeViewSet)
 router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
@@ -404,16 +404,6 @@ urlpatterns = [
         "telegram-trigger-available-fields/",
         TelegramTriggerNodeAvailableFieldsView.as_view(),
         name="telegram-trigger-available-fields",
-    ),
-    path(
-        "register-telegram-trigger/",
-        RegisterTelegramTriggerApiView.as_view(),
-        name="register-telegram-trigger",
-    ),
-    path(
-        "register-webhooks/",
-        RegisterWebhooksApiView.as_view(),
-        name="register-webhooks",
     ),
     path(
         "realtime-voices/",

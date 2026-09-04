@@ -17,4 +17,5 @@ export enum NodeType {
     SUBGRAPH = 'subgraph',
     AUDIO_TO_TEXT = 'audio-to-text-node',
     SCHEDULE_TRIGGER = 'schedule-trigger',
+    KNOWLEDGE_RETRIEVER = 'knowledge-retriever',
 }
