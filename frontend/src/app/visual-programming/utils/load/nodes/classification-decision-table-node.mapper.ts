@@ -25,6 +25,7 @@ export function mapClassificationDecisionTableNodeToModel(
             output_schema: p.output_schema ?? null,
             result_variable: p.result_variable ?? '',
             variable_mappings: p.variable_mappings ?? {},
+            output_schema_invalid: false,
         };
     }
 

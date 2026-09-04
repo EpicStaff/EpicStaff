@@ -57,4 +57,5 @@ export interface PromptConfig {
     output_schema: Record<string, unknown> | string | null;
     result_variable: string;
     variable_mappings: Record<string, string>;
+    output_schema_invalid?: boolean;
 }

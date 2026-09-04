@@ -747,6 +747,12 @@
         font-size: 0.8rem;
     }
 
+    .prompt-schema-error {
+        font-size: 12px;
+        color: var(--color-ks-status-failed);
+        margin-top: 0.25rem;
+    }
+
     .prompt-info {
         padding: 0.75rem;
         background-color: rgba(104, 95, 255, 0.1);

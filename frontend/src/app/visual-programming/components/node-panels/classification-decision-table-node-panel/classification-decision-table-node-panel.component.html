@@ -381,17 +381,23 @@
                                                 </div>
 
                                                 <div class="prompt-field">
-                                                    <label class="field-label">Output Schema (JSON)</label>
-                                                    <textarea
-                                                        class="schema-textarea"
-                                                        rows="4"
-                                                        [ngModel]="prompt.output_schema"
-                                                        [ngModelOptions]="{ standalone: true }"
-                                                        (ngModelChange)="
-                                                            updatePrompt(prompt.id, 'output_schema', $event)
+                                                    <label class="field-label">Output Schema</label>
+                                                    <app-json-editor
+                                                        [jsonData]="
+                                                            getPromptSchemaText(prompt.id, prompt.output_schema)
                                                         "
-                                                        placeholder='{"route_label": "string", "confidence": 0.0}'
-                                                    ></textarea>
+                                                        (jsonChange)="onSchemaChange(prompt.id, $event)"
+                                                        [showHeader]="true"
+                                                        [allowCopy]="true"
+                                                        [allowExpand]="false"
+                                                        [editorHeight]="220"
+                                                        [exampleHint]="outputSchemaExampleHint"
+                                                    ></app-json-editor>
+                                                    @if (getPromptSchemaError(prompt.id)) {
+                                                        <div class="prompt-schema-error">
+                                                            {{ getPromptSchemaError(prompt.id) }}
+                                                        </div>
+                                                    }
                                                 </div>
                                             </div>
                                         }
