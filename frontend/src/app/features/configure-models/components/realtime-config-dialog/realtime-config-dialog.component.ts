@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -42,7 +41,6 @@ export interface RealtimeConfigDialogData {
         ValidationErrorsComponent,
         HelpTooltipComponent,
         HintMessageComponent,
-        NgIf,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
