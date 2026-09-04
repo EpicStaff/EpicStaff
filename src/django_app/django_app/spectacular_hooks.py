@@ -95,9 +95,7 @@ TAG_MAP = [
     ("api/webhook-trigger", "Webhooks"),
     ("api/ngrok-config", "Webhooks"),
     ("api/localhost-config", "Webhooks"),
-    ("api/register-webhooks", "Webhooks"),
     ("api/telegram-trigger", "Telegram"),
-    ("api/register-telegram-trigger", "Telegram"),
     # Knowledge & RAG
     ("api/naive-rag", "Naive RAG"),
     ("api/source-collections", "Source Collections"),
@@ -107,11 +105,9 @@ TAG_MAP = [
     ("api/webhook-trigger-nodes", "Webhook Trigger Nodes"),
     ("api/webhook-triggers", "Webhook Triggers"),
     ("api/ngrok-config", "Ngrok Config"),
-    ("api/register-webhooks", "Register Webhooks"),
     # Telegram
     ("api/telegram-trigger-available-fields", "Telegram Trigger Fields"),
     ("api/telegram-trigger-nodes", "Telegram Trigger Nodes"),
-    ("api/register-telegram-trigger", "Register Telegram"),
     # Organizations (non-admin)
     ("api/organizations", "Organizations"),
     # Config / Defaults
@@ -185,11 +181,9 @@ TAGS_ORDER = [
     "Voice Settings & Recordings",
     "Webhook Triggers",
     "Webhook Trigger Nodes",
-    "Register Webhooks",
     "Ngrok Config",
     "Telegram Trigger Nodes",
     "Telegram Trigger Fields",
-    "Register Telegram",
     "Organizations",
     "Graph Organizations",
     "Graph Organization Users",

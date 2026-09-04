@@ -116,7 +116,8 @@ $inactive-tab-bg: #2a2a2a;
     .section-header {
         display: flex;
         align-items: center;
-        padding: 12px 28px;
+        height: 48px;
+        padding: 0 28px;
         cursor: pointer;
         font-size: 1rem;
         user-select: none;
@@ -161,21 +162,8 @@ $inactive-tab-bg: #2a2a2a;
     }
 
     .add-button {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 2px;
-        margin-left: 12px;
-        border-radius: 3px;
-        color: $muted-text-color;
         margin-left: auto;
-        cursor: pointer;
-        transition: all 0.2s;
-
-        &:hover {
-            color: white;
-            background-color: $accent-color;
-        }
+        flex-shrink: 0;
     }
 
     .draft-content {

@@ -27,7 +27,9 @@
         //line-height: 130%;
         font-weight: 200;
         white-space: pre-wrap;
-        overflow: auto;
+        overflow-wrap: anywhere;
+        overflow-x: hidden;
+        overflow-y: auto;
     }
 
     &__id-column {
