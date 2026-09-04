@@ -602,13 +602,10 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     if ngrok_domain:
         # Bare domain — the correct source for the Media Stream WS URL.
         voice_stream_url = f"wss://{ngrok_domain}/voice/{channel_token}/stream"
+    elif live_url:
+        parsed_live = urlparse(live_url)
+        voice_stream_url = f"wss://{parsed_live.netloc}/voice/{channel_token}/stream"
     else:
-        # NOTE: `live_url` is intentionally NOT used here. It belongs to the
-        # generic webhook-trigger microservice and already carries a
-        # `/webhooks/{path}` prefix (e.g. `/webhooks/twilio`). nginx's
-        # `^~ /webhooks/` location block would intercept a WS URL built from
-        # it and route it to the unrelated `webhook` stub service, which has
-        # no WebSocket handler — breaking the Twilio Media Stream handshake.
         voice_stream_url = (
             settings.VOICE_STREAM_URL.replace(
                 "/voice/stream", f"/voice/{channel_token}/stream"
@@ -619,7 +616,13 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
 
     logger.info(f"[voice/{channel_token}] voice_stream_url={voice_stream_url}")
 
-    base_url = f"https://{ngrok_domain}" if ngrok_domain else ""
+    if live_url:
+        parsed_live = urlparse(live_url)
+        base_url = f"{parsed_live.scheme}://{parsed_live.netloc}"
+    elif ngrok_domain:
+        base_url = f"https://{ngrok_domain}"
+    else:
+        base_url = ""
     stream_token = stream_token_repository.mint(bound_key=channel_token)
     return await _twilio_voice_webhook(
         request, auth_token, voice_stream_url, stream_token, base_url
