@@ -90,6 +90,7 @@ async def run_task_through_loop(
         enforcement = await enforcer.enforce(context, output_schema, emitter)
         return LoopResult(
             final_text=json.dumps(enforcement.parsed),
+            structured_output=enforcement.parsed,
             tool_invocations=enforcement.tool_invocations,
             iterations=enforcement.iterations,
             stop_reason=StopReason.SCHEMA_SATISFIED.value,
@@ -110,6 +111,7 @@ async def run_task_through_loop(
         result = result.model_copy(
             update={
                 "final_text": json.dumps(enforcement.parsed),
+                "structured_output": enforcement.parsed,
                 "token_usage": add_usage(result.token_usage, enforcement.token_usage),
                 "iterations": result.iterations + enforcement.iterations,
                 "tool_invocations": result.tool_invocations

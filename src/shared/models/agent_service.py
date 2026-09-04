@@ -22,7 +22,7 @@ Hierarchy
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -250,6 +250,8 @@ class TaskRunSummary(BaseModel):
     name: str
     order: int
     final_text: str | None = None
+    structured_output: Any = None
+    """Validated output object when the task declared an ``output_schema``; ``None`` otherwise."""
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     iterations: int = 0
     tool_invocations: int = 0
@@ -274,3 +276,5 @@ class LoopResult(BaseModel):
     """Failure detail when stop_reason indicates a failure (llm_error/timeout); None on success."""
     tasks: list[TaskRunSummary] | None = None
     """Per-task summaries for ``LIST_OF_TASKS`` runs; ``None`` for ``SINGLE_TASK`` runs."""
+    structured_output: Any = None
+    """Validated output object when the task declared an ``output_schema``; ``None`` otherwise."""
