@@ -34,7 +34,6 @@ export const RESOURCE_META: Record<ResourceCode, ResourceMeta> = {
     tools: { description: 'Manage built-in and custom tools' },
     knowledge_sources: { description: 'RAG collections and embeddings' },
     files: { description: 'Files and folders in organization storage' },
-    projects: { description: 'Organize AI agents and tasks' },
     llm_configs: { description: 'LLM model configurations and settings' },
     secrets: { description: 'Provider API keys, credentials, sensitive config' },
 };
