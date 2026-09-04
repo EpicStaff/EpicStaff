@@ -182,7 +182,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'agents',
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: true,
+                isPermitted: () => true,
                 showTooltip: false,
             },
             {
