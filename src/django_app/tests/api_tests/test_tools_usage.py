@@ -89,8 +89,8 @@ def unused_python_tool(org_a, python_tool_factory) -> PythonCodeTool:
 
 @pytest.fixture
 def used_setup(org_a, python_tool_factory, mcp_tool_factory):
-    """One agent reachable via its own owned surface carrying both tool
-    kinds, so counts can be asserted for both `usage` endpoints."""
+    """One agent-owned surface carrying both tool kinds, so counts can be
+    asserted for both `usage` endpoints."""
     python_tool = python_tool_factory(org_a, name="PyTool")
     mcp_tool = mcp_tool_factory(org_a, name="McpTool")
 
@@ -110,9 +110,7 @@ def used_setup(org_a, python_tool_factory, mcp_tool_factory):
 
 
 @pytest.mark.django_db
-def test_used_python_tool_has_correct_agents_and_surfaces_counts(
-    client_a, used_setup
-):
+def test_used_python_tool_has_correct_surface_counts(client_a, used_setup):
     resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
     rows = {row["id"]: row for row in resp.data}
@@ -120,14 +118,15 @@ def test_used_python_tool_has_correct_agents_and_surfaces_counts(
     python_tool = used_setup["python_tool"]
     assert rows[python_tool.id] == {
         "id": python_tool.id,
-        "agents_count": 1,
-        "surfaces_count": 1,
+        "agent_surface_count": 1,
+        "shared_surface_count": 0,
+        "inline_count": 0,
         "is_built_in": False,
     }
 
 
 @pytest.mark.django_db
-def test_used_mcp_tool_has_correct_agents_and_surfaces_counts(client_a, used_setup):
+def test_used_mcp_tool_has_correct_surface_counts(client_a, used_setup):
     resp = client_a.post(MCP_USAGE_URL)
     assert resp.status_code == 200
     rows = {row["id"]: row for row in resp.data}
@@ -135,8 +134,9 @@ def test_used_mcp_tool_has_correct_agents_and_surfaces_counts(client_a, used_set
     mcp_tool = used_setup["mcp_tool"]
     assert rows[mcp_tool.id] == {
         "id": mcp_tool.id,
-        "agents_count": 1,
-        "surfaces_count": 1,
+        "agent_surface_count": 1,
+        "shared_surface_count": 0,
+        "inline_count": 0,
         "is_built_in": False,
     }
 
@@ -149,8 +149,9 @@ def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
 
     assert rows[unused_python_tool.id] == {
         "id": unused_python_tool.id,
-        "agents_count": 0,
-        "surfaces_count": 0,
+        "agent_surface_count": 0,
+        "shared_surface_count": 0,
+        "inline_count": 0,
         "is_built_in": False,
     }
 
@@ -217,101 +218,11 @@ def test_is_built_in_false_for_mcp_tool(client_a, org_a, mcp_tool_factory):
     assert rows[mcp_tool.id]["is_built_in"] is False
 
 
-# ---- agent dedup across owned + shared-surface-assignment paths ----
+# ---- counts span all three attachment families ----
 
 
 @pytest.mark.django_db
-def test_agent_reachable_via_both_paths_not_double_counted(
-    client_a, org_a, unused_python_tool
-):
-    """An agent reachable via BOTH an owned surface AND a separate shared
-    surface (assigned through AgentDefaultSurface), both carrying the tool,
-    must be counted exactly once in `agents_count`. Two distinct surface
-    attachments must still both count toward `surfaces_count`."""
-    agent = AgentDefinition.objects.create(name="agent-both", organization=org_a)
-
-    owned_surface = Surface.objects.create(
-        name="s-owned-both", organization=org_a, owner_agent=agent
-    )
-    SurfacePythonTool.objects.create(
-        surface=owned_surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
-    )
-
-    shared_surface = Surface.objects.create(name="s-shared-both", organization=org_a)
-    SurfacePythonTool.objects.create(
-        surface=shared_surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
-    )
-    AgentDefaultSurface.objects.create(
-        agent_definition=agent, surface=shared_surface, place=SurfacePlace.ALL
-    )
-
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    row = rows[unused_python_tool.id]
-    assert row["agents_count"] == 1
-    assert row["surfaces_count"] == 2
-
-
-# ---- agent reached via TaskNode/AgentNode.surface_list directly ----
-
-
-@pytest.mark.django_db
-def test_agent_counted_via_task_node_surface_list_without_default_surface(
-    client_a, org_a, unused_python_tool
-):
-    """A shared surface attached directly to a `TaskNode.surface_list` (no
-    `AgentDefaultSurface` row) must still count toward `agents_count` — an
-    independent reachability path used at runtime by
-    `NodeSurfaceService.build_combined_surface`."""
-    agent = AgentDefinition.objects.create(name="agent-node-surface", organization=org_a)
-    surface = Surface.objects.create(name="s-node-list", organization=org_a)
-    SurfacePythonTool.objects.create(
-        surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
-    )
-
-    graph = Graph.objects.create(name="Graph-node-list", org=org_a)
-    task_node = TaskNode.objects.create(
-        graph=graph, node_name="task_node_surface_list", agent_definition=agent
-    )
-    task_node.surface_list.add(surface)
-
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    assert rows[unused_python_tool.id]["agents_count"] == 1
-
-
-@pytest.mark.django_db
-def test_agent_counted_via_agent_node_surface_list_without_default_surface(
-    client_a, org_a, unused_python_tool
-):
-    """Same as the TaskNode case above, for `AgentNode.surface_list`."""
-    agent = AgentDefinition.objects.create(
-        name="agent-node-surface-2", organization=org_a
-    )
-    surface = Surface.objects.create(name="s-node-list-2", organization=org_a)
-    SurfacePythonTool.objects.create(
-        surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
-    )
-
-    graph = Graph.objects.create(name="Graph-node-list-2", org=org_a)
-    agent_node = AgentNode.objects.create(
-        graph=graph, node_name="agent_node_surface_list", agent_definition=agent
-    )
-    agent_node.surface_list.add(surface)
-
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    assert rows[unused_python_tool.id]["agents_count"] == 1
-
-
-# ---- surfaces_count spans all three attachment families ----
-
-
-@pytest.mark.django_db
-def test_surfaces_count_spans_all_three_families(
+def test_counts_span_all_three_families(
     client_a, org_a, unused_python_tool
 ):
     surface = Surface.objects.create(name="s-family-catalog", organization=org_a)
@@ -339,7 +250,12 @@ def test_surfaces_count_spans_all_three_families(
     resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
     rows = {row["id"]: row for row in resp.data}
-    assert rows[unused_python_tool.id]["surfaces_count"] == 3
+    row = rows[unused_python_tool.id]
+    # catalog surface (shared, owner_agent null) -> shared_surface_count
+    assert row["shared_surface_count"] == 1
+    assert row["agent_surface_count"] == 0
+    # task-node inline + agent-node inline both collapse into inline_count
+    assert row["inline_count"] == 2
 
 
 # ---- deny mode never counts ----
@@ -359,8 +275,9 @@ def test_deny_mode_row_not_counted(client_a, org_a, unused_python_tool):
     assert resp.status_code == 200
     rows = {row["id"]: row for row in resp.data}
     row = rows[unused_python_tool.id]
-    assert row["agents_count"] == 0
-    assert row["surfaces_count"] == 0
+    assert row["agent_surface_count"] == 0
+    assert row["shared_surface_count"] == 0
+    assert row["inline_count"] == 0
 
 
 # ---- `ids` request-body filter ----
@@ -427,3 +344,40 @@ def test_ids_for_foreign_org_tool_does_not_leak(client_a, org_b, python_tool_fac
     )
     assert resp.status_code == 200
     assert resp.data == []
+
+
+# ---- bucket classification: agent_surface vs shared_surface ----
+
+
+@pytest.mark.django_db
+def test_agent_specific_surface_and_unrelated_shared_surface_both_count(
+    client_a, org_a, unused_python_tool
+):
+    """An agent-specific surface (`owner_agent` set) counts toward
+    `agent_surface_count`, and a shared surface (`owner_agent` null, whether
+    or not it's assigned to any agent via `AgentDefaultSurface`) counts
+    toward `shared_surface_count` — the FE doesn't need agent-reachability
+    distinctions here, only the per-bucket totals."""
+    agent = AgentDefinition.objects.create(name="agent-specific", organization=org_a)
+    owned_surface = Surface.objects.create(
+        name="s-owned", organization=org_a, owner_agent=agent
+    )
+    SurfacePythonTool.objects.create(
+        surface=owned_surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
+    )
+
+    shared_surface = Surface.objects.create(name="s-shared", organization=org_a)
+    SurfacePythonTool.objects.create(
+        surface=shared_surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
+    )
+    AgentDefaultSurface.objects.create(
+        agent_definition=agent, surface=shared_surface, place=SurfacePlace.ALL
+    )
+
+    resp = client_a.post(PYTHON_USAGE_URL)
+    assert resp.status_code == 200
+    rows = {row["id"]: row for row in resp.data}
+    row = rows[unused_python_tool.id]
+    assert row["agent_surface_count"] == 1
+    assert row["shared_surface_count"] == 1
+    assert row["inline_count"] == 0

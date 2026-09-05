@@ -1,28 +1,23 @@
-"""Aggregates per-tool usage counts (agents/surfaces) for the Tools page's, plus the per-tool reference
-DETAIL lookup for the "Where is this used?" modal.
+"""Aggregates per-tool usage counts (surfaces) for the Tools page, plus the
+per-tool reference DETAIL lookup for the "Where is this used?" modal.
 
-Note: `InlineSurface`/`AgentInlineSurface` entries count toward `surfaces_count`/
-`surfaces` but are deliberately excluded from `agents_count`/`agents` — see the
-comment above `_agents_by_tool`'s reachability-path merge for why.
+Reports a single thing — surfaces attaching the tool — split into three
+separate buckets, purely from which through-model family the row comes from
+(no runtime-reachability semantics implied):
 
-- Catalog `Surface` (via `SurfacePythonTool`/`SurfaceMcpTool`) — reached by an
-  `AgentDefinition` as the surface's `owner_agent` (agent-specific surface),
-  or — for a shared surface (`owner_agent` null) — via an
-  `AgentDefaultSurface` assignment OR a direct `TaskNode.surface_list`/
-  `AgentNode.surface_list` M2M attachment on a node whose `agent_definition`
-  is set. All three are independent, additive reachability paths for the
-  same catalog surface (see `surface-tool-attachment-contract` in
-  `wiki/topics/agent-definitions.md`).
-- `InlineSurface` on a `TaskNode` (via `InlineSurfacePythonTool`/
-  `InlineSurfaceMcpTool`).
-- `AgentInlineSurface` on an `AgentNode` (via
-  `AgentInlineSurfacePythonTool`/`AgentInlineSurfaceMcpTool`).
+- `agent_surface` — a catalog `Surface` (via `SurfacePythonTool`/
+  `SurfaceMcpTool`) whose `owner_agent` is set.
+- `shared_surface` — a catalog `Surface` whose `owner_agent` is null.
+- `inline` — an `InlineSurface` on a `TaskNode` (via
+  `InlineSurfacePythonTool`/`InlineSurfaceMcpTool`) or an `AgentInlineSurface`
+  on an `AgentNode` (via `AgentInlineSurfacePythonTool`/
+  `AgentInlineSurfaceMcpTool`) — both collapse into this one bucket.
 
 `mode="deny"` rows never count as usage — a deny row exists to *suppress* a
 tool, so counting it would invert its meaning.
 
 Deliberately query-shaped as a small, fixed number of bulk queries + Python
-set/dict merging (rather than annotate()-ing multiple Count(distinct=True)
+list merging (rather than annotate()-ing multiple Count(distinct=True)
 aggregates in one query, which silently multiplies rows across independent
 reverse joins) and rather than a per-tool query loop.
 
@@ -37,8 +32,6 @@ from collections import defaultdict
 from django.db.models import Q
 
 from agents.models import (
-    AgentDefaultSurface,
-    AgentDefinition,
     AgentInlineSurfaceMcpTool,
     AgentInlineSurfacePythonTool,
     InlineSurfaceMcpTool,
@@ -48,7 +41,6 @@ from agents.models import (
     ToolMode,
 )
 from tables.models import McpTool, PythonCodeTool
-from tables.models.graph_models import AgentNode, TaskNode
 
 _CATALOG_TOOL_MODEL = {
     PythonCodeTool: SurfacePythonTool,
@@ -113,107 +105,47 @@ def _get_tool_usage(
     (already scoped/filtered by the caller), builds the usage rows."""
     tool_ids = list(tool_built_in.keys())
 
-    agents_by_tool = _agents_by_tool(org_id, tool_ids, tool_class)
     surfaces_by_tool = _surfaces_by_tool(org_id, tool_ids, tool_class)
 
     return _build_rows(
         tool_ids,
-        agents_by_tool,
         surfaces_by_tool,
         is_built_in=lambda tool_id: tool_built_in.get(tool_id, False),
     )
 
 
-def _agents_by_tool(
-    org_id: int, tool_ids: list[int], tool_class: type
-) -> dict[int, set[int]]:
-    """Distinct `AgentDefinition` ids reached through an allow-mode catalog
-    surface attachment for each tool id, merging three reachability paths:
-    the surface's own `owner_agent` (agent-specific surface) and, for a
-    shared surface (`owner_agent` null), every `AgentDefinition` it's
-    assigned to via `AgentDefaultSurface` OR attached to directly through a
-    `TaskNode.surface_list`/`AgentNode.surface_list` M2M row (an independent
-    attachment mechanism used at runtime by
-    `agents.services.node_surface_service.build_combined_surface`). Deduped
-    by agent id.
-
-    Deliberately excludes `InlineSurface`/`AgentInlineSurface` entries: those
-    surfaces belong to a flow node (`TaskNode`/`AgentNode`), not to any
-    `AgentDefinition`, so they don't represent agent-reachability even
-    though they DO count toward `surfaces_count`/`surfaces` (see
-    `_surfaces_by_tool`)."""
-    catalog_model = _CATALOG_TOOL_MODEL[tool_class]
-    tool_field = _TOOL_FIELD[tool_class]
-
-    rows = list(
-        catalog_model.objects.filter(
-            mode=ToolMode.ALLOW,
-            surface__organization_id=org_id,
-            **{f"{tool_field}__in": tool_ids},
-        ).values_list(tool_field, "surface_id", "surface__owner_agent_id")
-    )
-    if not rows:
-        return {}
-
-    agents_by_tool: dict[int, set[int]] = defaultdict(set)
-    surface_ids_by_tool: dict[int, set[int]] = defaultdict(set)
-    all_surface_ids: set[int] = set()
-    for tool_id, surface_id, owner_agent_id in rows:
-        surface_ids_by_tool[tool_id].add(surface_id)
-        all_surface_ids.add(surface_id)
-        if owner_agent_id is not None:
-            agents_by_tool[tool_id].add(owner_agent_id)
-
-    agents_by_surface: dict[int, set[int]] = defaultdict(set)
-    for surface_id, agent_id in AgentDefaultSurface.objects.filter(
-        surface_id__in=all_surface_ids,
-        agent_definition__organization_id=org_id,
-    ).values_list("surface_id", "agent_definition_id"):
-        agents_by_surface[surface_id].add(agent_id)
-
-    for surface_id, agent_id in TaskNode.objects.filter(
-        surface_list__id__in=all_surface_ids,
-        agent_definition_id__isnull=False,
-        graph__org_id=org_id,
-    ).values_list("surface_list__id", "agent_definition_id"):
-        agents_by_surface[surface_id].add(agent_id)
-
-    for surface_id, agent_id in AgentNode.objects.filter(
-        surface_list__id__in=all_surface_ids,
-        agent_definition_id__isnull=False,
-        graph__org_id=org_id,
-    ).values_list("surface_list__id", "agent_definition_id"):
-        agents_by_surface[surface_id].add(agent_id)
-
-    for tool_id, surface_ids in surface_ids_by_tool.items():
-        for surface_id in surface_ids:
-            agents_by_tool[tool_id].update(agents_by_surface.get(surface_id, ()))
-
-    return agents_by_tool
+def _empty_buckets() -> dict[str, list[dict]]:
+    return {"agent_surface": [], "shared_surface": [], "inline": []}
 
 
 def _surfaces_by_tool(
     org_id: int, tool_ids: list[int], tool_class: type
-) -> dict[int, list[dict]]:
-    """Distinct surface/flow-node entries across the three attachment
-    families for each tool id. Unlike `_agents_by_tool`, entries are NOT
-    deduped across families/rows — each through-row is its own distinct
-    surface or node (at most one row per `(owner, tool)` per the model's
-    `UniqueConstraint`)."""
-    surfaces_by_tool: dict[int, list[dict]] = defaultdict(list)
-    for entries_by_tool in (
-        _catalog_surface_entries_by_tool(org_id, tool_ids, tool_class),
-        _task_inline_surface_entries_by_tool(org_id, tool_ids, tool_class),
-        _agent_inline_surface_entries_by_tool(org_id, tool_ids, tool_class),
-    ):
-        for tool_id, entries in entries_by_tool.items():
-            surfaces_by_tool[tool_id].extend(entries)
+) -> dict[int, dict[str, list[dict]]]:
+    """Per-tool-id `{"agent_surface": [...], "shared_surface": [...],
+    "inline": [...]}` buckets across the three attachment families. Each
+    `mode="allow"` row is reported as its own entry; entries are
+    intentionally NOT deduped (e.g. two different flow nodes both attaching
+    the same tool inline produce two separate `inline` entries). Still ONE
+    bulk query per through-model family — the catalog-surface query is fetched
+    once and split into `agent_surface`/`shared_surface` in Python based on
+    `owner_agent_id`; the two inline families both feed the single `inline`
+    bucket."""
+    surfaces_by_tool: dict[int, dict[str, list[dict]]] = defaultdict(_empty_buckets)
+
+    for tool_id, bucket, entry in _catalog_surface_entries(org_id, tool_ids, tool_class):
+        surfaces_by_tool[tool_id][bucket].append(entry)
+    for tool_id, entry in _task_inline_surface_entries(org_id, tool_ids, tool_class):
+        surfaces_by_tool[tool_id]["inline"].append(entry)
+    for tool_id, entry in _agent_inline_surface_entries(org_id, tool_ids, tool_class):
+        surfaces_by_tool[tool_id]["inline"].append(entry)
+
     return surfaces_by_tool
 
 
-def _catalog_surface_entries_by_tool(
-    org_id: int, tool_ids: list[int], tool_class: type
-) -> dict[int, list[dict]]:
+def _catalog_surface_entries(org_id: int, tool_ids: list[int], tool_class: type):
+    """Yields `(tool_id, bucket, entry)` for catalog-surface rows — one bulk
+    query, split by `owner_agent_id` into the `agent_surface`/`shared_surface`
+    buckets in Python."""
     catalog_model = _CATALOG_TOOL_MODEL[tool_class]
     tool_field = _TOOL_FIELD[tool_class]
 
@@ -221,19 +153,15 @@ def _catalog_surface_entries_by_tool(
         mode=ToolMode.ALLOW,
         surface__organization_id=org_id,
         **{f"{tool_field}__in": tool_ids},
-    ).values_list(tool_field, "surface_id", "surface__name")
+    ).values_list(tool_field, "surface_id", "surface__name", "surface__owner_agent_id")
 
-    entries_by_tool: dict[int, list[dict]] = defaultdict(list)
-    for tool_id, surface_id, surface_name in rows:
-        entries_by_tool[tool_id].append(
-            {"kind": "surface", "id": surface_id, "name": surface_name}
-        )
-    return entries_by_tool
+    for tool_id, surface_id, surface_name, owner_agent_id in rows:
+        bucket = "agent_surface" if owner_agent_id is not None else "shared_surface"
+        yield tool_id, bucket, {"id": surface_id, "name": surface_name}
 
 
-def _task_inline_surface_entries_by_tool(
-    org_id: int, tool_ids: list[int], tool_class: type
-) -> dict[int, list[dict]]:
+def _task_inline_surface_entries(org_id: int, tool_ids: list[int], tool_class: type):
+    """Yields `(tool_id, entry)` for task-node inline-surface rows."""
     inline_model = _TASK_INLINE_TOOL_MODEL[tool_class]
     tool_field = _TOOL_FIELD[tool_class]
 
@@ -248,21 +176,12 @@ def _task_inline_surface_entries_by_tool(
         "inline_surface__task_node__node_name",
     )
 
-    entries_by_tool: dict[int, list[dict]] = defaultdict(list)
     for tool_id, graph_id, graph_name, node_name in rows:
-        entries_by_tool[tool_id].append(
-            {
-                "kind": "flow_node",
-                "id": graph_id,
-                "name": f"{graph_name} - {node_name}",
-            }
-        )
-    return entries_by_tool
+        yield tool_id, {"id": graph_id, "name": f"{graph_name} - {node_name}"}
 
 
-def _agent_inline_surface_entries_by_tool(
-    org_id: int, tool_ids: list[int], tool_class: type
-) -> dict[int, list[dict]]:
+def _agent_inline_surface_entries(org_id: int, tool_ids: list[int], tool_class: type):
+    """Yields `(tool_id, entry)` for agent-node inline-surface rows."""
     agent_inline_model = _AGENT_INLINE_TOOL_MODEL[tool_class]
     tool_field = _TOOL_FIELD[tool_class]
 
@@ -277,16 +196,8 @@ def _agent_inline_surface_entries_by_tool(
         "agent_inline_surface__agent_node__node_name",
     )
 
-    entries_by_tool: dict[int, list[dict]] = defaultdict(list)
     for tool_id, graph_id, graph_name, node_name in rows:
-        entries_by_tool[tool_id].append(
-            {
-                "kind": "flow_node",
-                "id": graph_id,
-                "name": f"{graph_name} - {node_name}",
-            }
-        )
-    return entries_by_tool
+        yield tool_id, {"id": graph_id, "name": f"{graph_name} - {node_name}"}
 
 
 def _python_tool_exists(tool_id: int, org_id: int) -> bool:
@@ -310,9 +221,9 @@ def _tool_exists(model: type, tool_id: int, visibility_q: Q) -> bool:
 
 def get_python_code_tool_usage_detail(tool_id: int, org_id: int) -> dict:
     """Return the "Where is this used?" detail for a single `PythonCodeTool`:
-    `{"agents": [{"id", "name"}, ...], "surfaces": [{"id", "name", "kind"}, ...]}`.
-    Raises `ToolNotFoundError` if the tool doesn't exist / isn't visible to
-    `org_id`.
+    `{"agent_surface": [{"id", "name"}, ...], "shared_surface": [...],
+    "inline": [...]}`. Raises `ToolNotFoundError` if the tool doesn't exist /
+    isn't visible to `org_id`.
     """
     return _get_tool_usage_detail(
         tool_id,
@@ -325,7 +236,7 @@ def get_python_code_tool_usage_detail(tool_id: int, org_id: int) -> dict:
 
 def get_mcp_tool_usage_detail(tool_id: int, org_id: int) -> dict:
     """MCP-tool counterpart of `get_python_code_tool_usage_detail`. See its
-    docstring for the `agents`/`surfaces` semantics (unchanged for MCP tools).
+    docstring for the three-bucket shape (unchanged for MCP tools).
     """
     return _get_tool_usage_detail(
         tool_id,
@@ -344,37 +255,30 @@ def _get_tool_usage_detail(
     not_found_message: str,
 ) -> dict:
     """Shared body for `get_python_code_tool_usage_detail`/
-    `get_mcp_tool_usage_detail`: existence check + agent/surface lookups,
+    `get_mcp_tool_usage_detail`: existence check + surface lookup,
     parameterized on the kind's own exists-check and tool_class."""
     if not exists_fn(tool_id, org_id):
         raise ToolNotFoundError(not_found_message)
 
-    agent_ids = _agents_by_tool(org_id, [tool_id], tool_class).get(tool_id, set())
-    agents = list(
-        AgentDefinition.objects.filter(
-            id__in=agent_ids, organization_id=org_id
-        ).values("id", "name")
+    return _surfaces_by_tool(org_id, [tool_id], tool_class).get(
+        tool_id, _empty_buckets()
     )
-
-    surfaces = _surfaces_by_tool(org_id, [tool_id], tool_class).get(tool_id, [])
-    return {"agents": agents, "surfaces": surfaces}
 
 
 def _build_rows(
     tool_ids: list[int],
-    agents_by_tool: dict[int, set[int]],
-    surfaces_by_tool: dict[int, list[dict]],
+    surfaces_by_tool: dict[int, dict[str, list[dict]]],
     is_built_in,
 ) -> list[dict]:
     rows: list[dict] = []
     for tool_id in tool_ids:
-        agent_ids = agents_by_tool.get(tool_id, set())
-        surfaces = surfaces_by_tool.get(tool_id, [])
+        buckets = surfaces_by_tool.get(tool_id, _empty_buckets())
         rows.append(
             {
                 "id": tool_id,
-                "agents_count": len(agent_ids),
-                "surfaces_count": len(surfaces),
+                "agent_surface_count": len(buckets["agent_surface"]),
+                "shared_surface_count": len(buckets["shared_surface"]),
+                "inline_count": len(buckets["inline"]),
                 "is_built_in": bool(is_built_in(tool_id)),
             }
         )
