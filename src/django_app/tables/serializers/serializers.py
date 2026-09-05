@@ -11,26 +11,25 @@ from tables.import_export.services.partial_export_service import (
 
 class ToolUsageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    projects_count = serializers.IntegerField()
-    staff_count = serializers.IntegerField()
+    agent_surface_count = serializers.IntegerField()
+    shared_surface_count = serializers.IntegerField()
+    inline_count = serializers.IntegerField()
     is_built_in = serializers.BooleanField()
 
 
-class ToolUsageProjectSerializer(serializers.Serializer):
+class ToolUsageSurfaceEntrySerializer(serializers.Serializer):
+    """Shared `{id, name}` shape reused for all three usage-detail lists —
+    list membership (agent_surface/shared_surface/inline) already conveys
+    what a `kind` discriminator used to."""
+
     id = serializers.IntegerField()
     name = serializers.CharField()
 
 
-class ToolUsageStaffSerializer(serializers.Serializer):
-    # Agent has no `name` field — `role` is its display identity
-    # (see tables.models.crew_models.Agent.__str__).
-    id = serializers.IntegerField()
-    role = serializers.CharField()
-
-
 class ToolUsageDetailSerializer(serializers.Serializer):
-    projects = ToolUsageProjectSerializer(many=True)
-    staff = ToolUsageStaffSerializer(many=True)
+    agent_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    shared_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    inline = ToolUsageSurfaceEntrySerializer(many=True)
 
 
 class RunSessionSerializer(serializers.Serializer):
