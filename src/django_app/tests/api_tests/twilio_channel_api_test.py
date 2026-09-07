@@ -171,6 +171,59 @@ class TestTwilioChannelWebhookTrigger:
         # The read path still returns the FK id (TwilioChannelSerializer is used for both)
         assert data["webhook_trigger"] == trigger.pk
 
+    def test_create_twilio_channel_rejected_when_trigger_already_kind_webhook(
+        self, auth_client, db, default_org
+    ):
+        """EST-3939: a trigger already claimed by `kind=webhook` auth cannot
+        be repointed to by a TwilioChannel -- claiming it would silently
+        collide with the Twilio-kind auth sync."""
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="claimed-webhook-kind")
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK
+        )
+        secret = _make_secret(default_org, "tok_conflict")
+
+        url = reverse("twiliochannel-list")
+        response = auth_client.post(
+            url,
+            {
+                "channel": rc.pk,
+                "account_sid": "AC_conflict",
+                "auth_token_secret_id": secret.id,
+                "webhook_trigger": trigger.pk,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert not TwilioChannel.objects.filter(channel=rc).exists()
+
+    def test_update_twilio_channel_rejected_when_trigger_already_kind_telegram(
+        self, auth_client, db, default_org
+    ):
+        """Same rejection on update (repointing an existing TwilioChannel at
+        an already-telegram-claimed trigger)."""
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        rc = _make_realtime_channel(db, default_org)
+        tc = _make_twilio_channel(rc, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="claimed-telegram-kind")
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM
+        )
+
+        url = reverse("twiliochannel-detail", args=[tc.channel_id])
+        response = auth_client.patch(
+            url, {"webhook_trigger": trigger.pk}, format="json"
+        )
+
+        assert response.status_code == 400, response.json()
+        tc.refresh_from_db()
+        assert tc.webhook_trigger_id is None
+
     def test_two_channels_share_one_trigger(self, auth_client, db, default_org):
         """Two TwilioChannels may point at the same WebhookTrigger."""
         rc1 = _make_realtime_channel(db, default_org)
@@ -218,6 +271,35 @@ class TestTwilioChannelWebhookTrigger:
 
         tc.refresh_from_db()
         assert tc.webhook_trigger_id is None
+
+    def test_create_twilio_channel_rejected_when_trigger_is_localhost_provider(
+        self, auth_client, db, default_org
+    ):
+        """`TwilioChannelSerializer.validate()` already rejects a localhost
+        `provider_type` at attach time (this was live-tested to confirm it's
+        wired, not a dangling `TwilioChannel.validate_provider()` check that
+        only fires later at `configure-webhook` dispatch)."""
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_localhost(
+            default_org, path="create-time-localhost-reject"
+        )
+        secret = _make_secret(default_org, "tok_localhost_reject")
+
+        url = reverse("twiliochannel-list")
+        response = auth_client.post(
+            url,
+            {
+                "channel": rc.pk,
+                "account_sid": "AC_localhost_reject",
+                "auth_token_secret_id": secret.id,
+                "webhook_trigger": trigger.pk,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "localhost" in str(response.json()).lower()
+        assert not TwilioChannel.objects.filter(channel=rc).exists()
 
     def test_configure_webhook_rejects_localhost_provider(
         self, auth_client, db, default_org

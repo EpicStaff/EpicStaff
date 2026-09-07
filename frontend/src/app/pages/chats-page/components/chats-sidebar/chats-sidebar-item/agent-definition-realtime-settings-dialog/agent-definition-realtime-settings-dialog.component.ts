@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -31,10 +30,7 @@ export interface AgentDefinitionRealtimeSettingsDialogData {
 
 @Component({
     selector: 'app-agent-definition-realtime-settings-dialog',
-    standalone: true,
-    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
         FormsModule,
         ReactiveFormsModule,
         LanguageSelectorComponent,
@@ -44,6 +40,7 @@ export interface AgentDefinitionRealtimeSettingsDialogData {
         RadioButtonComponent,
     ],
     templateUrl: './agent-definition-realtime-settings-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./agent-definition-realtime-settings-dialog.component.scss'],
 })
 export class AgentDefinitionRealtimeSettingsDialogComponent implements OnInit {

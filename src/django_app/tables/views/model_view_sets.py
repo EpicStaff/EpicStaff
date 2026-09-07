@@ -167,6 +167,7 @@ from tables.filters import (
     McpToolFilter,
     ProviderFilter,
     PythonCodeToolFilter,
+    WebhookTriggerFilter,
 )
 from tables.utils.helpers import natural_sort_key
 from tables.models.label_models import Label
@@ -290,6 +291,9 @@ from tables.swagger_schemas.webhook_schemas import (
     WEBHOOK_TRIGGER_NODE_CREATE,
     WEBHOOK_TRIGGER_NODE_UPDATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
+    WEBHOOK_TRIGGER_CREATE,
+    WEBHOOK_TRIGGER_UPDATE,
+    WEBHOOK_TRIGGER_PARTIAL_UPDATE,
 )
 from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.rbac.permissions import HasOrgPermission
@@ -2287,13 +2291,21 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
+@extend_schema_view(
+    create=extend_schema(**WEBHOOK_TRIGGER_CREATE),
+    update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
+    partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
+)
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = WebhookTrigger.objects.select_related("ngrok", "localhost")
+    queryset = WebhookTrigger.objects.select_related(
+        "ngrok", "localhost", "auth", "auth__secret"
+    )
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
+    filterset_class = WebhookTriggerFilter
 
     def _wait_for_tunnel_url(self, trigger):
         service = WebhookTriggerService()

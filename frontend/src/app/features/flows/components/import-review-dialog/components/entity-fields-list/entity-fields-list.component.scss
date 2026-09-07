@@ -3,14 +3,16 @@
 }
 
 .item-details {
-    background-color: rgba(0, 0, 0, 0.15);
-    border-top: 1px solid var(--transparent-white-8);
+    --collapse-duration: 220ms;
+    --collapse-easing: ease;
 
     .item-details-grid {
         display: grid;
         grid-template-columns: auto 1fr;
         gap: 0.3rem 1rem;
         padding: 0.6rem 1rem 0.6rem 2.5rem;
+        background-color: rgba(0, 0, 0, 0.15);
+        border-top: 1px solid var(--transparent-white-8);
 
         .detail-key {
             font-size: 0.75rem;

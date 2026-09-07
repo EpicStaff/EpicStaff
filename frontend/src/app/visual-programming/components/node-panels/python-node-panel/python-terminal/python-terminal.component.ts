@@ -1,8 +1,9 @@
-import { CommonModule, DOCUMENT } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DOCUMENT,
     effect,
     ElementRef,
     Inject,
@@ -22,7 +23,6 @@ import { TerminalLogEntry } from './terminal-log.model';
 export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
 
 @Component({
-    standalone: true,
     selector: 'app-python-terminal',
     imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -6,7 +5,6 @@ import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/se
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
@@ -35,21 +33,18 @@ import { PythonTerminalComponent, TerminalStatus } from './python-terminal/pytho
 import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-log.model';
 
 @Component({
-    standalone: true,
     selector: 'app-python-node-panel',
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
         InputMapComponent,
         CodeEditorComponent,
-        CommonModule,
         PythonTerminalComponent,
         NodeStorageSectionComponent,
         AppSvgIconComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="panel-container">
             <div class="panel-content">

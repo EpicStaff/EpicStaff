@@ -6,6 +6,7 @@ from tables.models.webhook_models import (
     RealtimeChannel,
     TwilioChannel,
     WebhookTrigger,
+    WebhookTriggerAuthKind,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from agents.models.agent_models import AgentDefinition
@@ -225,6 +226,21 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        auth = getattr(wt, "auth", None) if wt else None
+        if auth is not None and auth.kind not in (
+            WebhookTriggerAuthKind.TWILIO,
+        ):
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        f"This trigger's auth is already configured for "
+                        f"kind='{auth.kind}' and cannot be claimed by a "
+                        "Twilio channel."
+                    )
+                }
+            )
+
         return attrs
 
 

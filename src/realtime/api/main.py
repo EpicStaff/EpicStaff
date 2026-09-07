@@ -359,6 +359,7 @@ async def _twilio_voice_webhook(
     auth_token: str | None,
     voice_stream_url: str,
     stream_token: str,
+    base_url: str,
 ) -> Response:
     """Shared logic for both old and new Twilio voice webhook handlers."""
     logger.info(
@@ -368,13 +369,20 @@ async def _twilio_voice_webhook(
 
     if auth_token:
         signature = request.headers.get("X-Twilio-Signature", "")
-        proto = request.headers.get("x-forwarded-proto", "https")
-        host = request.headers.get("x-forwarded-host") or request.headers.get(
-            "host", ""
-        )
+        base_url = (base_url or "").rstrip("/")
+        if not base_url:
+            logger.error(
+                "[voice_webhook] no tunnel domain resolved for this channel's "
+                "webhook_trigger -- cannot validate Twilio signature (fail "
+                "closed, no env-var fallback)"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="No tunnel domain configured for this channel -- cannot validate Twilio signature",
+            )
         path = request.url.path
         query = f"?{request.url.query}" if request.url.query else ""
-        url = f"{proto}://{host}{path}{query}"
+        url = f"{base_url}{path}{query}"
         form_data = dict(await request.form())
         logger.debug(
             f"[voice_webhook] validating signature: url={url} form_data={form_data}"
@@ -398,13 +406,6 @@ async def _twilio_voice_webhook(
 
     voice_stream_url = _append_stream_token(voice_stream_url, stream_token)
 
-    # Both attribute values are XML-escaped via `quoteattr` (handles `&`, `<`,
-    # `>`, and quote characters, returning an already-quoted attribute) —
-    # a raw f-string interpolation here would corrupt/truncate the URL Twilio
-    # parses out of the element if it ever contained an un-escaped `&` (e.g.
-    # multiple query params). The `<Parameter>` child is the actual mechanism
-    # Twilio delivers to the WS leg (see `_append_stream_token` docstring);
-    # the query string on `url` is kept only as a harmless fallback.
     stream_url_attr = quoteattr(voice_stream_url)
     stream_token_attr = quoteattr(stream_token)
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -619,13 +620,10 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     if ngrok_domain:
         # Bare domain — the correct source for the Media Stream WS URL.
         voice_stream_url = f"wss://{ngrok_domain}/voice/{channel_token}/stream"
+    elif live_url:
+        parsed_live = urlparse(live_url)
+        voice_stream_url = f"wss://{parsed_live.netloc}/voice/{channel_token}/stream"
     else:
-        # NOTE: `live_url` is intentionally NOT used here. It belongs to the
-        # generic webhook-trigger microservice and already carries a
-        # `/webhooks/{path}` prefix (e.g. `/webhooks/twilio`). nginx's
-        # `^~ /webhooks/` location block would intercept a WS URL built from
-        # it and route it to the unrelated `webhook` stub service, which has
-        # no WebSocket handler — breaking the Twilio Media Stream handshake.
         voice_stream_url = (
             settings.VOICE_STREAM_URL.replace(
                 "/voice/stream", f"/voice/{channel_token}/stream"
@@ -635,9 +633,17 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         )
 
     logger.info(f"[voice/{channel_token}] voice_stream_url={voice_stream_url}")
+
+    if live_url:
+        parsed_live = urlparse(live_url)
+        base_url = f"{parsed_live.scheme}://{parsed_live.netloc}"
+    elif ngrok_domain:
+        base_url = f"https://{ngrok_domain}"
+    else:
+        base_url = ""
     stream_token = stream_token_repository.mint(bound_key=channel_token)
     return await _twilio_voice_webhook(
-        request, auth_token, voice_stream_url, stream_token
+        request, auth_token, voice_stream_url, stream_token, base_url
     )
 
 

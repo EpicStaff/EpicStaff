@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -38,7 +37,6 @@ export type ConfigTab = 'llm' | 'realtime';
     styleUrls: ['./add-configuration-dialog.component.scss'],
     imports: [
         ReactiveFormsModule,
-        NgIf,
         IconButtonComponent,
         HelpTooltipComponent,
         ButtonComponent,

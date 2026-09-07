@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -19,7 +18,6 @@ import {
     ViewChildren,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { MarkdownModule } from 'ngx-markdown';
 import { Subject } from 'rxjs';
 import { exhaustMap, takeUntil } from 'rxjs/operators';
 
@@ -135,10 +133,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
 
 @Component({
     selector: 'app-graph-messages',
-    standalone: true,
     imports: [
-        CommonModule,
-        MarkdownModule,
         LoadingDotsComponent,
         StartMessageComponent,
         FinishMessageComponent,
@@ -387,21 +382,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         }
 
         if (visibleCount > this.seenMessageCount) {
-            const prevSeen = this.seenMessageCount;
-            const prevUnseen = this.unseenMessageCount;
-            const newlySeenEntries = this.visibleMessageEntries.slice(prevSeen, visibleCount);
             this.seenMessageCount = visibleCount;
             this.unseenMessageCount = Math.max(0, this.visibleMessageEntries.length - this.seenMessageCount);
-            const delta = prevUnseen - this.unseenMessageCount;
-            console.log(
-                `[unread] -${delta} (${prevUnseen} → ${this.unseenMessageCount}); read ${newlySeenEntries.length} message(s):`,
-                newlySeenEntries.map((entry) => ({
-                    index: entry.index,
-                    type: entry.message.message_data?.message_type,
-                    name: entry.message.name,
-                    key: entry.key,
-                }))
-            );
         }
     }
 

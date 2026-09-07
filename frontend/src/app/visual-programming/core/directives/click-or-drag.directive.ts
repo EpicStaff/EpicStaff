@@ -2,7 +2,6 @@ import { Directive, ElementRef, EventEmitter, NgZone, OnDestroy, OnInit, Output,
 
 @Directive({
     selector: '[appClickOrDrag]',
-    standalone: true,
 })
 export class ClickOrDragDirective implements OnInit, OnDestroy {
     @Output() actualClick = new EventEmitter<void>();

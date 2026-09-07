@@ -64,13 +64,14 @@ On successful creation or update, the API can return:
 ### 1.4 Inbound Webhook Authentication
 
 Nothing to configure here: registering (or resyncing) the node's webhook
-automatically provisions a `WebhookNodeAuth` row that verifies every inbound
-Telegram update via the `X-Telegram-Bot-Api-Secret-Token` header. This is
-mandatory and entirely internal to how the node registers with Telegram
-(via `setWebhook`'s `secret_token` parameter) -- it is not exposed as a
-toggle on this endpoint the way it is for generic `WebhookTriggerNode`s. See
+automatically provisions/updates the trigger-level `WebhookTriggerAuth` row
+(`kind="telegram"`) that verifies every inbound Telegram update via the
+`X-Telegram-Bot-Api-Secret-Token` header. The secret is auto-generated and
+pushed to Telegram's `setWebhook` as `secret_token` -- it is not directly
+user-settable through this endpoint the way `auth_secret_id`/`auth_kind` are
+exposed on `/api/webhook-triggers/` for generic `WebhookTriggerNode`s. See
 the Webhook Developer Guide's "Webhook Inbound Authentication
-(`WebhookNodeAuth`)" section for details.
+(`WebhookTriggerAuth`)" section for details.
 
 2. Register Webhooks (Global Sync)
 ----------------------------------

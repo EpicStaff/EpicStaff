@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -44,7 +43,7 @@ type DialogComponentType =
 
 @Component({
     selector: 'app-default-llms-card',
-    imports: [CommonModule, AppSvgIconComponent, SelectComponent, MatTooltipModule, HasPermissionDirective],
+    imports: [AppSvgIconComponent, SelectComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './default-llms-card.component.html',
     styleUrls: ['./default-llms-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
