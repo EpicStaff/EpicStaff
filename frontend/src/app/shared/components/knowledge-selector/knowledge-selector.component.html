@@ -34,30 +34,27 @@
         </div>
     </div>
 
-    <div
-        class="dropdown-menu"
-        *ngIf="isOpen"
-    >
-        <div
-            class="dropdown-item"
-            [class.selected]="selectedCollectionId === null && !isPlaceholder"
-            (click)="selectCollection(null, false)"
-        >
-            No knowledge source
+    @if (isOpen) {
+        <div class="dropdown-menu">
+            <div
+                class="dropdown-item"
+                [class.selected]="selectedCollectionId === null && !isPlaceholder"
+                (click)="selectCollection(null, false)"
+            >
+                No knowledge source
+            </div>
+            @for (collection of collections; track collection) {
+                <div
+                    class="dropdown-item"
+                    [class.selected]="collection.collection_id === selectedCollectionId"
+                    (click)="selectCollection(collection.collection_id)"
+                >
+                    {{ collection.collection_name }}
+                </div>
+            }
+            @if (collections.length === 0) {
+                <div class="no-results">No knowledge sources available</div>
+            }
         </div>
-        <div
-            *ngFor="let collection of collections"
-            class="dropdown-item"
-            [class.selected]="collection.collection_id === selectedCollectionId"
-            (click)="selectCollection(collection.collection_id)"
-        >
-            {{ collection.collection_name }}
-        </div>
-        <div
-            *ngIf="collections.length === 0"
-            class="no-results"
-        >
-            No knowledge sources available
-        </div>
-    </div>
+    }
 </div>

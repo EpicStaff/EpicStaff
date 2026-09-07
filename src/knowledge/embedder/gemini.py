@@ -1,13 +1,14 @@
-import os
 from typing import List, Optional
 from .base_embedder import BaseEmbedder
 
 from google import genai
 
+import settings
+
 
 class GoogleGenAIEmbedder(BaseEmbedder):
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self.api_key = api_key or settings.GOOGLE_API_KEY
         if not self.api_key:
             raise ValueError(
                 "Google API key must be provided via argument or 'GOOGLE_API_KEY' environment variable."

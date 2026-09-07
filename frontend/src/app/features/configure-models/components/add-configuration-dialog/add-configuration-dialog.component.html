@@ -199,12 +199,11 @@
                 class="form"
                 [formGroup]="openaiForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -283,12 +282,11 @@
                 class="form"
                 [formGroup]="elevenLabsForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -342,12 +340,11 @@
                 class="form"
                 [formGroup]="geminiForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"

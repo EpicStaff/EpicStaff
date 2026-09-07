@@ -36,14 +36,15 @@
             {{ data.cancelText || 'Cancel' }}
         </button>
         <div class="right-buttons">
-            <button
-                *ngIf="data.showDontSave !== false"
-                type="button"
-                class="button dont-save-button"
-                (click)="onDontSave()"
-            >
-                {{ data.dontSaveText || "Don't Save" }}
-            </button>
+            @if (data.showDontSave !== false) {
+                <button
+                    type="button"
+                    class="button dont-save-button"
+                    (click)="onDontSave()"
+                >
+                    {{ data.dontSaveText || "Don't Save" }}
+                </button>
+            }
             <button
                 type="button"
                 class="button save-button"
@@ -51,13 +52,14 @@
                 (click)="onSave()"
                 [disabled]="isSaving"
             >
-                <span *ngIf="!isSaving">{{ data.saveText || 'Save' }}</span>
-                <span
-                    *ngIf="isSaving"
-                    class="loading-content"
-                >
-                    <app-spinner2 [size]="16" />
-                </span>
+                @if (!isSaving) {
+                    <span>{{ data.saveText || 'Save' }}</span>
+                }
+                @if (isSaving) {
+                    <span class="loading-content">
+                        <app-spinner2 [size]="16" />
+                    </span>
+                }
             </button>
         </div>
     </div>

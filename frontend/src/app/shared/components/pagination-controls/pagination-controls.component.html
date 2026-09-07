@@ -26,23 +26,21 @@
     </button>
 
     <ul class="page-list">
-        <li
-            *ngFor="let p of pages"
-            [class.ellipsis]="p === '…'"
-        >
-            <ng-container *ngIf="p !== '…'; else dots">
-                <button
-                    class="page-btn"
-                    [class.active]="p === currentPage"
-                    (click)="goTo(p)"
-                >
-                    {{ p }}
-                </button>
-            </ng-container>
-            <ng-template #dots>
-                <span class="dots">…</span>
-            </ng-template>
-        </li>
+        @for (p of pages; track p) {
+            <li [class.ellipsis]="p === '…'">
+                @if (p !== '…') {
+                    <button
+                        class="page-btn"
+                        [class.active]="p === currentPage"
+                        (click)="goTo(p)"
+                    >
+                        {{ p }}
+                    </button>
+                } @else {
+                    <span class="dots">…</span>
+                }
+            </li>
+        }
     </ul>
 
     <button

@@ -15,6 +15,9 @@ module.exports = tseslint.config({
     '@angular-eslint': angularEslintPlugin,
   },
   rules: {
+    // warn and error are legitimate — they surface real problems to whoever opens the console.
+    // log is developer instrumentation and should not ship
+    'no-console': ['error', { allow: ['warn', 'error'] }],
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unused-vars': 'error',
     'simple-import-sort/imports': 'error',

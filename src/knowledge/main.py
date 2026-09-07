@@ -1,5 +1,4 @@
 import functools
-import os
 import asyncio
 import json
 import time
@@ -18,30 +17,10 @@ from src.shared.models import (
     KnowledgeStatus,
     ProcessRagIndexingMessage,
 )
+import settings
 
 
 collection_processor_service = CollectionProcessorService()
-# Redis Configuration
-redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
-redis_port = int(os.getenv("REDIS_PORT", "6379"))
-redis_password = os.getenv("REDIS_PASSWORD")
-
-knowledge_sources_channel = os.getenv("KNOWLEDGE_SOURCES_CHANNEL", "knowledge_sources")
-knowledge_search_get_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_GET_CHANNEL", "knowledge:search:get"
-)
-knowledge_search_response_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
-)
-knowledge_document_chunk_channel = os.getenv(
-    "KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL", "knowledge:chunk"
-)
-knowledge_document_chunk_response = os.getenv(
-    "KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE", "knowledge:chunk:response"
-)
-knowledge_indexing_channel = os.getenv(
-    "KNOWLEDGE_INDEXING_CHANNEL", "knowledge:indexing"
-)
 
 
 async def execute_indexing(
@@ -93,10 +72,10 @@ async def indexing(
 ):
     """Handles RAG indexing (+ force chunking) from the Redis queue asynchronously."""
     logger.info(
-        f"Subscribed to channel '{knowledge_indexing_channel}' for RAG indexing."
+        f"Subscribed to channel '{settings.KNOWLEDGE_INDEXING_CHANNEL}' for RAG indexing."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_indexing_channel)
+    pubsub = await redis_service.async_subscribe(settings.KNOWLEDGE_INDEXING_CHANNEL)
     async for message in pubsub.listen():
         if message["type"] == "message":
             try:
@@ -260,10 +239,10 @@ async def chunking(
     - Sends response with chunking_job_id and rag_type for correlation
     """
     logger.info(
-        f"Subscribed to channel '{knowledge_document_chunk_channel}' for preview chunking."
+        f"Subscribed to channel '{settings.KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL}' for preview chunking."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_document_chunk_channel)
+    pubsub = await redis_service.async_subscribe(settings.KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL)
     async for message in pubsub.listen():
         if message["type"] == "message":
             try:
@@ -286,7 +265,7 @@ async def chunking(
                         rag_type=rag_type,
                         executor=executor,
                         redis_service=redis_service,
-                        response_channel=knowledge_document_chunk_response,
+                        response_channel=settings.KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE,
                         semaphore=semaphore,
                     )
                 )
@@ -371,10 +350,10 @@ async def searching(
     Uses rag_id and rag_type
     """
     logger.info(
-        f"Subscribed to channel '{knowledge_search_get_channel}' for search queries."
+        f"Subscribed to channel '{settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL}' for search queries."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_search_get_channel)
+    pubsub = await redis_service.async_subscribe(settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL)
     async for message in pubsub.listen():
         if message["type"] == "message":
             try:
@@ -394,7 +373,7 @@ async def searching(
                         query=data.query,
                         rag_search_config=data.rag_search_config,
                         redis_service=redis_service,
-                        response_channel=knowledge_search_response_channel,
+                        response_channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
                         semaphore=semaphore,
                         embedder_api_key=data.embedder_api_key,
                     )
@@ -409,7 +388,10 @@ async def searching(
 async def main():
     """Runs both tasks concurrently"""
     redis_service = RedisService(
-        host=redis_host, port=redis_port, password=redis_password
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        user=settings.REDIS_USER,
+        password=settings.REDIS_PASSWORD
     )
     await redis_service.connect()
 

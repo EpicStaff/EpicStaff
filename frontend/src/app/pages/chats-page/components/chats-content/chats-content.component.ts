@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -8,8 +7,7 @@ import { ChatComponent } from './chat/chat.component';
 
 @Component({
     selector: 'app-chats-content',
-    standalone: true,
-    imports: [NgIf, RouterModule, ChatComponent],
+    imports: [RouterModule, ChatComponent],
     templateUrl: './chats-content.component.html',
     styleUrls: ['./chats-content.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,19 +21,4 @@ export class ChatsContentComponent {
     public get hasSelection(): boolean {
         return this.chatsService.selectedChatAgent$() !== null;
     }
-
-    // Empty-state CTA points to where you actually create/configure the missing kind.
-    public get isAgentsTab(): boolean {
-        return this.chatsService.activeTab() === 'definition';
-    }
-
-    public get emptyCtaLink(): string {
-        return this.isAgentsTab ? '/agents' : '/staff';
-    }
-
-    public get emptyCtaLabel(): string {
-        return this.isAgentsTab ? 'Go to Agents' : 'Go to Staff';
-    }
-
-    ngOnDestroy() {}
 }

@@ -1,0 +1,116 @@
+:host {
+    display: block;
+}
+
+.summary-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+
+    .summary-block {
+        display: flex;
+        flex-direction: row;
+
+        .summary-title {
+            margin: 0;
+            font-size: 1.12rem;
+            font-weight: 500;
+            color: var(--color-text-primary);
+            letter-spacing: 0.5px;
+            flex: 1;
+
+            .summary-count {
+                font-weight: 600;
+                color: var(--accent-color);
+                margin-left: auto;
+            }
+        }
+    }
+
+    .summary-slider {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .slider-nav-btn {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        padding: 0 12px;
+        background: var(--color-input-background);
+        border: none;
+        border-radius: 8px;
+        color: var(--text-secondary-60);
+        cursor: pointer;
+        transition: background 0.2s ease;
+
+        &:hover {
+            background-color: var(--color-secondary-btn-background-hover);
+        }
+
+        &.hidden {
+            display: none;
+        }
+
+        &.slider-nav-btn--left .scroll-btn-icon {
+            transform: scaleX(-1);
+        }
+    }
+
+    .summary-list {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        scrollbar-width: none;
+        flex: 1;
+        min-width: 0;
+        padding: 12px 0;
+        margin: -12px 0;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    .summary-item {
+        display: flex;
+        gap: 0.5rem;
+        padding: 1rem;
+        border-radius: 10px;
+        flex-direction: column;
+        align-items: flex-start;
+        background-color: var(--color-flow-card-bg);
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+        box-shadow:
+            0px 2px 3px 0px rgba(0, 0, 0, 0.3),
+            0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+
+        &:hover {
+            background-color: var(--color-ks-hover-row);
+        }
+
+        .summary-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--color-ks-transparent-text-60);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .summary-count {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            margin-left: auto;
+        }
+    }
+}

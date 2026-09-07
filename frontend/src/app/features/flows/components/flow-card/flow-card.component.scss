@@ -24,9 +24,10 @@
     }
 
     .selection-checkbox {
-        position: absolute;
-        top: 10px;
-        left: 10px;
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        margin-right: 4px;
     }
 
     .card-main {

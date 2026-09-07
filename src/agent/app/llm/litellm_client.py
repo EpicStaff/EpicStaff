@@ -102,9 +102,9 @@ def _kwargs_for_acompletion(model_config: dict) -> dict:
 
 
 def _default_max_retries() -> int:
-    from settings import load_settings
+    import settings
 
-    return load_settings().agent_default_max_retries
+    return settings.AGENT_DEFAULT_MAX_RETRIES
 
 
 class LiteLLMClient(LLMClient):

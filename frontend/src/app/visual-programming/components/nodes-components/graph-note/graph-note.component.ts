@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
@@ -10,8 +9,7 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
 
 @Component({
     selector: 'app-graph-note',
-    standalone: true,
-    imports: [CommonModule, FFlowModule, FormsModule, ResizeHandleComponent],
+    imports: [FFlowModule, FormsModule, ResizeHandleComponent],
     template: `
         <div
             class="note-container"

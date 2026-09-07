@@ -1,10 +1,11 @@
-import os
 from typing import List, Optional
 
 import httpx
 
 from .base_embedder import BaseEmbedder
 from ._http_retry import request_with_retry
+
+import settings
 
 TOGETHER_API_URL = "https://api.together.xyz/v1/embeddings"
 
@@ -22,7 +23,7 @@ class TogetherAIEmbedder(BaseEmbedder):
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
         # dims=768
         self.model_name = model_name or "togethercomputer/m2-bert-80M-32k-retrieval"
-        self.api_key = api_key or os.getenv("TOGETHER_API_KEY")
+        self.api_key = api_key or settings.TOGETHER_API_KEY
         if not self.api_key:
             raise ValueError(
                 "Cohere API key must be provided via argument or 'TOGETHER_API_KEY' environment variable."

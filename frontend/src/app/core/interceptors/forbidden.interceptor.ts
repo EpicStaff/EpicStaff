@@ -10,6 +10,14 @@ import { SKIP_FORBIDDEN_RELOAD } from './skip-forbidden-reload.context';
 
 let refresh$: Observable<unknown> | null = null;
 
+/**
+ * Error codes for a 403 that reflects a fixed business rule on the targeted row (e.g.
+ * "this specific row can't be edited"), not a change in the caller's own permissions.
+ * These must not trigger the session refresh/reload below — the caller's own error
+ * handling shows the message instead.
+ */
+const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>(['built_in_model_immutable']);
+
 export const forbiddenInterceptor: HttpInterceptorFn = (req, next) => {
     const profileService = inject(ProfileService);
     const router = inject(Router);
@@ -17,7 +25,11 @@ export const forbiddenInterceptor: HttpInterceptorFn = (req, next) => {
 
     return next(req).pipe(
         catchError((err: HttpErrorResponse) => {
-            if (err.status !== 403 || req.context.get(SKIP_FORBIDDEN_RELOAD)) {
+            if (
+                err.status !== 403 ||
+                req.context.get(SKIP_FORBIDDEN_RELOAD) ||
+                BUSINESS_RULE_FORBIDDEN_CODES.has(err.error?.code)
+            ) {
                 return throwError(() => err);
             }
             toast.error(err.error.message);

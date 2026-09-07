@@ -5,7 +5,6 @@ from tables.serializers.model_serializers import (
     AudioTranscriptionNodeSerializer,
     ClassificationDecisionTableNodeSerializer,
     ConditionalEdgeSerializer,
-    CrewNodeSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
     EndNodeSerializer,
@@ -37,16 +36,6 @@ class BulkSaveEntityMixin:
             required=False, allow_null=True, default=None
         )
         return fields
-
-
-class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
-    """
-    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
-    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
-    backward compatibility with existing CrewNode rows.
-    """
-
-    pass
 
 
 class PythonNodeBulkSerializer(BulkSaveEntityMixin, PythonNodeSerializer):

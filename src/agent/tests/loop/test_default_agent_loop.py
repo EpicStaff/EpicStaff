@@ -779,7 +779,7 @@ def _parallel_tool_call_chunks(*calls: tuple[str, str, str]) -> list[LLMChunk]:
 
 
 async def test_max_tool_calls_overflow_rejected_with_error_result():
-    """3 parallel calls, max_tool_calls=2: only first 2 executed, 3rd rejected."""
+    """3 parallel calls, max_tool_calls=2: only first 2 executed, budget then exhausted."""
     emitter = RecordingEmitter()
     context = make_context(max_tool_calls=2)
     tools = StubToolRegistry(
@@ -803,14 +803,49 @@ async def test_max_tool_calls_overflow_rejected_with_error_result():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "completed"
+    assert result.stop_reason == "max_tool_calls_reached"
     assert result.tool_invocations == 2
 
     tool_messages = {
         m["tool_call_id"]: m["content"] for m in context.messages if m["role"] == "tool"
     }
     assert set(tool_messages) == {"c1", "c2", "c3"}
-    assert "Tool call limit reached" in tool_messages["c3"]
+    assert "budget exhausted" in tool_messages["c3"]
+
+
+async def test_max_tool_calls_enforced_cumulatively_across_iterations():
+    """max_tool_calls=5, three iterations of 2 parallel calls: budget spends across iterations,
+    not reset per iteration."""
+    emitter = RecordingEmitter()
+    context = make_context(max_tool_calls=5)
+    tools = StubToolRegistry(
+        {
+            "tool_a": lambda args: "a",
+            "tool_b": lambda args: "b",
+        }
+    )
+    stop = MaxIterAndNoToolCalls(max_iter=10)
+
+    llm = FakeLLMClient(
+        [
+            _parallel_tool_call_chunks(("c1", "tool_a", "{}"), ("c2", "tool_b", "{}")),
+            _parallel_tool_call_chunks(("c3", "tool_a", "{}"), ("c4", "tool_b", "{}")),
+            _parallel_tool_call_chunks(("c5", "tool_a", "{}"), ("c6", "tool_b", "{}")),
+            text_chunks("summary after budget exhausted"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.tool_invocations == 5
+    assert result.stop_reason == "max_tool_calls_reached"
+    assert result.final_text == "summary after budget exhausted"
+
+    tool_messages = {
+        m["tool_call_id"]: m["content"] for m in context.messages if m["role"] == "tool"
+    }
+    assert "budget exhausted" in tool_messages["c6"]
 
 
 async def test_max_tool_calls_none_unlimited():
@@ -863,7 +898,7 @@ async def test_overflow_rejection_does_not_count_toward_consecutive_failures():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "completed"
+    assert result.stop_reason == "max_tool_calls_reached"
     assert result.tool_invocations == 1
 
 

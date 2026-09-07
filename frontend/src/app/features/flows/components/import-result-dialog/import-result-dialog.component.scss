@@ -421,10 +421,15 @@
         }
 
         .entity-items {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
+            --collapse-duration: 220ms;
+            --collapse-easing: ease;
             margin-left: 1rem;
+
+            > .grid-collapsible__inner {
+                display: flex;
+                flex-direction: column;
+                gap: 1.5rem;
+            }
         }
 
         .entity-subgroup {
@@ -567,6 +572,8 @@
         }
 
         .item-details {
+            --collapse-duration: 220ms;
+            --collapse-easing: ease;
             background-color: rgba(0, 0, 0, 0.15);
             border-top: 1px solid rgba(43, 45, 48, 0.5);
 

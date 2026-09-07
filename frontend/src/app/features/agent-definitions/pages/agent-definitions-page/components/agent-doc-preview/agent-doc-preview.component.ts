@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, input, output, si
 import { FormsModule } from '@angular/forms';
 import { AppSvgIconComponent } from '@shared/components';
 import type { editor as MonacoEditor } from 'monaco-editor';
-import { MarkdownModule } from 'ngx-markdown';
+import { MarkdownComponent } from 'ngx-markdown';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 
 import { AgentDefinition } from '../../../../models/agent-definition.model';
@@ -12,7 +12,7 @@ type DocMode = 'preview' | 'markdown';
 
 @Component({
     selector: 'app-agent-doc-preview',
-    imports: [FormsModule, AppSvgIconComponent, MarkdownModule, MonacoEditorModule, DetailHeaderComponent],
+    imports: [FormsModule, AppSvgIconComponent, MarkdownComponent, MonacoEditorModule, DetailHeaderComponent],
     templateUrl: './agent-doc-preview.component.html',
     styleUrls: ['./agent-doc-preview.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

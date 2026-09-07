@@ -67,14 +67,15 @@ Inbound Request Authentication
 -------------------------------
 By default, requests to your webhook URL must be authenticated:
 
-- **Generic webhook triggers** (`WebhookTriggerNode`) are HMAC-signature
-  protected by default. Your sending system must sign each request with the
-  signing secret shown for that node and send it as an
-  `X-Webhook-Signature` + `X-Webhook-Timestamp` header pair -- see the
-  Developer Guide's "Webhook Inbound Authentication" section for the exact
-  algorithm. If your sender can't sign requests (e.g. quick manual testing),
-  you can turn this off per-node by setting the node's
-  `webhook_node_auth.enabled` to `false`.
+- **Generic webhook triggers** (`WebhookTriggerNode`) require a secret set at
+  the trigger level: create a `Secret` (at least 32 characters) and point
+  the webhook trigger's `auth_secret_id` at it with `auth_kind: "webhook"`
+  via `/api/webhook-triggers/`. Your sending system must then send that
+  secret back on every request as an `EPICSTAFF_API_KEY` header. This is
+  mandatory -- there is no way to disable auth for a trigger; every trigger
+  either has a configured secret or requests to it are rejected with `401`.
+  See the Developer Guide's "Webhook Inbound Authentication" section for
+  details.
 - **Telegram triggers** are always auth-protected automatically, with
   nothing for you to configure -- the secret-token exchange happens entirely
   between this platform and Telegram when the bot's webhook is registered.

@@ -1,7 +1,6 @@
-from .base_node import BaseNode
-from .crew_node import CrewNode
-from .python_node import PythonNode
-from .knowledge_node import KnowledgeNode
-from .end_node import EndNode
-from .file_extractor_node import FileContentExtractorNode
-from .audio_transcription_node import AudioTranscriptionNode
+from .base_node import BaseNode as BaseNode
+from .python_node import PythonNode as PythonNode
+from .knowledge_node import KnowledgeNode as KnowledgeNode
+from .end_node import EndNode as EndNode
+from .file_extractor_node import FileContentExtractorNode as FileContentExtractorNode
+from .audio_transcription_node import AudioTranscriptionNode as AudioTranscriptionNode

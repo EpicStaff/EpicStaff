@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, inject, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -7,9 +6,9 @@ import { UndoRedoService } from '../../services/undo-redo.service';
 
 @Component({
     selector: 'app-flow-action-panel',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     templateUrl: './flow-action-panel.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./flow-action-panel.component.scss'],
 })
 export class FlowActionPanelComponent {

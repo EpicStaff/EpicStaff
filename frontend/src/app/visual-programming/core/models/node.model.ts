@@ -1,5 +1,4 @@
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
-import { GetProjectRequest } from '../../../features/projects/models/project.model';
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
@@ -13,7 +12,7 @@ import { NodeType } from '../enums/node-type';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
-import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
+import { WebhookTriggerWrite } from './webhook-trigger.model';
 
 export interface BaseNodeModel {
     id: string;
@@ -46,15 +45,9 @@ export interface PythonNodeModel extends BaseNodeModel {
     type: NodeType.PYTHON;
     python_code_id: number | null;
     data: CustomPythonCode;
-    stream_config?: Record<string, boolean>;
     test_input: Record<string, string | number | boolean>;
 }
 
-export interface ProjectNodeModel extends BaseNodeModel {
-    type: NodeType.PROJECT;
-    data: GetProjectRequest;
-    stream_config?: Record<string, boolean>;
-}
 export interface TaskNodeModel extends BaseNodeModel {
     type: NodeType.TASK;
     data: TaskNodeData;
@@ -108,7 +101,6 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
         webhook_trigger: WebhookTriggerWrite | null;
-        webhook_node_auth: WebhookNodeAuthModel | null;
         python_code: CustomPythonCode;
     };
 }
@@ -159,7 +151,6 @@ export type NodeModel =
     | TaskNodeModel
     | ToolNodeModel
     | LLMNodeModel
-    | ProjectNodeModel
     | PythonNodeModel
     | EdgeNodeModel
     | StartNodeModel

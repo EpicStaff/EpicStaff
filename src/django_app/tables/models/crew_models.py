@@ -1,6 +1,10 @@
 from django.db import models
 from django.db.models import CheckConstraint
 from tables.models import DefaultBaseModel, AbstractDefaultFillableModel, Process
+from tables.models.base_models import (
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 from django.core.exceptions import ValidationError
 
@@ -182,7 +186,7 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
         return self.role
 
 
-class AgentPythonCodeTools(models.Model):
+class AgentPythonCodeTools(SoftDeleteFields, models.Model):
     """
     DEPRECATED: AgentPythonCodeTools is deprecated. Use agents.AgentDefinition +
     AgentNode instead. Exists only for backward compatibility with existing
@@ -199,9 +203,12 @@ class AgentPythonCodeTools(models.Model):
     class Meta:
         db_table = "tables_agent_python_code_tools_m2m"
         unique_together = ("agent_id", "pythoncodetool_id")
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
-class AgentPythonCodeToolConfigs(models.Model):
+class AgentPythonCodeToolConfigs(SoftDeleteFields, models.Model):
     """
     DEPRECATED: AgentPythonCodeToolConfigs is deprecated. Use
     agents.AgentDefinition + AgentNode instead. Exists only for backward
@@ -220,6 +227,9 @@ class AgentPythonCodeToolConfigs(models.Model):
             "agent_id",
             "pythoncodetoolconfig_id",
         )
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class AgentMcpTools(models.Model):
@@ -385,7 +395,7 @@ class Task(models.Model):
         return self.name
 
 
-class TaskPythonCodeTools(models.Model):
+class TaskPythonCodeTools(SoftDeleteFields, models.Model):
     """
     DEPRECATED: TaskPythonCodeTools is deprecated. Use TaskNode/AgentNodeTask
     instead. Exists only for backward compatibility with existing Task rows.
@@ -398,9 +408,12 @@ class TaskPythonCodeTools(models.Model):
 
     class Meta:
         unique_together = ("task", "tool")
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
-class TaskPythonCodeToolConfigs(models.Model):
+class TaskPythonCodeToolConfigs(SoftDeleteFields, models.Model):
     """
     DEPRECATED: TaskPythonCodeToolConfigs is deprecated. Use TaskNode/AgentNodeTask
     instead. Exists only for backward compatibility with existing Task rows.
@@ -415,6 +428,9 @@ class TaskPythonCodeToolConfigs(models.Model):
 
     class Meta:
         unique_together = ("task", "tool")
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class TaskMcpTools(models.Model):

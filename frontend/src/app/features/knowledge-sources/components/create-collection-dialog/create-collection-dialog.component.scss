@@ -37,13 +37,11 @@
     &__actions {
         display: flex;
         flex-wrap: nowrap;
-        min-width: 0;
-        flex-shrink: 10;
+        flex-shrink: 0;
         column-gap: 0.5rem;
 
         app-button {
-            min-width: 0;
-            flex-shrink: 1;
+            flex-shrink: 0;
         }
 
         &--close {

@@ -2,7 +2,8 @@
 """Prune ghcr.io container package versions for an organization per the EpicStaff retention policy.
 
 Policy per package:
-- KEEP forever: 'latest' tag, any tag matching strict semver ^v\\d+\\.\\d+\\.\\d+$
+- KEEP forever: 'latest' tag, any tag matching strict semver ^v\\d+\\.\\d+\\.\\d+$,
+  or a cosign sig/attestation/sbom tag ^sha256-[0-9a-f]{64}\\.(sig|att|sbom)$
 - KEEP top N (default 10): tags matching ^main-[0-9a-f]+$ (CI builds from main), most-recent by created_at
 - KEEP if recent: anything else (branch slugs, untagged) created within the last N days (default 30)
 - DELETE: everything else
@@ -26,6 +27,7 @@ import requests
 GH = "https://api.github.com"
 SEMVER_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 MAIN_SHA_RE = re.compile(r"^main-[0-9a-f]{4,40}$")
+SIG_ATT_RE = re.compile(r"^sha256-[0-9a-f]{64}\.(sig|att|sbom)$")
 KEEP_TAGS = {"latest"}
 
 
@@ -72,7 +74,9 @@ def classify(
         created_str = v["created_at"].replace("Z", "+00:00")
         created = datetime.datetime.fromisoformat(created_str)
 
-        is_keep = any(t in KEEP_TAGS or SEMVER_RE.match(t) for t in tags)
+        is_keep = any(
+            t in KEEP_TAGS or SEMVER_RE.match(t) or SIG_ATT_RE.match(t) for t in tags
+        )
         if is_keep:
             keep.append((v, tags, "protected tag"))
             continue

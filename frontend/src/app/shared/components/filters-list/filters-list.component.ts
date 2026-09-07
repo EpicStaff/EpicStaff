@@ -6,7 +6,6 @@ export interface SearchFilterChange {
 
 @Component({
     selector: 'app-filters-list',
-    standalone: true,
     templateUrl: './filters-list.component.html',
     styleUrls: ['./filters-list.component.scss'],
     imports: [],

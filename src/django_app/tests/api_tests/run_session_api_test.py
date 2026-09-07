@@ -26,9 +26,9 @@ def test_run_session(auth_client, redis_client_mock, session_data):
 
 
 @pytest.mark.django_db
-def test_create_session(auth_client, crew, graph):
+def test_create_session(auth_client, graph):
     url = reverse("session-list")
-    data = {"crew": crew.pk, "status": "run", "graph_id": graph.pk}
+    data = {"status": "run", "graph_id": graph.pk}
 
     response = auth_client.post(url, data, format="json")
 
@@ -72,7 +72,6 @@ def test_get_session_by_id(auth_client, session):
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["id"] == session.pk
     assert response.data["graph"] == session.graph.id
-    # assert response.data["graph_schema"]["tasks"] == crew_data["tasks"]
 
 
 @pytest.mark.django_db

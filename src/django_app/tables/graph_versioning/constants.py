@@ -1,7 +1,6 @@
 from agents.models import AgentDefinition, Surface
 from tables.import_export.enums import EntityType
 from tables.models import (
-    Crew,
     Graph,
     LLMConfig,
     McpTool,
@@ -19,7 +18,6 @@ _EXCLUDED_GRAPH_SCALARS = (
 
 
 _DEPENDENCY_ENTITY_TYPES = {
-    EntityType.CREW.value: EntityType.CREW,
     EntityType.LLM_CONFIG.value: EntityType.LLM_CONFIG,
     EntityType.WEBHOOK_TRIGGER.value: EntityType.WEBHOOK_TRIGGER,
     EntityType.GRAPH.value: EntityType.GRAPH,
@@ -30,7 +28,6 @@ _DEPENDENCY_ENTITY_TYPES = {
 }
 
 _DEPENDENCY_MODELS = {
-    EntityType.CREW.value: Crew,
     EntityType.LLM_CONFIG.value: LLMConfig,
     EntityType.WEBHOOK_TRIGGER.value: WebhookTrigger,
     EntityType.GRAPH.value: Graph,
@@ -41,7 +38,6 @@ _DEPENDENCY_MODELS = {
 }
 
 _GRAPH_RELATION_NAMES = (
-    "crew_node_list",
     "subgraph_node_list",
     "python_node_list",
     "webhook_trigger_node_list",

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, signal, ViewEncapsulation } from '@angular/core';
 import { ICellRendererParams } from 'ag-grid-community';
 
@@ -20,23 +19,17 @@ interface PromptTooltipParams extends ICellRendererParams {
 
 @Component({
     selector: 'app-prompt-tooltip-renderer',
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="prompt-id-cell">
-            <span
-                *ngIf="!value()"
-                class="placeholder select-placeholder"
-            >
-                Select prompt <i class="ti ti-chevron-down"></i>
-            </span>
-            <ng-container *ngIf="value()">
-                <span
-                    *ngIf="isDeleted()"
-                    class="deleted-prompt-badge"
-                >
-                    <i class="ti ti-alert-triangle"></i> Deleted
-                </span>
-                <ng-container *ngIf="!isDeleted()">
+            @if (!value()) {
+                <span class="placeholder select-placeholder"> Select prompt <i class="ti ti-chevron-down"></i> </span>
+            }
+            @if (value()) {
+                @if (isDeleted()) {
+                    <span class="deleted-prompt-badge"> <i class="ti ti-alert-triangle"></i> Deleted </span>
+                }
+                @if (!isDeleted()) {
                     <div class="prompt-chip">
                         <span class="chip-id">{{ value() }}</span>
                     </div>
@@ -47,8 +40,8 @@ interface PromptTooltipParams extends ICellRendererParams {
                     >
                         <i class="ti ti-arrow-up-right"></i>
                     </button>
-                </ng-container>
-            </ng-container>
+                }
+            }
         </div>
     `,
     styles: [

@@ -1,11 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { ICellRendererAngularComp } from 'ag-grid-angular';
 import { ICellRendererParams, IRowNode } from 'ag-grid-community';
 
 @Component({
     selector: 'app-selection-cell-renderer',
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="selection-cell">
             <span

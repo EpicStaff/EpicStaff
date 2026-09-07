@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
@@ -17,7 +16,7 @@ import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 
 @Component({
     selector: 'app-user-menu',
-    imports: [CommonModule, AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent],
+    imports: [AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent],
     templateUrl: './user-menu.component.html',
     styleUrls: ['./user-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -80,7 +79,6 @@ export class UserMenuComponent {
      * the resource not exist in the new org. Map them to their list page.
      */
     private getUrlForOrgSwitch(currentUrl: string): string {
-        if (/^\/projects\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/projects/my';
         if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
         if (/^\/graph\//.test(currentUrl)) return '/sessions';
         return currentUrl;

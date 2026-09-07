@@ -286,6 +286,9 @@
             &.File-Extractor:not(.f-selected) {
                 fill: #2196f3;
             }
+            &.End:not(.f-selected) {
+                fill: #d3d3d3;
+            }
             &.Audio-to-text:not(.f-selected) {
                 fill: #ff7be9;
             }
@@ -306,9 +309,6 @@
             }
             &.Flow-Node:not(.f-selected) {
                 fill: #00bfa5;
-            }
-            &.End:not(.f-selected) {
-                fill: #d3d3d3;
             }
         }
     }

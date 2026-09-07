@@ -1,16 +1,5 @@
 @use '../../../styles/node-panel-mixins.scss' as mixins;
 
-// Match app-select (app-tooltip) labels to the app-custom-input labels — scoped to this panel only.
-// Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
-:host ::ng-deep app-select .tooltip-label {
-    color: var(--color-ks-text);
-    font-weight: 400;
-}
-
-:host ::ng-deep app-select .tooltip-label-container {
-    margin-bottom: 8px;
-}
-
 .panel-container {
     display: flex;
     flex-direction: column;

@@ -1,8 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -48,9 +48,8 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 };
 
 @Component({
-    standalone: true,
     selector: 'app-domain-dialog',
-    imports: [CommonModule, JsonEditorComponent, OverlayModule, AppSvgIconComponent],
+    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent],
     encapsulation: ViewEncapsulation.None,
     template: `
         <div class="dialog-container">
@@ -103,6 +102,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .dialog-container {

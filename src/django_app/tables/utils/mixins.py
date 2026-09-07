@@ -41,17 +41,16 @@ def _malloc_trim_and_log() -> None:
         logger.warning(f"malloc_trim failed: {e}")
 
 
-_TRIM_INTERVAL_SECONDS = int(os.environ.get("MALLOC_TRIM_INTERVAL_SECONDS", "60"))
 _trim_task_started = False
 
 
 async def _periodic_malloc_trim() -> None:
     logger.info(
-        f"Periodic malloc_trim task started (interval={_TRIM_INTERVAL_SECONDS}s)"
+        f"Periodic malloc_trim task started (interval={settings.MALLOC_TRIM_INTERVAL}s)"
     )
     while True:
         try:
-            await asyncio.sleep(_TRIM_INTERVAL_SECONDS)
+            await asyncio.sleep(settings.MALLOC_TRIM_INTERVAL)
             await asyncio.to_thread(_malloc_trim_and_log)
         except asyncio.CancelledError:
             logger.info("Periodic malloc_trim task cancelled")

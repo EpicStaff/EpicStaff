@@ -1,4 +1,3 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
 import { Subscription } from 'rxjs';
@@ -8,7 +7,6 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
 
 @Component({
     selector: 'app-toast',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
@@ -16,31 +14,33 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             class="toast-container"
             [ngClass]="position"
         >
-            <div
-                *ngFor="let toast of toasts"
-                [@toastAnimation]="position"
-                class="toast-item"
-                [ngClass]="toast.type"
-            >
-                <div class="toast-content">
-                    <div class="toast-icon-wrapper">
-                        <app-svg-icon
-                            [icon]="getIconId(toast.type)"
-                            size="20px"
-                        ></app-svg-icon>
-                    </div>
-                    <span class="toast-message">{{ toast.message }}</span>
-                </div>
-                <button
-                    class="toast-close-btn"
-                    (click)="closeToast(toast.id); $event.stopPropagation()"
+            @for (toast of toasts; track toast.id) {
+                <div
+                    animate.enter="toast-enter"
+                    animate.leave="toast-leave"
+                    class="toast-item"
+                    [ngClass]="toast.type"
                 >
-                    <app-svg-icon
-                        icon="x"
-                        size="16px"
-                    ></app-svg-icon>
-                </button>
-            </div>
+                    <div class="toast-content">
+                        <div class="toast-icon-wrapper">
+                            <app-svg-icon
+                                [icon]="getIconId(toast.type)"
+                                size="20px"
+                            ></app-svg-icon>
+                        </div>
+                        <span class="toast-message">{{ toast.message }}</span>
+                    </div>
+                    <button
+                        class="toast-close-btn"
+                        (click)="closeToast(toast.id); $event.stopPropagation()"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="16px"
+                        ></app-svg-icon>
+                    </button>
+                </div>
+            }
         </div>
     `,
     styles: [
@@ -68,35 +68,9 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                     flex-direction: column;
                 }
 
-                &.top-left {
-                    top: 20px;
-                    left: 20px;
-                    flex-direction: column;
-                }
-
-                &.top-center {
-                    top: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    flex-direction: column;
-                }
-
                 &.bottom-right {
                     bottom: 20px;
                     right: 20px;
-                    flex-direction: column-reverse;
-                }
-
-                &.bottom-left {
-                    bottom: 20px;
-                    left: 20px;
-                    flex-direction: column-reverse;
-                }
-
-                &.bottom-center {
-                    bottom: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
                     flex-direction: column-reverse;
                 }
             }
@@ -191,85 +165,78 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                     color: #e0e0e0;
                 }
             }
+
+            @keyframes toast-enter-top {
+                from {
+                    opacity: 0;
+                    transform: translateY(-100%);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            @keyframes toast-leave-top {
+                from {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateY(-100%);
+                }
+            }
+
+            @keyframes toast-enter-right {
+                from {
+                    opacity: 0;
+                    transform: translateX(100%);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+
+            @keyframes toast-leave-right {
+                from {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateX(100%);
+                }
+            }
+
+            .toast-container.top-right {
+                .toast-item.toast-enter {
+                    animation: toast-enter-top 300ms ease-out;
+                }
+
+                .toast-item.toast-leave {
+                    animation: toast-leave-top 200ms ease-in;
+                }
+            }
+
+            .toast-container.bottom-right {
+                .toast-item.toast-enter {
+                    animation: toast-enter-right 300ms ease-out;
+                }
+
+                .toast-item.toast-leave {
+                    animation: toast-leave-right 200ms ease-in;
+                }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .toast-item.toast-enter,
+                .toast-item.toast-leave {
+                    animation-duration: 1ms;
+                }
+            }
         `,
-    ],
-    animations: [
-        trigger('toastAnimation', [
-            state(
-                'top-center',
-                style({
-                    opacity: 1,
-                    transform: 'translateY(0)',
-                })
-            ),
-            state(
-                'top-right',
-                style({
-                    opacity: 1,
-                    transform: 'translateY(0)',
-                })
-            ),
-            state(
-                'top-left',
-                style({
-                    opacity: 1,
-                    transform: 'translateY(0)',
-                })
-            ),
-            state(
-                'bottom-right',
-                style({
-                    opacity: 1,
-                    transform: 'translateX(0)',
-                })
-            ),
-            state(
-                'bottom-left',
-                style({
-                    opacity: 1,
-                    transform: 'translateX(0)',
-                })
-            ),
-            state(
-                'bottom-center',
-                style({
-                    opacity: 1,
-                    transform: 'translateX(0)',
-                })
-            ),
-            transition('void => top-center, void => top-right, void => top-left', [
-                style({
-                    opacity: 0,
-                    transform: 'translateY(-100%)',
-                }),
-                animate('300ms ease-out'),
-            ]),
-            transition('top-center => void, top-right => void, top-left => void', [
-                animate(
-                    '200ms ease-in',
-                    style({
-                        opacity: 0,
-                        transform: 'translateY(-100%)',
-                    })
-                ),
-            ]),
-            transition('void => bottom-right, void => bottom-center, void => bottom-left', [
-                style({
-                    opacity: 0,
-                    transform: 'translateX(100%)',
-                }),
-                animate('300ms ease-out'),
-            ]),
-            transition('bottom-right => void, bottom-center => void, bottom-left => void', [
-                animate(
-                    '200ms ease-in',
-                    style({
-                        opacity: 0,
-                        transform: 'translateX(100%)',
-                    })
-                ),
-            ]),
-        ]),
     ],
 })
 export class ToastComponent implements OnInit, OnDestroy {

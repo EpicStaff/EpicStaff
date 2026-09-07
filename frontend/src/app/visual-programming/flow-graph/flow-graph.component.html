@@ -125,7 +125,6 @@
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
                     (deleteClicked)="onDeleteNode($event)"
-                    (projectExpandToggled)="onProjectExpandToggled($event)"
                 >
                 </app-flow-base-node>
             }
@@ -325,6 +324,7 @@
             [position]="contextMenuPosition()"
             [currentFlowId]="currentFlowId"
             (nodeSelected)="onAddNodeFromContextMenu($event)"
+            (closed)="onCloseContextMenu()"
         >
         </app-flow-graph-context-menu>
     }

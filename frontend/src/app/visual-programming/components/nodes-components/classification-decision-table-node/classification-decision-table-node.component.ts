@@ -16,7 +16,6 @@ import { FlowService } from '../../../services/flow.service';
     selector: 'app-classification-decision-table-node',
     templateUrl: './classification-decision-table-node.component.html',
     styleUrls: ['./classification-decision-table-node.component.scss'],
-    standalone: true,
     imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, MATERIAL_FORMS],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

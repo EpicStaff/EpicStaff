@@ -1,11 +1,10 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-icon-button',
-    standalone: true,
     imports: [AppSvgIconComponent, MatTooltip],
     template: `
         <button
@@ -24,6 +23,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             />
         </button>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .icon-button {

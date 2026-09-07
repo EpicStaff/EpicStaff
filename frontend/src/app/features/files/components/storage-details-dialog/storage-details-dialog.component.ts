@@ -14,7 +14,6 @@ interface StorageDetailsDialogData extends StorageItemInfo {
 
 @Component({
     selector: 'app-storage-details-dialog',
-    standalone: true,
     imports: [AppSvgIconComponent, MatTooltipModule],
     templateUrl: './storage-details-dialog.component.html',
     styleUrls: ['./storage-details-dialog.component.scss'],

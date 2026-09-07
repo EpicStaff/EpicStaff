@@ -39,7 +39,7 @@ class DefaultAgentDefinitionConfig(models.Model):
     max_tool_calls = models.IntegerField(
         default=15,
         null=True,
-        help_text="Default max tool calls executed per loop iteration when AgentDefinition.max_tool_calls is null. Null = unlimited.",
+        help_text="Default max tool calls executed per agent run when AgentDefinition.max_tool_calls is null. Null = unlimited.",
     )
     tool_timeout = models.IntegerField(
         default=300,
@@ -146,7 +146,7 @@ class AgentDefinition(AbstractDefaultFillableModel):
     max_tool_calls = models.IntegerField(
         default=None,
         null=True,
-        help_text="Max tool calls executed per loop iteration. Null falls back to DefaultAgentDefinitionConfig.",
+        help_text="Max tool calls executed per agent run. Null falls back to DefaultAgentDefinitionConfig.",
     )
     tool_timeout = models.IntegerField(
         default=None,

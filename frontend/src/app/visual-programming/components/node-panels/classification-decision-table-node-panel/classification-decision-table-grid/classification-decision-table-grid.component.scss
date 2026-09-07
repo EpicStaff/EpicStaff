@@ -640,12 +640,6 @@
             height: 100% !important;
             top: 0 !important;
         }
-
-        // Frozen column separator — 2px right border on the pinned-left container
-        .ag-pinned-left-cols-container,
-        .ag-pinned-left-header {
-            border-right: 4px solid #3f4144 !important;
-        }
     }
 
     // Bug fix: when a popup cell editor is open (e.g. ExpressionBuilder), AG Grid adds
@@ -654,24 +648,6 @@
     // Hide all direct children of the popup-editing cell except the popup editor wrapper itself.
     .ag-cell.ag-cell-popup-editing > *:not(.ag-popup-editor):not(.ag-cell-edit-wrapper) {
         visibility: hidden !important;
-    }
-
-    // Handle autoHeight layout - let AG Grid handle overflow naturally
-    .ag-layout-auto-height {
-        .ag-center-cols-container,
-        .ag-center-cols-viewport {
-            min-height: 0px !important;
-        }
-    }
-
-    // When empty: min-height 150px
-    .decision-grid.empty-state {
-        .ag-layout-auto-height {
-            .ag-center-cols-container,
-            .ag-center-cols-viewport {
-                min-height: 150px !important;
-            }
-        }
     }
 }
 
