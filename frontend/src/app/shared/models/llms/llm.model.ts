@@ -7,7 +7,7 @@ export interface LLMModel {
     api_version: string | null;
     is_visible: boolean;
     is_custom: boolean;
-    predefined: boolean; // Indicates if model should be shown by default (favorite)
+    predefined: boolean; // seeded catalog row; drives the "Deprecated" badge and list sort order
 
     llm_provider: number;
 }
@@ -33,7 +33,5 @@ export interface CreateLlmModelRequest {
     deployment_id?: string | null;
     api_version?: string | null;
     is_visible: boolean;
-    is_custom: boolean;
-    predefined?: boolean;
     llm_provider: number;
 }

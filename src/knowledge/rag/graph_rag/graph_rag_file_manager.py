@@ -2,10 +2,11 @@
 
 import json
 import ntpath
-import os
 from pathlib import Path
 from typing import List, Optional, Dict
 from loguru import logger
+
+import settings
 
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 
@@ -96,7 +97,7 @@ class GraphRagFileManager:
                 src_dir = self._find_src_dir()
                 return (src_dir / self._explicit_base).resolve()
 
-        env_dir = os.environ.get("GRAPH_DATA_DIR")
+        env_dir = settings.GRAPH_DATA_DIR
         if env_dir:
             return Path(env_dir).resolve()
 

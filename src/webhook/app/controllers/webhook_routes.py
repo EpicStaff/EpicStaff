@@ -1,10 +1,11 @@
 import hmac
-import os
+import time
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 
+from app.core.settings import settings
 from app.services.redis_service import RedisService, get_redis_service
 from app.services.tunnel_registry import (
     AmbiguousWebhookPathError,
@@ -73,9 +74,7 @@ async def handle_webhook(
         config_id=config_id,
     )
 
-    empty_json_paths_raw = os.environ.get("WEBHOOK_EMPTY_JSON_PATHS", "")
-    empty_json_paths = {p.strip() for p in empty_json_paths_raw.split(",") if p.strip()}
-    if custom_path in empty_json_paths:
+    if custom_path in settings.webhook_empty_json_paths_set:
         return {}
 
     return {"status": "success", "message": "Webhook received", "config_id": config_id}
