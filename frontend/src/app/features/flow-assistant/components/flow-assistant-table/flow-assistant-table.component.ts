@@ -4,7 +4,6 @@ import { EfTable, EfTableColumn } from '../../models/flow-assistant.model';
 
 @Component({
     selector: 'app-flow-assistant-table',
-    standalone: true,
     imports: [],
     templateUrl: './flow-assistant-table.component.html',
     styleUrls: ['./flow-assistant-table.component.scss'],

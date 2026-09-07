@@ -113,36 +113,6 @@ EOF
     echo "[realtime] Role ready: ${realtime_user}"
 }
 
-create_crew_user() {
-    local crew_user="${DB_CREW_USER}"
-    local crew_password="${DB_CREW_PASSWORD}"
-
-    if [[ -z "$crew_user" || -z "$crew_password" ]]; then
-        echo "[crew] WARNING: DB_CREW_USER or DB_CREW_PASSWORD not set, skipping"
-        return 0
-    fi
-
-    echo "[crew] Creating role if not exists..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${crew_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${crew_user}', '${crew_password}');
-        RAISE NOTICE '[crew] Created user ${crew_user}';
-    ELSE
-        RAISE NOTICE '[crew] User ${crew_user} already exists, skipping';
-    END IF;
-END
-\$\$;
-
-GRANT USAGE ON SCHEMA public TO "${crew_user}";
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    REVOKE ALL ON TABLES FROM "${crew_user}";
-EOF
-    echo "[crew] Role ready: ${crew_user}"
-}
-
 # TABLE PERMISSION GRANT FUNCTIONS
 # Called only after Django migrations have run.
 # Each function is safe to call multiple times.
@@ -304,30 +274,6 @@ EOF
     echo "[realtime] Permissions granted"
 }
 
-grant_crew_permissions() {
-    local crew_user="${DB_CREW_USER}"
-    [[ -z "$crew_user" ]] && return 0
-
-    echo "[crew] Granting table permissions..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
-DO \$\$
-BEGIN
-    IF EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'tables_memorydatabase'
-    ) THEN
-        REVOKE ALL ON TABLE tables_memorydatabase FROM "${crew_user}";
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_memorydatabase TO "${crew_user}";
-        RAISE NOTICE '[crew] CRUD granted on tables_memorydatabase';
-    ELSE
-        RAISE NOTICE '[crew] tables_memorydatabase not found, skipping';
-    END IF;
-END
-\$\$;
-EOF
-    echo "[crew] Permissions granted"
-}
-
 # TABLE EXISTENCE CHECK
 # Returns 0 only when ALL required tables are present.
 
@@ -344,7 +290,7 @@ REQUIRED_TABLES=(
     "graph_rag_document"
     # realtime
     "realtime_session_items"
-    # crew
+    # django (memory database, owned by django_app, no dedicated crewdb role)
     "tables_memorydatabase"
 )
 
@@ -371,7 +317,6 @@ install_event_triggers() {
     local manager_user="${DB_MANAGER_USER}"
     local knowledge_user="${DB_KNOWLEDGE_USER}"
     local realtime_user="${DB_REALTIME_USER}"
-    local crew_user="${DB_CREW_USER}"
 
     echo "[triggers] Installing event triggers for auto-grant..."
     psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
@@ -425,12 +370,6 @@ BEGIN
         IF tbl_name = 'realtime_session_items' THEN
             EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${realtime_user}');
             RAISE NOTICE '[auto-grant] CRUD on % to ${realtime_user}', tbl_name;
-        END IF;
-
-        -- crew: full CRUD
-        IF tbl_name = 'tables_memorydatabase' THEN
-            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${crew_user}');
-            RAISE NOTICE '[auto-grant] CRUD on % to ${crew_user}', tbl_name;
         END IF;
     END LOOP;
 END;
@@ -505,7 +444,6 @@ background_setup() {
         create_manager_user
         create_knowledge_user
         create_realtime_user
-        create_crew_user
         install_event_triggers
         echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
 
@@ -520,7 +458,6 @@ background_setup() {
                 grant_manager_permissions
                 grant_knowledge_permissions
                 grant_realtime_permissions
-                grant_crew_permissions
                 touch "$USERS_CREATED_FLAG"
                 echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
                 exit 0

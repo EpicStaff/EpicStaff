@@ -6,7 +6,6 @@ from django.db import transaction
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
-    CrewNode,
     Edge,
     FileExtractorNode,
     Graph,
@@ -165,9 +164,6 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         variables = self._get_actual_variables(variables)
 
-        # Remove 'shared' initialization dict - it's for Redis proxy, not storage
-        variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
-
         graph = Graph.objects.get(pk=graph_id)
         status_data = {"token_budget": token_budget} if token_budget is not None else {}
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
@@ -181,7 +177,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             session = Session.objects.create(
                 graph_id=graph_id,
                 status=Session.SessionStatus.PENDING,
-                variables=variables_for_db,
+                variables=variables,
                 time_to_live=graph.time_to_live,
                 graph_user=graph_user,
                 entrypoint=entrypoint,
@@ -355,7 +351,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph: The graph to build data for
             unique_subgraphs: Dictionary to collect unique subgraphs (only used at top level)
         """
-        crew_node_list = CrewNode.objects.filter(graph=graph.pk).select_related("crew")
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
@@ -473,7 +468,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         # to avoid re-querying the same tables via NodeNameResolver
         name_cache: dict[int, str] = {}
         for node_list in (
-            crew_node_list,
             python_node_list,
             knowledge_node_list,
             file_extractor_node_list,
@@ -515,15 +509,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         """
         cv = self.converter_service
 
-        crew_node_data_list = [
-            cv.convert_crew_node_to_pydantic(
-                crew_node=item,
-                resolver=resolver,
-                graph_id=graph.pk,
-                session_id=session.pk if session else None,
-            )
-            for item in crew_node_list
-        ]
         python_node_data_list = [
             cv.convert_python_node_to_pydantic(
                 python_node=item,
@@ -679,7 +664,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         return GraphData(
             graph_id=graph.pk,
             name=graph.name,
-            crew_node_list=crew_node_data_list,
             webhook_trigger_node_data_list=webhook_trigger_node_data_list,
             python_node_list=python_node_data_list,
             knowledge_node_list=knowledge_node_data_list,

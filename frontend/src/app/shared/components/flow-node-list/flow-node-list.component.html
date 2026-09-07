@@ -1,6 +1,6 @@
 <div
-    class="flow-node-list"
-    [@collapseExpand]="expanded() ? 'expanded' : 'collapsed'"
+    class="flow-node-list grid-collapsible"
+    [class.expanded]="expanded()"
 >
     <div class="flow-node-list__inner">
         <div class="flow-node-list__toolbar">

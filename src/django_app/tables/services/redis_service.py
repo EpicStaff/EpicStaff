@@ -86,24 +86,6 @@ class RedisService(metaclass=SingletonMeta):
         resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
         return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
 
-    def send_user_input(
-        self,
-        session_id: int,
-        node_name: str,
-        crew_id: int,
-        execution_order: str,
-        message: str,
-    ) -> None:
-        user_input_message = {
-            "crew_id": crew_id,
-            "node_name": node_name,
-            "execution_order": execution_order,
-            "text": message,
-        }
-        channel = f"sessions:{session_id}:user_input"
-        self.redis_client.publish(channel, message=json.dumps(user_input_message))
-        logger.info(f"Sent user message to: {channel}.")
-
     def publish_source_collection(self, collection_id) -> None:
         # TODO: move channel name higher.
         channel = "knowledge_sources"

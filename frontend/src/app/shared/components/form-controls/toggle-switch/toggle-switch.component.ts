@@ -15,7 +15,6 @@ import { TooltipComponent } from '../../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-toggle-switch',
-    standalone: true,
     templateUrl: './toggle-switch.component.html',
     styleUrls: ['./toggle-switch.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
