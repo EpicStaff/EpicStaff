@@ -9,7 +9,6 @@ from tables.import_export.enums import NodeType
 class _MissingSets:
     """Dataclass that holds all missing deps"""
 
-    crews: set
     subgraphs: set
     llm_configs: set
     webhooks: set

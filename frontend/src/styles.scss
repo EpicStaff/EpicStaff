@@ -7,6 +7,7 @@
 @use '@fontsource/roboto/400.css' as roboto-400;
 @use '@fontsource/roboto/500.css' as roboto-500;
 @use './styles/_reset.scss';
+@use './styles/_collapsible';
 @use './styles/json-viewer.scss';
 @use './styles/_variables';
 @use './styles/_scrollbar';

@@ -1,33 +1,28 @@
-import { CommonModule } from '@angular/common';
-import { Component, Input, ViewEncapsulation } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-start-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
-    animations: [expandCollapseAnimation],
     template: `
         <div class="start-container">
             <div
                 class="start-header"
                 (click)="toggleMessage()"
             >
-                <div
-                    class="play-arrow"
-                    *ngIf="hasInputs()"
-                >
-                    <app-svg-icon
-                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                        size="1.1rem"
-                    />
-                </div>
+                @if (hasInputs()) {
+                    <div class="play-arrow">
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
+                    </div>
+                }
                 <div class="icon-container">
                     <app-svg-icon
                         icon="flag"
@@ -41,42 +36,42 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="start-content">
                     <!-- Input Parameters Section -->
-                    <div
-                        class="input-container"
-                        *ngIf="hasInputs()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleInputs($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Input Parameters
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="input-content">
-                                <app-copy-button [text]="startInputJson" />
-                                <ngx-json-viewer
-                                    [json]="getStartInput()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasInputs()) {
+                        <div class="input-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleInputs($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Input Parameters
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputsExpanded"
+                            >
+                                <div class="input-content">
+                                    <app-copy-button [text]="startInputJson" />
+                                    <app-json-viewer
+                                        [json]="getStartInput()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .start-container {
@@ -137,10 +132,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .start-content {

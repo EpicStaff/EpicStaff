@@ -14,7 +14,7 @@ endif
         backup apply-backup stash-tags apply-tags switch \
         dev dev-init dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
         dev-voice dev-ngrok \
-        prod-setup prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
+        prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
         clean docker-generate-certs \
         gen-env check-env \
         django-makemigrations django-migrate django-manage django-tests crew-tests
@@ -99,9 +99,6 @@ dev-logs:
 dev-restart:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env restart $(s)
 
-dev-s:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env restart $(s)
-
 dev-logs-s:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f $(s)
 
@@ -125,10 +122,6 @@ dev-ngrok: dev-init
 # PRODUCTION Environment
 # ==========================================
 
-prod-setup:
-	@echo "--- Setting up production environment ---"
-	@python3 make_scripts/setup_prod.py
-
 prod-init:
 	@echo "--- Creating external volumes and networks ---"
 	@docker volume create sandbox_venvs      || true
@@ -138,34 +131,32 @@ prod-init:
 	@docker network create mcp-network       || true
 	@echo "--- Done ---"
 
-PROD_ENV_ARG = $(shell test -f prod/prod.env && echo "--env-file ../prod/prod.env")
-
 prod: prod-build prod-up
 
 prod-build: prod-init
 	@echo "--- Building production images ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) build
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env build
 
 prod-up: prod-init
 	@echo "--- Starting production services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env up -d
 
 start-prod: prod
 
 prod-down:
 	@echo "--- Stopping production services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) down
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down
 
 prod-logs:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) logs -f
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env logs -f
 
 prod-voice:
 	@echo "--- Starting production services with voice (ngrok) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) --profile voice up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env --profile voice up -d
 
 prod-ngrok:
 	@echo "--- Starting ngrok tunnel (production) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) --profile voice up ngrok
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env --profile voice up ngrok
 
 # ==========================================
 # ENV FILE GENERATION

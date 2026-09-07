@@ -11,6 +11,7 @@ import { EMPTY, of, switchMap } from 'rxjs';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DragDropAreaComponent } from '../../../../shared/components/drag-drop-area/drag-drop-area.component';
+import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
 import { StorageApiService } from '../../services/storage-api.service';
 
@@ -50,6 +51,7 @@ export interface FolderNode {
     imports: [
         FormsModule,
         AppSvgIconComponent,
+        HelpTooltipComponent,
         Spinner2Component,
         MatTooltipModule,
         OverlayModule,

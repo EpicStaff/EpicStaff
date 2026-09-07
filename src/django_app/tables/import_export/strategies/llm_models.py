@@ -19,7 +19,11 @@ from tables.import_export.serializers.llm_models import (
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.utils import ensure_unique_identifier, create_filters
+from tables.import_export.utils import (
+    create_filters,
+    ensure_unique_identifier,
+    resolve_import_organization,
+)
 
 
 class BaseProviderModelStrategy(EntityImportExportStrategy):
@@ -49,10 +53,11 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         return Q(is_custom=False) | Q(org_id=org_id)
 
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
-        # Provider models have a GLOBAL (name, provider) uniqueness constraint,
-        # so the name check stays global (not scoped to org).
+        organization = resolve_import_organization(kwargs.get("org_id"))
         if "name" in data:
-            existing_names = self.model_class.objects.values_list("name", flat=True)
+            existing_names = self.model_class.objects.filter(
+                org=organization
+            ).values_list("name", flat=True)
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -66,8 +71,9 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
                 **data,
                 "provider_id": provider.id,
                 "tags": tags_ids,
-                "org": kwargs.get("org_id"),
+                "org": organization.id if organization is not None else None,
                 "is_custom": True,
+                "predefined": False,
             }
         )
         serializer.is_valid(raise_exception=True)

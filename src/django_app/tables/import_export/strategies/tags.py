@@ -1,7 +1,6 @@
 from copy import deepcopy
 
 from tables.models import (
-    CrewTag,
     AgentTag,
     GraphTag,
     LLMModelTag,
@@ -11,7 +10,6 @@ from tables.models import (
 
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.tags import (
-    CrewTagImportSerializer,
     GraphTagImportSerializer,
     AgentTagImportSerializer,
     LLMConfigTagImportSerializer,
@@ -62,12 +60,6 @@ class AgentTagStrategy(BaseTagStrategy):
     entity_type = EntityType.AGENT_TAG
     serializer_class = AgentTagImportSerializer
     model_class = AgentTag
-
-
-class CrewTagStrategy(BaseTagStrategy):
-    entity_type = EntityType.CREW_TAG
-    serializer_class = CrewTagImportSerializer
-    model_class = CrewTag
 
 
 class GraphTagStrategy(BaseTagStrategy):

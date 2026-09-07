@@ -8,6 +8,8 @@ import pwd
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+
+import settings
 from secret_scrubber import masking_enabled, scrub
 from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
@@ -344,8 +346,8 @@ except Exception:
         env["HOME"] = context["home_path"]
         env["CONTAINER_SAVEFILES_PATH"] = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
         if context.get("use_storage"):
-            env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
-            env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
+            env["STORAGE_ENDPOINT"] = settings.STORAGE_ENDPOINT
+            env["STORAGE_BUCKET_NAME"] = settings.STORAGE_BUCKET_NAME
             env["STORAGE_ACCESS_KEY"] = context["temp_storage_access_key"]
             env["STORAGE_SECRET_KEY"] = context["temp_storage_secret_key"]
         if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
@@ -496,7 +498,7 @@ class DynamicVenvExecutorChain:
         if use_storage:
             try:
                 policy = self.storage_credential_manager.build_policy(
-                    allowed_bucket=os.environ["STORAGE_BUCKET_NAME"],
+                    allowed_bucket=settings.STORAGE_BUCKET_NAME,
                     allowed_folders=self._scoped_folders(
                         storage_org_prefix, storage_allowed_paths
                     ),

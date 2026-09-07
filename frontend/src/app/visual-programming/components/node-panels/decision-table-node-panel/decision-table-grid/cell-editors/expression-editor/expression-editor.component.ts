@@ -1,6 +1,5 @@
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -28,8 +27,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 @Component({
     selector: 'app-expression-editor',
-    standalone: true,
-    imports: [CommonModule, FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './expression-editor.component.html',
     styleUrls: ['./expression-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

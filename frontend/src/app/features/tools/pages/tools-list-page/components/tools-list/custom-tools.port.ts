@@ -3,6 +3,7 @@ import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 
+import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
@@ -74,6 +75,9 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     }
     public importFile(file: File): Observable<unknown> {
         return this.service.importPythonCodeTool(file);
+    }
+    public inspectFile(file: File): Observable<InspectResult> {
+        return this.service.inspectPythonCodeTool(file);
     }
     public getBulkUsage(ids: number[]): Observable<GetBulkToolUsageItem[]> {
         return this.service.getBulkUsageDetailById(ids);

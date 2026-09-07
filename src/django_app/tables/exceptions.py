@@ -29,16 +29,6 @@ class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
 
 
-class CrewMemoryValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in CrewMemoryValidator -> ConverterService during asigning memory_llm or embedder"
-
-
-class TaskValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in TaskValidator -> ConverterService during validate crews' tasks"
-
-
 class TaskSerializerError(CustomAPIExeption):
     status_code = 400
     default_detail = "SerializerError occured during Task serialization"
@@ -57,6 +47,11 @@ class EndNodeValidationError(CustomAPIExeption):
 class FileNodeValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "FileExtractorNode requires input arguments"
+
+
+class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "KnowledgeNode is not fully configured to run"
 
 
 class InvalidTaskOrderError(CustomAPIExeption):
@@ -339,6 +334,14 @@ class UnknownRagTypeException(RagException):
     def __init__(self, rag_type):
         self.rag_type = rag_type
         super().__init__(f"Unknown RAG type: '{rag_type}'")
+
+
+class KnowledgeNodeConfigurationError(RagException):
+    """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
+    or the rag_type has no built implementation to search."""
+
+    status_code = 400
+    default_code = "knowledge_node_misconfigured"
 
 
 class ScheduleTriggerValidationError(CustomAPIExeption):

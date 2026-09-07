@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -16,18 +15,16 @@ import { NodeType } from '../../../core/enums/node-type';
 
 @Component({
     selector: 'app-llm-menu',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <ul>
-            <li
-                *ngFor="let config of filteredConfigs; trackBy: trackById"
-                (click)="onConfigClicked(config)"
-            >
-                <i class="ti ti-brain"></i>
-                <span class="config-name">{{ config.custom_name }}</span>
-                <i class="ti ti-plus plus-icon"></i>
-            </li>
+            @for (config of filteredConfigs; track trackById($index, config)) {
+                <li (click)="onConfigClicked(config)">
+                    <i class="ti ti-brain"></i>
+                    <span class="config-name">{{ config.custom_name }}</span>
+                    <i class="ti ti-plus plus-icon"></i>
+                </li>
+            }
         </ul>
     `,
     styles: [

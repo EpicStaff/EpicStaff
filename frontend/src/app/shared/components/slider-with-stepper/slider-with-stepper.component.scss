@@ -89,6 +89,28 @@
         color: var(--color-text-primary, #d9d9de);
     }
 
+    &__value-input {
+        width: 100%;
+        padding: 0;
+        border: none;
+        background: transparent;
+        outline: none;
+        font: inherit;
+        color: inherit;
+        text-align: center;
+        appearance: textfield;
+
+        &:disabled {
+            cursor: default;
+        }
+
+        &::-webkit-outer-spin-button,
+        &::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    }
+
     &__track-wrapper {
         position: relative;
         width: 100%;

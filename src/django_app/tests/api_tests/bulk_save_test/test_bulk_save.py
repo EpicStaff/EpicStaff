@@ -5,7 +5,6 @@ from rest_framework import status
 from tables.models.graph_models import (
     Condition,
     ConditionGroup,
-    CrewNode,
     DecisionTableNode,
     Edge,
     Graph,
@@ -118,59 +117,6 @@ def test_create_python_node_missing_code_field(auth_client, graph):
 
 
 # ---------------------------------------------------------------------------
-# CrewNode — create / update / delete
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_create_crew_node(auth_client, graph, crew):
-    # CrewNodeSerializer uses crew_id (write-only IntegerField), not crew.
-    payload = {
-        "save_version": graph.save_version,
-        "crew_node_list": [
-            {"graph": graph.id, "crew_id": crew.id},
-        ],
-    }
-    response = auth_client.post(_save_url(graph.id), payload, format="json")
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert CrewNode.objects.filter(graph=graph).count() == 1
-
-
-@pytest.mark.django_db
-def test_update_crew_node(auth_client, graph, crew, crew_node):
-    new_name = "updated_crew_node"
-    payload = {
-        "save_version": graph.save_version,
-        "crew_node_list": [
-            {
-                "id": crew_node.id,
-                "graph": graph.id,
-                "crew_id": crew.id,
-                "node_name": new_name,
-            },
-        ],
-    }
-    response = auth_client.post(_save_url(graph.id), payload, format="json")
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    crew_node.refresh_from_db()
-    assert crew_node.node_name == new_name
-
-
-@pytest.mark.django_db
-def test_delete_crew_node(auth_client, graph, crew_node):
-    payload = {
-        "save_version": graph.save_version,
-        "deleted": {"crew_node_ids": [crew_node.id]},
-    }
-    response = auth_client.post(_save_url(graph.id), payload, format="json")
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert not CrewNode.objects.filter(id=crew_node.id).exists()
-
-
-# ---------------------------------------------------------------------------
 # DecisionTableNode — create / update / delete
 # ---------------------------------------------------------------------------
 
@@ -278,14 +224,14 @@ def test_delete_decision_table_node(auth_client, graph, decision_table_node):
 
 
 @pytest.mark.django_db
-def test_create_edge_with_real_node_ids(auth_client, graph, python_node, crew_node):
+def test_create_edge_with_real_node_ids(auth_client, graph, python_node, start_node):
     payload = {
         "save_version": graph.save_version,
         "edge_list": [
             {
                 "graph": graph.id,
-                "start_node_id": python_node.id,
-                "end_node_id": crew_node.id,
+                "start_node_id": start_node.id,
+                "end_node_id": python_node.id,
             }
         ],
     }
@@ -293,7 +239,7 @@ def test_create_edge_with_real_node_ids(auth_client, graph, python_node, crew_no
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert Edge.objects.filter(
-        graph=graph, start_node_id=python_node.id, end_node_id=crew_node.id
+        graph=graph, start_node_id=start_node.id, end_node_id=python_node.id
     ).exists()
 
 
@@ -321,7 +267,7 @@ def test_create_edge_from_start_node(auth_client, graph, start_node, python_node
 
 
 @pytest.mark.django_db
-def test_create_edge_with_temp_id(auth_client, graph, crew_node):
+def test_create_edge_with_temp_id(auth_client, graph, start_node):
     """New PythonNode created in same request; edge references it via temp_id."""
     temp_id = "cccc0000-0000-0000-0000-000000000002"
     payload = {
@@ -337,7 +283,7 @@ def test_create_edge_with_temp_id(auth_client, graph, crew_node):
             {
                 "graph": graph.id,
                 "start_temp_id": temp_id,
-                "end_node_id": crew_node.id,
+                "end_node_id": start_node.id,
             }
         ],
     }
@@ -346,7 +292,7 @@ def test_create_edge_with_temp_id(auth_client, graph, crew_node):
     assert response.status_code == status.HTTP_200_OK, response.content
     new_node = PythonNode.objects.get(graph=graph)
     assert Edge.objects.filter(
-        graph=graph, start_node_id=new_node.id, end_node_id=crew_node.id
+        graph=graph, start_node_id=new_node.id, end_node_id=start_node.id
     ).exists()
 
 
@@ -369,20 +315,19 @@ def test_delete_edge(auth_client, graph, edge):
 
 @pytest.mark.django_db
 def test_create_update_delete_in_one_request(
-    auth_client, graph, crew, python_node, crew_node
+    auth_client, graph, python_node, task_node
 ):
-    """Create a new PythonNode, update crew_node name, delete python_node — all atomically."""
-    new_name = "crew_node_renamed"
+    """Create a new PythonNode, update task_node name, delete python_node — all atomically."""
+    new_name = "task_node_renamed"
     payload = {
         "save_version": graph.save_version,
         "python_node_list": [
             {"graph": graph.id, "python_code": _PYTHON_CODE_DATA},
         ],
-        "crew_node_list": [
+        "task_node_list": [
             {
-                "id": crew_node.id,
+                "id": task_node.id,
                 "graph": graph.id,
-                "crew_id": crew.id,
                 "node_name": new_name,
             }
         ],
@@ -393,12 +338,12 @@ def test_create_update_delete_in_one_request(
     assert response.status_code == status.HTTP_200_OK, response.content
     assert not PythonNode.objects.filter(id=python_node.id).exists()
     assert PythonNode.objects.filter(graph=graph).count() == 1  # only the newly created
-    crew_node.refresh_from_db()
-    assert crew_node.node_name == new_name
+    task_node.refresh_from_db()
+    assert task_node.node_name == new_name
 
 
 @pytest.mark.django_db
-def test_edge_with_temp_id_and_new_node_same_request(auth_client, graph, crew_node):
+def test_edge_with_temp_id_and_new_node_same_request(auth_client, graph, start_node):
     """Create PythonNode with temp_id and an edge using that temp_id in one request."""
     temp_id = "dddd0000-0000-0000-0000-000000000003"
     payload = {
@@ -414,7 +359,7 @@ def test_edge_with_temp_id_and_new_node_same_request(auth_client, graph, crew_no
             {
                 "graph": graph.id,
                 "start_temp_id": temp_id,
-                "end_node_id": crew_node.id,
+                "end_node_id": start_node.id,
             }
         ],
     }
@@ -423,7 +368,7 @@ def test_edge_with_temp_id_and_new_node_same_request(auth_client, graph, crew_no
     assert response.status_code == status.HTTP_200_OK, response.content
     new_node = PythonNode.objects.get(graph=graph)
     assert Edge.objects.filter(
-        graph=graph, start_node_id=new_node.id, end_node_id=crew_node.id
+        graph=graph, start_node_id=new_node.id, end_node_id=start_node.id
     ).exists()
 
 
@@ -463,7 +408,7 @@ def test_delete_node_from_different_graph(auth_client, graph, python_code):
 
 @pytest.mark.django_db
 def test_edge_both_node_id_and_temp_id_provided(
-    auth_client, graph, python_node, crew_node
+    auth_client, graph, python_node, start_node
 ):
     payload = {
         "save_version": graph.save_version,
@@ -472,7 +417,7 @@ def test_edge_both_node_id_and_temp_id_provided(
                 "graph": graph.id,
                 "start_node_id": python_node.id,
                 "start_temp_id": "eeee0000-0000-0000-0000-000000000004",
-                "end_node_id": crew_node.id,
+                "end_node_id": start_node.id,
             }
         ],
     }
@@ -483,14 +428,14 @@ def test_edge_both_node_id_and_temp_id_provided(
 
 
 @pytest.mark.django_db
-def test_edge_unknown_temp_id(auth_client, graph, crew_node):
+def test_edge_unknown_temp_id(auth_client, graph, start_node):
     payload = {
         "save_version": graph.save_version,
         "edge_list": [
             {
                 "graph": graph.id,
                 "start_temp_id": "ffff0000-0000-0000-0000-000000000005",
-                "end_node_id": crew_node.id,
+                "end_node_id": start_node.id,
             }
         ],
     }

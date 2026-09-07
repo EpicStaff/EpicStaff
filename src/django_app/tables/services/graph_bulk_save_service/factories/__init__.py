@@ -8,3 +8,6 @@ from tables.services.graph_bulk_save_service.factories.classification_decision_t
 from tables.services.graph_bulk_save_service.factories.decision_table import (
     DecisionTableNodeSaveableFactory,
 )
+from tables.services.graph_bulk_save_service.factories.knowledge_node import (
+    KnowledgeNodeSaveableFactory,
+)

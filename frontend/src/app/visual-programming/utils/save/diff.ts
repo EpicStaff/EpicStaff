@@ -10,9 +10,9 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -114,17 +114,6 @@ function toStartComparable(node: StartNodeModel): unknown {
     return { variables: node.data.initialState ?? {}, metadata: toNodeMetadata(node) };
 }
 
-function toCrewComparable(node: ProjectNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        crew_id: node.data.id,
-        input_map: node.input_map || {},
-        output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
-        metadata: toNodeMetadata(node),
-    };
-}
-
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
@@ -134,7 +123,6 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
         metadata: toNodeMetadata(node),
     };
@@ -240,7 +228,6 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
-        webhook_node_auth: { enabled: node.data.webhook_node_auth?.enabled ?? false },
         metadata: toNodeMetadata(node),
     };
 }
@@ -279,6 +266,22 @@ function toNoteComparable(node: GraphNoteModel): unknown {
         node_name: node.node_name,
         content: node.data.content,
         metadata: { ...toNodeMetadata(node), backgroundColor: node.data.backgroundColor ?? null },
+    };
+}
+
+function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unknown {
+    const data = node.data;
+    return {
+        node_name: node.node_name,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        source_collection: data?.source_collection ?? null,
+        rag_type: data?.rag_type ?? null,
+        rag_id: data?.rag_id ?? null,
+        query: data?.query ?? '',
+        search_method: data?.search_method ?? null,
+        search_configs: data?.search_configs ?? null,
+        metadata: toNodeMetadata(node),
     };
 }
 
@@ -363,11 +366,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<StartNodeModel>(current.nodes, NodeType.START),
             toStartComparable
         ),
-        crewNodes: diffNodesByBackendId(
-            nodesByType<ProjectNodeModel>(previous.nodes, NodeType.PROJECT),
-            nodesByType<ProjectNodeModel>(current.nodes, NodeType.PROJECT),
-            toCrewComparable
-        ),
         pythonNodes: diffNodesByBackendId(
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),
             nodesByType<PythonNodeModel>(current.nodes, NodeType.PYTHON),
@@ -437,6 +435,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),
             nodesByType<ClassificationDecisionTableNodeModel>(current.nodes, NodeType.CLASSIFICATION_TABLE),
             (n) => toCdtComparable(n, current.nodes)
+        ),
+        knowledgeRetrieverNodes: diffNodesByBackendId(
+            nodesByType<KnowledgeRetrieverNodeModel>(previous.nodes, NodeType.KNOWLEDGE_RETRIEVER),
+            nodesByType<KnowledgeRetrieverNodeModel>(current.nodes, NodeType.KNOWLEDGE_RETRIEVER),
+            toKnowledgeRetrieverComparable
         ),
     };
 }
