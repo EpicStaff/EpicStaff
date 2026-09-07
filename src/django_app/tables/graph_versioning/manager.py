@@ -714,7 +714,12 @@ class GraphVersioningManager:
 
     def _wipe_graph_children(self, graph: Graph) -> None:
         """Wipe all graph related nodes. Orphaned PythonCode rows are reclaimed
-        by the post_delete signal cleanup in tables.signals.python_code_signals."""
+        by the post_delete signal cleanup in tables.signals.python_code_signals.
+        Intentionally hard-deletes and is NOT routed through the soft-delete
+        cascade (DeleteService): this replaces a graph's content during a
+        version restore, it does not delete the graph itself, so soft-delete
+        semantics don't apply here. Do not "fix" this to go through .delete().
+        """
         for relation_name in _GRAPH_RELATION_NAMES:
             getattr(graph, relation_name).all().delete()
 
