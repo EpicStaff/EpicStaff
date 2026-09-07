@@ -55,9 +55,7 @@ def _patch_text_units(monkeypatch, df: pandas.DataFrame):
     async def fake_read(config):
         return df
 
-    monkeypatch.setattr(
-        GraphMetricsOrchestrator, "_read_text_units", staticmethod(fake_read)
-    )
+    monkeypatch.setattr(GraphMetricsOrchestrator, "_read_text_units", staticmethod(fake_read))
 
 
 @pytest.mark.asyncio

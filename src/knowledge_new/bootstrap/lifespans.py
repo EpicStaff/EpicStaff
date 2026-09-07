@@ -10,10 +10,7 @@ from settings import settings
 
 __all__ = ["get_lifespans"]
 
-_lifespans: dict[Literal["on_startup", "on_shutdown"], list[Callable]] = defaultdict(
-    list
-)
-_handler_tasks: set[asyncio.Task] = set()
+_lifespans: dict[Literal["on_startup", "on_shutdown"], list[Callable]] = defaultdict(list)
 
 
 def get_lifespans(type: Literal["on_startup", "on_shutdown"], /) -> list[Callable]:

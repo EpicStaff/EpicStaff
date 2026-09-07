@@ -94,9 +94,7 @@ def _serialize_context(context_data) -> str:
     return "\n\n".join(parts)
 
 
-async def _answer_is_grounded(
-    query: str, answer: str, context, config: GraphRagConfig
-) -> bool:
+async def _answer_is_grounded(query: str, answer: str, context, config: GraphRagConfig) -> bool:
     """Ask the LLM judge whether `answer` is supported by `context`.
 
     Fails open (True) only on a judge infrastructure error, so a broken judge does not
@@ -146,8 +144,6 @@ async def apply_grounding_guard(
         return response
 
     if not await _answer_is_grounded(query, str(response), context, config):
-        logger.warning(
-            "Grounding guard rejected %s answer for query: [%s]", method, query
-        )
+        logger.warning("Grounding guard rejected %s answer for query: [%s]", method, query)
         return ""
     return response

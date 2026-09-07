@@ -28,17 +28,13 @@ class SearchSpecification:
     config_model: type[PydanticModel]
     required_files: Iterable[str]
     optional_files: Iterable[str] | None = None
-    extra_kwargs: Callable[..., dict[str, Any]] | dict[str, Any] = field(
-        default_factory=dict
-    )
+    extra_kwargs: Callable[..., dict[str, Any]] | dict[str, Any] = field(default_factory=dict)
 
 
 def _drift_extra_kwargs(search_config, method_config, files) -> dict[str, Any]:
     # Empty primer folds cause the primer to hallucinate from entity names if folds
     # exceed the number of available community reports — limit folds to the report count.
-    usable_reports = min(
-        search_config.drift_k_followups, len(files["community_reports"])
-    )
+    usable_reports = min(search_config.drift_k_followups, len(files["community_reports"]))
     method_config.primer_folds = max(1, min(method_config.primer_folds, usable_reports))
     return {
         "response_type": GraphSearchOrchestrator.DEFAULT_RESPONSE_TYPE,
@@ -110,12 +106,8 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
 
-        config.embedding_models[
-            "default_embedding_model"
-        ].api_key = command.embedding_api_key
-        config.completion_models[
-            "default_completion_model"
-        ].api_key = command.llm_api_key
+        config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
+        config.completion_models["default_completion_model"].api_key = command.llm_api_key
 
         if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
@@ -124,9 +116,7 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             )
 
         specs = self._SEARCH_MAP[command.search_config.method]
-        method_config = specs.config_model.model_validate(
-            command.search_config.model_dump()
-        )
+        method_config = specs.config_model.model_validate(command.search_config.model_dump())
         setattr(
             config,
             specs.config_field,

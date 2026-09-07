@@ -9,9 +9,7 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractMetricsOrchestrator]] = {
 }
 
 
-def build_metrics(
-    strategy: RAGStrategy, uow: AbstractUnitOfWork
-) -> AbstractMetricsOrchestrator:
+def build_metrics(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractMetricsOrchestrator:
     """Build the metrics orchestrator registered for `strategy`.
 
     Naive metrics are served from the Django DB, so only GRAPH is registered.
