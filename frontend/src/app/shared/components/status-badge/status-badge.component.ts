@@ -1,5 +1,5 @@
-import { NgClass, NgIf } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { NgClass } from '@angular/common';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
 import { CollapseOnOverflowDirective } from '../../../shared/directives/collapse-on-overflow.directive';
@@ -7,8 +7,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-status-badge',
-    standalone: true,
-    imports: [NgClass, NgIf, AppSvgIconComponent, CollapseOnOverflowDirective],
+    imports: [NgClass, AppSvgIconComponent, CollapseOnOverflowDirective],
     template: `
         <span
             class="status-badge"
@@ -18,15 +17,17 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
             collapseOnOverflowClass="status-badge--icon-only"
             collapseOnOverflowRequireSelector="app-svg-icon"
         >
-            <app-svg-icon
-                *ngIf="statusIcon"
-                [icon]="statusIcon"
-                size="14px"
-                aria-hidden="true"
-            />
+            @if (statusIcon) {
+                <app-svg-icon
+                    [icon]="statusIcon"
+                    size="14px"
+                    aria-hidden="true"
+                />
+            }
             <span class="status-text">{{ statusText }}</span>
         </span>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .status-badge {

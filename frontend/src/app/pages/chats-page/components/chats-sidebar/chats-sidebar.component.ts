@@ -20,7 +20,6 @@ const SIDEBAR_STORAGE_KEY = 'chats';
 
 @Component({
     selector: 'app-chats-sidebar',
-    standalone: true,
     imports: [ChatsSidebarItemComponent, FormsModule, SearchComponent, ResizableSidebarDirective],
     templateUrl: './chats-sidebar.component.html',
     styleUrls: ['./chats-sidebar.component.scss'],

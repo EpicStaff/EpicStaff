@@ -232,7 +232,6 @@ export class ConsoleService implements OnDestroy {
             // Then interrupt player
             if (this.wavStreamPlayerService) {
                 const interruptResult = await this.wavStreamPlayerService.interrupt();
-                console.log('Interrupt result:', interruptResult);
 
                 // Check if we need to cancel the response based on the interrupt result
                 if (interruptResult?.trackId && this.client) {

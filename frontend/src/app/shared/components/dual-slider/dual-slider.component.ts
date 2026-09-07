@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, model, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -6,8 +5,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-dual-slider',
-    standalone: true,
-    imports: [CommonModule, TooltipComponent, FormsModule],
+    imports: [TooltipComponent, FormsModule],
     templateUrl: './dual-slider.component.html',
     styleUrls: ['./dual-slider.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

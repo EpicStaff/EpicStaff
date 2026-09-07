@@ -1,4 +1,3 @@
-
 // Base GraphMessage interface
 export interface GraphMessage {
     id: number;
