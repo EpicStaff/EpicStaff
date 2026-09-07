@@ -118,7 +118,6 @@ TAG_MAP = [
     ("api/default-", "Defaults"),
     ("api/environment", "Environment"),
     ("api/quickstart", "Quickstart"),
-    ("api/memory", "Memory"),
 ]
 
 TAGS_ORDER = [
@@ -196,7 +195,6 @@ TAGS_ORDER = [
     "Defaults",
     "Environment",
     "Quickstart",
-    "Memory",
     "Other",
 ]
 
