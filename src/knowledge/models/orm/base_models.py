@@ -14,6 +14,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
+from .mixins import SoftDeleteColumnsMixin
+
 Base = declarative_base()
 
 
@@ -84,7 +86,7 @@ class EmbeddingConfig(Base):
         return self.custom_name
 
 
-class SourceCollection(Base):
+class SourceCollection(SoftDeleteColumnsMixin, Base):
     """
     Top-level container for documents.
     Can have multiple RAG implementations (NaiveRag, GraphRag, etc.)
@@ -142,7 +144,7 @@ class DocumentContent(Base):
         return f"Content {self.id}"
 
 
-class DocumentMetadata(Base):
+class DocumentMetadata(SoftDeleteColumnsMixin, Base):
     """
     Document metadata without RAG-specific chunking parameters.
     """

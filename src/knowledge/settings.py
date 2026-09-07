@@ -3,9 +3,10 @@ import sys
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session, Session
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker, scoped_session, Session, with_loader_criteria
 
+from models.orm.mixins import SoftDeleteColumnsMixin
 from src.shared.envtools import Env
 from storage import ORMNaiveRagStorage, ORMGraphRagStorage
 
@@ -38,9 +39,15 @@ KNOWLEDGE_INDEXING_CHANNEL = env.str("KNOWLEDGE_INDEXING_CHANNEL")
 
 GRAPH_DATA_DIR = env.str("KNOWLEDGE_GRAPH_DATA_DIR")
 
-KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE")
-KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE")
-KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE")
+KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE = env.byte_size(
+    "KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE"
+)
+KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE = env.byte_size(
+    "KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE"
+)
+KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE = env.byte_size(
+    "KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE"
+)
 KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE = env.byte_size("KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE")
 KNOWLEDGE_MAX_EXTRACTION_PAGES = env.int("KNOWLEDGE_MAX_EXTRACTION_PAGES")
 
@@ -60,6 +67,22 @@ DATABASE_URL = (
 ENGINE = create_engine(DATABASE_URL, echo=False, pool_size=10, max_overflow=20)
 
 SessionLocal = scoped_session(sessionmaker(bind=ENGINE))
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _exclude_soft_deleted(execute_state):
+    if (
+        execute_state.is_select
+        and not execute_state.is_column_load
+        and not execute_state.is_relationship_load
+    ):
+        execute_state.statement = execute_state.statement.options(
+            with_loader_criteria(
+                SoftDeleteColumnsMixin,
+                lambda cls: cls.is_soft_deleted.is_(False),
+                include_aliases=True,
+            )
+        )
 
 
 class UnitOfWork:
