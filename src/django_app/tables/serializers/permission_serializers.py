@@ -11,12 +11,21 @@ class CatalogActionSerializer(serializers.Serializer):
     bit = serializers.IntegerField()
 
 
+class RecommendedPermissionSerializer(serializers.Serializer):
+    resource_type = serializers.CharField()
+    action = serializers.CharField()
+
+
 class CatalogResourceTypeSerializer(serializers.Serializer):
     code = serializers.CharField()
     label = serializers.CharField()
     group = serializers.CharField()
     description = serializers.CharField()
     applicable_actions = serializers.ListField(child=serializers.CharField())
+    platform_actions = serializers.ListField(child=serializers.CharField())
+    recommended_with = serializers.DictField(
+        child=RecommendedPermissionSerializer(many=True)
+    )
 
 
 class CatalogResponseSerializer(serializers.Serializer):
@@ -40,6 +49,7 @@ class RoleResponseSerializer(serializers.Serializer):
     is_built_in = serializers.BooleanField()
     scope = serializers.CharField()
     org_id = serializers.IntegerField(allow_null=True)
+    org = serializers.DictField(allow_null=True)
     assigned_count = serializers.IntegerField()
     permissions = RolePermissionEntrySerializer(many=True)
 
@@ -51,6 +61,7 @@ class RoleResponseSerializer(serializers.Serializer):
             "is_built_in": instance.is_built_in,
             "scope": self._derive_scope(instance),
             "org_id": getattr(instance, "_effective_org_id", instance.org_id),
+            "org": self._org_obj(instance),
             "assigned_count": getattr(instance, "_assigned_count", 0),
             "permissions": [
                 {
@@ -64,6 +75,12 @@ class RoleResponseSerializer(serializers.Serializer):
                 if row.permissions != 0
             ],
         }
+
+    @staticmethod
+    def _org_obj(role):
+        if role.org_id is None:
+            return None
+        return {"id": role.org_id, "name": role.org.name}
 
     @staticmethod
     def _derive_scope(role):
@@ -85,3 +102,14 @@ class PermissionsMeResponseSerializer(serializers.Serializer):
     is_superadmin = serializers.BooleanField()
     role = serializers.DictField(allow_null=True)
     permissions = serializers.JSONField()
+
+
+class MyOrgsPermissionsResponseSerializer(serializers.Serializer):
+    """Multi-org capability response. `permissions` per org is
+    {resource_type: [action_code]}; the top-level `permissions` is "*"
+    for superadmin (in which case `orgs` is omitted). Duck-typed;
+    drf-spectacular renders the union permissively."""
+
+    is_superadmin = serializers.BooleanField()
+    permissions = serializers.JSONField(required=False)
+    orgs = serializers.ListField(child=serializers.DictField(), required=False)

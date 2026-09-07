@@ -1,8 +1,10 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { GetScheduleTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { ConfigService } from '../../../services/config/config.service';
@@ -35,7 +37,14 @@ export class FlowsApiService {
 
     getGraphs(): Observable<GraphDto[]> {
         return this.http
-            .get<ApiGetRequest<GraphDto>>(this.apiUrl)
+            .get<ApiGetRequest<GraphDto>>(this.apiUrl, {
+                context: withPermission<ApiGetRequest<GraphDto>>(ResourceCode.Flows, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response) => response.results.sort((a, b) => b.id - a.id)));
     }
 
@@ -48,16 +57,30 @@ export class FlowsApiService {
             httpParams = httpParams.set('no_label', 'true');
         }
         return this.http
-            .get<
-                ApiGetRequest<GetGraphLightRequest>
-            >(`${this.configService.apiUrl}graph-light/`, { params: httpParams })
+            .get<ApiGetRequest<GetGraphLightRequest>>(`${this.configService.apiUrl}graph-light/`, {
+                params: httpParams,
+                context: withPermission<ApiGetRequest<GetGraphLightRequest>>(ResourceCode.Flows, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response) => response.results.sort((a, b) => b.id - a.id)));
     }
 
     getEpicChatEnabledFlows(): Observable<GraphDto[]> {
         const params = new HttpParams().set('epicchat_enabled', 'true');
         return this.http
-            .get<ApiGetRequest<GraphDto>>(`${this.configService.apiUrl}graph-light/`, { params })
+            .get<ApiGetRequest<GraphDto>>(`${this.configService.apiUrl}graph-light/`, {
+                params,
+                context: withPermission<ApiGetRequest<GraphDto>>(ResourceCode.Flows, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response) => response.results));
     }
 

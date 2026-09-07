@@ -43,6 +43,8 @@
 >
     <!-- Sticky column headers -->
     <div class="perm-headers">
+        <!--        Empty spacer to match grid template-->
+        <div></div>
         <label>Resource</label>
         @for (action of catalog().actions; track action.code) {
             <div class="action-col">
@@ -55,10 +57,30 @@
         }
     </div>
 
+    @if (!readonly()) {
+        <div
+            class="related-banner"
+            [class.is-open]="globalPendingCount() > 0"
+        >
+            <span class="text"> Related permissions needed — {{ globalPendingCount() }} pending </span>
+
+            <app-button
+                type="secondary"
+                mod="small"
+                rightIcon="arrow-right"
+                (click)="onShowNextPending()"
+                >Show Next</app-button
+            >
+        </div>
+    }
+
     <!-- Groups -->
     <div class="scrollable">
         @for (group of filteredGroups(); track group.key) {
-            <div class="group">
+            <div
+                class="group"
+                [attr.data-group-key]="group.key"
+            >
                 <!-- Group header -->
                 <div
                     class="group-header"
@@ -79,35 +101,6 @@
                         {{ groupCounts().get(group.key)?.selected }} /
                         {{ groupCounts().get(group.key)?.total }}
                     </span>
-                    @if (!readonly()) {
-                        <div
-                            class="group-actions"
-                            (click)="$event.stopPropagation()"
-                        >
-                            <button
-                                class="action-item small"
-                                type="button"
-                                (click)="groupSelectAllClick.emit(group.key)"
-                            >
-                                <app-svg-icon
-                                    icon="checkbox-checked"
-                                    size="10px"
-                                />
-                                Select All
-                            </button>
-                            <button
-                                class="action-item small"
-                                type="button"
-                                (click)="groupClearClick.emit(group.key)"
-                            >
-                                <app-svg-icon
-                                    icon="x"
-                                    size="10px"
-                                />
-                                Clear
-                            </button>
-                        </div>
-                    }
                 </div>
 
                 <!-- Resources (collapsible with animation) -->
@@ -115,8 +108,46 @@
                     class="group-content"
                     [class.is-collapsed]="isGroupCollapsed(group.key)"
                 >
+                    @if (!readonly()) {
+                        <div class="resource-row bulk">
+                            <app-checkbox
+                                [checked]="groupCheckboxChecked(group)"
+                                [indeterminate]="groupCheckboxIndeterminate(group)"
+                                (changed)="onGroupBulkToggle(group)"
+                            />
+                            <div class="resource-info">
+                                <span class="resource-name bulk">BULK SELECT</span>
+                            </div>
+                            @for (action of catalog().actions; track action.code) {
+                                <div class="action-cell">
+                                    @if (hasGroupApplicableAction(group, action.code)) {
+                                        <app-checkbox
+                                            [checked]="groupActionCheckboxChecked(group, action.code)"
+                                            [indeterminate]="groupActionCheckboxIndeterminate(group, action.code)"
+                                            (changed)="onGroupActionToggleClick(group, action.code)"
+                                        />
+                                    } @else {
+                                        <span class="empty-cell">—</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
                     @for (resource of group.resources; track resource.code) {
-                        <div class="resource-row">
+                        <div
+                            class="resource-row"
+                            [attr.data-resource-code]="resource.code"
+                        >
+                            <div class="row-select">
+                                @if (!readonly()) {
+                                    <app-checkbox
+                                        [checked]="resourceCheckboxChecked(resource)"
+                                        [indeterminate]="resourceCheckboxIndeterminate(resource)"
+                                        (changed)="onResourceRowToggle(resource)"
+                                    />
+                                }
+                            </div>
                             <div class="resource-info">
                                 <span class="resource-name">{{ resource.label }}</span>
                                 <span class="resource-desc">{{ resourceDescription(resource.code) }}</span>
@@ -125,8 +156,9 @@
                                 <div class="action-cell">
                                     @if (isApplicable(resource, action)) {
                                         <app-checkbox
+                                            [class.recommended]="isRecommended(resource.code, action.code)"
                                             [checked]="isChecked(resource.code, action.code)"
-                                            [disabled]="readonly()"
+                                            [disabled]="isCellDisabled(resource.code, action.code)"
                                             (checkedChange)="
                                                 permissionToggle.emit({
                                                     resourceType: resource.code,
@@ -140,6 +172,46 @@
                                 </div>
                             }
                         </div>
+
+                        @if (!readonly()) {
+                            @let rec = recommendedByResource().get(resource.code);
+                            <div
+                                class="related-banner"
+                                [class.is-open]="!isBannerDismissed(resource.code) && !!rec"
+                            >
+                                @if (rec) {
+                                    <app-svg-icon
+                                        icon="warning"
+                                        size="12px"
+                                        class="icon"
+                                    />
+                                    <span class="text">
+                                        This also needs
+                                        @for (k of rec.missingKeys; track k; let last = $last) {
+                                            <span class="missing-permission">{{ keyLabel(k) }}</span>
+                                            @if (!last) {
+                                                ,
+                                            }
+                                        }
+                                        to work correctly.
+                                    </span>
+
+                                    <app-button
+                                        type="secondary"
+                                        mod="small"
+                                        (click)="onEnableResourceRecommended(resource.code)"
+                                        >Enable</app-button
+                                    >
+
+                                    <app-button
+                                        type="secondary"
+                                        mod="small"
+                                        (click)="onDismissResourceRecommended(resource.code)"
+                                        >Dismiss</app-button
+                                    >
+                                }
+                            </div>
+                        }
                     }
                 </div>
             </div>

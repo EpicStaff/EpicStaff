@@ -1,0 +1,63 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">Duplicate Role</span>
+        <app-svg-icon
+            class="close-btn"
+            icon="x"
+            size="20px"
+            (click)="onCancel()"
+        />
+    </div>
+
+    <form
+        class="body"
+        [formGroup]="form"
+    >
+        <div class="control">
+            <label class="label">
+                <span>Name<span class="required">*</span></span>
+                <app-help-tooltip
+                    text="Name for the duplicated role. Must be unique within the target organization."
+                    position="right"
+                />
+            </label>
+            <app-custom-input
+                placeholder="Role name..."
+                formControlName="name"
+            />
+            <app-validation-errors [control]="form.controls.name" />
+        </div>
+
+        <div class="control">
+            <label class="label">
+                <span>Assign to Organization</span>
+                <app-help-tooltip
+                    text="Organization where the duplicated role will be created."
+                    position="right"
+                />
+            </label>
+            <app-select
+                placeholder="Select organization..."
+                [items]="orgOptions()"
+                [selectedValue]="targetOrgId()"
+                (changed)="onTargetOrgChanged($event)"
+            />
+        </div>
+    </form>
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="!canSubmit() || form.invalid"
+            (click)="onCopy()"
+        >
+            Duplicate
+        </app-button>
+    </div>
+</div>

@@ -1,10 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { CreateLabelRequest, LabelDto, PatchLabelRequest, UpdateLabelRequest } from '@shared/models';
+import { ActionCode, CreateLabelRequest, LabelDto, PatchLabelRequest, ResourceCode, UpdateLabelRequest } from '@shared/models';
 import { LabelsApi } from '@shared/services';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 
@@ -18,7 +19,16 @@ export class LabelsApiService implements LabelsApi {
     }
 
     getLabels(): Observable<LabelDto[]> {
-        return this.http.get<ApiGetRequest<LabelDto>>(this.apiUrl).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<LabelDto>>(this.apiUrl, {
+                context: withPermission<ApiGetRequest<LabelDto>>(ResourceCode.Flows, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
 
     createLabel(data: CreateLabelRequest): Observable<LabelDto> {

@@ -18,3 +18,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.cell-text {
+    font-size: 14px;
+    color: var(--text);
+
+    &--muted {
+        color: var(--text-secondary-60);
+    }
+}

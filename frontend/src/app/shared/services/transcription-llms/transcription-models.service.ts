@@ -1,8 +1,14 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { CreateRealtimeTranscriptionModelRequest, GetRealtimeTranscriptionModelRequest } from '@shared/models';
+import {
+    ActionCode,
+    CreateRealtimeTranscriptionModelRequest,
+    GetRealtimeTranscriptionModelRequest,
+    ResourceCode,
+} from '@shared/models';
 import { map, Observable, of, shareReplay, switchMap } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config/config.service';
 
 export interface ApiGetResponse<T> {
@@ -51,7 +57,13 @@ export class RealtimeTranscriptionModelsService {
      * and returning cached data for subsequent calls
      */
     getAllModels(): Observable<ApiGetResponse<GetRealtimeTranscriptionModelRequest>> {
-        return this.http.get<ApiGetResponse<GetRealtimeTranscriptionModelRequest>>(this.apiUrl);
+        return this.http.get<ApiGetResponse<GetRealtimeTranscriptionModelRequest>>(this.apiUrl, {
+            context: withPermission<ApiGetResponse<GetRealtimeTranscriptionModelRequest>>(
+                ResourceCode.LlmConfigs,
+                ActionCode.Read,
+                { count: 0, next: null, previous: null, results: [] }
+            ),
+        });
     }
 
     /**

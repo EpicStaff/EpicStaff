@@ -42,37 +42,37 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.QUICKSTART,
             label: 'Quickstart',
             iconClass: 'ti ti-bolt',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create),
         },
         {
             id: ConfigureModelsTabId.DEFAULT_LLMS,
             label: 'Default LLMs',
             iconClass: 'ti ti-robot',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.LLM_LIBRARY,
             label: 'LLM Library',
             iconClass: 'ti ti-books',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.WEBHOOK_TRIGGERS,
             label: 'Webhook Triggers',
             iconClass: 'ti ti-webhook',
-            isPermitted: this.permissionService.isSuperadmin,
+            isPermitted: () => this.permissionService.isSuperadmin,
         },
         {
             id: ConfigureModelsTabId.VOICE_SETTINGS,
             label: 'Voice / Twilio',
             iconClass: 'ti ti-phone',
-            isPermitted: this.permissionService.isSuperadmin,
+            isPermitted: () => this.permissionService.isSuperadmin,
         },
         {
             id: ConfigureModelsTabId.SECRETS,
             label: 'Secrets',
             svgIcon: 'secrets',
-            isPermitted: this.permissionService.can(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.Secrets, ActionCode.Read),
         },
     ];
 

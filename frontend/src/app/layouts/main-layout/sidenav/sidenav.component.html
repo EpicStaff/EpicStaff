@@ -32,7 +32,7 @@
 
     <ul class="sidenav-nav main-nav">
         @for (item of topNavItems; track item.id) {
-            @if (item.isPermitted) {
+            @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
                     (mouseenter)="item.showTooltip = true"
@@ -41,11 +41,11 @@
                     <div class="tooltip-wrapper">
                         <a
                             class="sidenav-nav-link"
-                            [routerLink]="item.routeLink || null"
+                            [routerLink]="resolveRouteLink(item)"
                             routerLinkActive="active"
                             [routerLinkActiveOptions]="{ exact: false }"
                             (click)="item.action ? handleItemClick(item, $event) : null"
-                            [attr.href]="item.routeLink || (item.action ? '#' : null)"
+                            [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {
@@ -84,6 +84,7 @@
                             message-timeout="180000"
                             [apiBaseUrl]="apiBaseUrl"
                             [accessToken]="accessToken"
+                            [canReadFlows]="canReadFlows()"
                             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
                             [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
                             [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
@@ -103,7 +104,7 @@
         }
 
         @for (item of bottomNavItems; track item.id) {
-            @if (item.isPermitted) {
+            @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
                     (mouseenter)="item.showTooltip = true"
@@ -112,11 +113,11 @@
                     <div class="tooltip-wrapper">
                         <a
                             class="sidenav-nav-link"
-                            [routerLink]="item.routeLink || null"
+                            [routerLink]="resolveRouteLink(item)"
                             routerLinkActive="active"
                             [routerLinkActiveOptions]="{ exact: false }"
                             (click)="handleItemClick(item, $event)"
-                            [attr.href]="item.routeLink || (item.action ? '#' : null)"
+                            [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {

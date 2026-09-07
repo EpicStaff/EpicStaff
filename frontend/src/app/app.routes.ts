@@ -7,7 +7,13 @@ import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
-import { permissionGuard, superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
+import {
+    permissionGuard,
+    superAdminGuard,
+    workspaceGuard,
+    workspaceIndexGuard,
+    workspacePermissionGuard,
+} from './core/guards/workspace.guard';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -261,8 +267,9 @@ export const routes: Routes = [
                         children: [
                             {
                                 path: '',
-                                redirectTo: 'main',
                                 pathMatch: 'full',
+                                canActivate: [workspaceIndexGuard],
+                                children: [],
                             },
                             {
                                 path: 'main',
@@ -278,7 +285,7 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/organizations-tab/organizations-tab.component').then(
                                         (m) => m.OrganizationsTabComponent
                                     ),
-                                canActivate: [permissionGuard],
+                                canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.Organizations, ActionCode.Read] },
                             },
                             {
@@ -287,8 +294,8 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/users-tab/users-tab.component').then(
                                         (m) => m.UsersTabComponent
                                     ),
-                                canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.Users, ActionCode.Read] },
+                                canActivate: [workspacePermissionGuard],
+                                data: { permission: [ResourceCode.Memberships, ActionCode.Read] },
                             },
                             {
                                 path: 'roles',
@@ -296,7 +303,7 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
                                         (m) => m.RolesTabComponent
                                     ),
-                                canActivate: [permissionGuard],
+                                canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.Roles, ActionCode.Read] },
                             },
                             {

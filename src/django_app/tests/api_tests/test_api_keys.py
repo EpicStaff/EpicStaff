@@ -255,7 +255,7 @@ class TestSelfServiceApiKeys:
         )
         assert resp.status_code == status.HTTP_201_CREATED
         body = resp.json()
-        assert body["api_key"].startswith("es_")
+        assert body["api_key"].startswith("es-")
         assert body["name"] == "mcp-laptop"
         assert body["status"] == "active"
         # default 90d expiry applied
@@ -371,7 +371,9 @@ class TestApiKeyPermissionParity:
         client.credentials(
             HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(default_org.id + 999)
         )
-        assert client.get(ROLES_ADMIN_URL).status_code == status.HTTP_403_FORBIDDEN
+        assert (
+            client.get("/api/permissions/me/").status_code == status.HTTP_403_FORBIDDEN
+        )
 
     def test_sse_ticket_via_api_key(self, user_api_key):
         raw, _ = user_api_key

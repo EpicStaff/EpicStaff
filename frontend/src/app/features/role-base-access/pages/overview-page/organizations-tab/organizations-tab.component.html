@@ -8,13 +8,15 @@
     <span class="count-label"> {{ filteredOrgs().length }} of {{ organizations().length }} organizations </span>
 
     <div class="toolbar-actions">
-        <app-button
-            type="primary"
-            leftIcon="plus"
-            (click)="onCreateOrganization()"
-        >
-            Create Organization</app-button
-        >
+        @if (isSuperadmin) {
+            <app-button
+                type="primary"
+                leftIcon="plus"
+                (click)="onCreateOrganization()"
+            >
+                Create Organization</app-button
+            >
+        }
     </div>
 </div>
 <app-table

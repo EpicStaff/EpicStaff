@@ -16,7 +16,7 @@
             [ngClass]="'selector__btn--' + mod()"
             [class.selector__btn--invalid]="invalid()"
             [class.selector__btn--open]="open()"
-            [class.selector__btn--placeholder]="!selectedItem()"
+            [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
             (click)="toggle()"
         >
             @if (loading()) {
@@ -35,7 +35,7 @@
                     class="selector__text"
                     [attr.title]="selectedItem()?.name || null"
                 >
-                    {{ selectedItem() ? selectedItem()!.name : placeholder() }}
+                    {{ displayText() }}
                 </span>
 
                 <svg
@@ -78,6 +78,7 @@
                     type="text"
                     [value]="search()"
                     (input)="search.set($any($event.target).value)"
+                    (keydown.enter)="commitCustomValue()"
                     [placeholder]="searchPlaceholder()"
                 />
             </div>
@@ -112,7 +113,19 @@
                 </div>
             }
 
-            @if (!filteredItems().length) {
+            @if (allowCustomValue() && search().trim() && !hasExactMatch()) {
+                <div
+                    class="selector__option selector__option--exists"
+                    [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                    (click)="commitCustomValue()"
+                >
+                    <div class="selector__option-body">
+                        <span class="selector__text">Use "{{ search().trim() }}"</span>
+                    </div>
+                </div>
+            }
+
+            @if (!filteredItems().length && !(allowCustomValue() && search().trim())) {
                 <div
                     class="selector__option selector__option--empty"
                     [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"

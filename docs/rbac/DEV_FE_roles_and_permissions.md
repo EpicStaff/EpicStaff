@@ -445,9 +445,12 @@ Full payload shapes in [`roles_and_permissions.md`](./roles_and_permissions.md).
   - Header with valid org you're a member of → embedded `active_organization_id` and `active_permissions`.
   - Header with an org you can't access → fields are `null` (NOT 403). This is the only endpoint with this soft-fail behavior.
 
-### `/api/admin/organizations/{org_id}/users/...` (existing — gate changed)
+### `/api/admin/memberships/...` (membership management)
 
-- **No FE behavior change.** Path is the same. The BE swapped its permission class under the hood. Same 200/403 responses for the same callers.
+- The nested `/api/admin/organizations/{org_id}/users/...` surface (and the
+  batch `assign-users`) has been **replaced** by the flat, cross-org
+  `/api/admin/memberships/` surface (org is data, not a URL segment). See
+  [`user_management.md`](./user_management.md) for the full contract.
 
 ---
 

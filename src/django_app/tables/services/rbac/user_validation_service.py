@@ -54,135 +54,91 @@ class UserValidationService(BaseRBACValidator):
             "role_id": int(role_id) if role_id is not None else None,
         }
 
-    # ---- add_membership (POST /admin/organizations/{org_id}/users/) ----
-
-    def validate_add_membership(self, data: dict) -> dict:
-        """Body: {email, password, role_id?}. Creates a new User and links
-        them to the org. Linking existing users moved to the batch
-        assign-users endpoint. role_id is optional; the service
-        substitutes the built-in Member role if absent.
-        """
-        email = data.get("email")
-        password = data.get("password")
-        role_id = data.get("role_id")
-
-        errors: list[FieldError] = []
-        errors.extend(self._validate_email_field(email))
-        errors.extend(
-            self._validate_password_field(password, user_hints={"email": email})
-        )
-        if role_id is not None:
-            errors.extend(self._validate_positive_int_field("role_id", role_id))
-
-        self._raise_if_any(errors)
-        return {
-            "email": email,
-            "password": password,
-            "role_id": int(role_id) if role_id is not None else None,
-        }
-
-    # ---- assign_users (POST /admin/organizations/{org_id}/assign-users/) ----
-
-    _ASSIGN_USERS_MAX_ITEMS = 100
-
-    def validate_assign_users(self, data: dict) -> list[dict]:
-        """Body: {"assignments": [{"user_id": int, "role_id": int}, ...]}.
-
-          - assignments must be a non-empty list of <= 100 items.
-          - each item requires positive-int user_id and role_id.
-          - duplicate user_id within the batch is rejected.
-
-        Returns the cleaned list of {user_id: int, role_id: int} dicts in
-        submission order. The service is responsible for existence checks
-        and (user, org) conflict detection.
-        """
-        assignments = data.get("assignments")
-
-        if assignments is None:
-            self._raise_if_any(
-                [FieldError("assignments", None, "This field is required.")]
-            )
-        if not isinstance(assignments, list):
-            self._raise_if_any(
-                [FieldError("assignments", assignments, "Must be a list.")]
-            )
-        if len(assignments) == 0:
-            self._raise_if_any(
-                [FieldError("assignments", assignments, "Must not be empty.")]
-            )
-        if len(assignments) > self._ASSIGN_USERS_MAX_ITEMS:
-            self._raise_if_any(
-                [
-                    FieldError(
-                        "assignments",
-                        len(assignments),
-                        f"Must contain at most {self._ASSIGN_USERS_MAX_ITEMS} items.",
-                    )
-                ]
-            )
-
-        errors: list[FieldError] = []
-        seen_user_ids: set[int] = set()
-        cleaned: list[dict] = []
-
-        for index, item in enumerate(assignments):
-            if not isinstance(item, dict):
-                errors.append(
-                    FieldError(
-                        f"assignments[{index}]",
-                        item,
-                        "Must be an object with user_id and role_id.",
-                    )
-                )
-                continue
-
-            user_id = item.get("user_id")
-            role_id = item.get("role_id")
-
-            row_errors: list[FieldError] = []
-            row_errors.extend(
-                self._validate_positive_int_field(
-                    f"assignments[{index}].user_id", user_id
-                )
-            )
-            row_errors.extend(
-                self._validate_positive_int_field(
-                    f"assignments[{index}].role_id", role_id
-                )
-            )
-
-            if row_errors:
-                errors.extend(row_errors)
-                continue
-
-            user_id_int = int(user_id)
-            role_id_int = int(role_id)
-
-            if user_id_int in seen_user_ids:
-                errors.append(
-                    FieldError(
-                        f"assignments[{index}].user_id",
-                        user_id,
-                        "Duplicate user_id within the batch.",
-                    )
-                )
-                continue
-
-            seen_user_ids.add(user_id_int)
-            cleaned.append({"user_id": user_id_int, "role_id": role_id_int})
-
-        self._raise_if_any(errors)
-        return cleaned
-
     # ---- change_role ----
 
     def validate_change_role(self, data: dict) -> dict:
-        """Body: {role_id}. role_id is required."""
+        """Body: {role_id}. role_id is required. Shared by the flat
+        `PATCH /api/admin/memberships/{id}/` surface."""
         role_id = data.get("role_id")
         errors: list[FieldError] = []
         errors.extend(self._validate_positive_int_field("role_id", role_id))
         self._raise_if_any(errors)
         return {"role_id": int(role_id)}
+
+    # ---- add_member (POST /api/admin/memberships/) ----
+
+    def validate_add_member(self, data: dict) -> dict:
+        """`POST /api/admin/memberships/` — link an existing account to an
+        org. Requires org_id + role_id and EXACTLY ONE of email | user_id
+        (account creation stays a superadmin-only op)."""
+        org_id = data.get("org_id")
+        role_id = data.get("role_id")
+        email = data.get("email")
+        user_id = data.get("user_id")
+
+        errors: list[FieldError] = []
+        errors.extend(self._validate_positive_int_field("org_id", org_id))
+        errors.extend(self._validate_positive_int_field("role_id", role_id))
+
+        has_email = email is not None and email != ""
+        has_user_id = user_id is not None and user_id != ""
+        if has_email and has_user_id:
+            errors.append(
+                FieldError(
+                    "email",
+                    email,
+                    "Provide exactly one of email or user_id, not both.",
+                )
+            )
+        elif not has_email and not has_user_id:
+            errors.append(
+                FieldError("email", None, "Provide exactly one of email or user_id.")
+            )
+        elif has_email:
+            errors.extend(self._validate_email_field(email))
+        else:
+            errors.extend(self._validate_positive_int_field("user_id", user_id))
+
+        self._raise_if_any(errors)
+        return {
+            "org_id": int(org_id),
+            "role_id": int(role_id),
+            "email": email if has_email else None,
+            "user_id": int(user_id) if has_user_id else None,
+        }
+
+    def validate_list_memberships_query(self, params) -> dict:
+        """`GET /api/admin/memberships/` filters: ?search=&role_id=&status=.
+        role_id must be a positive int; status must be active|inactive."""
+        search = params.get("search")
+        role_id_raw = params.get("role_id")
+        status_raw = params.get("status")
+
+        errors: list[FieldError] = []
+        role_id = None
+        if role_id_raw not in (None, ""):
+            role_id_errors = self._validate_positive_int_field("role_id", role_id_raw)
+            errors.extend(role_id_errors)
+            if not role_id_errors:
+                role_id = int(role_id_raw)
+
+        status_value = None
+        if status_raw not in (None, ""):
+            if status_raw in ("active", "inactive"):
+                status_value = status_raw
+            else:
+                errors.append(
+                    FieldError(
+                        "status", status_raw, "Must be one of: active, inactive."
+                    )
+                )
+
+        self._raise_if_any(errors)
+        return {
+            "search": search if search else None,
+            "role_id": role_id,
+            "status_value": status_value,
+        }
 
     # ---- list-users query params ----
 
@@ -225,17 +181,6 @@ class UserValidationService(BaseRBACValidator):
             "email": email if email else None,
             "is_superadmin": is_superadmin,
             "organization_id": organization_id,
-        }
-
-    # ---- list-org-members query params ----
-
-    def validate_list_org_members_query(self, params: dict) -> dict:
-        """Optional filters: ?email=substr&role=<name>."""
-        email = params.get("email")
-        role_name = params.get("role")
-        return {
-            "email": email if email else None,
-            "role_name": role_name if role_name else None,
         }
 
     # ---- Story 6: profile ----

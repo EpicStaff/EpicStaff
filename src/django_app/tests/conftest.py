@@ -60,9 +60,40 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
     runs, then re-run the data-migration seed functions that `flush` wipes
     (built-in Roles). In production these are seeded once by migration 0171
     and never touched; `flush` doesn't discriminate, so we have to re-apply."""
+    from importlib import import_module
+
+    from django.apps import apps as django_apps
+
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
         seed_builtin_roles_and_permissions()
+        # Migration module names start with digits and cannot be imported via
+        # `from ... import`; use importlib. Delegating to the migrations' own
+        # seed functions keeps the role/permission definitions in one place.
+        # Replay BOTH seeds in migration order: 0171 seeds roles + initial
+        # permission bitmasks, then 0183 overrides them with the authoritative
+        # bitmasks (e.g. Org Admin export on agents/projects). Re-seeding only
+        # 0171 would leave tests on the stale pre-0183 permissions.
+        roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
+        roles_module.seed_builtin_roles(django_apps, None)
+        perms_module = import_module(
+            "tables.migrations.0183_seed_builtin_role_permissions"
+        )
+        perms_module.seed_role_permissions(django_apps, None)
+        # 0209 grants Org Admin organizations=READ|UPDATE (6). flush wipes it,
+        # so replay it here too — otherwise cross-org org tests see the stale
+        # organizations=0 that 0183 seeds.
+        org_perm_module = import_module(
+            "tables.migrations.0209_seed_org_admin_organizations_perm"
+        )
+        org_perm_module.seed_org_admin_organizations_perm(django_apps, None)
+        # 0210 renames the `users` permission resource_type to `memberships`.
+        # The seeds above (0171/0183) still write `users` rows, so replay the
+        # rename here or tests would see the stale `users` resource_type.
+        rename_module = import_module(
+            "tables.migrations.0210_alter_rolepermission_resource_type"
+        )
+        rename_module.rename_users_to_memberships(django_apps, None)
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +119,6 @@ def heal_builtin_roles(request):
         return
     if not Role.objects.filter(is_built_in=True).exists():
         seed_builtin_roles_and_permissions()
-
 
 @pytest.fixture(autouse=True)
 def clear_default_models_cache():

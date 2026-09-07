@@ -11,22 +11,22 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
 import { FullMembership, Organization } from '@shared/models';
-import { catchError, forkJoin, map, Observable, of, switchMap, throwError } from 'rxjs';
+import { catchError, concat, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
-import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { AggregatedUser } from '../../models/aggregated-user.model';
 import { AdminUserService } from '../../services/admin/admin-user.service';
+import { MembershipsService } from '../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
-import { UserService } from '../../services/users/user.service';
-import { NormalizedUser } from '../../strategies/users/user-fetch.strategy';
+import { rbacErrorMessage } from '../../utils/rbac-error-messages.util';
 import { OrgAssignment, StepAssignToOrgComponent } from './steps/assign-to-org/step-assign-to-org.component';
 import { StepUserDetailsComponent } from './steps/user-details/step-user-details.component';
 
 export interface UserDialogData {
-    user?: NormalizedUser;
+    user?: AggregatedUser;
 }
 
 @Component({
@@ -40,27 +40,23 @@ export class CreateUserDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private dialogRef = inject(DialogRef);
     private dialogData = inject<UserDialogData>(DIALOG_DATA, { optional: true });
-    private currentUserService = inject(ProfileService);
     private adminUserService = inject(AdminUserService);
-    private userService = inject(UserService);
+    private membershipsService = inject(MembershipsService);
     private organizationsStorage = inject(OrganizationsStorageService);
     private toast = inject(ToastService);
+    private confirmation = inject(ConfirmationDialogService);
 
     private userDetailsStep = viewChild(StepUserDetailsComponent);
     private assignToOrgStep = viewChild(StepAssignToOrgComponent);
 
-    isSuperAdmin = this.currentUserService.isMeSuperAdmin;
-    editUser = signal<NormalizedUser | null>(this.dialogData?.user ?? null);
+    editUser = signal<AggregatedUser | null>(this.dialogData?.user ?? null);
     availableOrganizations = signal<Organization[]>([]);
     isSubmitting = signal<boolean>(false);
     loadingOrganizations = signal<boolean>(true);
 
     editMode = computed(() => this.editUser() !== null);
     existingMemberships = computed<FullMembership[]>(() => this.editUser()?.memberships ?? []);
-    submitDisabled = computed(() => {
-        if (!(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting()) return true;
-        return !this.isSuperAdmin() && (this.assignToOrgStep()?.selectedOrganizations().length ?? 0) === 0;
-    });
+    submitDisabled = computed(() => !(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting());
 
     ngOnInit(): void {
         this.loadOrganizations();
@@ -79,150 +75,134 @@ export class CreateUserDialogComponent implements OnInit {
         const { email, password, superadmin } = detailsStep.form.getRawValue();
         const assignments = this.assignToOrgStep()?.getAssignments() ?? [];
 
-        // For org admin creation, createUser() already assigns to assignments[0],
-        // so only pass the rest to batchAssignToOrgs to avoid a duplicate call.
-        const isOrgAdminCreation = !this.isSuperAdmin() && !this.editMode();
-        const assignmentsForBatch = isOrgAdminCreation ? assignments.slice(1) : assignments;
-
-        this.createOrGetUserId(email!, password!, superadmin ?? false, assignments)
+        this.performSubmit(email!, password!, superadmin ?? false, assignments)
             .pipe(
-                switchMap((userId) => {
-                    if (!userId) return of(false);
-                    const removals = this.computeOrgRemovals(userId, assignments);
-                    return this.batchAssignToOrgs(userId, assignmentsForBatch).pipe(
-                        switchMap(() => this.batchRemoveFromOrgs(removals)),
-                        switchMap(() => this.handleSuperadminToggle(userId, superadmin ?? false))
-                    );
-                }),
-                takeUntilDestroyed(this.destroyRef)
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.isSubmitting.set(false))
             )
             .subscribe({
                 next: (success) => {
-                    this.isSubmitting.set(false);
                     if (!success) return;
                     this.toast.success(this.editMode() ? 'User updated successfully.' : 'User created successfully.');
                     this.dialogRef.close(true);
                 },
-                error: (err: HttpErrorResponse) => {
-                    this.isSubmitting.set(false);
-                    this.toast.error(err.error?.message ?? 'Operation failed');
-                },
+                error: (err: HttpErrorResponse) => this.toast.error(rbacErrorMessage(err, 'Operation failed.')),
             });
     }
 
-    private createOrGetUserId(
+    private performSubmit(
         email: string,
         password: string,
         superadmin: boolean,
         assignments: OrgAssignment[]
-    ): Observable<number | null> {
+    ): Observable<boolean> {
         if (this.editMode()) {
-            return of(this.editUser()!.id);
+            const user = this.editUser()!;
+            const grantingSuperadmin = superadmin && !user.isSuperadmin && user.memberships.length > 0;
+            if (grantingSuperadmin) {
+                return this.confirmGrantSuperadmin(user).pipe(
+                    switchMap((confirmed) =>
+                        confirmed ? this.updateExistingUser(user, assignments, superadmin) : of(false)
+                    )
+                );
+            }
+            return this.updateExistingUser(user, assignments, superadmin);
         }
-
-        if (this.isSuperAdmin()) {
-            return this.adminUserService.createUser({ email, password }).pipe(
-                switchMap((user) => {
-                    if (superadmin) {
-                        return this.adminUserService.grantSuperadmin(user.id).pipe(map(() => user.id));
-                    }
-                    return of(user.id);
-                }),
-                catchError((err: HttpErrorResponse) => throwError(() => err))
-            );
-        }
-
-        const firstAssignment = assignments[0];
-        if (!firstAssignment) return of(null);
-
-        return this.userService
-            .createUser(firstAssignment.orgId, { email, password, role_id: firstAssignment.roleId })
-            .pipe(
-                map((user) => user.id),
-                catchError((err: HttpErrorResponse) => throwError(() => err))
-            );
+        return this.createUserAsSuperadmin(email, password, superadmin, assignments);
     }
 
-    private batchAssignToOrgs(userId: number, assignments: { orgId: number; roleId: number }[]): Observable<boolean> {
-        if (!assignments.length) return of(true);
+    private confirmGrantSuperadmin(user: AggregatedUser): Observable<boolean> {
+        const label = user.displayName || user.email;
+        const rolesList = user.memberships
+            .map((m) => `<strong>${m.role.name}</strong> in <strong>${m.organization.name}</strong>`)
+            .join(', ');
+        return this.confirmation
+            .confirm({
+                title: `Make ${label} a superadmin?`,
+                message: `${label} will lose ${rolesList}. Revoking superadmin later will not restore them. Superadmins reach every organization already.`,
+                confirmText: 'Grant superadmin',
+                cancelText: 'Cancel',
+                type: 'danger',
+            })
+            .pipe(map((result) => result === true));
+    }
 
-        const byOrg = new Map<number, { user_id: number; role_id: number }[]>();
-        for (const { orgId, roleId } of assignments) {
-            const list = byOrg.get(orgId) ?? [];
-            list.push({ user_id: userId, role_id: roleId });
-            byOrg.set(orgId, list);
-        }
-
-        const requests = Array.from(byOrg.entries()).map(([orgId, items]) =>
-            this.userService
-                .assignUsersToOrg(orgId, { assignments: items })
-                .pipe(catchError((err: HttpErrorResponse) => throwError(() => err)))
+    private createUserAsSuperadmin(
+        email: string,
+        password: string,
+        superadmin: boolean,
+        assignments: OrgAssignment[]
+    ): Observable<boolean> {
+        return this.adminUserService.createUser({ email, password }).pipe(
+            switchMap((user) =>
+                (superadmin ? this.adminUserService.grantSuperadmin(user.id) : of(void 0)).pipe(map(() => user.id))
+            ),
+            switchMap((userId) => this.createMembershipsForUser(userId, assignments)),
+            map(() => true)
         );
-
-        return forkJoin(requests).pipe(map(() => true));
     }
 
-    private computeOrgRemovals(
-        userId: number,
-        currentAssignments: OrgAssignment[]
-    ): { orgId: number; userId: number }[] {
-        if (!this.editMode()) return [];
-        const previousOrgIds = new Set(this.editUser()!.memberships.map((m) => m.organization.id));
-        const currentOrgIds = new Set(currentAssignments.map((a) => a.orgId));
-        return [...previousOrgIds].filter((id) => !currentOrgIds.has(id)).map((orgId) => ({ orgId, userId }));
+    private createMembershipsForUser(userId: number, assignments: OrgAssignment[]): Observable<unknown> {
+        if (!assignments.length) return of(null);
+        const ops = assignments.map((a) =>
+            this.membershipsService.create({ org_id: a.orgId, user_id: userId, role_id: a.roleId })
+        );
+        return concat(...ops).pipe(toArray());
     }
 
-    private batchRemoveFromOrgs(removals: { orgId: number; userId: number }[]): Observable<boolean> {
-        if (!removals.length) return of(true);
-        return forkJoin(
-            removals.map(({ orgId, userId }) =>
-                this.userService
-                    .removeUserFromOrg(orgId, userId)
-                    .pipe(catchError((err: HttpErrorResponse) => throwError(() => err)))
-            )
-        ).pipe(map(() => true));
-    }
+    /** Edit flow: diff `assignments` vs existing memberships and superadmin flag.
+     *   - Role change on existing membership → PATCH.
+     *   - New org → POST.
+     *   - Removed org → DELETE.
+     *   - Superadmin toggle → grant/revoke. */
+    private updateExistingUser(
+        user: AggregatedUser,
+        assignments: OrgAssignment[],
+        wantsSuperadmin: boolean
+    ): Observable<boolean> {
+        const membershipByOrg = new Map(user.memberships.map((m) => [m.organization.id, m]));
+        const wantedByOrg = new Map(assignments.map((a) => [a.orgId, a.roleId]));
 
-    private handleSuperadminToggle(userId: number, wantsSuperadmin: boolean): Observable<boolean> {
-        if (!this.isSuperAdmin() || !this.editMode()) return of(true);
+        const ops: Observable<unknown>[] = [];
 
-        const wasSuperadmin = this.editUser()!.isSuperadmin;
-
-        if (wantsSuperadmin && !wasSuperadmin) {
-            return this.adminUserService.grantSuperadmin(userId).pipe(
-                map(() => true as boolean),
-                catchError((err: HttpErrorResponse) => throwError(() => err))
-            );
-        }
-        if (!wantsSuperadmin && wasSuperadmin) {
-            return this.adminUserService.revokeSuperadmin(userId).pipe(
-                map(() => true as boolean),
-                catchError((err: HttpErrorResponse) => throwError(() => err))
+        // Superadmin diff first (grant/revoke can affect visibility of subsequent ops).
+        if (wantsSuperadmin !== user.isSuperadmin) {
+            ops.push(
+                wantsSuperadmin
+                    ? this.adminUserService.grantSuperadmin(user.id)
+                    : this.adminUserService.revokeSuperadmin(user.id)
             );
         }
 
-        return of(true);
+        // Adds & role updates.
+        for (const a of assignments) {
+            const existing = membershipByOrg.get(a.orgId);
+            if (!existing) {
+                ops.push(this.membershipsService.create({ org_id: a.orgId, user_id: user.id, role_id: a.roleId }));
+            } else if (existing.role.id !== a.roleId) {
+                ops.push(this.membershipsService.updateRole(existing.id, { role_id: a.roleId }));
+            }
+        }
+
+        // Removals.
+        for (const m of user.memberships) {
+            if (!wantedByOrg.has(m.organization.id)) {
+                ops.push(this.membershipsService.remove(m.id));
+            }
+        }
+
+        if (!ops.length) return of(true);
+        return forkJoin(ops).pipe(map(() => true));
     }
 
     private loadOrganizations(): void {
-        if (this.isSuperAdmin()) {
-            this.organizationsStorage
-                .getOrganizations()
-                .pipe(
-                    takeUntilDestroyed(this.destroyRef),
-                    finalize(() => this.loadingOrganizations.set(false))
-                )
-                .subscribe((orgs) => this.availableOrganizations.set(orgs));
-        } else {
-            const currentUser = this.currentUserService.currentUserSignal();
-            if (currentUser) {
-                const adminOrgs = currentUser.memberships.map((m) => ({
-                    id: m.organization.id,
-                    name: m.organization.name,
-                }));
-                this.availableOrganizations.set(adminOrgs);
-                this.loadingOrganizations.set(false);
-            }
-        }
+        this.organizationsStorage
+            .getOrganizations()
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.loadingOrganizations.set(false)),
+                catchError(() => of([] as Organization[]))
+            )
+            .subscribe((orgs) => this.availableOrganizations.set(orgs));
     }
 }

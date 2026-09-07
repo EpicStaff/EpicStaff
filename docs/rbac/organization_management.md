@@ -1,242 +1,105 @@
-# Organization Management — Superadmin
+# Organization Management
 
-Five endpoints for managing `Organization` rows from the superadmin admin
-panel. All endpoints require `is_superadmin=True`. Anonymous → 401;
-authenticated non-superadmin → 403 (`code: permission_denied`).
+Managing `Organization` rows from the admin panel. The surface is **adaptive**:
+list / read / rename are permission-driven per org; creating and
+(de)activating an organization are platform-level and stay superadmin-only.
 
-Base URL in examples: `http://localhost:8000`.
+Anonymous → 401. Authenticated without the required permission → 403
+(`code: permission_denied`). Base URL in examples: `http://localhost:8000`.
 
 ---
 
 ## Quick reference
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/admin/organizations/` | List all organizations with member counts |
-| POST | `/api/admin/organizations/` | Create an organization |
-| PATCH | `/api/admin/organizations/{id}/` | Rename an organization |
-| POST | `/api/admin/organizations/{id}/deactivate/` | Soft-deactivate an organization |
-| POST | `/api/admin/organizations/{id}/reactivate/` | Re-activate a deactivated organization |
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/admin/organizations/` | `ORGANIZATIONS.READ` in ≥1 org (superadmin → all) | List organizations |
+| GET | `/api/admin/organizations/{id}/` | `ORGANIZATIONS.READ` in that org, or superadmin | Read one org's settings |
+| PATCH | `/api/admin/organizations/{id}/` | `ORGANIZATIONS.UPDATE` in that org, or superadmin | Rename / settings |
+| POST | `/api/admin/organizations/` | **superadmin** | Create an organization |
+| POST | `/api/admin/organizations/{id}/deactivate/` | **superadmin** | Soft-deactivate |
+| POST | `/api/admin/organizations/{id}/reactivate/` | **superadmin** | Re-activate |
+
+`ORGANIZATIONS.READ` gates only this **admin/settings surface**. Seeing which
+orgs you belong to (the org switcher, `/api/profile/` `memberships[]`) comes
+from membership and needs no permission. The built-in **Org Admin** role holds
+`ORGANIZATIONS` READ + UPDATE for its own org; Members and Viewers hold neither.
 
 ---
 
-## Common response shape
-
-Every endpoint returns the same payload (single object or list):
+## Response shape
 
 ```json
 {
-  "id": 7,
-  "name": "Acme Inc",
-  "is_active": true,
+  "id": 7, "name": "Acme Inc", "is_active": true,
   "member_count": 12,
-  "created_at": "2026-04-29T10:00:00Z",
-  "updated_at": "2026-04-29T10:00:00Z"
+  "created_at": "…", "updated_at": "…",
+  "admins": [{"id": 4, "email": "boss@acme.com", "display_name": "Acme Boss", "avatar_url": null}]
 }
 ```
 
-The list endpoint (`GET /api/admin/organizations/`) returns this same shape **plus** an `admins` array. The single-org endpoints (create / rename / deactivate / reactivate) keep the shape above unchanged.
-
-`member_count` reflects the count of `OrganizationUser` rows for the org,
-across all roles, regardless of `user.is_active`. Story 5 may introduce
-`active_member_count` later as a separate field.
-
-## Common error envelopes
-
-Validation envelope (FormValidationError):
-
-```json
-{
-  "status_code": 400,
-  "code": "invalid",
-  "message": "FormValidationError: Validation failed",
-  "errors": [
-    {"field": "name", "value": "", "reason": "This field is required."}
-  ]
-}
-```
-
-Domain-error envelope:
-
-```json
-{
-  "status_code": 400,
-  "code": "organization_name_conflict",
-  "message": "OrganizationNameConflictError: An organization with this name already exists."
-}
-```
-
-Authorization 403 (non-superadmin):
-
-```json
-{
-  "status_code": 403,
-  "code": "permission_denied",
-  "message": "Superadmin privileges are required for this action."
-}
-```
+`admins[]` (list endpoint only) is the users holding the built-in **Org Admin**
+role in that org, ordered by `joined_at, id`. When an org has zero Org Admins,
+**superadmin** viewers see a fallback of the oldest active superadmin (so the
+column is never empty for them); delegated admins never see that fallback. The
+single-org endpoints (retrieve / create / rename / deactivate / reactivate) omit
+`admins`.
 
 ---
 
 ## GET `/api/admin/organizations/`
 
-List all organizations. Default returns active and inactive both, ordered
-`is_active` desc then `name` asc.
+**Permission-aware & paginated** (`count/next/previous/results`, page size 50,
+max 200). A superadmin sees every org; anyone else sees only the orgs where they
+hold `ORGANIZATIONS.READ`.
 
-**Query params:**
+**Query params:** `is_active` (`true`/`false`; unset → all), `search`
+(case-insensitive on name), `org_ids` (comma-separated; a forbidden id →
+**403 fail-loud**), `ordering` (`name` | `created_at` | `member_count`, prefix
+`-` for descending; default active-first then name), `page` / `page_size`.
 
-| Param | Values | Default |
-|---|---|---|
-| `is_active` | `true` / `false` | unset → returns all |
+`member_count` counts `OrganizationUser` rows across all roles.
 
-**curl:**
+## GET `/api/admin/organizations/{id}/`
 
-```bash
-curl http://localhost:8000/api/admin/organizations/ \
-  -H "Authorization: Bearer $ACCESS"
-```
-
-**200:**
-
-```json
-[
-  {
-    "id": 1,
-    "name": "Default Organization",
-    "is_active": true,
-    "member_count": 1,
-    "created_at": "...",
-    "updated_at": "...",
-    "admins": [
-      {
-        "id": 1,
-        "email": "email@a.com",
-        "display_name": "John Doe",
-        "avatar_url": "http://host/media/avatars/1/abc.png"
-      }
-    ]
-  },
-  {
-    "id": 7,
-    "name": "Acme Inc",
-    "is_active": true,
-    "member_count": 12,
-    "created_at": "...",
-    "updated_at": "...",
-    "admins": [
-      {
-        "id": 4,
-        "email": "boss@acme.com",
-        "display_name": "Acme Boss",
-        "avatar_url": null
-      }
-    ]
-  }
-]
-```
-
----
-
-## POST `/api/admin/organizations/`
-
-Create an organization.
-
-**Body:** `{"name": "Acme Inc"}`. Trimmed; max 255 chars; must be non-blank.
-
-**curl:**
-
-```bash
-curl -X POST http://localhost:8000/api/admin/organizations/ \
-  -H "Authorization: Bearer $ACCESS" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Acme Inc"}'
-```
-
-**201:** the new organization payload (with `member_count: 0`).
-
-**Errors:**
-
-- `400 invalid` — empty / whitespace-only / wrong type → `errors[]` envelope.
-- `400 organization_name_conflict` — case-insensitive duplicate.
-
----
+Read one org's settings. Requires `ORGANIZATIONS.READ` in that org (or
+superadmin). An org you can't access → **404 `organization_not_found`** (no
+existence leak).
 
 ## PATCH `/api/admin/organizations/{id}/`
 
-Rename an organization. Only the `name` field is accepted; `is_active` changes
-go through the dedicated deactivate/reactivate endpoints.
+Rename / edit settings. Requires `ORGANIZATIONS.UPDATE` in that org (or
+superadmin). Body: `{"name": "Acme International"}` (only `name` today; the
+payload is shaped to accept future settings). No-op if the name is unchanged.
+An org you're not a member of → **404** (no existence leak); a member lacking
+`ORGANIZATIONS.UPDATE` → **403**.
 
-**Body:** `{"name": "Acme International"}`.
+- `400 organization_name_conflict` — case-insensitive duplicate.
+- `400 invalid` — empty / whitespace-only / wrong type.
 
-**200:** the updated organization payload. No-op (no `updated_at` change) if
-the new name equals the current name (case-sensitive).
+## POST `/api/admin/organizations/` (superadmin)
 
-**Errors:** same as POST plus `404` for unknown id.
+Body `{"name": "Acme Inc"}` (trimmed; ≤255; non-blank). **201** → the org
+(`member_count: 0`). `400 organization_name_conflict` on a case-insensitive
+duplicate.
 
----
+## POST `/api/admin/organizations/{id}/deactivate|reactivate/` (superadmin)
 
-## POST `/api/admin/organizations/{id}/deactivate/`
+Soft (de)activation; memberships are preserved. Idempotent. Deactivate refuses
+to leave the system with zero active organizations → **400
+`last_active_organization`**. Unknown id → **404**.
 
-Soft-deactivate. Sets `is_active=false`. **Memberships are preserved** —
-`OrganizationUser` rows stay intact. Reactivation restores access exactly as
-it was.
-
-**Body:** none.
-
-**200:** organization payload with `is_active: false`.
-
-**Idempotent:** already-inactive orgs return 200 with the unchanged payload.
-
-**Errors:**
-
-- `400 last_active_organization` — would leave zero active orgs in the system.
-- `404` — unknown id.
+Deactivating an org removes it from delegated admins' scope — only a superadmin
+can manage or reactivate an inactive org.
 
 ---
 
-## POST `/api/admin/organizations/{id}/reactivate/`
-
-Inverse of deactivate. No guards — always succeeds for an existing org.
-
-**Body:** none.
-
-**200:** organization payload with `is_active: true`. Idempotent on already-active.
-
-**Errors:** `404` — unknown id.
-
----
-
-## Behavioral notes for the FE
+## Notes for the FE
 
 | Behavior | Note |
 |---|---|
-| Default org name | The default org is identified by the internal `is_default` flag, **not** by its name. `DEFAULT_ORGANIZATION_NAME` only seeds the org's *initial* name at bootstrap. `manage.py create_superadmin --org-name` sets that same initial name at bootstrap time and is ignored once a default organization already exists — the `is_default` flag, not the name, is the anchor either way. Renaming is fully safe: the flag (and every resource FK) is unaffected. The default org is still otherwise unprivileged for management ops (rename / deactivate / reactivate), subject only to the last-active-org guard. |
-| Inactive orgs in the org switcher | `/api/profile/` filters inactive-org memberships out of `memberships[]` server-side. The user never sees deactivated orgs in their own profile. Admin endpoints still show every membership unchanged. |
-| Superadmin org switcher | A superadmin's `/api/profile/` returns every **active** organization in `memberships[]` (each with the `Superadmin` role), so the switcher can reach any org. This list is computed on read from the `Organization` table — the extra entries are **not** `OrganizationUser` rows and do **not** affect `member_count`, which counts stored memberships only. |
-| Renaming behavior | Surrounding whitespace is trimmed. Empty / whitespace-only is rejected. Case-insensitive uniqueness — `"Acme"` and `"acme"` collide. |
-| 401 vs 403 | 401 = no/expired token (re-login). 403 = valid JWT but `is_superadmin: false` (redirect away from admin panel). |
-| `admins[]` in list | Only the list endpoint includes `admins[]`. Items are users with role `Org Admin` for that org, ordered by `joined_at, id`. If an org has zero Org Admins, the field falls back to a single-item list containing the **oldest active superadmin** in the system. The same superadmin may appear under multiple orgs. If no active superadmin exists, the array is `[]`. |
-
----
-
-## First-setup → name your organization (FE flow)
-
-`POST /api/auth/first-setup/` creates the org with the configured default name
-and returns it in the 201 body as `organization.id`. To let the new superadmin
-choose a name, the FE calls `PATCH /api/admin/organizations/{organization.id}/`
-with `{"name": "..."}`, authenticated with the `access` token from the same
-response. If the first-setup response was lost (reload), the id is recoverable
-from `GET /api/profile/` → `memberships[]`. No dedicated endpoint exists or is
-needed.
-
----
-
-## Bug 1 fix — `/api/auth/reset-user/` post-condition
-
-After Story 4, a successful `POST /api/auth/reset-user/` always leaves
-exactly one `OrganizationUser` row for the new superadmin in the
-`DEFAULT_ORGANIZATION_NAME`-named org with role `Superadmin`. If no such org
-exists at the time of reset, one is created. `GET /api/profile/` returns
-`memberships[]` with that one entry.
-
-This restores the Bug 1 reproduction's expected end state.
+| Organizations tab visibility | Show it where the caller holds `ORGANIZATIONS.READ` (or is superadmin). Plain members don't see it, but still see their orgs in the switcher. |
+| Rename button | Enable per row where the caller holds `ORGANIZATIONS.UPDATE`. |
+| Create / deactivate | Superadmin-only — hide for everyone else. |
+| Default org | Identified by an internal `is_default` flag, not by name; renaming is safe. |
+| 401 vs 403 | 401 = no/expired credential. 403 = valid credential, insufficient permission. |

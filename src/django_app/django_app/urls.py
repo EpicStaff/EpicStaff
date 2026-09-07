@@ -38,6 +38,7 @@ from tables.views.api_key_views import (
     ProfileApiKeysView,
 )
 from tables.views.permission_views import (
+    MyOrgsPermissionsView,
     MyPermissionsView,
     PermissionCatalogView,
 )
@@ -139,6 +140,11 @@ urlpatterns = [
         "api/permissions/me/",
         MyPermissionsView.as_view(),
         name="permissions_me",
+    ),
+    path(
+        "api/permissions/me/orgs/",
+        MyOrgsPermissionsView.as_view(),
+        name="permissions_me_orgs",
     ),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),
