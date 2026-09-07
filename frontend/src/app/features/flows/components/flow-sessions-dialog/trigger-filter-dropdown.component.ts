@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -19,8 +18,7 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
 
 @Component({
     selector: 'app-trigger-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `

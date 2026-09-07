@@ -93,7 +93,6 @@ export class GraphCollaborationWsService {
         this.socket.onopen = () => {
             this.reconnectAttempts = 0;
             this.connectionStatus.set('connected');
-            console.log('[WS] Connected to graph', this.currentGraphId);
         };
 
         this.socket.onmessage = (event: MessageEvent) => {
@@ -105,8 +104,7 @@ export class GraphCollaborationWsService {
             }
         };
 
-        this.socket.onclose = (event) => {
-            console.log('[WS] Closed, code:', event.code);
+        this.socket.onclose = () => {
             this.socket = null;
             if (!this.isManualDisconnect) {
                 this.handleConnectionLoss();

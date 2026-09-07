@@ -29,12 +29,6 @@
                         (nodeSelected)="onNodeSelected($event)"
                     ></app-flow-graph-core-menu>
                 }
-                @case (menuTab.PROJECTS) {
-                    <app-flow-projects-context-menu
-                        [searchTerm]="searchTerm()"
-                        (nodeSelected)="onNodeSelected($event)"
-                    ></app-flow-projects-context-menu>
-                }
                 @case (menuTab.FLOWS) {
                     <app-flows-menu
                         [searchTerm]="searchTerm()"

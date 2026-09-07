@@ -344,7 +344,7 @@ REQUIRED_TABLES=(
     "graph_rag_document"
     # realtime
     "realtime_session_items"
-    # crew
+    # django (memory database, owned by django_app, no dedicated crewdb role)
     "tables_memorydatabase"
 )
 
@@ -371,7 +371,6 @@ install_event_triggers() {
     local manager_user="${MANAGER_DB_USER}"
     local knowledge_user="${KNOWLEDGE_DB_USER}"
     local realtime_user="${REALTIME_DB_USER}"
-    local crew_user="${CREW_DB_USER}"
 
     echo "[triggers] Installing event triggers for auto-grant..."
     psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
@@ -425,12 +424,6 @@ BEGIN
         IF tbl_name = 'realtime_session_items' THEN
             EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${realtime_user}');
             RAISE NOTICE '[auto-grant] CRUD on % to ${realtime_user}', tbl_name;
-        END IF;
-
-        -- crew: full CRUD
-        IF tbl_name = 'tables_memorydatabase' THEN
-            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${crew_user}');
-            RAISE NOTICE '[auto-grant] CRUD on % to ${crew_user}', tbl_name;
         END IF;
     END LOOP;
 END;
@@ -505,7 +498,6 @@ background_setup() {
         create_manager_user
         create_knowledge_user
         create_realtime_user
-        create_crew_user
         install_event_triggers
         echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
 
@@ -520,7 +512,6 @@ background_setup() {
                 grant_manager_permissions
                 grant_knowledge_permissions
                 grant_realtime_permissions
-                grant_crew_permissions
                 touch "$USERS_CREATED_FLAG"
                 echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
                 exit 0

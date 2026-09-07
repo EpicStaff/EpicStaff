@@ -9,8 +9,6 @@ import { RealtimeChannel } from '../../../../shared/models/realtime-voice/realti
 import { RealtimeChannelService } from '../../../../shared/services/realtime-channel.service';
 import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
-import { GetAgentRequest } from '../../../staff/models/agent.model';
-import { AgentsService } from '../../../staff/services/staff.service';
 import {
     AddEditChannelDialogComponent,
     AddEditChannelDialogData,
@@ -25,7 +23,6 @@ import {
 })
 export class VoiceSettingsSectionComponent implements OnInit {
     private channelService = inject(RealtimeChannelService);
-    private agentsService = inject(AgentsService);
     private agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
@@ -35,10 +32,8 @@ export class VoiceSettingsSectionComponent implements OnInit {
     status = signal<LoadingState>(LoadingState.IDLE);
 
     channels = signal<RealtimeChannel[]>([]);
-    private agents = signal<GetAgentRequest[]>([]);
     private agentDefinitions = signal<AgentDefinition[]>([]);
 
-    agentMap = computed<Map<number, string>>(() => new Map(this.agents().map((a) => [a.id, a.role])));
     agentDefinitionMap = computed<Map<number, string>>(
         () => new Map(this.agentDefinitions().map((d) => [d.id, d.name]))
     );
@@ -64,11 +59,6 @@ export class VoiceSettingsSectionComponent implements OnInit {
                 },
                 error: () => this.status.set(LoadingState.ERROR),
             });
-
-        this.agentsService
-            .getAgentsWithRealtimeConfig()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({ next: (agents) => this.agents.set(agents), error: () => {} });
 
         this.agentDefinitionsApi
             .getAgentDefinitions()

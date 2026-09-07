@@ -27,17 +27,15 @@ import {
 import { CreateNodeRequest } from '../../core/models/node-creation.types';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu/flow-graph-core-menu.component';
 import { FlowsMenuComponent } from './flows-menu/flows-menu.component';
-import { FlowProjectsContextMenuComponent } from './section-projects/section-projects.component';
 
 export type { ContextMenuTab };
 
 @Component({
     selector: 'app-flow-graph-context-menu',
-    standalone: true,
     templateUrl: './flow-graph-context-menu.component.html',
     styleUrls: ['./flow-graph-context-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FlowGraphCoreMenuComponent, FlowProjectsContextMenuComponent, FlowsMenuComponent],
+    imports: [FlowGraphCoreMenuComponent, FlowsMenuComponent],
 })
 export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly position = input.required<IPoint>();

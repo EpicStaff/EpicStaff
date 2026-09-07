@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -21,8 +20,7 @@ interface FlowOption {
 
 @Component({
     selector: 'app-flow-name-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `

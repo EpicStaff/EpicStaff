@@ -7,7 +7,6 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-search',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, FormsModule, MatTooltipModule],
     templateUrl: './search.component.html',
     styleUrls: ['./search.component.scss'],

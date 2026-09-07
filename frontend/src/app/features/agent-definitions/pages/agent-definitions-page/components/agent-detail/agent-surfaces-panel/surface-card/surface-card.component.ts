@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -81,7 +80,6 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
 @Component({
     selector: 'app-surface-card',
     imports: [
-        CommonModule,
         FormsModule,
         AppSvgIconComponent,
         MatTooltipModule,

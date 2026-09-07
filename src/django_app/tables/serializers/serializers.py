@@ -68,14 +68,6 @@ class GetUpdatesSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
 
 
-class AnswerToLLMSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-    crew_id = serializers.IntegerField(required=True)
-    execution_order = serializers.IntegerField(required=True)
-    name = serializers.CharField()
-    answer = serializers.CharField()
-
-
 class NotifyEmailSerializer(serializers.Serializer):
     to = serializers.EmailField(required=True)
     subject = serializers.CharField(
@@ -85,20 +77,8 @@ class NotifyEmailSerializer(serializers.Serializer):
 
 
 class InitRealtimeSerializer(serializers.Serializer):
-    agent_id = serializers.IntegerField(required=False)
-    agent_definition_id = serializers.IntegerField(required=False)
+    agent_definition_id = serializers.IntegerField(required=True)
     config = serializers.DictField(required=False, default=dict)
-
-    def validate(self, attrs):
-        agent_id = attrs.get("agent_id")
-        agent_definition_id = attrs.get("agent_definition_id")
-
-        if bool(agent_id) == bool(agent_definition_id):
-            raise serializers.ValidationError(
-                "Exactly one of 'agent_id' or 'agent_definition_id' must be provided."
-            )
-
-        return attrs
 
 
 class BaseToolSerializer(serializers.Serializer):
@@ -130,10 +110,6 @@ class BaseToolSerializer(serializers.Serializer):
         return repr
 
 
-class RegisterTelegramTriggerSerializer(serializers.Serializer):
-    telegram_trigger_node_id = serializers.IntegerField(required=True)
-
-
 class ProcessDocumentChunkingSerializer(serializers.Serializer):
     document_id = serializers.IntegerField(required=True)
 
@@ -161,9 +137,6 @@ class BulkExportSerializer(serializers.Serializer):
 
 
 class GraphNodesPartialExportSerializer(serializers.Serializer):
-    crew_node_list = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, default=list
-    )
     python_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )

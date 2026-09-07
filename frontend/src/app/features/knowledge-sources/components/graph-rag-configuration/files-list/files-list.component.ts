@@ -76,7 +76,7 @@ export class GraphRagFilesListComponent {
                 },
                 error: (e) => {
                     this.toastService.error('File delete failed.');
-                    console.log('File deleting error:', e);
+                    console.error('File deleting error:', e);
                 },
             });
     }
