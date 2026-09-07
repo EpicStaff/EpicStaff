@@ -60,6 +60,7 @@ class PythonCodeCleanupService:
             locked_ids = set(
                 PythonCode.objects.select_for_update()
                 .filter(id__in=ids)
+                .order_by("id")
                 .values_list("id", flat=True)
             )
             deleted, _ = (
