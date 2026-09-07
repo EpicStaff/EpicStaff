@@ -151,6 +151,8 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             OrgScopedUniqueValidator(
                 queryset=PythonCodeTool.objects.all(),
                 message="A tool with this name already exists.",
+                global_queryset=PythonCodeTool.objects.filter(built_in=True),
+                global_message="A built-in tool with this name already exists.",
             )
         ]
     )

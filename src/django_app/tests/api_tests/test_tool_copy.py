@@ -213,3 +213,79 @@ def test_copy_of_built_in_tool_does_not_carry_other_org_labels(
     copy = PythonCodeTool.objects.get(id=resp.data["id"])
     assert copy.org_id == org_a.id
     assert list(copy.labels.values_list("id", flat=True)) == []
+
+
+# ---- EST-4000: copy-name numbering must be org-scoped (and built-in-aware) ----
+
+
+@pytest.fixture
+def member_b(db, django_user_model, org_b, org_admin_role):
+    user = django_user_model.objects.create_user(
+        email="copy_member_b@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_b, role=org_admin_role)
+    return user
+
+
+@pytest.fixture
+def client_b(member_b, org_b):
+    client = APIClient()
+    client.force_authenticate(user=member_b)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_b.id))
+    return client
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_numbering_is_not_inflated_by_other_orgs(
+    client_a, client_b, org_a, org_b
+):
+    """Org B already holds "Shared #2".."Shared #6" — org A's own copy
+    numbering must not be pushed past "Shared #2" by rows it can't even see."""
+    source = _make_tool(org=org_a, built_in=False, name="Shared")
+    for n in range(2, 7):
+        _make_tool(org=org_b, built_in=False, name=f"Shared #{n}")
+
+    resp = client_a.post(f"/api/python-code-tool/{source.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.name == "Shared #2"
+    assert copy.org_id == org_a.id
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_name_avoids_built_in_collision(client_a, org_a):
+    """A copy's generated name must also skip global built-in names, not just
+    the target org's own names, otherwise the copy could collide with (or be
+    confused for) a built-in tool."""
+    built_in = _make_tool(built_in=True, org=None, name="Duplicated")
+    _make_tool(org=org_a, built_in=False, name="Duplicated #2")
+
+    resp = client_a.post(f"/api/python-code-tool/{built_in.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.name == "Duplicated #3"
+
+
+@pytest.mark.django_db
+def test_mcp_tool_copy_numbering_is_not_inflated_by_other_orgs(
+    client_a, client_b, org_a, org_b
+):
+    source = McpTool.objects.create(
+        name="SharedMcp",
+        transport="https://example.com/mcp",
+        tool_name="some_tool",
+        org=org_a,
+    )
+    for n in range(2, 7):
+        McpTool.objects.create(
+            name=f"SharedMcp #{n}",
+            transport="https://example.com/mcp",
+            tool_name="some_tool",
+            org=org_b,
+        )
+
+    resp = client_a.post(f"/api/mcp-tools/{source.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    copy = McpTool.objects.get(id=resp.data["id"])
+    assert copy.name == "SharedMcp #2"
+    assert copy.org_id == org_a.id

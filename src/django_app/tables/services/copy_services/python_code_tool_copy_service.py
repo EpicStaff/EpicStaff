@@ -1,3 +1,5 @@
+from django.db.models import Q
+
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
@@ -14,13 +16,16 @@ class PythonCodeToolCopyService(BaseCopyService):
     ) -> PythonCodeTool:
         new_code = copy_python_code(tool.python_code)
 
-        existing_names = PythonCodeTool.objects.values_list("name", flat=True)
+        target_org_id = org_id if org_id is not None else tool.org_id
+
+        existing_names = PythonCodeTool.objects.filter(
+            Q(org_id=target_org_id) | Q(built_in=True)
+        ).values_list("name", flat=True)
         new_name = ensure_unique_identifier(
             base_name=name if name else tool.name,
             existing_names=existing_names,
         )
 
-        target_org_id = org_id if org_id is not None else tool.org_id
         new_tool = PythonCodeTool.objects.create(
             name=new_name,
             description=tool.description,

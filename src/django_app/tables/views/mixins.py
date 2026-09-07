@@ -33,8 +33,10 @@ class CopyActionMixin:
         instance = self.get_object()
         name = request.data.get("name") if isinstance(request.data, dict) else None
         # Org-scoped viewsets stamp the copy with the active org so the new row
-        # satisfies the NOT NULL org constraint. Non-org-scoped viewsets (e.g.
-        # tool copies) don't expose get_active_org_id and copy without an org.
+        # satisfies the NOT NULL org constraint. This covers tool copies too:
+        # PythonCodeToolViewSet (OrgScopedHybridViewSetMixin) and McpToolViewSet
+        # (OrgScopedViewSetMixin) both expose get_active_org_id, so their copies
+        # also receive an org id.
         extra = {}
         if hasattr(self, "get_active_org_id"):
             extra["org_id"] = self.get_active_org_id()
@@ -288,5 +290,7 @@ class InspectActionMixin:
     def inspect_import(self, request):
         serializer = InspectImportRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = self.import_export_service.inspect_entity(serializer.validated_data["file"], org_id=self.get_active_org_id())
+        result = self.import_export_service.inspect_entity(
+            serializer.validated_data["file"], org_id=self.get_active_org_id()
+        )
         return Response(result, status=status.HTTP_200_OK)
