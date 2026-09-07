@@ -28,8 +28,12 @@ import { StorageSectionComponent } from './storage-section/storage-section.compo
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
 
 const SIDEBAR_STORAGE_KEY = 'agents';
-/** Matches .explorer__section-body--fill's CSS min-height — the floor a resize drag must never push the filling section below. */
-const FILL_BODY_MIN_HEIGHT = 100;
+/**
+ * Matches .explorer__section-body--fill's CSS min-height — the floor a resize drag must never push
+ * the filling section below. 168 = 6 full tree rows (tree-node.component.scss: .row min-height 28px),
+ * so the filling section never bottoms out mid-row (100px only fit ~3.5 rows, cutting the 4th item off).
+ */
+const FILL_BODY_MIN_HEIGHT = 168;
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -186,17 +190,41 @@ export class ExplorerComponent {
     }
 
     /**
-     * Caps how far a section can grow when dragged, so it can't squeeze the filling section
-     * (e.g. Storage) below the floor its CSS min-height already promises it.
+     * Caps how far a section can grow when dragged, so it can't squeeze any sibling below a
+     * usable floor. Storage is reserved even while collapsed: it's always last in section
+     * order, so it always becomes the filling section once it's opened, and a drag made while
+     * it's closed must still leave it room — otherwise reopening it clips it against the
+     * container (it can't get more space back from siblings that already claimed it).
      */
-    sectionMaxHeightFn(target: HTMLElement): () => number {
+    sectionMaxHeightFn(sectionId: ExplorerSectionId, target: HTMLElement): () => number {
         return () => {
-            const fillBody = this.el.nativeElement.querySelector('.explorer__section-body--fill') as HTMLElement | null;
-            // No section is currently filling leftover space (e.g. everything is collapsed) — nothing to protect.
-            if (!fillBody || fillBody === target) return Number.POSITIVE_INFINITY;
+            const container = this.el.nativeElement.querySelector('.explorer__sections') as HTMLElement | null;
             const currentHeight = target.getBoundingClientRect().height;
-            const fillHeight = fillBody.getBoundingClientRect().height;
-            return Math.round(currentHeight + Math.max(0, fillHeight - FILL_BODY_MIN_HEIGHT));
+            if (!container) return Number.POSITIVE_INFINITY;
+
+            let reserved = 0;
+            for (const id of this.sectionOrder) {
+                if (id === sectionId || !this.store.isSectionVisible(id)) continue;
+                const sectionEl = this.el.nativeElement.querySelector(
+                    `[data-section-id="${id}"]`
+                ) as HTMLElement | null;
+                if (!sectionEl) continue;
+                const sectionHeight = sectionEl.getBoundingClientRect().height;
+
+                if (this.shouldFillBody(id)) {
+                    // Currently absorbing leftover space — only its guaranteed floor must survive.
+                    const headerHeight =
+                        (sectionEl.firstElementChild as HTMLElement | null)?.getBoundingClientRect().height ?? 0;
+                    reserved += headerHeight + FILL_BODY_MIN_HEIGHT;
+                } else if (id === 'storage') {
+                    reserved += sectionHeight + FILL_BODY_MIN_HEIGHT;
+                } else {
+                    reserved += sectionHeight;
+                }
+            }
+
+            const containerHeight = container.getBoundingClientRect().height;
+            return Math.round(Math.max(currentHeight, containerHeight - reserved));
         };
     }
 
