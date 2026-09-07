@@ -258,6 +258,14 @@ class BuiltInRoleImmutableError(CustomAPIExeption):
     default_code = "built_in_role_immutable"
 
 
+class BuiltInModelImmutableError(CustomAPIExeption):
+    """Raised when a write targets a shared built-in provider model row (org IS NULL)."""
+
+    status_code = 403
+    default_detail = "Built-in models cannot be edited or deleted."
+    default_code = "built_in_model_immutable"
+
+
 class OrgContextRequiredError(CustomAPIExeption):
     """Raised by OrgContextService when an endpoint requires an
     X-Organization-Id header (or URL kwarg) and neither is present
