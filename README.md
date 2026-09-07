@@ -77,23 +77,23 @@ Before we start, make sure you have these two applications installed:
 * **[Download & Install Docker Desktop](https://www.docker.com/products/docker-desktop/)** (Required to run the app)
 
 ### Step 2: Download and Setup
-Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, create its configuration file, generate the two required signing keys, configure the database, and start the system.
+Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, create its configuration file, generate the required signing key, configure the database, and start the system.
 
 #### 🪟 Windows (PowerShell)
 ```
-git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; Copy-Item .env.example .env; $savefiles = "$HOME/savefiles"; $file = ".env"; $key = { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 60 | % {[char]$_}) }; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" -replace "^SECRET_KEY=.*", "SECRET_KEY=$(& $key)" -replace "^JWT_SECRET=.*", "JWT_SECRET=$(& $key)" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create graph_data; docker volume create crew_config; docker volume create media_data; docker network create mcp-network; docker-compose up --build
+git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; Copy-Item .env.example .env; $savefiles = "$HOME/savefiles"; $file = ".env"; $key = { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 60 | % {[char]$_}) }; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" -replace "^DJANGO_SECRET_KEY=.*", "DJANGO_SECRET_KEY=$(& $key)" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create graph_data; docker volume create crew_config; docker volume create media_data; docker network create mcp-network; docker-compose up --build
 ```
 #### 🍎 macOS (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i '' "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i '' "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
 ```
 #### 🐧 Linux (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
 ```
 
-`SECRET_KEY` and `JWT_SECRET` are required — the stack refuses to start without them.
-Generate each once and keep it: changing them signs out every user, and see
+`DJANGO_SECRET_KEY` is required — the stack refuses to start without it.
+Generate it once and keep it: changing it signs out every user, and see
 [docs/signing-keys.md](docs/signing-keys.md) for the full details.
 
 Once running, open http://localhost to start building.
