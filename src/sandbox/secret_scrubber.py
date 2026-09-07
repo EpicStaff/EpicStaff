@@ -20,8 +20,9 @@ reports the setting; scrub() itself always masks.
 """
 
 import json
-import os
 import re
+
+import settings
 
 # One fixed marker rather than one naming each secret: the name would then travel
 # into stdout, the SSE stream, and the tool observation handed to the LLM, and none
@@ -36,12 +37,11 @@ _DISABLING_VALUES = frozenset({"false", "0", "no", "off", "f", "n"})
 def masking_enabled() -> bool:
     """Whether secret values should be scrubbed from execution output.
 
-    Reads the environment on each call rather than caching at import, so the
-    setting is a property of the running configuration and not of module load
-    order.
+    Reads from the centralised settings value, which is an empty string when
+    the environment variable is absent — preserving the default-on behaviour.
     """
-    raw = os.environ.get(MASK_SECRET_ENV_VAR)
-    if raw is None:
+    raw = settings.MASK_SECRET
+    if not raw:
         return True
     return raw.strip().lower() not in _DISABLING_VALUES
 

@@ -1,0 +1,47 @@
+<div class="import-review-dialog">
+    <div class="dialog-header">
+        <h2 class="dialog-title">Review Import</h2>
+        <div class="dialog-header-actions">
+            <app-button
+                type="outline-primary"
+                (click)="onCancel()"
+                >Cancel</app-button
+            >
+            <app-button
+                type="primary"
+                [disabled]="isImporting()"
+                (click)="onImport()"
+                >{{ isImporting() ? 'Importing…' : 'Import' }}</app-button
+            >
+        </div>
+    </div>
+
+    <div class="dialog-content">
+        <div class="dialog-body-left">
+            <app-import-summary-tabs
+                [importResult]="importResult"
+                [entityTypes]="visibleEntityTypes"
+                [isSingleGroup]="isSingleGroup"
+                [totalCount]="totalItemsCount"
+                (tabClick)="onTabClick($event)"
+            />
+
+            <div class="entity-lists-section">
+                @for (entityType of visibleEntityTypes; track entityType) {
+                    <app-entity-group
+                        #entityGroup
+                        [entityType]="entityType"
+                        [result]="getEntityTypeResult(entityType)"
+                        [isSingleGroup]="isSingleGroup"
+                        [highlighted]="highlightedGroup() === entityType"
+                        [nodeTypeLabels]="nodeTypeLabels"
+                    />
+                }
+            </div>
+        </div>
+
+        <div class="dialog-body-right">
+            <app-review-navigator />
+        </div>
+    </div>
+</div>

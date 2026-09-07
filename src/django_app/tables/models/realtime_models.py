@@ -31,6 +31,7 @@ class OpenAIRealtimeConfig(OrgScopedModel, models.Model):
         related_name="openai_realtime_configs",
     )
     model_name = models.CharField(max_length=250, default="gpt-realtime-1.5")
+    base_url = models.TextField(null=True, blank=True)
     transcription_model_name = models.CharField(
         max_length=250, default="whisper-1", null=True, blank=True
     )

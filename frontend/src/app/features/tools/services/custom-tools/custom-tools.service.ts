@@ -1,8 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { map, Observable } from 'rxjs';
+import { forkJoin, map, Observable, of } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import {
     CreatePythonCodeToolPayload,
@@ -122,6 +123,12 @@ export class CustomToolsService {
         return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
     }
 
+    inspectPythonCodeTool(file: File): Observable<InspectResult> {
+        const form = new FormData();
+        form.append('file', file);
+        return this.http.post<InspectResult>(`${this.baseUrl}import/inspect/`, form);
+    }
+
     getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {
         return this.http.get<GetPythonCodeToolRequest>(`${this.baseUrl}${id}/`, {
             headers: this.httpHeaders,
@@ -135,9 +142,27 @@ export class CustomToolsService {
     }
 
     getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
-        const body = { ids: toolIds };
-        return this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, body, {
-            headers: this.httpHeaders,
-        });
+        // Backend caps a single request at 50 ids, so split larger lists into
+        // parallel chunks and merge the responses.
+        const MAX_COUNT = 50;
+        if (toolIds.length === 0) {
+            return of([]);
+        }
+        if (toolIds.length <= MAX_COUNT) {
+            return this.http.post<GetBulkToolUsageItem[]>(
+                `${this.baseUrl}usage/`,
+                { ids: toolIds },
+                { headers: this.httpHeaders }
+            );
+        }
+
+        const chunks: Observable<GetBulkToolUsageItem[]>[] = [];
+        for (let i = 0; i < toolIds.length; i += MAX_COUNT) {
+            const ids = toolIds.slice(i, i + MAX_COUNT);
+            chunks.push(
+                this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, { ids }, { headers: this.httpHeaders })
+            );
+        }
+        return forkJoin(chunks).pipe(map((responses) => responses.flat()));
     }
 }

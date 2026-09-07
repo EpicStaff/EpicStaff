@@ -15,13 +15,8 @@ from django.conf import settings
 from django.views import View
 from loguru import logger
 
-from tables.models.knowledge_models.collection_models import DocumentMetadata
 from tables.services.redis_service import RedisService
 from tables.services.rbac.ticket_service import sse_ticket_service
-
-ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
-MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
-
 
 redis_service = RedisService()
 
@@ -46,17 +41,16 @@ def _malloc_trim_and_log() -> None:
         logger.warning(f"malloc_trim failed: {e}")
 
 
-_TRIM_INTERVAL_SECONDS = int(os.environ.get("MALLOC_TRIM_INTERVAL_SECONDS", "60"))
 _trim_task_started = False
 
 
 async def _periodic_malloc_trim() -> None:
     logger.info(
-        f"Periodic malloc_trim task started (interval={_TRIM_INTERVAL_SECONDS}s)"
+        f"Periodic malloc_trim task started (interval={settings.MALLOC_TRIM_INTERVAL}s)"
     )
     while True:
         try:
-            await asyncio.sleep(_TRIM_INTERVAL_SECONDS)
+            await asyncio.sleep(settings.MALLOC_TRIM_INTERVAL)
             await asyncio.to_thread(_malloc_trim_and_log)
         except asyncio.CancelledError:
             logger.info("Periodic malloc_trim task cancelled")

@@ -8,7 +8,6 @@ Each node type returns a different structure:
 
 | Node Type | Output |
 |---|---|
-| Code Agent | `{"reply": "...", "session_id": "..."}` |
 | Crew (no Pydantic) | `{"raw": "..."}` |
 | Crew (with Pydantic) | Arbitrary Pydantic model |
 | Python | Whatever `main()` returns |
@@ -24,7 +23,7 @@ The widget receives all SSE events but only acts on two:
 - `message_type: "finish"` → captures `messageData.output`
 - `event: "status"`, `status: "end"` → resolves the promise, displays result
 
-Intermediate streaming messages (`code_agent_stream`, crew agent progress) are logged to console and discarded. The user sees a loading spinner until the session ends.
+Intermediate streaming messages (crew agent progress, node tool activity) are logged to console and discarded. The user sees a loading spinner until the session ends.
 
 ### 3. SSE Origin Mismatch
 
@@ -39,7 +38,6 @@ The widget uses `EventSource` with `withCredentials: true`. If the page origin (
 Define a convention: **every node that produces user-visible text must include a `message` field in its output.**
 
 Changes:
-- **Code Agent** (`code_agent_node.py` line 519): return `{"message": reply_text, "reply": reply_text, "session_id": oc_session_id}`
 - **Crew node** (`crew_node.py` line 93): include `"message": crew_output.raw` alongside existing fields
 - **Python node**: document the convention — `main()` should return `{"message": "..."}` for EpicChat-visible flows
 - **Sessions UI**: unaffected — it renders raw JSON, so the extra `message` field just appears alongside existing fields
@@ -90,12 +88,12 @@ if (isFinishMessageData(messageData)) {
 }
 ```
 
-**Add a streaming message handler** before the finish check. Streaming messages have `message_type` values of `code_agent_stream`, `crewai_output`, or `python_stream`:
+**Add a streaming message handler** before the finish check. Streaming messages have `message_type` values of `crewai_output` or `python_stream`:
 
 ```typescript
 // 1. Add helper function in epicstaff-api.model.ts:
 function isStreamMessageData(data: any): boolean {
-    return ['code_agent_stream', 'crewai_output', 'python_stream'].includes(data.message_type);
+    return ['crewai_output', 'python_stream'].includes(data.message_type);
 }
 
 // 2. In the "messages" event listener, add before the finish check:
@@ -118,9 +116,9 @@ Messages arriving on the `"messages"` SSE event with `data.message_data`:
 
 | Field | Type | Description |
 |---|---|---|
-| `message_type` | `string` | `"code_agent_stream"`, `"crewai_output"`, or `"python_stream"` |
+| `message_type` | `string` | `"crewai_output"` or `"python_stream"` |
 | `text` | `string` | Reasoning / status text |
-| `tool_calls` | `array` | Tool call objects `[{name, arguments}]` (Code Agent only) |
+| `tool_calls` | `array` | Tool call objects `[{name, arguments}]` |
 | `is_final` | `boolean` | `true` when this is the last stream chunk before finish |
 | `sse_visible` | `boolean` | Always `true` on `/filtered/` endpoint (already filtered server-side) |
 
@@ -138,19 +136,12 @@ Messages arriving on the `"messages"` SSE event with `data.message_data`:
 
 | Node Type | `message_type` | Content fields |
 |---|---|---|
-| Code Agent | `code_agent_stream` | `{text, tool_calls, is_final}` |
 | Crew | `crewai_output` | Agent/task progress text |
 | Python | `python_stream` | `{text}` — e.g. "Executing 'do stuff'..." |
 
 ### Phase 3: Per-Node Streaming Configuration
 
 Nodes that want to stream to EpicChat should expose checkmark options in their Flow Designer config panel. The user decides what gets streamed per node.
-
-#### Code Agent Node
-
-- [ ] Stream reasoning (thinking text)
-- [ ] Stream tool calls (tool name + arguments)
-- [ ] Stream tool results
 
 #### Crew Node
 
@@ -170,12 +161,12 @@ Nodes **always emit all messages** — the sessions UI must see everything. Each
 The config is stored as a JSON field on the node model:
 
 ```python
-# Example: CodeAgentNode
+# Example: CrewNode
 stream_config = JSONField(default=dict)
-# {"reasoning": true, "tool_calls": true, "tool_results": false}
+# {"agent_activity": true, "tool_calls": true, "agent_reasoning": false}
 ```
 
-**Default behavior (opt-out):** When `stream_config` is empty (`{}`), all stream messages default to `sse_visible=True` — streaming is enabled by default. To disable specific stream types, set them explicitly to `false` (e.g. `{"reasoning": false}`).
+**Default behavior (opt-out):** When `stream_config` is empty (`{}`), all stream messages default to `sse_visible=True` — streaming is enabled by default. To disable specific stream types, set them explicitly to `false` (e.g. `{"agent_reasoning": false}`).
 
 Message flow:
 1. Node emits message with `sse_visible` flag → `writer()` → Redis + DB
@@ -198,7 +189,6 @@ Currently both `/subscribe/{id}/` and `/subscribe/{id}/filtered/` are unauthenti
 
 Each node panel now has a "Streaming to EpicChat" section with checkboxes:
 
-- **Code Agent Node panel**: Reasoning, Tool calls, Tool results
 - **Crew Node panel**: Agent activity, Task progress, Agent reasoning, Tool calls
 - **Python Node panel**: Execution status
 
@@ -268,9 +258,11 @@ User message → POST /run-session/ (new session each time)
 
 ### Mode 2: Stateful (using session ID)
 
-The widget sends a **stable session identifier** that persists across messages within the same chat. This enables nodes like the Code Agent to maintain persistent workspace state (files, edits, running processes) across multiple user messages. The session ID resets when the user clears chat history, starting a fresh workspace.
+The widget sends a **stable session identifier** that persists across messages within the same chat. This enables nodes to maintain persistent workspace state (files, edits, running processes) across multiple user messages. The session ID resets when the user clears chat history, starting a fresh workspace.
 
-**When to use:** Code Agent flows, any flow where nodes must maintain state across messages (e.g., iterative coding, file editing, multi-step workflows).
+**When to use:** any flow where nodes must maintain state across messages (e.g., iterative editing, multi-step workflows).
+
+
 
 #### Widget Change Required (for widget developer)
 
@@ -304,9 +296,6 @@ This makes it arrive as `variables.context.chat_session_id` in the flow.
 
 #### Flow Designer Setup
 
-1. Map user input: `prompt` ← `variables.context.user_input`
-2. Map session ID to the Code Agent Node's `session_id` field: `variables.context.chat_session_id`
-3. The Code Agent will reuse the same OpenCode session for all messages with the same `chat_session_id`
 
 **Diagram:**
 ```
@@ -314,21 +303,15 @@ Chat created → chatSessionId = "1772049447807"
 
 Message 1 → POST /run-session/ (session A)
            → variables.context.chat_session_id = "1772049447807"
-           → Code Agent opens OpenCode session "1772049447807"
            → User gets response, files are created in workspace
 
-Message 2 → POST /run-session/ (session B — new flow session, same Code Agent session)
+Message 2 → POST /run-session/ (session B — new flow session)
            → variables.context.chat_session_id = "1772049447807"
-           → Code Agent reuses OpenCode session "1772049447807"
            → Workspace state (files, edits) is preserved
 
 Clear chat → chatSessionId = "1772049449123" (new timestamp)
 
-Message 3 → POST /run-session/ (session C)
-           → variables.context.chat_session_id = "1772049449123"
-           → Code Agent opens fresh OpenCode session
-           → Clean workspace, no previous state
-```
+
 
 ### Summary
 
@@ -338,5 +321,5 @@ Message 3 → POST /run-session/ (session C)
 | **Node workspace** | Fresh each time | Persisted via `chat_session_id` |
 | **Conversational context** | Via `chat_history` (text only) | Via `chat_history` + persistent workspace |
 | **Widget change needed** | None | Send `chat_session_id` in payload |
-| **Use case** | Q&A, Crew tasks | Code Agent, iterative workflows |
+| **Use case** | Q&A, Crew tasks | Iterative workflows |
 | **Chat clear behavior** | N/A | Resets `chat_session_id` → fresh workspace |

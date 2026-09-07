@@ -1,9 +1,10 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { forkJoin, Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import { CreateMcpToolRequest, GetMcpToolRequest, UpdateMcpToolRequest } from '../../models/mcp-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
@@ -123,6 +124,12 @@ export class McpToolsService {
         return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
     }
 
+    inspectMcpTool(file: File): Observable<InspectResult> {
+        const form = new FormData();
+        form.append('file', file);
+        return this.http.post<InspectResult>(`${this.baseUrl}import/inspect/`, form);
+    }
+
     getUsageDetailById(toolId: number): Observable<GetToolUsage> {
         return this.http.get<GetToolUsage>(`${this.baseUrl}${toolId}/usage-detail/`, {
             headers: this.httpHeaders,
@@ -130,9 +137,27 @@ export class McpToolsService {
     }
 
     getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
-        const body = { ids: toolIds };
-        return this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, body, {
-            headers: this.httpHeaders,
-        });
+        // Backend caps a single request at 50 ids, so split larger lists into
+        // parallel chunks and merge the responses.
+        const MAX_COUNT = 50;
+        if (toolIds.length === 0) {
+            return of([]);
+        }
+        if (toolIds.length <= MAX_COUNT) {
+            return this.http.post<GetBulkToolUsageItem[]>(
+                `${this.baseUrl}usage/`,
+                { ids: toolIds },
+                { headers: this.httpHeaders }
+            );
+        }
+
+        const chunks: Observable<GetBulkToolUsageItem[]>[] = [];
+        for (let i = 0; i < toolIds.length; i += MAX_COUNT) {
+            const ids = toolIds.slice(i, i + MAX_COUNT);
+            chunks.push(
+                this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, { ids }, { headers: this.httpHeaders })
+            );
+        }
+        return forkJoin(chunks).pipe(map((responses) => responses.flat()));
     }
 }

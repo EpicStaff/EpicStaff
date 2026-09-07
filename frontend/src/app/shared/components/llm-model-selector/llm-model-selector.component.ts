@@ -1,7 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { ComponentType } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -39,8 +38,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
-    standalone: true,
-    imports: [CommonModule, FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -421,7 +419,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
 
     constructor() {
         // Generate unique ID for this dropdown instance
-        this.dropdownId = `llm-selector-${Math.random().toString(36).substr(2, 9)}`;
+        this.dropdownId = `llm-selector-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     ngOnInit(): void {

@@ -5,7 +5,6 @@ import { StartNodeModel } from '../../../core/models/node.model';
 
 @Component({
     selector: 'app-start-node',
-    standalone: true,
     imports: [AppSvgIconComponent],
     template: `
         <div class="start-node">

@@ -10,13 +10,12 @@ DEFAULT_MAX_STREAM_TOKENS = 200
 
 class StreamTokenRepository(metaclass=SingletonMeta):
     """Short-lived, single-use secrets gating the unauthenticated Twilio
-    Media Stream WebSocket routes (`/voice/{channel_token}/stream` and the
-    legacy `/voice/stream`).
+    Media Stream WebSocket route (`/voice/{channel_token}/stream`).
 
     Twilio's Media Streams WS leg carries none of Twilio's verifiable
     request headers (no `X-Twilio-Signature`), so the stream endpoint itself
     cannot authenticate the caller. Instead, a token is minted when the
-    TwiML `<Stream>` element is built in the paired `POST /voice[/{channel_token}]`
+    TwiML `<Stream>` element is built in the paired `POST /voice/{channel_token}`
     webhook (which *is* signature-validated) and embedded both as a
     `?stream_token=...` query param on `<Stream url="...">` (best-effort
     fallback) and as a nested `<Parameter name="stream_token" value="...">`.
@@ -32,7 +31,7 @@ class StreamTokenRepository(metaclass=SingletonMeta):
     it's missing or invalid.
 
     Mirrors the TTL + single-use pattern already used by
-    `ConnectionRepository` (EST-1869) for the `realtime_agents:schema`
+    `ConnectionRepository` for the `realtime_agents:schema`
     connection_key handshake.
     """
 

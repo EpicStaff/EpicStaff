@@ -1,0 +1,100 @@
+<div
+    class="entity-group"
+    [class.highlighted]="highlighted()"
+>
+    @if (!isSingleGroup()) {
+        <h4 class="entity-type-title">
+            <app-entity-icon
+                [entityType]="entityType()"
+                [color]="getGroupIconColor(entityType())"
+            ></app-entity-icon>
+            {{ getEntityTypeLabel(entityType()) }}
+            <span class="summary-count">{{ result().total }}</span>
+        </h4>
+    }
+
+    <div class="entity-items">
+        @if (result().created.items.length > 0) {
+            <div class="entity-subgroup">
+                <div class="entity-items-list">
+                    @for (item of result().created.items; track item.id) {
+                        <ng-container
+                            *ngTemplateOutlet="itemRow; context: { $implicit: item, status: 'created' }"
+                        ></ng-container>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (result().reused.items.length > 0) {
+            <div class="entity-subgroup">
+                <div class="entity-items-list">
+                    @for (item of result().reused.items; track item.id) {
+                        <ng-container
+                            *ngTemplateOutlet="itemRow; context: { $implicit: item, status: 'reused' }"
+                        ></ng-container>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<ng-template
+    #itemRow
+    let-item
+    let-status="status"
+>
+    <div class="entity-item-wrapper">
+        <div
+            class="entity-item"
+            [class.expandable]="isRowClickable(item)"
+            [class.expanded]="isItemExpanded(status, item.id)"
+            (click)="onRowClick(item, status)"
+        >
+            @if (isRowExpandable(item)) {
+                <app-svg-icon
+                    icon="chevron-down"
+                    size="0.7rem"
+                    class="item-collapse-icon"
+                    [class.collapsed]="!isItemExpanded(status, item.id)"
+                ></app-svg-icon>
+            }
+            <span class="item-name">
+                {{ item.name }}
+                @if (!store.hasPythonCode(item.name) && toolTransport(item); as transport) {
+                    <span class="item-transport">{{ transport }}</span>
+                }
+            </span>
+            @if (store.hasReviewNodes(item.name)) {
+                <app-review-status-badge
+                    [reviewed]="store.isFlowFullyReviewed(item.name)"
+                    [notReviewedLabel]="
+                        store.flowReviewRemaining(item.name) + ' of ' + store.flowReviewTotal(item.name) + ' left'
+                    "
+                ></app-review-status-badge>
+            }
+            @if (store.hasPythonCode(item.name)) {
+                <app-review-status-badge
+                    [reviewed]="store.isToolReviewed(item.name)"
+                    [clickable]="store.isToolViewed(item.name)"
+                    (toggled)="store.toggleToolReviewed(item.name)"
+                ></app-review-status-badge>
+            } @else if (store.isMcpTool(item.name)) {
+                <span class="status-no-code">No code</span>
+            }
+        </div>
+        @if (store.hasReviewNodes(item.name)) {
+            <app-flow-review-nodes
+                [nodes]="store.flowNodes(item.name)"
+                [expanded]="isItemExpanded(status, item.id)"
+                [nodeTypeLabels]="nodeTypeLabels()"
+            />
+        } @else if (hasExpandableFields(item)) {
+            <app-entity-fields-list
+                [fields]="getEntityFields(item)"
+                [expanded]="isItemExpanded(status, item.id)"
+            />
+        }
+    </div>
+</ng-template>

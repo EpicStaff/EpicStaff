@@ -11,26 +11,15 @@ ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
 
 WORKDIR /app/src
 
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install updated pip, setuptools, wheel and poetry
 RUN pip install --upgrade pip setuptools wheel poetry
 
-# Enable installing via setuptools for legacy packages
-ENV PEP517_BUILD_BACKEND=setuptools.build_meta
-
 # Copy only dependency descriptors first (better caching)
 COPY ./crew/pyproject.toml ./crew/poetry.lock ./
-COPY ./crew/libraries ./libraries
 
 ENV POETRY_REQUESTS_TIMEOUT=1000
 # Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root --without dotdict,crew -v
-RUN poetry install --no-ansi --no-root --only crew -v
+RUN poetry install --no-ansi --no-root --without dotdict -v
 
 # Copy application source
 COPY ./crew /app/src/crew
@@ -44,19 +33,12 @@ RUN poetry install --no-ansi --no-root --only dotdict -v
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
-# libpq-dev are required for psycopg2 https://www.psycopg.org/docs/install.html
-RUN apt-get update && apt-get install -y libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN pip install --upgrade pip poetry
 
 # Copy built app from builder
 COPY --from=builder /app /app
 
 # Add virtualenv to PATH.
-# MEM0_TELEMETRY=False: hard default so mem0's posthog telemetry (upstream
-# default is "True" if unset) stays disabled in every deploy target, not just
-# the reference docker-compose.yaml (EST-3245 action item 4).
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see docs/backend-runtime-fetch-audit.md item 7).
@@ -65,7 +47,6 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/app/src/.venv \
-    MEM0_TELEMETRY=False \
     LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/crew

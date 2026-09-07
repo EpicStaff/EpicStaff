@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { DisplayedTelegramField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { ToastService } from '../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import { SearchComponent } from '../../../shared/components/search/search.component';
 import { MATERIAL_FORMS } from '../../../shared/material-forms';
@@ -21,6 +22,7 @@ export interface TableItem extends DisplayedTelegramField {
     styleUrls: ['./telegram-trigger-editing-dialog.component.scss'],
     imports: [
         AppSvgIconComponent,
+        HelpTooltipComponent,
         SearchComponent,
         TelegramTriggerFieldsTableComponent,
         JsonEditorComponent,

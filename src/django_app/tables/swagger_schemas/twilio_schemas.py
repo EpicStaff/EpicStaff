@@ -2,63 +2,12 @@ from drf_spectacular.utils import OpenApiResponse, OpenApiExample, OpenApiParame
 from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-TWILIO_PHONE_NUMBERS_GET = dict(
-    summary="Return the list of incoming phone numbers from Twilio.",
-    description="Fetches up to 100 incoming phone numbers associated with the configured Twilio account. "
-    "Requires Twilio Account SID and Auth Token to be set in Voice Settings. "
-    "Each number includes its SID, phone number, friendly name, and currently configured voice URL.",
-    responses={
-        200: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="List of incoming phone numbers returned successfully.",
-            examples=[
-                OpenApiExample(
-                    "Phone numbers list",
-                    value=[
-                        {
-                            "sid": "PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                            "phone_number": "+15551234567",
-                            "friendly_name": "My Twilio Number",
-                            "voice_url": "https://example.com/voice",
-                        }
-                    ],
-                    response_only=True,
-                ),
-            ],
-        ),
-        400: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Bad Request - Twilio credentials are missing.",
-            examples=[
-                OpenApiExample(
-                    "Missing credentials",
-                    value={"error": "Twilio Account SID and Auth Token are required"},
-                    response_only=True,
-                ),
-            ],
-        ),
-        401: UNAUTHORIZED_401_RESPONSE,
-        502: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Bad Gateway - Twilio API request failed.",
-            examples=[
-                OpenApiExample(
-                    "Twilio API error",
-                    value={"error": "Unable to reach Twilio API"},
-                    response_only=True,
-                ),
-            ],
-        ),
-    },
-)
-
 TWILIO_CHANNEL_PHONE_NUMBERS_GET = dict(
     summary="Return the list of incoming phone numbers from Twilio.",
     description="Fetches up to 100 incoming phone numbers for a Twilio account. "
-    "Unlike `TWILIO_PHONE_NUMBERS_GET` (which takes a raw account SID/auth token via "
-    "headers and is superadmin-only), this expects the Account SID and a Secret ID as "
-    "query parameters. It resolves the auth token server-side from the stored `Secret` — "
-    "the raw auth token is never exposed to the client. Each number includes its SID, "
+    "Expects the Account SID and a Secret ID as query parameters. It resolves "
+    "the auth token server-side from the stored `Secret` — the raw auth token "
+    "is never exposed to the client. Each number includes its SID, "
     "phone number, friendly name, and currently configured voice URL.",
     parameters=[
         OpenApiParameter(

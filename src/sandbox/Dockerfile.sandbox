@@ -33,7 +33,7 @@ COPY ./shared /app/src/shared
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
-# git is required by the Enter/Exit Worktree Tools (EST-3285 Phase 3) — the
+# git is required by the Enter/Exit Worktree Tools — the
 # image previously shipped without it.
 RUN apt-get update && apt-get install -y ffmpeg git \
     && rm -rf /var/lib/apt/lists/*

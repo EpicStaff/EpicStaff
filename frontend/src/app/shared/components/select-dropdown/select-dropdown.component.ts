@@ -51,7 +51,6 @@ interface VisibleRow {
 
 @Component({
     selector: 'app-select-dropdown',
-    standalone: true,
     imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
     templateUrl: './select-dropdown.component.html',
     styleUrls: ['./select-dropdown.component.scss'],

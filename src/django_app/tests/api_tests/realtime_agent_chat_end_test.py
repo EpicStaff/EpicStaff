@@ -35,7 +35,7 @@ class TestRealtimeAgentChatEnd:
 
     Fixed by restricting the action to `key_type=SYSTEM` API-key callers only
     (`IsSystemApiKeyAuthenticated`), mirroring `RealtimeChannelViewSet.
-    lookup_by_token` / `InitRealtimeAPIView`'s EST-3633 pattern — the only
+    lookup_by_token` / `InitRealtimeAPIView`'s pattern — the only
     legitimate caller is the `realtime`/`voice_app` service's
     `voice_call_service._patch_agent_chat`, which authenticates with the
     env-seeded system API key."""
@@ -112,7 +112,7 @@ class TestRealtimeAgentChatEnd:
     def test_user_scoped_api_key_cannot_end_chat(
         self, wikipedia_agent, default_org, api_client, user_api_key
     ):
-        """Companion to the EST-3633 pattern: a self-issued `key_type=USER`
+        """Companion pattern: a self-issued `key_type=USER`
         API key (any org member can mint one) must not hit the trusted-caller
         bypass either — only `key_type=SYSTEM` may call `end`."""
         rt_agent = _make_realtime_agent(wikipedia_agent, default_org)

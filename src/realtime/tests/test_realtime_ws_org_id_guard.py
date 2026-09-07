@@ -1,5 +1,5 @@
 """
-EST-1869 follow-up: `RealtimeAgentChatData.org_id` is a required field, so
+`RealtimeAgentChatData.org_id` is a required field, so
 every *current* construction path always populates it — but a raw
 `AttributeError` deep inside `factory.create()` (or inside a
 `save_realtime_session_item_to_db` call from a provider event handler) is

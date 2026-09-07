@@ -80,7 +80,7 @@ class TestScheduleManagerToolCreate:
         assert '"id": 55' in result
 
     def test_create_coerces_float_graph_id_to_int(self, monkeypatch):
-        # Regression test (EST-3285): graph_id may be stored/read as a
+        # Regression test: graph_id may be stored/read as a
         # float-ish value ("4.0" string or 4.0 float); the outgoing create
         # payload's `graph` field must be a plain int (Django rejects "4.0"
         # with a ValidationError on the `graph` choice field).
@@ -232,7 +232,7 @@ class TestScheduleManagerToolList:
         assert '"truncated": false' in result
 
     def test_list_coerces_float_graph_id_to_int(self, monkeypatch):
-        # Regression test (EST-3285): graph_id may be stored/read as a float
+        # Regression test: graph_id may be stored/read as a float
         # (e.g. 4.0) by the config layer; the tool must send an int in the
         # `?graph=` query param, not "4.0", or Django rejects the filter.
         _configure(schedule_module, graph_id=4.0)
@@ -413,7 +413,7 @@ class TestScheduleManagerToolGeneral:
         assert "api_key" in result
 
     def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
-        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        """Regression test (smoke test): python_code.global_kwargs
         folds user_input config (graph_id/api_key) into func_kwargs, so
         main() may also receive them as kwargs. The globals remain the
         source of truth; the stray kwargs must be swallowed by **kwargs
@@ -432,7 +432,7 @@ class TestScheduleManagerToolGeneral:
 
 
 class TestScheduleManagerToolHeaders:
-    """EST-3285: org_id (server-side resolved from Graph.org_id, injected by
+    """org_id (server-side resolved from Graph.org_id, injected by
     the crew engine) must be sent as X-Organization-Id so
     /schedule-trigger-nodes/ (org-scoped) doesn't 400 with
     org_context_required."""

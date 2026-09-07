@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 
 import { ConsoleService } from '../../../../../services/console.service';
 
@@ -9,13 +8,13 @@ interface AudioAnalysisOutputType {
 
 @Component({
     selector: 'app-tiny-audio-visualizer',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `<canvas
         #canvas
         width="20"
         height="20"
     ></canvas>`,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {

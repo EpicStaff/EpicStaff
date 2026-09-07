@@ -1,6 +1,6 @@
 # EpicStaff Storage SDK Reference
 
-Developer reference for the `EpicStaffStorage` SDK available inside **Python nodes** and **Code Agent nodes** in flows.
+Developer reference for the `EpicStaffStorage` SDK available inside **Python nodes** in flows.
 
 Source: `src/shared/epicstaff_storage/storage.py`
 
@@ -32,10 +32,10 @@ Source: `src/shared/epicstaff_storage/storage.py`
 
 ## Availability
 
-Set `use_storage=True` on a `PythonNode` or `CodeAgentNode`. The execution stack injects an `EpicStaffStorage` instance as the variable `storage` into the node's execution context.
+Set `use_storage=True` on a `PythonNode`. The execution stack injects an `EpicStaffStorage` instance as the variable `storage` into the node's execution context.
 
 ```python
-# Inside a Python node or Code Agent node with use_storage=True
+# Inside a Python node with use_storage=True
 content = storage.read("reports/summary.txt")
 ```
 

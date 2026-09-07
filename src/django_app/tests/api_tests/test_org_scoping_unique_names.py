@@ -6,7 +6,7 @@ different org. Covers the fields whose uniqueness moved from field-level
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Crew, Graph  # noqa: F401  (import sanity)
+from tables.models import Graph
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool

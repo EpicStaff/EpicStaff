@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -77,8 +76,18 @@ const SAVE_FAILURE_MESSAGES: Record<SaveAction, string> = {
     fork: 'Failed to save your copy of this built-in tool. Please try again.',
 };
 
-const DEFAULT_PYTHON_CODE = `def main() -> dict:
-    return {"status": "ok"}
+const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
+#
+# Logic     : <how it should work - algorithm steps, external services/APIs it calls>
+# Inputs    : defined via this dialog's Parameters fields
+# Output    : <what the return value should contain>
+# Library   : list any pip packages this code needs in the Library field
+# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')
+#
+# Required signature:
+#   def main(<parameters matching this tool's Parameters>) -> ...:
+#       ...
+#       return ...  # value returned to the agent that called this tool
 `;
 
 /** Explains why the built-in header button offers "Create Editable Copy" instead of editing in place. */
@@ -91,7 +100,6 @@ const VARIABLES_SCHEMA_TOOLTIP =
 @Component({
     selector: 'app-create-custom-tool-dialog',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         MatTooltipModule,
         AppSvgIconComponent,
@@ -196,6 +204,8 @@ export class CreateCustomToolDialogComponent {
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
     private tableImportWasInvalid = false;
+
+    private readonly locallyCreatedNames = new Set<string>();
 
     private initialSnapshot = '';
 
@@ -497,6 +507,7 @@ export class CreateCustomToolDialogComponent {
             .createPythonCodeToolV2(payload)
             .pipe(
                 tap((created) => {
+                    this.locallyCreatedNames.add(created.name.trim());
                     this.toolsEvents.emitCustomToolCreated(created);
                     this.toast.success(`Tool copied as "${created.name}"`);
                 }),
@@ -598,6 +609,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private adoptForkedCopy(created: GetPythonCodeToolRequest): void {
+        this.locallyCreatedNames.add(created.name.trim());
         this.selectedTool.set(created);
         this.form.controls.name.setValue(created.name);
         this.form.markAsPristine();
@@ -612,6 +624,9 @@ export class CreateCustomToolDialogComponent {
 
     private uniqueToolName(base: string): string {
         const taken = new Set((this.dialogData?.pythonTools ?? []).map((tool) => tool.name.trim()));
+        for (const name of this.locallyCreatedNames) {
+            taken.add(name);
+        }
         let candidate = `${base} (copy)`;
         for (let n = 2; taken.has(candidate); n++) {
             candidate = `${base} (copy ${n})`;
