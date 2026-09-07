@@ -16,7 +16,14 @@ from django_filters.rest_framework import (
     CharFilter,
     NumberFilter,
 )
-from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
+from rest_framework import (
+    generics,
+    serializers,
+    viewsets,
+    mixins,
+    status,
+    filters as drf_filters,
+)
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
@@ -497,7 +504,11 @@ class PythonCodeToolViewSet(
     copy_service_class = PythonCodeToolCopyService
     copy_serializer_class = PythonCodeToolSerializer
 
-    queryset = PythonCodeTool.objects.all().select_related("python_code")
+    queryset = (
+        PythonCodeTool.objects.all()
+        .select_related("python_code")
+        .prefetch_related("python_code__secrets")
+    )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = PythonCodeToolFilter
@@ -650,7 +661,9 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -683,7 +696,9 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
             .prefetch_related(
                 Prefetch(
                     "python_node_list",
-                    queryset=PythonNode.objects.select_related("python_code"),
+                    queryset=PythonNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "file_extractor_node_list", queryset=FileExtractorNode.objects.all()
@@ -695,11 +710,15 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
                 Prefetch("edge_list", queryset=Edge.objects.all()),
                 Prefetch(
                     "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code"),
+                    queryset=ConditionalEdge.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "webhook_trigger_node_list",
-                    queryset=WebhookTriggerNode.objects.all(),
+                    queryset=WebhookTriggerNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()

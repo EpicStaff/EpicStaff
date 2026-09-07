@@ -64,3 +64,11 @@ class SecretSerializer(serializers.ModelSerializer):
         if counts is not None:
             return counts[secret.pk]
         return secret_usage_service.count_for(secret=secret)
+
+
+class SecretNameSerializer(serializers.ModelSerializer):
+    """A secret's identity without any part of its value."""
+
+    class Meta:
+        model = Secret
+        fields = ["id", "name"]
