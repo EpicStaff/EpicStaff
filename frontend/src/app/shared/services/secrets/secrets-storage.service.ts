@@ -30,6 +30,7 @@ export class SecretsStorageService implements StorageService {
 
         if (!this.pendingRequest$) {
             this.pendingRequest$ = this.secretsApiService.getSecrets().pipe(
+                tap(() => this.readForbiddenSignal.set(false)),
                 // A member/viewer has no access to this endpoint at all — that's a permanent,
                 // by-design restriction (see SKIP_FORBIDDEN_RELOAD on this request), not a
                 // failure worth surfacing as an error toast to every secrets consumer.

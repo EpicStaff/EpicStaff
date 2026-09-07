@@ -130,6 +130,13 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
             });
     }
 
+    protected override onRemoteFormMerged(): void {
+        const id = this.form?.get('telegram_bot_api_key_secret_id')?.value;
+        if (id != null && !this.secretsStorageService.secrets().some((secret) => secret.id === id)) {
+            this.refreshSecrets();
+        }
+    }
+
     private clearDeletedSecret(): void {
         if (this.secretsReadForbidden()) return;
         const control = this.form?.get('telegram_bot_api_key_secret_id');

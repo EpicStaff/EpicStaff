@@ -3,6 +3,7 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     input,
@@ -76,8 +77,31 @@ export class NodeSecretsFieldComponent {
         return count > 0 ? `${count} selected` : 'Select a secret';
     });
 
+    private readonly refetchedForUnknownIds = new Set<number>();
+
     constructor() {
         this.loadSecrets();
+
+        effect(() => {
+            if (this.readForbidden()) return;
+            const knownIds = new Set(this.secretsStorageService.secrets().map((secret) => secret.id));
+            const missing = this.value().filter((id) => !knownIds.has(id));
+            if (missing.length === 0) return;
+
+            const unchecked = missing.filter((id) => !this.refetchedForUnknownIds.has(id));
+            if (unchecked.length > 0) {
+                unchecked.forEach((id) => this.refetchedForUnknownIds.add(id));
+                this.loadSecrets();
+                return;
+            }
+
+            this.value.set(this.value().filter((id) => knownIds.has(id)));
+            this.toastService.error(
+                'Some selected secrets no longer exist and were removed from this node.',
+                5000,
+                'bottom-right'
+            );
+        });
     }
 
     public openDropdown(): void {

@@ -230,7 +230,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         if (this.triggersLoaded()) {
             const id = this.selectedId();
             if (id != null && !this.triggers().some((t) => t.id === id)) {
-                this.selectedId.set(null);
+                this.loadTriggers();
             }
         }
         this.triggerResolved.emit(this.selectedTrigger());
