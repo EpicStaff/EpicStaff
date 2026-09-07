@@ -5,12 +5,13 @@ import {
     HostBinding,
     inject,
     output,
+    Signal,
     signal,
     viewChild,
 } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
-import { DragHoverDirective, ResizableSidebarDirective } from '@shared/directives';
-import { SidebarWidthService } from '@shared/services';
+import { DragHoverDirective, ResizableSectionDirective, ResizableSidebarDirective } from '@shared/directives';
+import { SectionHeightService, SidebarWidthService } from '@shared/services';
 
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
@@ -27,6 +28,8 @@ import { StorageSectionComponent } from './storage-section/storage-section.compo
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
 
 const SIDEBAR_STORAGE_KEY = 'agents';
+/** Matches .explorer__section-body--fill's CSS min-height — the floor a resize drag must never push the filling section below. */
+const FILL_BODY_MIN_HEIGHT = 100;
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -46,6 +49,7 @@ import { TreeSearchComponent } from './tree-search/tree-search.component';
         StorageSectionComponent,
         ExplorerContextMenuComponent,
         DragHoverDirective,
+        ResizableSectionDirective,
         ResizableSidebarDirective,
     ],
     templateUrl: './explorer.component.html',
@@ -58,8 +62,10 @@ export class ExplorerComponent {
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly el = inject(ElementRef<HTMLElement>);
     private readonly sidebarWidthService = inject(SidebarWidthService);
+    private readonly sectionHeightService = inject(SectionHeightService);
     private readonly sectionOrder: ExplorerSectionId[] = ['agents', 'surfaces', 'storage'];
     private readonly optionalOrder: ExplorerSectionId[] = ['surfaces', 'storage'];
+    private readonly sectionHeightSignals = new Map<ExplorerSectionId, Signal<number | null>>();
 
     protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
     protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
@@ -160,6 +166,47 @@ export class ExplorerComponent {
 
     onClose(): void {
         this.close.emit();
+    }
+
+    /** Manually-resized height for a non-filling section body, or null if the user never dragged its handle. */
+    sectionHeight(sectionId: ExplorerSectionId): number | null {
+        if (this.shouldFillBody(sectionId)) return null;
+        return this.sectionHeightSignal(sectionId)();
+    }
+
+    sectionHeightKey(sectionId: ExplorerSectionId): string {
+        return `${SIDEBAR_STORAGE_KEY}:${sectionId}`;
+    }
+
+    /** Expands a collapsed section as soon as the user starts dragging its resize handle. */
+    ensureExpanded(sectionId: ExplorerSectionId): void {
+        if (!this.store.isSectionExpanded(sectionId)) {
+            this.store.toggleSection(sectionId);
+        }
+    }
+
+    /**
+     * Caps how far a section can grow when dragged, so it can't squeeze the filling section
+     * (e.g. Storage) below the floor its CSS min-height already promises it.
+     */
+    sectionMaxHeightFn(target: HTMLElement): () => number {
+        return () => {
+            const fillBody = this.el.nativeElement.querySelector('.explorer__section-body--fill') as HTMLElement | null;
+            // No section is currently filling leftover space (e.g. everything is collapsed) — nothing to protect.
+            if (!fillBody || fillBody === target) return Number.POSITIVE_INFINITY;
+            const currentHeight = target.getBoundingClientRect().height;
+            const fillHeight = fillBody.getBoundingClientRect().height;
+            return Math.round(currentHeight + Math.max(0, fillHeight - FILL_BODY_MIN_HEIGHT));
+        };
+    }
+
+    private sectionHeightSignal(sectionId: ExplorerSectionId): Signal<number | null> {
+        let sig = this.sectionHeightSignals.get(sectionId);
+        if (!sig) {
+            sig = this.sectionHeightService.getHeight(this.sectionHeightKey(sectionId));
+            this.sectionHeightSignals.set(sectionId, sig);
+        }
+        return sig;
     }
 
     shouldFillBody(sectionId: ExplorerSectionId): boolean {

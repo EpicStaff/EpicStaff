@@ -68,8 +68,11 @@
                         (add)="onAdd('agents')"
                     />
                     <div
+                        #agentsBody
                         class="explorer__section-body"
                         [class.explorer__section-body--fill]="shouldFillBody('agents')"
+                        [class.explorer__section-body--resized]="sectionHeight('agents') != null"
+                        [style.height.px]="sectionHeight('agents')"
                         [hidden]="!store.isSectionExpanded('agents')"
                     >
                         <app-agents-section
@@ -79,6 +82,16 @@
                             (attachSurface)="onAttachSharedSurface($event)"
                         />
                     </div>
+                    @if (!shouldFillBody('agents')) {
+                        <div
+                            class="explorer__section-resize-handle"
+                            [appResizableSection]="sectionHeightKey('agents')"
+                            [sectionTarget]="agentsBody"
+                            [sectionMaxHeightFn]="sectionMaxHeightFn(agentsBody)"
+                            sectionAriaLabel="Resize Agents section"
+                            (dragStart)="ensureExpanded('agents')"
+                        ></div>
+                    }
                 </section>
             }
             @if (store.isSectionVisible('surfaces')) {
@@ -99,8 +112,11 @@
                         (add)="onAdd('surfaces')"
                     />
                     <div
+                        #surfacesBody
                         class="explorer__section-body"
                         [class.explorer__section-body--fill]="shouldFillBody('surfaces')"
+                        [class.explorer__section-body--resized]="sectionHeight('surfaces') != null"
+                        [style.height.px]="sectionHeight('surfaces')"
                         [hidden]="!store.isSectionExpanded('surfaces')"
                     >
                         <app-surfaces-section
@@ -110,6 +126,16 @@
                             (attachSurface)="onAttachSharedSurface($event)"
                         />
                     </div>
+                    @if (!shouldFillBody('surfaces')) {
+                        <div
+                            class="explorer__section-resize-handle"
+                            [appResizableSection]="sectionHeightKey('surfaces')"
+                            [sectionTarget]="surfacesBody"
+                            [sectionMaxHeightFn]="sectionMaxHeightFn(surfacesBody)"
+                            sectionAriaLabel="Resize Shared Surfaces section"
+                            (dragStart)="ensureExpanded('surfaces')"
+                        ></div>
+                    }
                 </section>
             }
             @if (store.isSectionVisible('storage')) {

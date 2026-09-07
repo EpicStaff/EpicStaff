@@ -118,6 +118,7 @@
     min-height: 0;
     flex-shrink: 0;
     overflow: hidden;
+    position: relative;
 }
 
 .explorer__section--bottom {
@@ -150,6 +151,33 @@
     flex: 1 1 auto;
     min-height: 100px;
     overflow-y: auto;
+}
+
+.explorer__section-body--resized {
+    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+.explorer__section-resize-handle {
+    flex-shrink: 0;
+    height: 6px;
+    margin-top: -3px;
+    cursor: row-resize;
+    touch-action: none;
+    z-index: 1;
+    position: relative;
+
+    &:hover,
+    &:active {
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 2px 0;
+            border-radius: 2px;
+            background: var(--accent-color);
+            opacity: 0.4;
+        }
+    }
 }
 
 .explorer__state {
