@@ -1,8 +1,6 @@
 import asyncio
-import os
-import sys
-from dotenv import load_dotenv, find_dotenv
 
+import settings
 from services.agent_task_service import AgentTaskService
 from services.crew.mcp_tool_factory import CrewaiMcpToolFactory
 from services.graph.graph_session_manager_service import GraphSessionManagerService
@@ -12,41 +10,22 @@ from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
 from utils.logger import logger
 
-if "--debug" in sys.argv:
-    logger.info("RUNNING IN DEBUG MODE")
-    load_dotenv(find_dotenv(".debug.env"), override=True)
-else:
-    load_dotenv(find_dotenv(".env"))
-
 
 async def main():
-    # Load configuration from environment variables
-    redis_host = os.environ.get("REDIS_HOST", "127.0.0.1")
-    redis_port = int(os.environ.get("REDIS_PORT", 6379))
-    redis_password = os.environ.get("REDIS_PASSWORD")
-    session_schema_channel = os.environ.get("SESSION_SCHEMA_CHANNEL", "sessions:schema")
-    session_timeout_channel = os.environ.get(
-        "SESSION_TIMEOUT_CHANNEL", "sessions:timeout"
-    )
-    crewai_output_channel = os.environ.get(
-        "CREWAI_OUTPUT_CHANNEL", "sessions:crewai_output"
-    )
-    stop_session_channel = os.getenv("STOP_SESSION_CHANNEL", "sessions:stop")
-    MAX_CONCURRENT_SESSIONS = int(os.getenv("MAX_CONCURRENT_SESSIONS", "20"))
-    agent_request_stream = os.environ.get("AGENT_REQUEST_STREAM", "agent.requests")
-    agent_result_stream = os.environ.get("AGENT_RESULT_STREAM", "agent.results")
-    agent_result_timeout_s = float(os.environ.get("AGENT_RESULT_TIMEOUT_S", "600"))
     # Initialize services
     redis_service = RedisService(
-        host=redis_host, port=redis_port, password=redis_password
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        user=settings.REDIS_USER,
+        password=settings.REDIS_PASSWORD
     )
     python_code_executor_service = RunPythonCodeService(redis_service=redis_service)
     knowledge_search_service = KnowledgeSearchService(redis_service=redis_service)
     agent_task_service = AgentTaskService(
         redis_service=redis_service,
-        request_stream=agent_request_stream,
-        result_stream=agent_result_stream,
-        default_timeout_s=agent_result_timeout_s,
+        request_stream=settings.AGENT_REQUEST_STREAM,
+        result_stream=settings.AGENT_RESULT_STREAM,
+        default_timeout=settings.AGENT_RESULT_TIMEOUT,
     )
     mcp_tool_factory = CrewaiMcpToolFactory()
     crew_parser_service = CrewParserService(
@@ -57,15 +36,15 @@ async def main():
     session_manager_service = GraphSessionManagerService(
         redis_service=redis_service,
         crew_parser_service=crew_parser_service,
-        session_schema_channel=session_schema_channel,
-        session_timeout_channel=session_timeout_channel,
-        stop_session_channel=stop_session_channel,
+        session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
+        session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
+        stop_session_channel=settings.STOP_SESSION_CHANNEL,
         python_code_executor_service=python_code_executor_service,
-        crewai_output_channel=crewai_output_channel,
+        crewai_output_channel=settings.CREWAI_OUTPUT_CHANNEL,
         # Note:  Used for process human_input
         knowledge_search_service=knowledge_search_service,
         agent_task_service=agent_task_service,
-        max_concurrent_sessions=MAX_CONCURRENT_SESSIONS,
+        max_concurrent_sessions=settings.MAX_CONCURRENT_SESSIONS,
     )
 
     try:

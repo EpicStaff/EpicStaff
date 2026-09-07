@@ -1,4 +1,3 @@
-import os
 from loguru import logger
 import redis.asyncio as aioredis
 from app.core.settings import settings
@@ -66,13 +65,12 @@ _redis_service: Optional[RedisService] = None
 async def get_redis_service() -> RedisService:
     """FastAPI dependency to get the singleton RedisService."""
     global _redis_service
-    WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
     if _redis_service is None:
         _redis_service = RedisService(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             password=settings.REDIS_PASSWORD,
-            webhook_channel=WEBHOOK_MESSAGE_CHANNEL,
+            webhook_channel=settings.WEBHOOK_MESSAGE_CHANNEL,
         )
         _redis_service
 

@@ -239,7 +239,7 @@ class InvalidAvatarError(CustomAPIExeption):
 
 class AvatarTooLargeError(CustomAPIExeption):
     """Raised by UserAvatarStorageService when an avatar upload exceeds
-    settings.AVATAR_MAX_BYTES. The default_detail is overridden at
+    settings.AVATAR_MAX_SIZE. The default_detail is overridden at
     raise-site with the actual maximum so the FE can render it without
     hardcoding the number."""
 

@@ -325,6 +325,7 @@
             [position]="contextMenuPosition()"
             [currentFlowId]="currentFlowId"
             (nodeSelected)="onAddNodeFromContextMenu($event)"
+            (closed)="onCloseContextMenu()"
         >
         </app-flow-graph-context-menu>
     }

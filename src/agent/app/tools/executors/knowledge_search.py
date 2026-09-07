@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from loguru import logger
 
 from shared.models.agent_service import ToolResult
@@ -9,16 +7,7 @@ from shared.models.agent_service import ToolResult
 from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
 from app.knowledge.target import KnowledgeSearchTarget
-
-
-def _float_env(name: str, default: float) -> float:
-    val = os.getenv(name)
-    return float(val) if val else default
-
-
-NAIVE_RAG_SEARCH_TIMEOUT = _float_env("NAIVE_RAG_SEARCH_TIMEOUT", 20.0)
-GRAPH_RAG_SEARCH_TIMEOUT = _float_env("GRAPH_RAG_SEARCH_TIMEOUT", 120.0)
-
+import settings
 
 async def _execute_search(
     client: KnowledgeClient,
@@ -27,9 +16,9 @@ async def _execute_search(
     sink: KnowledgeEventSink | None = None,
 ) -> ToolResult:
     timeout = (
-        GRAPH_RAG_SEARCH_TIMEOUT
+        settings.GRAPH_RAG_SEARCH_TIMEOUT
         if target.rag_type == "graph"
-        else NAIVE_RAG_SEARCH_TIMEOUT
+        else settings.NAIVE_RAG_SEARCH_TIMEOUT
     )
 
     try:

@@ -252,7 +252,7 @@ async def test_run_task_raises_on_failure_stop_reason(
 @pytest.mark.asyncio
 async def test_run_task_times_out(redis_service_stub, task_node_data):
     service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout_s=0.05, poll_block_ms=20
+        redis_service=redis_service_stub, default_timeout=0.05, poll_block_ms=20
     )
 
     with pytest.raises(AgentTaskTimeoutError):
@@ -576,7 +576,7 @@ async def test_run_task_returns_result_on_max_consecutive_failures_stop_reason(
 
 def test_resolve_timeout_s_scales_with_task_count(redis_service_stub):
     service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0
+        redis_service=redis_service_stub, default_timeout=600.0, timeout_buffer_s=60.0
     )
     agent_definition = AgentDefinitionData(
         id=1, name="researcher", instructions="Research.", max_execution_time=10
@@ -591,7 +591,7 @@ def test_resolve_timeout_s_scales_with_task_count(redis_service_stub):
 
 def test_resolve_timeout_s_defaults_unchanged_for_single_task(redis_service_stub):
     service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout_s=600.0
+        redis_service=redis_service_stub, default_timeout=600.0
     )
 
     assert service._resolve_timeout_s(None) == 600.0
@@ -604,7 +604,7 @@ async def test_run_task_resolves_timeout_for_single_task(
     redis_service_stub, task_node_data, monkeypatch
 ):
     service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0
+        redis_service=redis_service_stub, default_timeout=600.0, timeout_buffer_s=60.0
     )
     task_node_data.agent_definition.max_execution_time = 10
     captured_timeout = {}
@@ -625,7 +625,7 @@ async def test_run_agent_node_resolves_timeout_scaled_by_task_count(
     redis_service_stub, llm_data, monkeypatch
 ):
     service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0
+        redis_service=redis_service_stub, default_timeout=600.0, timeout_buffer_s=60.0
     )
     agent_node_data = AgentNodeData(
         node_name="agent_node_1",

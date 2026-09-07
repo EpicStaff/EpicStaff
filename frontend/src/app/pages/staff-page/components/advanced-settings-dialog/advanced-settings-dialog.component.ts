@@ -11,7 +11,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { AppSvgIconComponent, IconButtonComponent, TabButtonComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    CustomInputComponent,
+    IconButtonComponent,
+    MergedToolItem,
+    TabButtonComponent,
+    TextareaComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
 import { forkJoin, of } from 'rxjs';
 
@@ -34,13 +42,20 @@ import { AgentSearchConfigs } from '../../../../shared/models';
 export interface AdvancedSettingsData {
     id: number;
     role: string;
+    goal: string;
+    backstory: string;
     max_iter: number;
     max_rpm: number | null;
     max_execution_time: number | null;
     max_retry_limit: number | null;
     default_temperature: number | null;
     knowledge_collection?: number | null;
+    llm_config: number | null;
     fcm_llm_config: number | null;
+    python_code_tools: number[];
+    mcp_tools: number[];
+    mergedTools: MergedToolItem[];
+    allow_delegation: boolean;
     rag: AgentRag | null;
     search_configs: AgentSearchConfigs;
     memory: boolean;
@@ -61,6 +76,9 @@ export interface AdvancedSettingsData {
         GeneralTabComponent,
         TabButtonComponent,
         AppSvgIconComponent,
+        CustomInputComponent,
+        TextareaComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './advanced-settings-dialog.component.html',
     styleUrls: ['./advanced-settings-dialog.component.scss'],
@@ -80,6 +98,7 @@ export class AdvancedSettingsDialogComponent implements OnInit {
     public allKnowledgeSources: GetCollectionRequest[] = [];
     private _closeWithPageSave = false;
     public agentRags: GetCollectionRagsResponse[] = [];
+    private selectedMergedTools: MergedToolItem[] = [];
     public tabs: Tab[] = [
         { id: TabId.GENERAL, label: 'General' },
         { id: TabId.RAG, label: 'RAG' },
@@ -99,6 +118,7 @@ export class AdvancedSettingsDialogComponent implements OnInit {
     // In ngOnInit
     public ngOnInit(): void {
         this.initForm();
+        this.selectedMergedTools = this.data.mergedTools ?? [];
 
         // Fetch LLM configs, models, and knowledge sources
         const collectionId = this.data.knowledge_collection;
@@ -153,18 +173,28 @@ export class AdvancedSettingsDialogComponent implements OnInit {
         const data = this.data;
         const ragValidators = data.knowledge_collection ? [Validators.required] : [];
         this.form = this.fb.group({
-            role: [data.role],
+            role: [data.role, [Validators.required]],
+            goal: [data.goal, [Validators.required]],
+            backstory: [data.backstory, [Validators.required]],
             max_iter: [data.max_iter || 10, [Validators.min(1), Validators.max(30)]],
             max_rpm: [data.max_rpm || 10, [Validators.min(1), Validators.max(30)]],
             max_execution_time: [data.max_execution_time || 60, [Validators.min(1), Validators.max(600)]],
             max_retry_limit: [data.max_retry_limit || 3, [Validators.min(0), Validators.max(10)]],
             cache: [data.cache ?? false],
             respect_context_window: [data.respect_context_window ?? false],
+            llm_config: [data.llm_config || null],
             fcm_llm_config: [data.fcm_llm_config || null],
+            allow_delegation: [data.allow_delegation ?? true],
+            python_code_tools: [data.python_code_tools ?? []],
+            mcp_tools: [data.mcp_tools ?? []],
             knowledge_collection: [data.knowledge_collection || null],
             rag: [data.rag?.rag_id ? { rag_id: data.rag.rag_id, rag_type: data.rag.rag_type } : null, ragValidators],
             search_configs: [data.search_configs || null],
         });
+    }
+
+    public onMergedToolsChange(tools: MergedToolItem[]): void {
+        this.selectedMergedTools = tools;
     }
 
     private onKnowledgeSourceChange(collectionId: number | null): void {
@@ -197,7 +227,7 @@ export class AdvancedSettingsDialogComponent implements OnInit {
     }
 
     // In save method
-    public save(): void {
+    public save(triggerPageSave = false): void {
         if (this.form.invalid) return;
 
         const { search_configs, rag, ...rest } = this.form.value;
@@ -205,10 +235,11 @@ export class AdvancedSettingsDialogComponent implements OnInit {
             ...rest,
             rag,
             search_configs: rag?.rag_type ? { ...this.data.search_configs, [rag.rag_type]: search_configs } : null,
+            mergedTools: this.selectedMergedTools,
         };
 
         // Update agentData with current form control values
-        const closeWithSave = this._closeWithPageSave;
+        const closeWithSave = this._closeWithPageSave || triggerPageSave;
         this._closeWithPageSave = false;
         this.dialogRef.close({ ...result, _saveAfterClose: closeWithSave } as AdvancedSettingsData);
     }
