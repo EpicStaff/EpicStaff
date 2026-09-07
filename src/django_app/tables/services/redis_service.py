@@ -146,6 +146,25 @@ class RedisService(metaclass=SingletonMeta):
         # write plaintext credentials into the log stream.
         logger.debug(f"Schema: {rt_agent_chat_data.model_dump()}.")
 
+    def publish_channel_invalidation(self, token) -> None:
+        """Tell the `realtime` service to drop its cached
+        `RealtimeChannelViewSet.lookup_by_token` response for this token.
+
+        `realtime`'s `get_channel_config()` caches that lookup for
+        `_CHANNEL_TTL` seconds (60s), so without this, an operator flipping
+        `RealtimeChannel.is_active` off (or deleting the channel) would still
+        have inbound calls answered for up to a minute.
+        """
+        message = json.dumps({"token": str(token)})
+        self.redis_client.publish(
+            settings.REALTIME_CHANNELS_INVALIDATE_CHANNEL, message
+        )
+        logger.info(
+            "Sent channel invalidation to {}: token={}.",
+            settings.REALTIME_CHANNELS_INVALIDATE_CHANNEL,
+            token,
+        )
+
     def publish_user_graph_message(
         self, session_id: int, uuid: str, data: dict
     ) -> None:

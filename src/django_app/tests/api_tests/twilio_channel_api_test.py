@@ -561,6 +561,29 @@ class TestRealtimeChannelLookupByToken:
         assert response.status_code == 200, response.json()
         assert response.json()["id"] == rc.pk
 
+    def test_lookup_by_token_inactive_channel_returns_same_404_as_unknown_token(
+        self, api_client, db, default_org, env_api_key
+    ):
+        """Bug fix: an operator setting `is_active=False` as a containment
+        action must actually stop the channel from resolving here -- it was
+        previously a no-op since `filterset_fields` only applies to the
+        standard list endpoint, not this hand-built queryset. The inactive
+        channel must produce a response indistinguishable from an unknown
+        token: same status, no body -- anything else would leak channel
+        existence to a caller holding/guessing the token."""
+        raw_key, _key = env_api_key
+        rc = _make_realtime_channel(db, default_org, is_active=False)
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        inactive_response = api_client.get(self._url(), {"token": str(rc.token)})
+        unknown_response = api_client.get(
+            self._url(), {"token": "00000000-0000-0000-0000-000000000000"}
+        )
+
+        assert inactive_response.status_code == 404
+        assert unknown_response.status_code == 404
+        assert inactive_response.content == unknown_response.content
+
     def test_lookup_by_token_unknown_token_returns_404(
         self, api_client, db, env_api_key
     ):
@@ -906,6 +929,34 @@ class TestTwilioConfigureWebhookInputValidation:
             response = auth_client.post(
                 url,
                 {"phone_sid": "PN" + "0" * 32, "channel_token": "qwe"},
+                format="json",
+            )
+
+        assert response.status_code == 404, response.json()
+        assert response.json() == {"error": "Channel not found"}
+        mocked.assert_not_called()
+
+    def test_rejects_inactive_channel_same_as_missing_token(
+        self, auth_client, db, default_org
+    ):
+        """Bug fix: an operator setting `is_active=False` as a containment
+        action must actually stop this endpoint from reconfiguring the
+        channel's Twilio webhook too -- same gap, same fix, and the same
+        no-existence-leak treatment as the malformed/unknown-token case and
+        `RealtimeChannelViewSet.lookup_by_token`."""
+        rc = _make_realtime_channel(db, default_org, is_active=False)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org, path="cfg-inactive-channel"
+        )
+        _make_twilio_channel(
+            rc, default_org, webhook_trigger=trigger, account_sid="AC" + "0" * 32
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
                 format="json",
             )
 

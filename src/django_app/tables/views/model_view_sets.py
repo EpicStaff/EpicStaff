@@ -1671,7 +1671,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 "twilio__webhook_trigger__ngrok",
                 "twilio__webhook_trigger__localhost",
             )
-            .filter(token=token)
+            .filter(token=token, is_active=True)
             .first()
         )
         if channel is None:

@@ -4,9 +4,11 @@ from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.services.redis_service import RedisService
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
+    RealtimeChannel,
     TwilioChannel,
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
@@ -175,3 +177,28 @@ def twilio_channel_post_save_handler(sender, instance: TwilioChannel, **_):
 def twilio_channel_post_delete_handler(sender, instance: TwilioChannel, **_):
     trigger_id = instance.webhook_trigger_id
     _cleanup_orphaned_twilio_auth(trigger_id)
+
+
+def _invalidate_realtime_channel_cache(token) -> None:
+    RedisService().publish_channel_invalidation(token)
+
+
+@receiver(post_save, sender=RealtimeChannel)
+def realtime_channel_post_save_handler(sender, instance: RealtimeChannel, **_):
+    """`realtime`'s `get_channel_config()` caches the
+    `lookup-by-token` response for up to 60s (`_CHANNEL_TTL`). Without this,
+    toggling `is_active` (or any other channel edit) would keep resolving
+    stale data for that long. Fires unconditionally on every save -- no
+    dirty-field diffing needed, since re-fetching a still-valid cache entry
+    is harmless."""
+    token = instance.token
+    transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))
+
+
+@receiver(post_delete, sender=RealtimeChannel)
+def realtime_channel_post_delete_handler(sender, instance: RealtimeChannel, **_):
+    """Symmetric to the post_save handler above: a deleted channel must not
+    keep answering calls from `realtime`'s per-channel cache until the TTL
+    expires."""
+    token = instance.token
+    transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))
