@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError
+from tables.clients.errors import ClientError, ClientResourceNotFoundError
 
 from rest_framework.permissions import IsAuthenticated
 
@@ -655,8 +655,9 @@ class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
-        except ClientError:
-            pass
+        except ClientError as e:
+            if e.status_code != 404:
+                return Response({"error": str(e)}, status=e.status_code)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

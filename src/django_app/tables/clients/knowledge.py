@@ -9,6 +9,7 @@ from src.shared.models.knowledge_new import ChunkingConfig
 from tables.clients.errors import (
     ClientBadGatewayError,
     ClientNotAvailableError,
+    ClientResourceNotFoundError,
     ClientTimeoutError,
     ClientValidationError,
 )
@@ -88,6 +89,8 @@ class KnowledgeClient:
         except httpx.HTTPStatusError as e:
             if response.status_code >= 500:
                 raise ClientBadGatewayError(response.text) from e
+            if response.status_code == 404:
+                raise ClientResourceNotFoundError(response.text) from e
             raise ClientValidationError(response.text) from e
 
         return response
