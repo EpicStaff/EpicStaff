@@ -5,6 +5,7 @@ from typing import Dict, Any
 
 config_dict: Dict[str, Any] = {"env_file_encoding": "utf-8", "extra": "ignore"}
 
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "auditor"
     DESCRIPTION: str = "EpicStaff audit trail service"
@@ -23,6 +24,14 @@ class Settings(BaseSettings):
     AUDITOR_INGEST_API_KEY: str
     JWT_SECRET: str
     CORS_ALLOWED_ORIGINS: str = "http://localhost:4200"
+
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_PASSWORD: str
+    AUDITOR_REDIS_DB: int
+
+    EXPORT_DATA_DIR: str = "/app/export_data"
+    EXPORT_FILE_TTL_SECONDS: int = 60 * 60 * 24
 
     model_config = SettingsConfigDict(**config_dict)
 

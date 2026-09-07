@@ -1,26 +1,26 @@
-import csv
+import os
 import io
+import csv
 import json
+import pathlib
 import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from loguru import logger
 from pydantic import BaseModel, model_validator
 
 from src.shared.models import SessionAuditEvent
 from app.core.security import require_audit_action
+from app.core.settings import settings
 from app.repositories.base import SessionAuditRepository
 from app.repositories.opensearch_query_compiler import compile as compile_filters
 from app.filtering.ast import FilterNode, validate_filter_node
 from app.filtering.query_language import parse_query
+from app.services.export_job_service import ExportJobService, JobStatus
 
 router = APIRouter(tags=["Export"])
-
-# In-memory job store - fine for a single-instance MVP; a real deployment
-# with multiple auditor replicas would need this in a shared store instead.
-_jobs: dict[str, dict[str, Any]] = {}
 
 
 class ExportRequest(BaseModel):
@@ -45,6 +45,15 @@ class ExportRequest(BaseModel):
         return None
 
 
+async def _get_owned_job(job_service, job_id: str, claims: dict) -> dict:
+    """Fetch a job and enforce ownership. 404 either way (missing or not
+    yours) so a non-owner can't distinguish the two cases."""
+    job = await job_service.get_job(job_id)
+    if job is None or str(job["user_id"]) != str(claims["user_id"]):
+        raise HTTPException(404, "Export job not found")
+    return job
+
+
 @router.post("/api/audit/export")
 async def start_export(
     body: ExportRequest,
@@ -52,36 +61,73 @@ async def start_export(
     request: Request,
     claims: dict = Depends(require_audit_action("export")),
 ):
+    repository = request.app.state.session_audit_repository
+    job_service = request.app.state.export_job_service
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending"}
+
+    await job_service.create_job(
+        job_id=job_id,
+        org_id=claims["org_id"],
+        user_id=claims["user_id"],
+        ttl_seconds=settings.EXPORT_FILE_TTL_SECONDS,
+        format=body.format,
+    )
+
     background_tasks.add_task(
-        _run_export, job_id, body, claims, request.app.state.session_audit_repository
+        _run_export,
+        job_id,
+        body,
+        claims,
+        repository,
+        job_service,
     )
     return {"job_id": job_id}
 
 
 @router.get("/api/audit/export/{job_id}")
 async def get_export(
-    job_id: str, claims: dict = Depends(require_audit_action("export"))
+    job_id: str,
+    request: Request,
+    claims: dict = Depends(require_audit_action("export")),
 ):
-    job = _jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Export job not found")
-    if job["status"] == "failed":
+    job_service = request.app.state.export_job_service
+    job = await _get_owned_job(job_service, job_id, claims)
+    if job["status"] == JobStatus.FAILED.value:
         raise HTTPException(status_code=500, detail="Export job failed")
-    if job["status"] != "done":
+    if job["status"] != JobStatus.COMPLETED.value:
         return {"status": job["status"]}
 
-    result = job["result"]
-    return Response(
-        content=result["content"],
-        media_type=result["media_type"],
-        headers={"Content-Disposition": f'attachment; filename="{result["filename"]}"'},
+    path = job["file_path"]
+    ext = pathlib.Path(path).suffix.lstrip(".")
+    media_type = "text/csv" if ext == "csv" else "application/json"
+
+    return FileResponse(
+        path, media_type=media_type, filename=f"audit-export-{job_id}.{ext}"
     )
 
 
+@router.delete("/api/audit/export/{job_id}")
+async def delete_export(
+    job_id: str,
+    request: Request,
+    claims: dict = Depends(require_audit_action("export")),
+):
+    job_service = request.app.state.export_job_service
+    job = await _get_owned_job(job_service, job_id, claims)
+
+    if job.get("file_path"):
+        pathlib.Path(job["file_path"]).unlink(missing_ok=True)
+
+    await job_service.delete_job(job_id)
+    return Response(status_code=204)
+
+
 async def _run_export(
-    job_id: str, body: ExportRequest, claims: dict, repository: SessionAuditRepository
+    job_id: str,
+    body: ExportRequest,
+    claims: dict,
+    repository: SessionAuditRepository,
+    job_service: ExportJobService,
 ) -> None:
     try:
         org_id = claims["org_id"]
@@ -114,25 +160,20 @@ async def _run_export(
             events = expanded
 
         rows = [e.model_dump(mode="json") for e in events]
+        ext = "csv" if body.format == "csv" else "json"
+        content = _to_csv(rows) if ext == "csv" else json.dumps(rows).encode()
 
-        if body.format == "csv":
-            content = _to_csv(rows)
-            media_type, filename = "text/csv", f"audit-export-{job_id}.csv"
-        else:
-            content = json.dumps(rows).encode()
-            media_type, filename = "application/json", f"audit-export-{job_id}.json"
+        os.makedirs(settings.EXPORT_DATA_DIR, exist_ok=True)
+        file_path = os.path.join(settings.EXPORT_DATA_DIR, f"{job_id}.{ext}")
 
-        _jobs[job_id] = {
-            "status": "done",
-            "result": {
-                "content": content,
-                "media_type": media_type,
-                "filename": filename,
-            },
-        }
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        await job_service.mark_done(job_id, file_path)
+
     except Exception as e:
         logger.exception(f"Export job {job_id} failed: {e}")
-        _jobs[job_id] = {"status": "failed"}
+        await job_service.mark_failed(job_id, str(e)[:500])
 
 
 async def _collect_all(

@@ -149,8 +149,11 @@ services:
       <<: *common_env
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
+      AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:-1}
     networks:
       - backend-network
+    volumes:
+      - auditor_data:/app/export_data
     tty: true
     stdin_open: true
     depends_on:
@@ -518,10 +521,18 @@ services:
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:-1}
     networks:
       - backend-network
+    volumes:
+      - auditor_data:/app/export_data
     depends_on:
       opensearch:
+        condition: service_healthy
+      redis: 
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${AUDITOR_PORT:-8060}/health')\""]
@@ -543,6 +554,8 @@ volumes:
 
   graph_data:
     external: true
+
+  auditor_data: {}
 
 networks:
   backend-network:

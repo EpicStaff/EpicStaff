@@ -9,6 +9,8 @@ from app.controllers import export_routes, health_routes, ingest_routes, query_r
 from app.core.settings import settings
 from app.filtering.ast import FilterError
 from app.repositories.factory import build_session_audit_repository
+from app.db.redis_client import build_redis_client
+from app.services.export_job_service import ExportJobService
 from app.swagger_schemas import OPENAPI_TAGS
 
 
@@ -17,11 +19,13 @@ async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
 
     app.state.session_audit_repository = build_session_audit_repository(settings)
+    app.state.export_job_service = ExportJobService(build_redis_client(settings))
 
     yield
 
     logger.info("Application shutting down...")
     await app.state.session_audit_repository.close()
+    await app.state.export_job_service.close()
 
 
 def create_app() -> FastAPI:

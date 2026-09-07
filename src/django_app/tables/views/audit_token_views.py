@@ -48,12 +48,6 @@ class AuditTokenView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # audit_retention_days lives on OrganizationConfig (1:1), not Organization
-        # directly. create_organization() always creates this row atomically and
-        # migration 0210 backfilled every pre-existing org, so this should never
-        # miss in practice - but this is a read-only view (no get_or_create side
-        # effect belongs here just to mint a token), so fall back to the same
-        # default (0 = unlimited) the field itself defaults to, rather than 500ing.
         try:
             retention_days = OrganizationConfig.objects.get(
                 org_id=org_id
@@ -63,6 +57,7 @@ class AuditTokenView(APIView):
 
         now = datetime.now(timezone.utc)
         payload = {
+            "user_id": request.user.id,
             "org_id": org_id,
             "actions": actions,
             "retention_days": retention_days,
