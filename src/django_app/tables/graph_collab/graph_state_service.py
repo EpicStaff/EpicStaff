@@ -622,9 +622,9 @@ class GraphLiveStateService:
         if not dead_refs:
             return []
 
-        refs_by_node: dict[tuple[str, int], list[DeadRef]] = defaultdict(list)
+        refs_by_node: dict[tuple[str, int | str], list[DeadRef]] = defaultdict(list)
         for ref in dead_refs:
-            refs_by_node[(ref.list_key, ref.node_id)].append(ref)
+            refs_by_node[(ref.list_key, ref.node_key)].append(ref)
 
         broadcasts: list[dict] = []
         async with self._get_lock(graph_id):
@@ -637,14 +637,15 @@ class GraphLiveStateService:
                 return []
 
             mutated = False
-            for (list_key, node_id), refs in refs_by_node.items():
+            for (list_key, node_key), refs in refs_by_node.items():
                 entries: list[dict] = snapshot.get(list_key, [])
-                entry = next((e for e in entries if e.get("id") == node_id), None)
+                id_key = "id" if isinstance(node_key, int) else "temp_id"
+                entry = next((e for e in entries if e.get(id_key) == node_key), None)
                 if entry is None:
                     logger.debug(
                         "null_external_refs: node {} not found in {} for graph "
                         "{} — skipping (already reconciled or removed)",
-                        node_id,
+                        node_key,
                         list_key,
                         graph_id,
                     )
@@ -655,14 +656,16 @@ class GraphLiveStateService:
                     null_ref_in_entry(entry, ref.ref_field, ref.old_pk)
                     top_level_fields.add(ref.top_level_field)
 
-                if "content_hash" in entry:
-                    refreshed_hash = await _refresh_node_content_hash(list_key, node_id)
+                if "content_hash" in entry and isinstance(node_key, int):
+                    refreshed_hash = await _refresh_node_content_hash(
+                        list_key, node_key
+                    )
                     if refreshed_hash is not None:
                         entry["content_hash"] = refreshed_hash
 
                 mutated = True
 
-                node_overlay: dict = {"id": node_id}
+                node_overlay: dict = {id_key: node_key}
                 for field_name in top_level_fields:
                     node_overlay[field_name] = entry.get(field_name)
                 broadcasts.append(

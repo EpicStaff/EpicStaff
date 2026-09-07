@@ -223,6 +223,31 @@ def _do_db_flush(graph_id: int, snapshot: dict) -> _DbFlushOutcome:
 _async_do_db_flush = sync_to_async(_do_db_flush)
 
 
+def _scan_dead_external_refs(graph_id: int, snapshot: dict) -> list[DeadRef]:
+    """Find the snapshot's dead outward refs without persisting anything.
+
+    Deleting a referenced row never touches the graph, so the snapshot stays
+    clean and ``flush_if_dirty`` would skip the flush that normally repairs
+    it — leaving connected editors showing a ref whose target is gone until
+    somebody happens to edit the graph. The payload built here is thrown
+    away; only the DeadRef list matters, and the caller mirrors it into the
+    live snapshot exactly as the flush path does.
+    """
+    from tables.models import Graph
+
+    try:
+        graph = Graph.objects.get(pk=graph_id)
+    except Graph.DoesNotExist:
+        return []
+
+    payload = inject_bulk_save_fields(snapshot, graph_id=graph_id)
+    _payload, dead_external_refs = reconcile_against_db(payload, graph=graph)
+    return dead_external_refs
+
+
+_async_scan_dead_external_refs = sync_to_async(_scan_dead_external_refs)
+
+
 class GraphFlushService:
     """Flush the Redis live snapshot for one graph to the database.
 
@@ -378,17 +403,42 @@ class GraphFlushService:
         not the current one — so edits that arrived during the DB write are not
         silently dropped: ``is_dirty`` stays True and the next tick picks them up.
 
-        Returns ``NOTHING_TO_FLUSH`` immediately when the snapshot is clean.
+        A clean snapshot still gets a dead-outward-ref sweep: deleting a
+        referenced row never touches the graph, so without it the repair would
+        wait for somebody to edit the graph.
         """
         async with graph_state_service._get_lock(graph_id):
-            if not graph_state_service.is_dirty(graph_id):
-                return FlushOutcome(status=FlushStatus.NOTHING_TO_FLUSH)
-            captured_revision = graph_state_service.current_revision(graph_id)
+            dirty = graph_state_service.is_dirty(graph_id)
+            captured_revision = (
+                graph_state_service.current_revision(graph_id) if dirty else 0
+            )
         # Lock released before the DB call.
+        if not dirty:
+            await self._heal_dead_external_refs(graph_id)
+            return FlushOutcome(status=FlushStatus.NOTHING_TO_FLUSH)
+
         outcome = await self.flush(graph_id)
         if outcome.saved:
             graph_state_service.mark_flushed(graph_id, captured_revision)
         return outcome
+
+    async def _heal_dead_external_refs(self, graph_id: int) -> None:
+        snapshot = await graph_state_service.get_snapshot(graph_id)
+        if snapshot is None:
+            return
+        dead_external_refs = await _async_scan_dead_external_refs(graph_id, snapshot)
+        if not dead_external_refs:
+            return
+        broadcasts = await graph_state_service.null_external_refs(
+            graph_id, dead_external_refs
+        )
+        for broadcast in broadcasts:
+            await anotify_node_updated_system(
+                graph_id,
+                broadcast["list_key"],
+                broadcast["node"],
+                broadcast["changed_fields"],
+            )
 
 
 flush_service = GraphFlushService()

@@ -26,7 +26,7 @@ from tables.models.graph_models import (
 )
 from tables.models.llm_models import LLMConfig
 from tables.models.secret_models import Secret
-from tables.models.webhook_models import NgrokWebhookConfig
+from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
 from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
@@ -67,6 +67,8 @@ class ExternalRefKind(str, Enum):
     # webhook_trigger.ngrok_webhook_config
     NESTED_LIST = "nested_list"  # FK inside each item of a top-level nested
     # list, e.g. prompt_configs[].llm_config
+    NESTED_SCALAR_LIST = "nested_scalar_list"  # list of pks (M2M) inside a
+    # top-level nested object, e.g. python_code.secret_ids
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,15 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "python_node_ids",
         PythonNode,
         PythonNodeBulkSerializer,
+        external_ref_fields=(
+            ExternalRefField(
+                "python_code",
+                "secret_ids",
+                Secret,
+                "org_id",
+                kind=ExternalRefKind.NESTED_SCALAR_LIST,
+            ),
+        ),
     ),
     NodeTypeConfig(
         "file_extractor_node_list",
@@ -191,6 +202,13 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         SubGraphNodeBulkSerializer,
         external_ref_fields=(
             ExternalRefField("subgraph", "subgraph", Graph, "org_id"),
+            ExternalRefField(
+                "subgraph_detail",
+                "id",
+                Graph,
+                "org_id",
+                kind=ExternalRefKind.NESTED_OBJECT,
+            ),
         ),
     ),
     NodeTypeConfig(
@@ -209,6 +227,20 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
                 LLMConfig,
                 "org_id",
                 kind=ExternalRefKind.NESTED_LIST,
+            ),
+            ExternalRefField(
+                "pre_python_code",
+                "secret_ids",
+                Secret,
+                "org_id",
+                kind=ExternalRefKind.NESTED_SCALAR_LIST,
+            ),
+            ExternalRefField(
+                "post_python_code",
+                "secret_ids",
+                Secret,
+                "org_id",
+                kind=ExternalRefKind.NESTED_SCALAR_LIST,
             ),
         ),
     ),
@@ -238,6 +270,16 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
                 None,
                 kind=ExternalRefKind.NESTED_OBJECT,
             ),
+            ExternalRefField(
+                "webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"
+            ),
+            ExternalRefField(
+                "python_code",
+                "secret_ids",
+                Secret,
+                "org_id",
+                kind=ExternalRefKind.NESTED_SCALAR_LIST,
+            ),
         ),
     ),
     NodeTypeConfig(
@@ -252,6 +294,9 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
                 NgrokWebhookConfig,
                 None,
                 kind=ExternalRefKind.NESTED_OBJECT,
+            ),
+            ExternalRefField(
+                "webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"
             ),
             ExternalRefField(
                 "telegram_bot_api_key_secret_id",

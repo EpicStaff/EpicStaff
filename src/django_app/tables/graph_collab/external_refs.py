@@ -31,10 +31,17 @@ class DeadRef:
     the same ref out of the live Redis snapshot and broadcast the change."""
 
     list_key: str
-    node_id: int
+    node_id: int | None
     ref_field: ExternalRefField
     old_pk: int
     reason: str  # "deleted" | "cross_org"
+    temp_id: str | None = None
+
+    @property
+    def node_key(self) -> int | str:
+        """Whichever identifier this node is addressable by — a persisted int
+        ``id``, or the ``temp_id`` of a node not yet flushed."""
+        return self.node_id if self.node_id is not None else self.temp_id  # type: ignore[return-value]
 
     @property
     def top_level_field(self) -> str:
@@ -73,6 +80,15 @@ def null_ref_in_entry(entry: dict, ref_field: ExternalRefField, pk: int) -> None
             if isinstance(item, dict) and item.get(ref_field.leaf_field) == pk:
                 item[ref_field.leaf_field] = None
 
+    elif kind is ExternalRefKind.NESTED_SCALAR_LIST:
+        nested = entry.get(ref_field.top_level_field)
+        if isinstance(nested, dict):
+            values = nested.get(ref_field.leaf_field)
+            if isinstance(values, list) and pk in values:
+                nested[ref_field.leaf_field] = [
+                    value for value in values if value != pk
+                ]
+
 
 def _extract_pks(entry: dict, ref_field: ExternalRefField):
     kind = ref_field.kind
@@ -101,6 +117,13 @@ def _extract_pks(entry: dict, ref_field: ExternalRefField):
                 if isinstance(pk, int):
                     yield pk
 
+    elif kind is ExternalRefKind.NESTED_SCALAR_LIST:
+        nested = entry.get(ref_field.top_level_field)
+        if isinstance(nested, dict):
+            for pk in nested.get(ref_field.leaf_field) or []:
+                if isinstance(pk, int):
+                    yield pk
+
 
 def _org_scoped_existing_pks(
     target_model: type, pks: set[int], org_lookup: str | None, org_id: int
@@ -115,10 +138,10 @@ def find_dead_external_refs(payload: dict, graph) -> list[DeadRef]:
     """Find every outward ref in *payload* whose target is gone or has moved
     to another org, null it in place, and return a DeadRef per stripped ref.
 
-    Only considers entries carrying a real (already-persisted) int ``id`` —
-    a not-yet-flushed temp-id node has no DB row yet for a concurrent delete
-    to race against, and will simply fail the same validation again (surfacing
-    as an unrelated, unmasked error) on a later flush if it ever does.
+    Covers both persisted entries (int ``id``) and not-yet-flushed ones
+    (``temp_id``): a temp node whose target was deleted between its creation
+    and the first flush would otherwise fail validation on every subsequent
+    flush and wedge the whole graph's autosave.
 
     Batches one org-scoped existence query per distinct target model (not per
     node/ref) — a handful of queries regardless of graph size. For any pk that
@@ -126,7 +149,7 @@ def find_dead_external_refs(payload: dict, graph) -> list[DeadRef]:
     (only when something failed) to classify the reason as ``"deleted"`` vs
     ``"cross_org"`` for logging.
     """
-    occurrences: list[tuple[str, int, ExternalRefField, int]] = []
+    occurrences: list[tuple[str, int | str, ExternalRefField, int]] = []
 
     for config in NODE_TYPE_REGISTRY:
         if not config.external_ref_fields:
@@ -135,18 +158,19 @@ def find_dead_external_refs(payload: dict, graph) -> list[DeadRef]:
             if entry is None:
                 continue
             node_id = entry.get("id")
-            if not isinstance(node_id, int):
+            node_key = node_id if isinstance(node_id, int) else entry.get("temp_id")
+            if not isinstance(node_key, (int, str)):
                 continue
             for ref_field in config.external_ref_fields:
                 for pk in _extract_pks(entry, ref_field):
-                    occurrences.append((config.list_key, node_id, ref_field, pk))
+                    occurrences.append((config.list_key, node_key, ref_field, pk))
 
     if not occurrences:
         return []
 
     pks_by_model: dict[type, set[int]] = defaultdict(set)
     org_lookup_by_model: dict[type, str | None] = {}
-    for _list_key, _node_id, ref_field, pk in occurrences:
+    for _list_key, _node_key, ref_field, pk in occurrences:
         pks_by_model[ref_field.target_model].add(pk)
         org_lookup_by_model[ref_field.target_model] = ref_field.org_lookup
 
@@ -159,7 +183,7 @@ def find_dead_external_refs(payload: dict, graph) -> list[DeadRef]:
     unscoped_existing_by_model: dict[type, set[int]] = {}
 
     dead_refs: list[DeadRef] = []
-    for list_key, node_id, ref_field, pk in occurrences:
+    for list_key, node_key, ref_field, pk in occurrences:
         target_model = ref_field.target_model
         if pk in visible_by_model[target_model]:
             continue
@@ -175,31 +199,41 @@ def find_dead_external_refs(payload: dict, graph) -> list[DeadRef]:
             "cross_org" if pk in unscoped_existing_by_model[target_model] else "deleted"
         )
 
+        id_key = "id" if isinstance(node_key, int) else "temp_id"
         entry = next(
-            e for e in payload[list_key] if e is not None and e.get("id") == node_id
+            e
+            for e in payload[list_key]
+            if e is not None and e.get(id_key) == node_key
         )
         null_ref_in_entry(entry, ref_field, pk)
 
-        dead_ref = DeadRef(list_key, node_id, ref_field, pk, reason)
+        dead_ref = DeadRef(
+            list_key,
+            node_key if isinstance(node_key, int) else None,
+            ref_field,
+            pk,
+            reason,
+            None if isinstance(node_key, int) else node_key,
+        )
         dead_refs.append(dead_ref)
 
         if reason == "cross_org":
             logger.warning(
                 "find_dead_external_refs: cross-org reference stripped — "
-                "graph={}, list_key={}, node_id={}, field={}, pk={}",
+                "graph={}, list_key={}, node={}, field={}, pk={}",
                 graph.id,
                 list_key,
-                node_id,
+                node_key,
                 dead_ref.field_path,
                 pk,
             )
         else:
             logger.info(
                 "find_dead_external_refs: deleted reference stripped — "
-                "graph={}, list_key={}, node_id={}, field={}, pk={}",
+                "graph={}, list_key={}, node={}, field={}, pk={}",
                 graph.id,
                 list_key,
-                node_id,
+                node_key,
                 dead_ref.field_path,
                 pk,
             )
