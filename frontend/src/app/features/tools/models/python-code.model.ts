@@ -1,8 +1,18 @@
+export interface DeclaredSecretRef {
+    id: number;
+    name: string;
+}
+
+export function toSecretIds(secrets: DeclaredSecretRef[] | undefined): number[] {
+    return (secrets ?? []).map((secret) => secret.id);
+}
+
 export interface GetPythonCodeRequest {
     id: number;
     libraries: string[];
     code: string;
     entrypoint: string;
+    secrets?: DeclaredSecretRef[];
 }
 
 export interface CreatePythonCodeRequest {

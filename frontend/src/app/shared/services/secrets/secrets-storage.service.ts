@@ -15,10 +15,10 @@ export class SecretsStorageService implements StorageService {
     private secretsSignal = signal<Secret[]>([]);
     public readonly secrets = this.secretsSignal.asReadonly();
     public secretsLoaded = signal<boolean>(false);
-    // Every node-secrets-field, config dialog, and SecretDeclarationIndexService independently
-    // calls getSecrets() on their own mount/build — without sharing the in-flight request, opening
-    // e.g. a CDT panel (pre + post secrets fields mounting at once) fires one duplicate GET
-    // /secrets/ per concurrent caller before the first response lands.
+    // Every node-secrets-field and config dialog independently calls getSecrets() on their own
+    // mount/build — without sharing the in-flight request, opening e.g. a CDT panel (pre + post
+    // secrets fields mounting at once) fires one duplicate GET /secrets/ per concurrent caller
+    // before the first response lands.
     private pendingRequest$: Observable<Secret[]> | null = null;
 
     getSecrets(forceRefresh = false): Observable<Secret[]> {

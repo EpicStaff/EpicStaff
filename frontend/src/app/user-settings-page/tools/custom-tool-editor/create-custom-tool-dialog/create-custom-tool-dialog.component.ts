@@ -16,7 +16,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -130,7 +130,6 @@ export class CreateCustomToolDialogComponent {
     private readonly confirmDialog = inject(ConfirmationDialogService);
     private readonly toolsEvents = inject(ToolsEventsService);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
@@ -183,7 +182,9 @@ export class CreateCustomToolDialogComponent {
 
     public readonly tableVariables = signal<ToolVariable[]>([]);
     public readonly tableDrillStack = signal<DrillStep[]>([]);
-    public readonly selectedSecretIds = signal<number[]>([]);
+    public readonly selectedSecretIds = signal<number[]>(
+        (this.selectedTool()?.python_code?.secrets ?? []).map((secret) => secret.id)
+    );
     public readonly secretNames = computed(() => {
         const selected = new Set(this.selectedSecretIds());
         return this.secretsStorageService
@@ -228,27 +229,6 @@ export class CreateCustomToolDialogComponent {
         const initialJson = this.form.controls.variablesJson.value;
         if (isToolJsonSchemaValid(initialJson)) {
             this.lastValidJson.set(initialJson);
-        }
-
-        const editingToolOnInit = this.selectedTool();
-        if (editingToolOnInit) {
-            const toolName = editingToolOnInit.name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    const declared = this.secretDeclarationIndexService.lookupTool(index, toolName);
-                    if (declared.length) {
-                        this.selectedSecretIds.set(declared);
-                        // Patch only the secretIds field of the ORIGINAL baseline — recomputing
-                        // the whole snapshot here would bake in any edit the user made to name/
-                        // description/code while this request was in flight as if it were
-                        // already "clean", silently suppressing the unsaved-changes warning.
-                        const baseline = JSON.parse(this.initialSnapshot) as Record<string, unknown>;
-                        baseline['secretIds'] = [...declared].sort();
-                        this.initialSnapshot = JSON.stringify(baseline);
-                    }
-                });
         }
 
         this.dialogRef.disableClose = true;
@@ -582,7 +562,6 @@ export class CreateCustomToolDialogComponent {
         request$
             .pipe(
                 tap((result) => {
-                    this.secretDeclarationIndexService.invalidate();
                     if (action === 'fork') {
                         this.adoptForkedCopy(result);
                         return;

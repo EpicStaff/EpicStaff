@@ -1,7 +1,6 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -10,10 +9,9 @@ import {
     CustomInputComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { SecretsStorageService } from '@shared/services';
 
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
@@ -38,9 +36,7 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
 })
 export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTriggerNodeModel> {
     private readonly clipboard = inject(Clipboard);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private secretsRestoredForNodeId: string | null = null;
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -70,45 +66,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
         this.selectedTrigger.set(trigger);
-    }
-
-    constructor() {
-        super();
-        effect(() => {
-            const graphId = this.graphId();
-            const node = this.node();
-            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
-            this.secretsRestoredForNodeId = node.id;
-            if (node.data.python_code.secret_ids !== undefined) return;
-
-            const nodeId = node.id;
-            const nodeName = node.node_name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    if (this.node().id !== nodeId) return;
-                    const declared = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.WEBHOOK_TRIGGER,
-                        'python_code'
-                    );
-                    if (declared.length) {
-                        this.selectedSecretIds.set(declared);
-                        // Patch only secret_ids into the baseline — resetBaseline() would
-                        // recompute the whole node snapshot and bake in any other field the
-                        // user edited while this async lookup was in flight.
-                        if (this.initialNodeSnapshot) {
-                            const snapshot = JSON.parse(this.initialNodeSnapshot);
-                            snapshot.data.python_code.secret_ids = [...declared].sort();
-                            this.initialNodeSnapshot = JSON.stringify(snapshot);
-                            this.notifyExternalChange();
-                        }
-                    }
-                });
-        });
     }
 
     // Fixed to the accent purple regardless of the node's own (green) identity color --

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { SecretsStorageService } from '@shared/services';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -12,7 +12,6 @@ import { ColumnResizeDividerComponent } from '../../../../shared/components/colu
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import {
@@ -463,12 +462,10 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
-    private secretsRestoredForNodeId: string | null = null;
 
     constructor(
         private readonly sidePanelService: SidePanelService,
         private readonly pythonCodeRunService: PythonCodeRunService,
-        private readonly secretDeclarationIndexService: SecretDeclarationIndexService,
         private readonly secretsStorageService: SecretsStorageService
     ) {
         super();
@@ -493,33 +490,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             }
             this.wasSaving = saving;
         });
-        effect(() => {
-            const graphId = this.graphId();
-            const node = this.node();
-            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
-            this.secretsRestoredForNodeId = node.id;
-            if (node.data.secret_ids !== undefined) return;
-
-            const nodeId = node.id;
-            const nodeName = node.node_name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    if (this.node().id !== nodeId) return;
-                    const declared = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.PYTHON,
-                        'python_code'
-                    );
-                    if (declared.length) {
-                        this.selectedSecretIds.set(declared);
-                        this.resetSecretsBaseline();
-                    }
-                });
-        });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
     }
 
@@ -529,20 +499,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initialPythonCode = this.pythonCode;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
-        this.formDirtyTick.update((v) => v + 1);
-    }
-
-    /**
-     * Patches only secret_ids into the dirty-tracking baseline, instead of recomputing the whole
-     * signature like resetDirtyAfterSave() does — the secret-restoration effect resolves
-     * asynchronously, and recomputing the full baseline at that point would bake in any other
-     * field the user edited in the meantime as if it were already saved.
-     */
-    private resetSecretsBaseline(): void {
-        if (!this.form || !this.initialFormSignatureExceptTestValues) return;
-        const baseline = JSON.parse(this.initialFormSignatureExceptTestValues) as Record<string, unknown>;
-        baseline['secret_ids'] = [...this.selectedSecretIds()].sort();
-        this.initialFormSignatureExceptTestValues = JSON.stringify(baseline);
         this.formDirtyTick.update((v) => v + 1);
     }
 

@@ -16,7 +16,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -40,7 +40,6 @@ import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import {
     ClassificationDecisionTableData,
-    ComputationConfig,
     PromptConfig,
 } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -123,8 +122,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
-    private secretsRestoredForNodeId: string | null = null;
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -210,69 +207,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-
-        effect(() => {
-            const graphId = this.graphId();
-            const node = this.node();
-            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
-            this.secretsRestoredForNodeId = node.id;
-
-            const tableData = (node.data as { table?: ClassificationDecisionTableData })?.table;
-            const preComp = tableData?.pre_computation;
-            const postComp = tableData?.post_computation;
-            if (preComp?.secret_ids !== undefined && postComp?.secret_ids !== undefined) return;
-
-            const nodeId = node.id;
-            const nodeName = node.node_name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    if (this.node().id !== nodeId) return;
-                    const preIds = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.CLASSIFICATION_TABLE,
-                        'pre_python_code'
-                    );
-                    const postIds = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.CLASSIFICATION_TABLE,
-                        'post_python_code'
-                    );
-                    this.applyRestoredSecrets(preComp, postComp, preIds, postIds);
-                });
-        });
-    }
-
-    /**
-     * Applies restored pre/post secret_ids to the picker signals and patches just those fields
-     * into the dirty-tracking baseline. Doesn't call resetBaseline(), which would recompute the
-     * whole node snapshot and bake in any other field the user edited while this async lookup
-     * (SecretDeclarationIndexService.getIndex()) was in flight.
-     */
-    private applyRestoredSecrets(
-        preComp: ComputationConfig | undefined,
-        postComp: ComputationConfig | undefined,
-        preIds: number[],
-        postIds: number[]
-    ): void {
-        const restorePre = preComp?.secret_ids === undefined && preIds.length > 0;
-        const restorePost = postComp?.secret_ids === undefined && postIds.length > 0;
-        if (!restorePre && !restorePost) return;
-
-        if (restorePre) this.preSelectedSecretIds.set(preIds);
-        if (restorePost) this.postSelectedSecretIds.set(postIds);
-
-        if (!this.initialNodeSnapshot) return;
-        const snapshot = JSON.parse(this.initialNodeSnapshot);
-        if (restorePre) snapshot.data.table.pre_computation.secret_ids = [...preIds].sort();
-        if (restorePost) snapshot.data.table.post_computation.secret_ids = [...postIds].sort();
-        this.initialNodeSnapshot = JSON.stringify(snapshot);
-        this.notifyExternalChange();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {

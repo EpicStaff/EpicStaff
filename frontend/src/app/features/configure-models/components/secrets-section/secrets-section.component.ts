@@ -25,7 +25,7 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
@@ -65,7 +65,6 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
 export class SecretsSectionComponent implements OnInit {
     private readonly dialog = inject(Dialog);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -191,7 +190,6 @@ export class SecretsSectionComponent implements OnInit {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.secretDeclarationIndexService.invalidate();
                             this.toastService.success('Secret deleted');
                         },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
@@ -226,7 +224,6 @@ export class SecretsSectionComponent implements OnInit {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.secretDeclarationIndexService.invalidate();
                             this.toastService.success(`${ids.length} secret${ids.length === 1 ? '' : 's'} deleted`);
                             this.selectedRows.set([]);
                         },
