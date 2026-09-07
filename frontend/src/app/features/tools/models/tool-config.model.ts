@@ -9,25 +9,22 @@ export interface ToolConfig {
 }
 
 export interface GetToolUsage {
-    projects: ProjectUsageItem[];
-    staff: AgentUsageItem[];
+    agent_surface: UsageItem[];
+    inline: UsageItem[];
+    shared_surface: UsageItem[];
 }
 
-export interface ProjectUsageItem {
+export interface UsageItem {
     id: number;
     name: string;
 }
 
-export interface AgentUsageItem {
-    id: number;
-    role: string;
-}
-
 export interface GetBulkToolUsageItem {
     id: number;
-    projects_count: number;
-    staff_count: number;
+    agent_surface_count: number;
+    inline_count: number;
     is_built_in: boolean;
+    shared_surface_count: number;
 }
 
 export interface BulkDeleteToolsResponse {

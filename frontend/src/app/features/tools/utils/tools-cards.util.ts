@@ -30,9 +30,9 @@ export interface ToolFilterContext {
 
 /**
  * Combined predicate: sidebar label filter, `showFavoriteOnly`, include/exclude
- * sets, custom filter condition, free-text search, and the `used_in_projects` /
- * `used_in_agents` sort orders (which double as filters — they hide rows with
- * a zero usage count for the corresponding scope).
+ * sets, custom filter condition, free-text search, and the `used_in_*` sort
+ * orders (which double as filters — they hide rows with a zero usage count
+ * for the corresponding scope).
  */
 export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: ToolFilterAdapter<T>): boolean {
     const { filter, sidebarLabelFilter, labelById, searchTerm, usage } = ctx;
@@ -63,12 +63,15 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
         }
     }
 
-    // "Used in projects/agents" sort orders act as filters too: hide anything
-    // with a zero count for the corresponding scope. `most_used`/`unused_first`
-    // stay sort-only (they surface unused rows at the bottom / top).
+    // "Used in *" sort orders act as filters too: hide anything with a zero
+    // count for the corresponding scope. `most_used`/`unused_first` stay
+    // sort-only (they surface unused rows at the bottom / top).
     if (usage.size > 0) {
-        if (filter.sortOrder === 'used_in_projects' && (usage.get(id)?.projects_count ?? 0) === 0) return false;
-        if (filter.sortOrder === 'used_in_agents' && (usage.get(id)?.staff_count ?? 0) === 0) return false;
+        if (filter.sortOrder === 'used_in_agent_surface' && (usage.get(id)?.agent_surface_count ?? 0) === 0)
+            return false;
+        if (filter.sortOrder === 'used_in_shared_surface' && (usage.get(id)?.shared_surface_count ?? 0) === 0)
+            return false;
+        if (filter.sortOrder === 'used_in_inline' && (usage.get(id)?.inline_count ?? 0) === 0) return false;
     }
 
     // Free-text search: match the tool's own searchable text OR any assigned
@@ -98,7 +101,7 @@ export function compareTools<T>(
 ): number {
     const usageSum = (id: number) => {
         const u = usage.get(id);
-        return u ? u.projects_count + u.staff_count : 0;
+        return u ? u.agent_surface_count + u.shared_surface_count + u.inline_count : 0;
     };
     const idA = adapter.idOf(a);
     const idB = adapter.idOf(b);
@@ -107,10 +110,12 @@ export function compareTools<T>(
             return adapter.nameOf(a).localeCompare(adapter.nameOf(b));
         case 'name_desc':
             return adapter.nameOf(b).localeCompare(adapter.nameOf(a));
-        case 'used_in_projects':
-            return (usage.get(idB)?.projects_count ?? 0) - (usage.get(idA)?.projects_count ?? 0);
-        case 'used_in_agents':
-            return (usage.get(idB)?.staff_count ?? 0) - (usage.get(idA)?.staff_count ?? 0);
+        case 'used_in_agent_surface':
+            return (usage.get(idB)?.agent_surface_count ?? 0) - (usage.get(idA)?.agent_surface_count ?? 0);
+        case 'used_in_shared_surface':
+            return (usage.get(idB)?.shared_surface_count ?? 0) - (usage.get(idA)?.shared_surface_count ?? 0);
+        case 'used_in_inline':
+            return (usage.get(idB)?.inline_count ?? 0) - (usage.get(idA)?.inline_count ?? 0);
         case 'most_used':
             return usageSum(idB) - usageSum(idA);
         case 'unused_first':
@@ -130,11 +135,12 @@ export function toUsageVmFields(
     usage: Map<number, GetBulkToolUsageItem>,
     id: number,
     showUsage: boolean
-): Pick<ToolCardVM, 'projectsUsage' | 'agentsUsage' | 'unused'> {
+): Pick<ToolCardVM, 'agentSurfaceUsage' | 'sharedSurfaceUsage' | 'inlineUsage' | 'unused'> {
     const u = showUsage ? usage.get(id) : undefined;
     return {
-        projectsUsage: u?.projects_count || undefined,
-        agentsUsage: u?.staff_count || undefined,
-        unused: u?.projects_count === 0 && u?.staff_count === 0,
+        agentSurfaceUsage: u?.agent_surface_count || undefined,
+        sharedSurfaceUsage: u?.shared_surface_count || undefined,
+        inlineUsage: u?.inline_count || undefined,
+        unused: u?.agent_surface_count === 0 && u?.shared_surface_count === 0 && u?.inline_count === 0,
     };
 }

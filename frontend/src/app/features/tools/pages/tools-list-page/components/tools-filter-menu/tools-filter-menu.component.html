@@ -31,17 +31,25 @@
         type="button"
         class="menu-item"
         role="menuitem"
-        (click)="onSelect('used_in_projects')"
+        (click)="onSelect('used_in_agent_surface')"
     >
-        <span class="label">Used in Projects</span>
+        <span class="label">Used as Agent Tools</span>
     </button>
     <button
         type="button"
         class="menu-item"
         role="menuitem"
-        (click)="onSelect('used_in_agents')"
+        (click)="onSelect('used_in_shared_surface')"
     >
-        <span class="label">Used in Agents</span>
+        <span class="label">Used as Shared Tools</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('used_in_inline')"
+    >
+        <span class="label">Used locally in Flows</span>
     </button>
     <button
         type="button"

@@ -4,8 +4,9 @@ export type ToolSortOrder =
     | 'default'
     | 'name_asc'
     | 'name_desc'
-    | 'used_in_projects'
-    | 'used_in_agents'
+    | 'used_in_agent_surface'
+    | 'used_in_shared_surface'
+    | 'used_in_inline'
     | 'most_used'
     | 'unused_first';
 
@@ -32,8 +33,9 @@ export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
 
 /** Sort orders that require per-tool usage counts to compute. */
 export const USAGE_DEPENDENT_SORTS: readonly ToolSortOrder[] = [
-    'used_in_projects',
-    'used_in_agents',
+    'used_in_agent_surface',
+    'used_in_shared_surface',
+    'used_in_inline',
     'most_used',
     'unused_first',
 ];

@@ -539,12 +539,18 @@ export class ToolsListComponent implements OnInit {
             .subscribe({
                 next: (items) => {
                     const usage = items.find((i) => i.id === tool.id);
-                    const staffCount = usage?.staff_count ?? 0;
-                    const projectsCount = usage?.projects_count ?? 0;
+                    const agentSurfaceCount = usage?.agent_surface_count ?? 0;
+                    const sharedSurfaceCount = usage?.shared_surface_count ?? 0;
+                    const inlineCount = usage?.inline_count ?? 0;
                     const confirm$ =
-                        staffCount + projectsCount > 0
+                        agentSurfaceCount + sharedSurfaceCount + inlineCount > 0
                             ? this.confirmationDialogService.confirm(
-                                  buildSingleDeleteWithUsageDialog(tool.name, staffCount, projectsCount)
+                                  buildSingleDeleteWithUsageDialog(
+                                      tool.name,
+                                      agentSurfaceCount,
+                                      sharedSurfaceCount,
+                                      inlineCount
+                                  )
                               )
                             : this.confirmationDialogService.confirmDelete(tool.name);
                     confirm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
@@ -591,8 +597,9 @@ export class ToolsListComponent implements OnInit {
                         return {
                             id,
                             name: tool?.name ?? '',
-                            staffCount: usage?.staff_count ?? 0,
-                            projectsCount: usage?.projects_count ?? 0,
+                            agentSurfaceCount: usage?.agent_surface_count ?? 0,
+                            sharedSurfaceCount: usage?.shared_surface_count ?? 0,
+                            inlineCount: usage?.inline_count ?? 0,
                         };
                     });
                     runBulkDeleteWithConfirm(ids, {

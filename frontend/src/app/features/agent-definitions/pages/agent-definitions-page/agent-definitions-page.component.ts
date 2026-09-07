@@ -11,6 +11,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -83,8 +84,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
+    private readonly route: ActivatedRoute = inject(ActivatedRoute);
+    private readonly router: Router = inject(Router);
 
     private readonly explorer = viewChild(ExplorerComponent);
+
+    private preselectApplied = false;
+    private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
 
@@ -143,6 +149,38 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 this.store.clearSelection();
             }
         });
+
+        effect(() => {
+            if (this.preselectApplied) return;
+            const loading = this.store.loading();
+            if (loading) {
+                this.sawLoading = true;
+                return;
+            }
+            if (!this.sawLoading) return;
+            this.preselectApplied = true;
+            this.applySurfaceIdPreselect();
+        });
+    }
+
+    private applySurfaceIdPreselect(): void {
+        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
+        if (raw == null) return;
+        void this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { surfaceId: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+        });
+        const surfaceId = Number(raw);
+        if (!Number.isFinite(surfaceId)) return;
+        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+        if (!surface) return;
+        if (surface.owner_agent != null) {
+            this.store.selectAgent(surface.owner_agent);
+        } else {
+            this.store.openSharedSurfaceSource(surface.id);
+        }
     }
 
     ngOnInit(): void {

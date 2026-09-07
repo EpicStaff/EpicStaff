@@ -11,6 +11,8 @@ export interface ToolUsageDialogData {
     usage: GetToolUsage;
 }
 
+type UsageSectionKey = 'agent' | 'shared' | 'inline';
+
 @Component({
     selector: 'app-tool-usage-dialog',
     imports: [AppSvgIconComponent, MatTooltipModule],
@@ -23,15 +25,18 @@ export class ToolUsageDialogComponent {
     private readonly router = inject(Router);
     private readonly data = inject<ToolUsageDialogData>(DIALOG_DATA);
 
-    public readonly agents = this.data.usage.staff;
-    public readonly projects = this.data.usage.projects;
+    public readonly agentSurface = this.data.usage.agent_surface;
+    public readonly sharedSurface = this.data.usage.shared_surface;
+    public readonly inline = this.data.usage.inline;
 
-    public readonly agentCount = this.agents.length;
-    public readonly projectCount = this.projects.length;
-    public readonly totalCount = this.agentCount + this.projectCount;
+    public readonly agentSurfaceCount = this.agentSurface.length;
+    public readonly sharedSurfaceCount = this.sharedSurface.length;
+    public readonly inlineCount = this.inline.length;
+    public readonly totalCount = this.agentSurfaceCount + this.sharedSurfaceCount + this.inlineCount;
 
     private readonly agentSection = viewChild<ElementRef<HTMLElement>>('agentSection');
-    private readonly projectSection = viewChild<ElementRef<HTMLElement>>('projectSection');
+    private readonly sharedSection = viewChild<ElementRef<HTMLElement>>('sharedSection');
+    private readonly inlineSection = viewChild<ElementRef<HTMLElement>>('inlineSection');
 
     public readonly hasAny = computed(() => this.totalCount > 0);
 
@@ -39,21 +44,26 @@ export class ToolUsageDialogComponent {
         this.dialogRef.close();
     }
 
-    public scrollToSection(target: 'agent' | 'project'): void {
-        const el = target === 'agent' ? this.agentSection() : this.projectSection();
+    public scrollToSection(target: UsageSectionKey): void {
+        const el =
+            target === 'agent'
+                ? this.agentSection()
+                : target === 'shared'
+                  ? this.sharedSection()
+                  : this.inlineSection();
         el?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    public openAgent(): void {
-        this.openInNewTab(['/staff']);
+    public openAgentsForSurface(surfaceId: number): void {
+        this.openInNewTab(['/agents'], { surfaceId });
     }
 
-    public openProject(id: number): void {
-        this.openInNewTab(['/projects', id]);
+    public openFlows(id: number): void {
+        this.openInNewTab([`/flows/${id}`]);
     }
 
-    private openInNewTab(commands: unknown[]): void {
-        const url = this.router.serializeUrl(this.router.createUrlTree(commands));
+    private openInNewTab(commands: unknown[], queryParams?: Record<string, unknown>): void {
+        const url = this.router.serializeUrl(this.router.createUrlTree(commands, { queryParams }));
         window.open(url, '_blank');
     }
 }

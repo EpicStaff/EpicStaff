@@ -24,22 +24,31 @@
                         <span class="unused">Unused</span>
                     } @else {
                         <div class="usage-chip">
-                            @if (tool().projectsUsage) {
-                                <span class="chip-item">
-                                    <app-svg-icon
-                                        icon="project"
-                                        size="1rem"
-                                    />
-                                    <span>{{ tool().projectsUsage }}</span>
-                                </span>
-                            }
-                            @if (tool().agentsUsage) {
+                            @if (tool().agentSurfaceUsage) {
                                 <span class="chip-item">
                                     <app-svg-icon
                                         icon="agent"
                                         size="1rem"
                                     />
-                                    <span>{{ tool().agentsUsage }}</span>
+                                    <span>{{ tool().agentSurfaceUsage }}</span>
+                                </span>
+                            }
+                            @if (tool().sharedSurfaceUsage) {
+                                <span class="chip-item">
+                                    <app-svg-icon
+                                        icon="surfaces-tab"
+                                        size="0.875rem"
+                                    />
+                                    <span>{{ tool().sharedSurfaceUsage }}</span>
+                                </span>
+                            }
+                            @if (tool().inlineUsage) {
+                                <span class="chip-item">
+                                    <app-svg-icon
+                                        icon="local-surface"
+                                        size="1rem"
+                                    />
+                                    <span>{{ tool().inlineUsage }}</span>
                                 </span>
                             }
                         </div>

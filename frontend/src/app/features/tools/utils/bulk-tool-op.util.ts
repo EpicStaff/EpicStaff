@@ -125,7 +125,13 @@ export function runDeleteUnused<T extends { id: number }>(
         .subscribe({
             next: (items) => {
                 const unusedIds = items
-                    .filter((i) => i.projects_count === 0 && i.staff_count === 0 && !i.is_built_in)
+                    .filter(
+                        (i) =>
+                            i.agent_surface_count === 0 &&
+                            i.shared_surface_count === 0 &&
+                            i.inline_count === 0 &&
+                            !i.is_built_in
+                    )
                     .map((i) => i.id);
                 if (unusedIds.length === 0) {
                     opts.toast.success(`No unused ${opts.entityLabel}s to delete.`);
@@ -183,12 +189,13 @@ export function buildUnusedDeleteDialog(count: number, entityLabelPlural: string
 
 /**
  * Single-tool delete with a "Caution" block that summarises
- * the agent + project dependencies that will be broken.
+ * the surface dependencies (agent / shared / inline) that will be broken.
  */
 export function buildSingleDeleteWithUsageDialog(
     toolName: string,
-    staffCount: number,
-    projectsCount: number
+    agentSurfaceCount: number,
+    sharedSurfaceCount: number,
+    inlineCount: number
 ): ConfirmationDialogData {
     const safeName = escapeHtml(toolName);
     return {
@@ -198,9 +205,11 @@ export function buildSingleDeleteWithUsageDialog(
             `This action cannot be undone and will break existing dependencies.`,
         cautionTitle: 'Caution',
         caution:
-            `This tool is currently connected to <strong>${staffCount} ${pluralise(staffCount, 'agent', 'agents')}</strong> ` +
-            `and <strong>${projectsCount} ${pluralise(projectsCount, 'project', 'projects')}</strong>. ` +
-            `If deleted, it will be removed from all of these workspaces.`,
+            `This tool is currently connected to ` +
+            `<strong>${agentSurfaceCount} ${pluralise(agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
+            `<strong>${sharedSurfaceCount} ${pluralise(sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
+            `and <strong>${inlineCount} ${pluralise(inlineCount, 'inline usage', 'inline usages')}</strong>. ` +
+            `If deleted, it will be removed from all of these surfaces.`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
         type: 'danger',
@@ -213,17 +222,26 @@ export function buildSingleDeleteWithUsageDialog(
  * surface first in the collapsible list.
  */
 export function buildBulkSelectedDeleteDialog(
-    tools: { id: number; name: string; staffCount: number; projectsCount: number }[]
+    tools: {
+        id: number;
+        name: string;
+        agentSurfaceCount: number;
+        sharedSurfaceCount: number;
+        inlineCount: number;
+    }[]
 ): ConfirmationDialogData {
     const count = tools.length;
-    const sorted = [...tools].sort((a, b) => b.staffCount + b.projectsCount - (a.staffCount + a.projectsCount));
+    const total = (t: { agentSurfaceCount: number; sharedSurfaceCount: number; inlineCount: number }) =>
+        t.agentSurfaceCount + t.sharedSurfaceCount + t.inlineCount;
+    const sorted = [...tools].sort((a, b) => total(b) - total(a));
     const listItems = sorted
         .map((t) => {
             const safeName = escapeHtml(t.name);
             return (
                 `<li><strong>${safeName}</strong> is connected to ` +
-                `<strong>${t.staffCount} ${pluralise(t.staffCount, 'agent', 'agents')}</strong> and ` +
-                `<strong>${t.projectsCount} ${pluralise(t.projectsCount, 'project', 'projects')}</strong>.</li>`
+                `<strong>${t.agentSurfaceCount} ${pluralise(t.agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
+                `<strong>${t.sharedSurfaceCount} ${pluralise(t.sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
+                `and <strong>${t.inlineCount} ${pluralise(t.inlineCount, 'inline usage', 'inline usages')}</strong>.</li>`
             );
         })
         .join('');
@@ -232,7 +250,7 @@ export function buildBulkSelectedDeleteDialog(
         title: 'Delete Tools?',
         message:
             'This action cannot be undone and will break existing dependencies ' +
-            'across multiple agents and projects.',
+            'across multiple agent, shared, and inline tool surfaces.',
         caution:
             `<details open><summary>You are about to permanently delete <strong>${count} tools</strong>.</summary>` +
             `<ul>${listItems}</ul></details>`,

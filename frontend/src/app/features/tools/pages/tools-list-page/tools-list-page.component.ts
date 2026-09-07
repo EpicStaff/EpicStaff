@@ -245,11 +245,14 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
             case 'sort_desc':
                 this.viewState.patchFilter({ sortOrder: 'name_desc' });
                 return;
-            case 'used_in_projects':
-                this.viewState.patchFilter({ sortOrder: 'used_in_projects' });
+            case 'used_in_agent_surface':
+                this.viewState.patchFilter({ sortOrder: 'used_in_agent_surface' });
                 return;
-            case 'used_in_agents':
-                this.viewState.patchFilter({ sortOrder: 'used_in_agents' });
+            case 'used_in_shared_surface':
+                this.viewState.patchFilter({ sortOrder: 'used_in_shared_surface' });
+                return;
+            case 'used_in_inline':
+                this.viewState.patchFilter({ sortOrder: 'used_in_inline' });
                 return;
             case 'most_used':
                 this.viewState.patchFilter({ sortOrder: 'most_used' });
