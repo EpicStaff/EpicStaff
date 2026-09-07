@@ -27,7 +27,6 @@ async def main():
     )
     session_manager_service = GraphSessionManagerService(
         redis_service=redis_service,
-        crew_parser_service=crew_parser_service,
         session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
         session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
         stop_session_channel=settings.STOP_SESSION_CHANNEL,

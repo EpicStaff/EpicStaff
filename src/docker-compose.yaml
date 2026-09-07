@@ -242,13 +242,13 @@ services:
       start_period: 5s
 
   crew:
-#    image: ghcr.io/epicstaff/crew:${IMAGE_TAG:-latest}
+    image: ghcr.io/epicstaff/crew:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./crew/Dockerfile.crew
     container_name: crew
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *redis-env, *communication-env]
       CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
@@ -258,6 +258,7 @@ services:
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
+      CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
     networks:
       - backend-network
     tty: true
