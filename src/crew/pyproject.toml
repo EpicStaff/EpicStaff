@@ -14,7 +14,7 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
 langgraph = "^0.5.4"
-pyyaml = "6.0.2"
+pyyaml = "==6.0.3"
 python-dotenv = "==1.2.2"
 datamodel-code-generator = "==0.64.0"
 redis = "==5.3.1"

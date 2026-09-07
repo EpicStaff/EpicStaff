@@ -25,7 +25,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Scan src/ with Trivy
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # TBD if blocking
+      - name: Scan src/ (actionable)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -39,8 +45,23 @@ jobs:
         env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+      
+      - name: Scan src/ (all known)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          scan-ref: src
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: table
+          output: trivy-src-all.txt
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
-      - name: Scan frontend/ with Trivy
+      - name: Scan frontend/ (actionable)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -56,9 +77,42 @@ jobs:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
+      - name: Scan frontend/ (all known)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          scan-ref: frontend
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          skip-dirs: '**/node_modules'
+          format: table
+          output: trivy-frontend-all.txt
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+
+      # Checks for partially landed fixes. Blocking.
+      - name: Check shared dependency floor
+        run: |
+          pip install packaging
+          python .github/scripts/check_dependency_floor.py
+
       - name: Combine reports
         if: always()
         run: |
+          emit() {   # $1 = heading, $2 = report file
+            echo "---------------- $1 ----------------"
+            if [ ! -s "$2" ]; then
+              echo "NO REPORT PRODUCED -- that scan step did not complete."
+            elif grep -q '^Total:' "$2"; then
+              cat "$2"
+            else
+              echo "Nothing in scope."
+            fi
+            echo
+          }
           {
             echo "EpicStaff dependency scan"
             echo "repo:   ${{ github.repository }}"
@@ -67,23 +121,30 @@ jobs:
             echo "event:  ${{ github.event_name }}"
             echo "run:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo
-            for scope in src frontend; do
-              echo "================ $scope/ ================"
-              if [ -s "trivy-$scope.txt" ]; then
-                cat "trivy-$scope.txt"
-              else
-                echo "NO REPORT PRODUCED -- the scan step did not complete."
-              fi
-              echo
-            done
+            echo "================================================================"
+            echo "SECTION 1 - ACTIONABLE"
+            echo "HIGH and CRITICAL advisories that have a fix available upstream."
+            echo "This is the section to work from."
+            echo "================================================================"
+            echo
+            emit "src/" trivy-src.txt
+            emit "frontend/" trivy-frontend.txt
+            echo "================================================================"
+            echo "SECTION 2 - COMPLETE RECORD, FOR REFERENCE ONLY"
+            echo
+            echo "Every known advisory at every severity, INCLUDING those with no"
+            echo "fix available. This is a SUPERSET: it repeats everything in"
+            echo "Section 1. Do not add the two counts together."
+            echo
+            echo "Nothing here is a confirmed exposure. These are advisories"
+            echo "against locked versions, not reachability findings -- our code"
+            echo "may never reach the vulnerable path. Treat as inventory."
+            echo "================================================================"
+            echo
+            emit "src/ (all known)" trivy-src-all.txt
+            emit "frontend/ (all known)" trivy-frontend-all.txt
           } > scan-report.txt
           echo "REPORT_NAME=$(date -u +%Y-%m-%dT%H%M%SZ)-${{ github.event_name }}-${{ github.run_id }}.txt" >> "$GITHUB_ENV"
-
-      - name: Set up Python
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
 
       - name: Install dependencies
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
