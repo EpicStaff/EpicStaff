@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel
 
 from tables.models import Secret
@@ -14,6 +16,12 @@ _SECRET_ID_SUFFIX = "_secret_id"
 # "secret_names".endswith("_secret_id") is False.
 _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
+
+# Third convention: `secret(<name>)` markers embedded in header string values.
+# The value keeps the marker in the persisted graph_schema; only the
+# resolve_payload copy (bound for Redis/upstream) gets the plaintext.
+_HEADER_FIELDS = frozenset({"headers", "extra_headers"})
+_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
 
 
 class SecretResolver:
@@ -118,6 +126,12 @@ class SecretResolver:
                 self._fill_named(model=model, org_id=org_id)
                 continue
 
+            if field_name in _HEADER_FIELDS:
+                self._fill_header_markers(
+                    model=model, field_name=field_name, org_id=org_id
+                )
+                continue
+
             if not field_name.endswith(_SECRET_ID_SUFFIX):
                 self._fill(node=getattr(model, field_name), org_id=org_id)
                 continue
@@ -163,6 +177,48 @@ class SecretResolver:
                 org_id=org_id,
                 context=f"{model_cls.__name__}.{_NAMED_VALUES_FIELD}",
             ),
+        )
+
+    def _fill_header_markers(
+        self, *, model: BaseModel, field_name: str, org_id: int
+    ) -> None:
+        """Replace `secret(<name>)` markers in a header dict with plaintext."""
+        headers = getattr(model, field_name)
+        if not headers:
+            return
+
+        names: set[str] = set()
+        for value in headers.values():
+            if isinstance(value, str):
+                names.update(_SECRET_MARKER_RE.findall(value))
+        if not names:
+            return
+
+        context = f"{type(model).__name__}.{field_name}"
+        resolved = self.resolve_named(
+            names=sorted(names), org_id=org_id, context=context
+        )
+
+        missing = names - resolved.keys()
+        if missing:
+            raise SecretResolutionError(
+                detail=(
+                    f"{context}: unknown secret name(s) {sorted(missing)} "
+                    f"referenced in a header marker."
+                )
+            )
+
+        setattr(
+            model,
+            field_name,
+            {
+                key: (
+                    _SECRET_MARKER_RE.sub(lambda m: resolved[m.group(1)], value)
+                    if isinstance(value, str)
+                    else value
+                )
+                for key, value in headers.items()
+            },
         )
 
     def _message(self, *, context: str, secret_id: int, reason: str) -> str:

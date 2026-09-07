@@ -73,7 +73,9 @@ class TestResolveMany:
     node type with multiple secret-backed fields) doesn't have to reinvent
     the org-scoped-batch-lookup pattern."""
 
-    def test_empty_list_returns_empty_dict_with_no_query(self, org, django_assert_num_queries):
+    def test_empty_list_returns_empty_dict_with_no_query(
+        self, org, django_assert_num_queries
+    ):
         with django_assert_num_queries(0):
             assert secret_resolver.resolve_many(secret_ids=[], org_id=org.id) == {}
 
@@ -102,7 +104,9 @@ class TestResolveMany:
             secret_c.pk: "sk-many-c",
         }
 
-    def test_duplicate_ids_are_deduplicated_into_one_row(self, org, django_assert_num_queries):
+    def test_duplicate_ids_are_deduplicated_into_one_row(
+        self, org, django_assert_num_queries
+    ):
         secret = secret_service.create(text="sk-many-dup", org=org, name="many-dup")
 
         with django_assert_num_queries(1):
@@ -491,4 +495,113 @@ class TestResolveNamed:
         with pytest.raises(SecretResolutionError):
             secret_resolver.resolve_payload(
                 payload=Broken(secret_names=["ANY"]), org_id=org.id
+            )
+
+
+@pytest.mark.django_db
+class TestResolveHeaderMarkers:
+    """`secret(<name>)` markers inside header dicts resolve to plaintext on the
+    payload copy only; the persisted original keeps the markers, so no raw
+    credential ever reaches Session.graph_schema."""
+
+    def test_marker_replaced_with_plaintext(self, org):
+        secret_service.create(text="sk-hdr", org=org, name="AZURE_KEY")
+
+        resolved = secret_resolver.resolve_payload(
+            payload=LLMConfigData(
+                model="gpt-4o", headers={"api-key": "secret(AZURE_KEY)"}
+            ),
+            org_id=org.id,
+        )
+
+        assert resolved.headers == {"api-key": "sk-hdr"}
+
+    def test_marker_in_a_template_keeps_surrounding_text(self, org):
+        secret_service.create(text="tok-123", org=org, name="BEARER")
+
+        resolved = secret_resolver.resolve_payload(
+            payload=LLMConfigData(
+                model="gpt-4o", headers={"Authorization": "Bearer secret(BEARER)"}
+            ),
+            org_id=org.id,
+        )
+
+        assert resolved.headers == {"Authorization": "Bearer tok-123"}
+
+    def test_many_headers_and_markers_resolve_in_a_single_query(
+        self, org, django_assert_num_queries
+    ):
+        secret_service.create(text="v1", org=org, name="H1")
+        secret_service.create(text="v2", org=org, name="H2")
+
+        with django_assert_num_queries(1):
+            resolved = secret_resolver.resolve_payload(
+                payload=LLMConfigData(
+                    model="gpt-4o",
+                    headers={"A": "secret(H1)", "B": "x secret(H2) secret(H1)"},
+                ),
+                org_id=org.id,
+            )
+
+        assert resolved.headers == {"A": "v1", "B": "x v2 v1"}
+
+    def test_extra_headers_are_resolved_too(self, org):
+        secret_service.create(text="e-val", org=org, name="EXTRA")
+
+        resolved = secret_resolver.resolve_payload(
+            payload=LLMConfigData(
+                model="gpt-4o", extra_headers={"X-Api-Key": "secret(EXTRA)"}
+            ),
+            org_id=org.id,
+        )
+
+        assert resolved.extra_headers == {"X-Api-Key": "e-val"}
+
+    def test_value_without_marker_is_untouched(self, org):
+        resolved = secret_resolver.resolve_payload(
+            payload=LLMConfigData(model="gpt-4o", headers={"X-Trace": "plain-value"}),
+            org_id=org.id,
+        )
+
+        assert resolved.headers == {"X-Trace": "plain-value"}
+
+    def test_empty_headers_issues_no_query(self, org, django_assert_num_queries):
+        with django_assert_num_queries(0):
+            resolved = secret_resolver.resolve_payload(
+                payload=LLMConfigData(model="gpt-4o", headers={}), org_id=org.id
+            )
+
+        assert resolved.headers == {}
+
+    def test_unknown_name_raises_with_locating_context(self, org):
+        with pytest.raises(SecretResolutionError) as exc:
+            secret_resolver.resolve_payload(
+                payload=LLMConfigData(
+                    model="gpt-4o", headers={"api-key": "secret(NOPE)"}
+                ),
+                org_id=org.id,
+            )
+
+        message = str(exc.value)
+        assert "LLMConfigData.headers" in message
+        assert "NOPE" in message
+
+    def test_input_payload_keeps_the_marker(self, org):
+        secret_service.create(text="sk-orig", org=org, name="ORIG")
+        payload = LLMConfigData(model="gpt-4o", headers={"api-key": "secret(ORIG)"})
+
+        secret_resolver.resolve_payload(payload=payload, org_id=org.id)
+
+        # The caller's object is persisted to graph_schema -- it must keep the marker.
+        assert payload.headers == {"api-key": "secret(ORIG)"}
+
+    def test_foreign_org_name_is_not_resolvable(self, org, other_org):
+        secret_service.create(text="sk-foreign", org=other_org, name="FOREIGN_HDR")
+
+        with pytest.raises(SecretResolutionError):
+            secret_resolver.resolve_payload(
+                payload=LLMConfigData(
+                    model="gpt-4o", headers={"api-key": "secret(FOREIGN_HDR)"}
+                ),
+                org_id=org.id,
             )
