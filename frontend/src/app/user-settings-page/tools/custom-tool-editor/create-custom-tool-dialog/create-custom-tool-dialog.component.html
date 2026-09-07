@@ -111,7 +111,9 @@
                     <div class="form-section">
                         <app-node-secrets-field
                             [value]="selectedSecretIds()"
-                            tooltipText="Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                            [readonly]="!canEditSecrets()"
+                            [names]="secretNames()"
+                            [tooltipText]="secretsTooltip()"
                             (valueChange)="onSecretsChange($event)"
                         />
                     </div>

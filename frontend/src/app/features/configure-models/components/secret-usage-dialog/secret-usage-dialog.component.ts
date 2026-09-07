@@ -11,6 +11,7 @@ import {
     ButtonComponent,
     EmbeddingModelConfigDialogComponent,
     FlowNodeListComponent,
+    HelpTooltipComponent,
     LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
     TranscriptionModelConfigDialogComponent,
@@ -74,6 +75,7 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
         FlowNodeListComponent,
         LoadingSpinnerComponent,
         ButtonComponent,
+        HelpTooltipComponent,
     ],
     animations: [
         trigger('collapseExpand', [

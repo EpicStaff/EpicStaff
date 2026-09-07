@@ -25,11 +25,14 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { SETTINGS_DIALOG_SIZE } from '../../services/configure-models-dialog.service';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
@@ -59,6 +62,7 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
         SelectComponent,
         LoadingSpinnerComponent,
         MatTooltip,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -68,7 +72,14 @@ export class SecretsSectionComponent implements OnInit {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissionsService = inject(PermissionsService);
     private readonly usedByFilterSelect = viewChild.required<SelectComponent>('usedByFilterSelect');
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+    public readonly canReadSecretUsage = computed(() =>
+        this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read)
+    );
 
     public readonly searchTerm = signal<string>('');
     public readonly usedByFilterItems = USED_BY_FILTER_ITEMS;

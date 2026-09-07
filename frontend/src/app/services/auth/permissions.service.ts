@@ -47,6 +47,10 @@ export class PermissionsService implements StorageService {
         return actions.some((action) => this.can(resource, action));
     }
 
+    canEditSecrets(subjectResource: ResourceCode): boolean {
+        return this.can(subjectResource, ActionCode.Read) && this.can(ResourceCode.Secrets, ActionCode.Use);
+    }
+
     get isSuperadmin(): boolean {
         return this._isSuperadmin();
     }

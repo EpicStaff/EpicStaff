@@ -16,11 +16,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import {
     ActionDropdownButtonComponent,
@@ -111,10 +113,31 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly preSecretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
+    );
+    public readonly postSecretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+    );
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
-    public readonly preSecretNames = computed(() => this.namesFor(this.preSelectedSecretIds()));
-    public readonly postSecretNames = computed(() => this.namesFor(this.postSelectedSecretIds()));
+    public readonly preSecretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.preSelectedSecretIds())
+            : ((this.node().data as { table?: ClassificationDecisionTableData })?.table?.pre_computation
+                  ?.secret_names ?? [])
+    );
+    public readonly postSecretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.postSelectedSecretIds())
+            : ((this.node().data as { table?: ClassificationDecisionTableData })?.table?.post_computation
+                  ?.secret_names ?? [])
+    );
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
@@ -122,6 +145,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -366,6 +390,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
+                secret_names: this.preSecretNames(),
             },
             post_computation: {
                 code: this.postCode,
@@ -373,6 +398,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
+                secret_names: this.postSecretNames(),
             },
             condition_groups: conditionGroups,
             route_variable_name: 'route_code',
@@ -667,14 +693,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postSelectedSecretIds.set(values);
         this.notifyExternalChange();
         this.codeChange$.next();
-    }
-
-    private namesFor(ids: number[]): string[] {
-        const selected = new Set(ids);
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
     }
 
     // ── Input map helpers ──

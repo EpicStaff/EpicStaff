@@ -62,6 +62,13 @@ export class SecretsStorageService implements StorageService {
         return `••••${tail}`;
     }
 
+    namesForIds(ids: number[]): string[] {
+        const selected = new Set(ids);
+        return this.secretsSignal()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
+    }
+
     private createOrUpdateSecretInCache(updated: Secret): void {
         this.secretsSignal.update((secrets) => {
             const index = secrets.findIndex((s) => s.id === updated.id);

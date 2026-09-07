@@ -21,12 +21,14 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 
+import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import {
     CreatePythonCodeToolPayload,
     GetPythonCodeToolRequest,
 } from '../../../../features/tools/models/python-code-tool.model';
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
@@ -130,6 +132,7 @@ export class CreateCustomToolDialogComponent {
     private readonly confirmDialog = inject(ConfirmationDialogService);
     private readonly toolsEvents = inject(ToolsEventsService);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
@@ -182,16 +185,19 @@ export class CreateCustomToolDialogComponent {
 
     public readonly tableVariables = signal<ToolVariable[]>([]);
     public readonly tableDrillStack = signal<DrillStep[]>([]);
-    public readonly selectedSecretIds = signal<number[]>(
-        (this.selectedTool()?.python_code?.secrets ?? []).map((secret) => secret.id)
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Tools));
+    public readonly secretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this tool's code. You don't have permission to change which secrets are selected."
     );
-    public readonly secretNames = computed(() => {
-        const selected = new Set(this.selectedSecretIds());
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
-    });
+    public readonly selectedSecretIds = signal<number[]>(toSecretIds(this.selectedTool()?.python_code?.secrets));
+    private readonly selectedSecretNames = signal<string[]>(toSecretNames(this.selectedTool()?.python_code?.secrets));
+    public readonly secretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
+            : this.selectedSecretNames()
+    );
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);

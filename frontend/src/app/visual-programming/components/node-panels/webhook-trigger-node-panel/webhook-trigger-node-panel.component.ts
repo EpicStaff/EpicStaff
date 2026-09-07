@@ -9,8 +9,10 @@ import {
     CustomInputComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
+import { ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -37,6 +39,7 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
 export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTriggerNodeModel> {
     private readonly clipboard = inject(Clipboard);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -47,14 +50,18 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly secretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."
+    );
     public readonly selectedSecretIds = signal<number[]>([]);
-    public readonly secretNames = computed(() => {
-        const selected = new Set(this.selectedSecretIds());
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
-    });
+    public readonly secretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
+            : (this.node().data.python_code.secret_names ?? [])
+    );
 
     copied = signal<boolean>(false);
     selectedTrigger = signal<WebhookTriggerModel | null>(null);
@@ -122,6 +129,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                     entrypoint: 'main',
                     libraries: librariesArray,
                     secret_ids: this.selectedSecretIds(),
+                    secret_names: this.secretNames(),
                 },
             },
         };

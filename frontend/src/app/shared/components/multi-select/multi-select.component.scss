@@ -54,6 +54,11 @@
             outline: none;
             border-color: rgba(104, 95, 255, 0.5);
         }
+
+        &:disabled {
+            cursor: default;
+            opacity: 0.5;
+        }
     }
 
     &__list {
@@ -158,6 +163,14 @@
         &--selected {
             border-color: rgba(104, 95, 255, 0.6);
             background: rgba(104, 95, 255, 0.12);
+        }
+
+        &--readonly {
+            cursor: default;
+
+            &:hover {
+                background: var(--color-ks-line);
+            }
         }
 
         &--checkbox-left {

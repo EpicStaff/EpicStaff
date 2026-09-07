@@ -2,10 +2,12 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
@@ -95,7 +97,9 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="selectedSecretIds()"
-                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                [readonly]="!canEditSecrets()"
+                                [names]="secretNames()"
+                                [tooltipText]="secretsTooltip()"
                                 (valueChange)="onSecretsChange($event)"
                             />
 
@@ -407,14 +411,18 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 400);
 
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly secretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
+    );
     public readonly selectedSecretIds = signal<number[]>([]);
-    public readonly secretNames = computed(() => {
-        const selected = new Set(this.selectedSecretIds());
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
-    });
+    public readonly secretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
+            : (this.node().data.secret_names ?? [])
+    );
     public readonly inputMapKeys = computed(() => {
         this.formDirtyTick();
         if (!this.form) return [];
@@ -466,7 +474,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     constructor(
         private readonly sidePanelService: SidePanelService,
         private readonly pythonCodeRunService: PythonCodeRunService,
-        private readonly secretsStorageService: SecretsStorageService
+        private readonly secretsStorageService: SecretsStorageService,
+        private readonly permissionsService: PermissionsService
     ) {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
@@ -638,6 +647,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 libraries: librariesArray,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
+                secret_names: this.secretNames(),
             },
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };

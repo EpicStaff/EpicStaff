@@ -1,6 +1,6 @@
 import { generateUuid } from '@shared/utils';
 
-import { toSecretIds } from '../../../../features/tools/models/python-code.model';
+import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
@@ -72,6 +72,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     output_variable_path: n.pre_output_variable_path ?? null,
                     libraries: n.pre_python_code?.libraries ?? [],
                     secret_ids: toSecretIds(n.pre_python_code?.secrets),
+                    secret_names: toSecretNames(n.pre_python_code?.secrets),
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
@@ -79,6 +80,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     output_variable_path: n.post_output_variable_path ?? null,
                     libraries: n.post_python_code?.libraries ?? [],
                     secret_ids: toSecretIds(n.post_python_code?.secrets),
+                    secret_names: toSecretNames(n.post_python_code?.secrets),
                 },
                 condition_groups: conditionGroups,
             },

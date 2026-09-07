@@ -73,6 +73,7 @@ export class MultiSelectComponent implements OnInit {
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
     saveLabel = input<string>('Save Selection');
+    readonlyView = input<boolean>(false);
 
     isOpen = signal(false);
     search = signal('');
@@ -229,6 +230,7 @@ export class MultiSelectComponent implements OnInit {
     }
 
     toggleValue(value: unknown) {
+        if (this.readonlyView()) return;
         const arr = [...this.tempSelected()];
         const i = arr.indexOf(value);
         if (i >= 0) arr.splice(i, 1);
