@@ -454,13 +454,18 @@ services:
     restart: always
 
 
-  #DEV container for test SMTP (remove later) 
+  # Dev-only SMTP catcher. Gated behind profiles: ["dev"] — only starts when
+  # COMPOSE_PROFILES includes "dev", which env.yaml generates automatically
+  # for the dev target (kept in sync with DJANGO_DEBUG) and never for prod.
+  # See settings/email.py's EMAIL_HOST comment for the full rationale — do
+  # not remove this gate or give DJANGO_EMAIL_HOST a live prod default.
   mailpit:
     container_name: mailpit
     image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+    profiles: ["dev"]
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # web UI: http://localhost:8025/
+      - "127.0.0.1:1025:1025"   # SMTP
+      - "127.0.0.1:8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
   
