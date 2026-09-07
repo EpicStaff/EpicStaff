@@ -33,7 +33,6 @@ jobs:
           scan-ref: src
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          skip-dirs: '**/crew/libraries/crewAI,**/crew/libraries/mem0'
           format: table
           output: trivy-src.txt
           exit-code: '0'
