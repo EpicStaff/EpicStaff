@@ -148,8 +148,8 @@
     border: 1px solid var(--accent-color);
     border-radius: 4px;
     color: var(--accent-color);
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
     cursor: pointer;
     transition:
         background-color 0.15s ease,
@@ -183,8 +183,8 @@
     border: 1px dashed var(--transparent-white-8, rgba(217, 217, 222, 0.08));
     border-radius: 10px;
     color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     cursor: pointer;
     transition: all 0.15s ease;
 

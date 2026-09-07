@@ -15,8 +15,8 @@
 
 .recent-section {
     .section-title-no-tabs {
-        font-size: 14px;
-        font-weight: 700;
+        font-size: var(--text-body-large-size);
+        font-weight: var(--text-body-large-weight);
         color: var(--color-ks-text);
         margin: 0 0 0.5rem;
         text-transform: uppercase;
@@ -25,10 +25,10 @@
 
     .empty-message-no-tabs {
         margin-top: 13px;
-        font-weight: 400;
-        font-size: 14px;
+        font-weight: var(--text-body-weight);
+        font-size: var(--text-body-size);
         color: rgba(217, 217, 222, 0.6);
-        font-size: 14px;
+        font-size: var(--text-body-size);
         text-align: left;
     }
 }
@@ -70,8 +70,8 @@
     }
 
     .recent-flow-name {
-        font-size: 14px;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--color-text-primary);
         white-space: nowrap;
         text-decoration: none;

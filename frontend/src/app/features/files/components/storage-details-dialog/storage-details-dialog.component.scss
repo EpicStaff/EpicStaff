@@ -20,8 +20,8 @@
 
     &__title {
         margin: 0;
-        font-size: 20px;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         line-height: 1.3;
         letter-spacing: 0;
     }
@@ -67,9 +67,9 @@
     &__section-title {
         margin-bottom: 24px;
         color: rgba(217, 217, 222, 0.7);
-        font-size: 14px;
-        font-weight: 700;
-        line-height: 1.3;
+        font-size: var(--text-body-large-size);
+        font-weight: var(--text-body-large-weight);
+        line-height: var(--text-body-large-line-height);
         letter-spacing: 0;
         text-transform: uppercase;
     }
@@ -88,16 +88,16 @@
 
     &__label {
         color: rgba(217, 217, 222, 0.7);
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 1.3;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
         letter-spacing: 0;
     }
 
     &__value {
         color: #d9d9de;
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         line-height: 1.2;
         letter-spacing: 0;
         word-break: break-word;
@@ -117,8 +117,8 @@
 
     &__path-value {
         color: rgba(217, 217, 222, 0.7);
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         line-height: 18px;
         letter-spacing: 0;
         overflow: hidden;
@@ -159,9 +159,9 @@
         border: 1px solid rgba(217, 217, 222, 0.16);
         background: rgba(255, 255, 255, 0.03);
         color: #d9d9de;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.3;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         letter-spacing: 0;
     }
 
@@ -185,9 +185,9 @@
 
     &__empty {
         color: rgba(217, 217, 222, 0.6);
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.3;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         letter-spacing: 0;
     }
 }

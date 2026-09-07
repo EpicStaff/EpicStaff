@@ -41,7 +41,7 @@
     }
 
     &__icon {
-        font-size: 15px;
+        font-size: 0.9375rem;
         color: var(--color-input-text-placeholder);
         flex-shrink: 0;
         pointer-events: none;
@@ -103,8 +103,8 @@
     }
 
     &__month-year {
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--active-color, var(--accent-color, #685fff));
     }
 
@@ -133,10 +133,9 @@
     }
 
     &__weekday {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 12px;
-        line-height: 130%;
+        font-weight: var(--text-body-small-weight);
+        font-size: var(--text-body-small-size);
+        line-height: var(--text-body-small-line-height);
         letter-spacing: 0;
         text-align: center;
         text-transform: uppercase;
@@ -161,7 +160,6 @@
         max-width: 30px;
         border-radius: 50%;
         font-size: 0.8125rem;
-        font-weight: 300;
         cursor: pointer;
         transition:
             background 0.15s ease,
@@ -195,7 +193,7 @@
 
     &__error {
         color: #ef4444;
-        font-size: 12px;
+        font-size: 0.75rem;
         margin-top: 4px;
         line-height: 1.4;
     }

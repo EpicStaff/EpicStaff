@@ -41,7 +41,7 @@
             max-height: 120px;
             min-height: 40px;
             overflow-y: auto;
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 1.5;
 
             &:focus {
@@ -73,7 +73,7 @@
             }
 
             i {
-                font-size: 18px;
+                font-size: 1.125rem;
             }
         }
     }
@@ -103,8 +103,8 @@
         border: none;
         border-radius: 8px;
         padding: 0.6rem 1.2rem;
-        font-weight: 500;
-        font-size: 14px;
+        font-weight: var(--text-body-medium-weight);
+        font-size: var(--text-body-medium-size);
         cursor: pointer;
         transition: background-color 0.2s ease;
         height: 40px;
@@ -170,7 +170,7 @@
             transition: all 0.2s ease;
 
             i {
-                font-size: 18px;
+                font-size: 1.125rem;
                 width: 18px;
                 height: 18px;
                 display: flex;
@@ -223,7 +223,7 @@
         padding: 0.5rem;
 
         .start-speaking-btn {
-            font-size: 13px;
+            font-size: 0.8125rem;
             padding: 0.5rem 1rem;
         }
 

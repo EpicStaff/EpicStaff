@@ -14,7 +14,6 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    font-family: 'Inter', sans-serif;
 }
 
 .dialog-header {
@@ -32,8 +31,8 @@
 }
 
 .dialog-title {
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
     margin: 0;
     color: var(--color-text);
 }
@@ -50,7 +49,7 @@
 
 ::ng-deep .dialog-message strong {
     color: var(--color-text-primary);
-    font-weight: 600;
+    font-weight: 500;
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
@@ -67,8 +66,8 @@
 
 .caution-title {
     color: var(--color-error);
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
 }
 
 .dialog-container.warning .caution-block {
@@ -95,7 +94,7 @@
 
 ::ng-deep .caution-message strong {
     color: var(--color-text);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 ::ng-deep .caution-message details {
@@ -128,9 +127,8 @@
     height: 40px;
     padding: 0 24px;
     border-radius: 8px;
-    font-family: 'Inter', sans-serif;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     line-height: 1;
     cursor: pointer;
     transition: all 0.2s ease;

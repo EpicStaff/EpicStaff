@@ -75,8 +75,8 @@
     }
 
     &__header {
-        font-weight: bold;
-        font-size: 0.875rem;
+        font-weight: var(--text-body-bold-weight);
+        font-size: var(--text-body-bold-size);
         max-width: 645px;
         margin: 0 2.5rem 0.5rem;
         padding: 0 0.625rem;
@@ -112,7 +112,7 @@
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--color-ks-transparent-text-80);
         cursor: pointer;
     }

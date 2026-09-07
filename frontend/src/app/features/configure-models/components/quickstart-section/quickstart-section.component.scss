@@ -12,13 +12,13 @@
 
     &__title {
         margin: 0;
-        font-size: 20px;
+        font-size: 1.25rem;
         color: var(--configure-models-dialog-active-color, #d9d9de);
     }
 
     &__subtitle {
         margin: 0;
-        font-size: 14px;
+        font-size: 0.875rem;
         color: rgba(217, 217, 222, 0.6);
     }
 
@@ -54,11 +54,11 @@
         justify-content: flex-end;
         align-items: center;
         gap: 12px;
-        font-size: 14px;
+        font-size: 0.875rem;
         color: rgba(217, 217, 222, 0.8);
 
         i {
-            font-size: 14px;
+            font-size: 0.875rem;
             color: rgba(217, 217, 222, 0.5);
         }
     }
@@ -111,7 +111,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 16px;
+        font-size: 1rem;
         font-weight: 500;
         color: var(--configure-models-dialog-inactive-color, #685fff);
         line-height: 1.4;
@@ -123,7 +123,7 @@
 
     &__card-title--success {
         i {
-            font-size: 24px;
+            font-size: 1.5rem;
         }
     }
 
@@ -133,7 +133,7 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
-        font-size: 14px;
+        font-size: 0.875rem;
         color: rgba(217, 217, 222, 0.8);
         line-height: 1.6;
         list-style: decimal;
@@ -163,7 +163,7 @@
 
     &__card-text {
         margin: 12px 0 0;
-        font-size: 13px;
+        font-size: 0.8125rem;
         color: rgba(217, 217, 222, 0.7);
         line-height: 1.6;
     }

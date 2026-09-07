@@ -63,8 +63,7 @@
     background: transparent;
     border: 1px solid #2b2d30;
     color: var(--color-text-primary);
-    font-family: 'Inter', sans-serif;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -590,7 +589,7 @@
 
                 &::after {
                     color: var(--accent-color) !important;
-                    font-size: 10px !important;
+                    font-size: 0.625rem !important;
                 }
             }
 

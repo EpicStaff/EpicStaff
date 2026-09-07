@@ -3,7 +3,6 @@
     flex-direction: column;
     background-color: var(--color-modals-background);
     color: var(--color-text-primary);
-    font-family: 'Inter', sans-serif;
     border-radius: 12px;
     overflow: hidden;
     width: 590px;
@@ -24,9 +23,9 @@
     .dialog-title {
         margin: 0;
         padding: 0;
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 130%;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
         letter-spacing: 0;
         color: var(--color-text-primary, #d9d9de);
         white-space: nowrap;

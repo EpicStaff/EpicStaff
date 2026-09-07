@@ -82,9 +82,8 @@
         justify-content: center;
         min-width: 0;
         text-align: center;
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 12px;
+        font-weight: var(--text-body-small-weight);
+        font-size: var(--text-body-small-size);
         line-height: 1;
         color: var(--color-text-primary, #d9d9de);
     }

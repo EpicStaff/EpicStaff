@@ -23,7 +23,7 @@
     h2 {
         margin: 0;
         font-size: 1rem;
-        font-weight: 600;
+        font-weight: 500;
         color: #ffffff;
     }
 }
@@ -99,8 +99,8 @@
     border-radius: 4px;
     outline: none;
     color: #ffffff;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     padding: 2px 6px;
     font-family: inherit;
     caret-color: #ffffff;
@@ -118,8 +118,8 @@
 }
 
 .version-name {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     color: #ffffff;
     white-space: nowrap;
     overflow: hidden;
@@ -170,8 +170,8 @@
     color: #ffffff;
     border: none;
     border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     cursor: pointer;
     transition: background 0.2s;
 

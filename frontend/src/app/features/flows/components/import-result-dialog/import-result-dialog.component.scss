@@ -34,7 +34,7 @@
 
                     .viewing-count {
                         font-size: 0.8rem;
-                        font-weight: 600;
+                        font-weight: 500;
                     }
 
                     .viewing-label {
@@ -180,7 +180,7 @@
     }
 
     .summary-count {
-        font-weight: 600;
+        font-weight: 500;
         color: var(--accent-color);
     }
 
@@ -201,7 +201,7 @@
                 letter-spacing: 0.5px;
                 flex: 1;
                 .summary-count {
-                    font-weight: 600;
+                    font-weight: 500;
                     color: var(--accent-color);
                     margin-left: auto;
                 }
@@ -218,7 +218,7 @@
 
                     .viewing-count {
                         font-size: 0.8rem;
-                        font-weight: 600;
+                        font-weight: 500;
                     }
 
                     .viewing-label {
@@ -339,8 +339,8 @@
             }
 
             .summary-label {
-                font-size: 0.875rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
                 color: var(--color-ks-transparent-text-60);
                 display: flex;
                 align-items: center;
@@ -349,8 +349,8 @@
             }
 
             .summary-count {
-                font-size: 0.875rem;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
                 color: var(--accent-color);
                 margin-left: auto;
             }
@@ -413,8 +413,8 @@
             }
 
             .entity-count {
-                font-size: 0.875rem;
-                font-weight: 400;
+                font-size: var(--text-body-size);
+                font-weight: var(--text-body-weight);
                 color: var(--color-text-secondary);
                 margin-left: auto;
             }
@@ -515,8 +515,8 @@
                 align-items: center;
                 padding: 0.25rem 0.35rem;
                 border-radius: 4px;
-                font-size: 0.75rem;
-                font-weight: 400;
+                font-size: var(--text-body-small-size);
+                font-weight: var(--text-body-small-weight);
                 letter-spacing: 0.3px;
                 white-space: nowrap;
                 margin-right: calc(2rem + 1rem);
@@ -584,8 +584,8 @@
                 padding: 0.6rem 1rem 0.6rem 2.5rem;
 
                 .detail-key {
-                    font-size: 0.75rem;
-                    font-weight: 500;
+                    font-size: var(--text-body-small-large-size);
+                    font-weight: var(--text-body-small-large-weight);
                     color: var(--color-text-secondary);
                     white-space: nowrap;
                 }

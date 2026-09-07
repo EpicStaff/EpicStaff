@@ -18,14 +18,14 @@
     }
 
     &__title {
-        font-size: 20px;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         color: var(--configure-models-dialog-active-color, #d9d9de);
         margin: 0;
     }
 
     &__subtitle {
-        font-size: 14px;
+        font-size: 0.875rem;
         color: rgba(217, 217, 222, 0.6);
         margin: 0;
     }
@@ -44,7 +44,7 @@
     &__empty-state {
         padding: 2rem 0;
         color: rgba(217, 217, 222, 0.5);
-        font-size: 14px;
+        font-size: 0.875rem;
     }
 }
 
@@ -78,7 +78,7 @@
     }
 
     &__name {
-        font-size: 15px;
+        font-size: 0.9375rem;
         font-weight: 500;
         color: var(--configure-models-dialog-active-color, #d9d9de);
         white-space: nowrap;
@@ -88,8 +88,8 @@
 
     &__badge {
         flex-shrink: 0;
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 0.6875rem;
+        font-weight: 500;
         padding: 2px 8px;
         border-radius: 999px;
         text-transform: uppercase;
@@ -122,7 +122,7 @@
             border-color 0.2s ease;
 
         i {
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 1;
         }
 
@@ -153,14 +153,14 @@
     }
 
     &__meta-label {
-        font-size: 11px;
+        font-size: 0.6875rem;
         color: rgba(217, 217, 222, 0.45);
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
 
     &__meta-value {
-        font-size: 13px;
+        font-size: 0.8125rem;
         color: rgba(217, 217, 222, 0.8);
         word-break: break-all;
     }
