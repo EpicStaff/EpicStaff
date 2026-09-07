@@ -1,0 +1,127 @@
+<div class="right-panel-header">
+    <h3 class="right-panel-title">{{ store.currentReviewEntry()?.title ?? 'Nothing to review' }}</h3>
+    @if (store.currentReviewEntry()?.kind === 'code') {
+        <div class="right-panel-nav">
+            <span class="right-panel-nav-label">Must be reviewed:</span>
+            <button
+                type="button"
+                class="nav-arrow-btn"
+                [disabled]="store.reviewableEntries.length === 0"
+                (click)="store.goToPreviousReviewEntry()"
+                aria-label="Previous"
+            >
+                <app-svg-icon
+                    icon="panel-nav-chevron"
+                    size="10px"
+                    class="nav-arrow-icon nav-arrow-icon--prev"
+                ></app-svg-icon>
+            </button>
+            <span class="nav-counter">
+                {{ store.currentReviewIndex() + 1 }} / {{ store.reviewableEntries.length }}
+            </span>
+            <button
+                type="button"
+                class="nav-arrow-btn"
+                [disabled]="store.reviewableEntries.length === 0"
+                (click)="store.goToNextReviewEntry()"
+                aria-label="Next"
+            >
+                <app-svg-icon
+                    icon="panel-nav-chevron"
+                    size="10px"
+                    class="nav-arrow-icon"
+                ></app-svg-icon>
+            </button>
+        </div>
+    }
+</div>
+
+@if (store.currentReviewEntry(); as entry) {
+    @if (entry.kind === 'mcp') {
+        <div class="mcp-details-panel">
+            <div class="mcp-fields">
+                <span class="mcp-field-label">Name:</span>
+                <span class="mcp-field-value">{{ entry.name }}</span>
+                <span class="mcp-field-label">Transport:</span>
+                <app-copy-field
+                    class="mcp-transport-field"
+                    [value]="entry.transport"
+                ></app-copy-field>
+            </div>
+            <p class="mcp-warning-text">
+                After import, this tool sends your prompts and tool arguments to the address above. Import it only if
+                you trust that host.
+            </p>
+        </div>
+    } @else {
+        <div class="code-editor-panel">
+            @if (entry.codeTabs.length > 0) {
+                <div class="code-editor-tabs">
+                    @for (tab of entry.codeTabs; track tab.fieldKey; let last = $last) {
+                        <button
+                            type="button"
+                            class="code-editor-tab"
+                            [class.code-editor-tab--active]="tab.fieldKey === entry.fieldKey"
+                            (click)="store.goToCodeTab(tab.fieldKey)"
+                        >
+                            {{ tab.label }}
+                        </button>
+                        @if (!last) {
+                            <span class="code-editor-tab-separator">/</span>
+                        }
+                    }
+                </div>
+            }
+
+            <div class="code-editor-header">
+                <div class="code-editor-header-left">
+                    <app-svg-icon
+                        icon="python"
+                        size="1.2rem"
+                        class="code-editor-python-icon"
+                    ></app-svg-icon>
+                    <span class="code-editor-title">Python Editor</span>
+                    <span class="code-editor-subtitle">
+                        {{ entry.code.entrypoint }}() — {{ librariesCount(entry.code) }} libraries
+                    </span>
+                </div>
+                <div class="code-editor-header-actions">
+                    <button
+                        type="button"
+                        class="code-editor-icon-btn"
+                        aria-label="What am I looking at?"
+                        matTooltip="File details"
+                        matTooltipPosition="above"
+                        (click)="openFileDetails(entry)"
+                    >
+                        <app-svg-icon
+                            icon="editor-help"
+                            size="12px"
+                        ></app-svg-icon>
+                    </button>
+                    <button
+                        type="button"
+                        class="code-editor-icon-btn"
+                        aria-label="Copy code"
+                        matTooltip="Copy code"
+                        matTooltipPosition="above"
+                        (click)="copyCurrentCode()"
+                    >
+                        <app-svg-icon
+                            icon="editor-copy"
+                            size="12.08px"
+                        ></app-svg-icon>
+                    </button>
+                </div>
+            </div>
+
+            <app-code-editor
+                #codeEditor
+                class="code-editor-instance"
+                [pythonCode]="entry.code.code"
+                [showHeader]="false"
+                [readOnly]="true"
+            ></app-code-editor>
+        </div>
+    }
+}

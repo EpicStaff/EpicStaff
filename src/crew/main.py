@@ -4,10 +4,8 @@ import sys
 from dotenv import load_dotenv, find_dotenv
 
 from services.agent_task_service import AgentTaskService
-from services.crew.mcp_tool_factory import CrewaiMcpToolFactory
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.run_python_code_service import RunPythonCodeService
-from services.crew.crew_parser_service import CrewParserService
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
 from utils.logger import logger
@@ -28,9 +26,6 @@ async def main():
     session_timeout_channel = os.environ.get(
         "SESSION_TIMEOUT_CHANNEL", "sessions:timeout"
     )
-    crewai_output_channel = os.environ.get(
-        "CREWAI_OUTPUT_CHANNEL", "sessions:crewai_output"
-    )
     stop_session_channel = os.getenv("STOP_SESSION_CHANNEL", "sessions:stop")
     MAX_CONCURRENT_SESSIONS = int(os.getenv("MAX_CONCURRENT_SESSIONS", "20"))
     agent_request_stream = os.environ.get("AGENT_REQUEST_STREAM", "agent.requests")
@@ -48,20 +43,12 @@ async def main():
         result_stream=agent_result_stream,
         default_timeout_s=agent_result_timeout_s,
     )
-    mcp_tool_factory = CrewaiMcpToolFactory()
-    crew_parser_service = CrewParserService(
-        redis_service=redis_service,
-        python_code_executor_service=python_code_executor_service,
-        mcp_tool_factory=mcp_tool_factory,
-    )
     session_manager_service = GraphSessionManagerService(
         redis_service=redis_service,
-        crew_parser_service=crew_parser_service,
         session_schema_channel=session_schema_channel,
         session_timeout_channel=session_timeout_channel,
         stop_session_channel=stop_session_channel,
         python_code_executor_service=python_code_executor_service,
-        crewai_output_channel=crewai_output_channel,
         # Note:  Used for process human_input
         knowledge_search_service=knowledge_search_service,
         agent_task_service=agent_task_service,

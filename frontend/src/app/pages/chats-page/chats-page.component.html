@@ -11,22 +11,6 @@
                 </h1>
             </div>
         </header>
-        <nav class="tabs">
-            <div class="tabs-left">
-                <app-tab-button
-                    [active]="activeTab() === 'staff'"
-                    (action)="onTabChange('staff')"
-                >
-                    Staff
-                </app-tab-button>
-                <app-tab-button
-                    [active]="activeTab() === 'definition'"
-                    (action)="onTabChange('definition')"
-                >
-                    Agents
-                </app-tab-button>
-            </div>
-        </nav>
     </div>
 
     <main class="body">
@@ -40,7 +24,7 @@
             </div>
         } @else {
             <app-chats-sidebar
-                [agents]="visibleAgents()"
+                [agents]="agents()"
                 (agentUpdated)="onAgentUpdated($event)"
             ></app-chats-sidebar>
             <app-chats-content></app-chats-content>

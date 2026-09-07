@@ -392,7 +392,6 @@ class GraphVersioningManager:
     def _build_missing_sets(self, missing: dict) -> _MissingSets:
         """Gather all missing dependencies ids into dataclass structure"""
         return _MissingSets(
-            crews=set(missing.get(EntityType.CREW.value, [])),
             subgraphs=set(missing.get(EntityType.GRAPH.value, [])),
             llm_configs=set(missing.get(EntityType.LLM_CONFIG.value, [])),
             webhooks=set(missing.get(EntityType.WEBHOOK_TRIGGER.value, [])),

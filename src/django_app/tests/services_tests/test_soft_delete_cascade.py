@@ -46,7 +46,11 @@ from tables.models import (
 )
 from tables.models.base_models import SoftDeleteFields
 from tables.models.session_models import SessionTrigger
-from tables.models.webhook_models import WebhookNodeAuth
+from tables.models.webhook_models import (
+    WebhookTrigger,
+    WebhookTriggerAuth,
+    WebhookTriggerAuthKind,
+)
 from tables.models.knowledge_models.graphrag_models import (
     GraphRag,
     GraphRagDocument,
@@ -376,12 +380,22 @@ class TestHiddenReverseRelationSetNull:
         python_code = PythonCode.objects.create(
             code="def main(): return 1", entrypoint="main"
         )
+        webhook_trigger = WebhookTrigger.objects.create(
+            path="trigger-node-path", org=graph.org
+        )
         node = WebhookTriggerNode.objects.create(
-            graph=graph, node_name="trigger_node", python_code=python_code
+            graph=graph,
+            node_name="trigger_node",
+            python_code=python_code,
+            webhook_trigger=webhook_trigger,
         )
         # WebhookTriggerNode's post_save signal (tables/signals/webhook_signals.py)
-        # auto-creates a WebhookNodeAuth row pointing at this node.
-        node_auth = WebhookNodeAuth.objects.get(webhook_trigger_node=node)
+        # no longer auto-creates auth -- a WebhookTriggerAuth row only exists
+        # once explicitly configured via WebhookTriggerService, so we create
+        # one directly here to exercise the cascade against it.
+        node_auth = WebhookTriggerAuth.objects.create(
+            trigger=webhook_trigger, kind=WebhookTriggerAuthKind.WEBHOOK
+        )
         session = Session.objects.create(
             status=Session.SessionStatus.PENDING,
             status_updated_at=timezone.now(),
@@ -405,19 +419,18 @@ class TestHiddenReverseRelationSetNull:
         assert SessionTrigger.objects.filter(pk=trigger.pk).exists()
         assert Session.objects.filter(pk=session.pk).exists()
 
-        # WebhookNodeAuth previously lacked SoftDeleteFields, so this reverse
-        # relation fell through to DeleteService's nullable-CASCADE fallback,
-        # which tried to null webhook_trigger_node while telegram_trigger_node
-        # was also null -- violating the webhook_node_auth_exactly_one_node
-        # check constraint with an IntegrityError. Now that WebhookNodeAuth
-        # carries SoftDeleteFields, this relation is handled by the batched
-        # soft-delete cascade instead: it must soft-delete cleanly and remain
-        # queryable via all_objects, with its FK to the node left untouched.
+        # WebhookTriggerAuth carries SoftDeleteFields, so when the graph
+        # cascade reaches WebhookTrigger (via WebhookTriggerNode.webhook_trigger,
+        # a SET_NULL FK that only nulls out -- the trigger row itself is
+        # untouched by this cascade) it is the auth row's own FK to
+        # WebhookTriggerNode's graph subtree that matters here: the auth is
+        # keyed off `trigger`, not off the node, so it is unaffected by the
+        # node's soft-delete and remains fully active.
         node_auth.refresh_from_db()
-        assert node_auth.is_soft_deleted is True
-        assert node_auth.soft_deleted_at is not None
-        assert WebhookNodeAuth.all_objects.filter(pk=node_auth.pk).exists()
-        assert node_auth.webhook_trigger_node_id == node.pk
+        assert node_auth.is_soft_deleted is False
+        assert node_auth.soft_deleted_at is None
+        assert WebhookTriggerAuth.objects.filter(pk=node_auth.pk).exists()
+        assert node_auth.trigger_id == webhook_trigger.pk
 
 
 class TestProtectRestrictDoNothingGuards:
@@ -539,12 +552,10 @@ class TestPostSaveListenerModelsBypassBatching:
     ):
         """webhook_signals' post_save handler talks to the `webhook` service
         over HTTP rather than Redis, so it isn't asserted directly here (that
-        would require mocking an HTTP client, duplicating
-        TestHiddenReverseRelationSetNull's coverage of the same signal's
-        side effect via WebhookNodeAuth auto-creation). This test instead
-        locks in the outcome that matters for this change: the node is still
-        soft-deleted correctly now that it takes the per-object path instead
-        of the batched UPDATE."""
+        would require mocking an HTTP client). This test instead locks in the
+        outcome that matters for this change: the node is still soft-deleted
+        correctly now that it takes the per-object path instead of the
+        batched UPDATE."""
         python_code = PythonCode.objects.create(
             code="def main(): return 1", entrypoint="main"
         )

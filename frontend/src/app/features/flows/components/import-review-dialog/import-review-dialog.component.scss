@@ -1,0 +1,86 @@
+.import-review-dialog {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: var(--color-sidenav-background);
+    color: var(--color-text-primary);
+    border-radius: 10px;
+    overflow: hidden;
+
+    .dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 24px 40px 20px;
+        border-bottom: 1px solid var(--color-flow-card-bg);
+        flex-shrink: 0;
+
+        .dialog-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .dialog-title {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 500;
+            line-height: 100%;
+            color: var(--color-text-primary);
+        }
+    }
+
+    .dialog-content {
+        flex: 1;
+        display: flex;
+        flex-direction: row;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .dialog-body-left {
+        flex: 1 1 50%;
+        min-width: 0;
+        overflow-y: auto;
+        padding: 1.5rem 31px;
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-flow-card-bg) transparent;
+
+        &::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        &::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: var(--accent-color);
+            border-radius: 4px;
+
+            &:hover {
+                background-color: var(--accent-color);
+                opacity: 0.8;
+            }
+        }
+    }
+
+    .dialog-body-right {
+        flex: 1 1 50%;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        border-left: 1px solid var(--color-divider-regular);
+    }
+
+    .entity-lists-section {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+}

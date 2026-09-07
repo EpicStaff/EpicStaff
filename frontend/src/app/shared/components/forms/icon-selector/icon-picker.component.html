@@ -5,58 +5,59 @@
         matTooltip="Select icon"
         matTooltipPosition="above"
     >
-        <div
-            class="selected-icon"
-            *ngIf="selectedIcon"
-        >
-            <app-icon
-                [icon]="getIconPath(selectedIcon)"
-                [size]="'20'"
-            ></app-icon>
-        </div>
-        <div
-            class="icon-placeholder"
-            *ngIf="!selectedIcon"
-        >
-            <app-icon
-                [icon]="'ui/star'"
-                [size]="'20'"
-            ></app-icon>
-        </div>
+        @if (selectedIcon) {
+            <div class="selected-icon">
+                <app-icon
+                    [icon]="getIconPath(selectedIcon)"
+                    [size]="'20'"
+                ></app-icon>
+            </div>
+        }
+        @if (!selectedIcon) {
+            <div class="icon-placeholder">
+                <app-icon
+                    [icon]="'ui/star'"
+                    [size]="'20'"
+                ></app-icon>
+            </div>
+        }
     </div>
 
     <!-- Icon Picker Popup -->
-    <div
-        class="icon-picker-popup"
-        *ngIf="showIconPicker"
-        @fadeInOut
-    >
-        <div class="icons-grid">
-            <div
-                class="icon-item"
-                *ngFor="let iconName of availableIcons"
-                (click)="selectIcon(iconName)"
-                [class.selected]="selectedIcon === iconName"
-            >
-                <app-icon
-                    [icon]="getIconPath(iconName)"
-                    [size]="'24'"
-                ></app-icon>
+    @if (showIconPicker) {
+        <div
+            class="icon-picker-popup"
+            animate.enter="icon-picker-enter"
+            animate.leave="icon-picker-leave"
+        >
+            <div class="icons-grid">
+                @for (iconName of availableIcons; track iconName) {
+                    <div
+                        class="icon-item"
+                        (click)="selectIcon(iconName)"
+                        [class.selected]="selectedIcon === iconName"
+                    >
+                        <app-icon
+                            [icon]="getIconPath(iconName)"
+                            [size]="'24'"
+                        ></app-icon>
+                    </div>
+                }
+            </div>
+            <div class="icon-picker-footer">
+                <button
+                    type="button"
+                    (click)="clearIcon()"
+                >
+                    Clear
+                </button>
+                <button
+                    type="button"
+                    (click)="toggleIconPicker()"
+                >
+                    Close
+                </button>
             </div>
         </div>
-        <div class="icon-picker-footer">
-            <button
-                type="button"
-                (click)="clearIcon()"
-            >
-                Clear
-            </button>
-            <button
-                type="button"
-                (click)="toggleIconPicker()"
-            >
-                Close
-            </button>
-        </div>
-    </div>
+    }
 </div>

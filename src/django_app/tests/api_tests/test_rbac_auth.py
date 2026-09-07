@@ -13,6 +13,7 @@ Integration tests for the Story 2 auth surface:
 - SSE ticket issue/consume single-use + expired + atomic
 """
 
+import hashlib
 import re
 from datetime import timedelta
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.core import mail
 from django.core.cache import cache
+from django_redis import get_redis_connection
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -41,7 +43,7 @@ from tables.models.rbac_models import (
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.ticket_service import sse_ticket_service
+from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
 from tables.services.rbac.utils.password_reset_token_repository import (
     PasswordResetTokenRepository,
@@ -264,6 +266,47 @@ def test_sse_ticket_expired_or_unknown_returns_none():
 def test_sse_ticket_endpoint_requires_jwt(api_client):
     r = api_client.post(reverse("sse_ticket"))
     assert r.status_code == 401
+
+
+# ---------------- Ticket at rest ----------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "service, prefix",
+    [
+        (sse_ticket_service, "rbac:sse_ticket:"),
+        (ws_ticket_service, "rbac:ws_ticket:"),
+    ],
+    ids=["sse", "ws"],
+)
+def test_redis_never_holds_the_raw_ticket(regular_user, service, prefix: str):
+    """Read access to Redis must not yield a replayable ticket.
+
+    The key is the SHA-256 digest of the ticket, so `SCAN MATCH "<prefix>*"`
+    returns digests that cannot be inverted into a usable ticket.
+    """
+    cache.clear()
+    ticket, _ = service.issue(regular_user)
+
+    keys = [key.decode() for key in get_redis_connection("default").keys(f"{prefix}*")]
+    expected = f"{prefix}{hashlib.sha256(ticket.encode('utf-8')).hexdigest()}"
+    assert keys == [expected]
+    assert ticket not in keys[0]
+
+    # The raw ticket still resolves; only its storage form changed.
+    assert service.consume(ticket).pk == regular_user.pk
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "service", [sse_ticket_service, ws_ticket_service], ids=["sse", "ws"]
+)
+def test_consume_rejects_non_string_ticket(service):
+    cache.clear()
+    assert service.consume(None) is None
+    assert service.consume(12345) is None
+    assert service.consume("") is None
 
 
 # ---------------- Logout ownership ----------------
@@ -1137,9 +1180,9 @@ class TestPasswordResetRequestThrottleNonString:
         body = r.json()
         email_errors = [e for e in body["errors"] if e["field"] == "email"]
         assert email_errors
-        assert any("must be a string" in e["reason"].lower() for e in email_errors), (
-            body
-        )
+        assert any(
+            "must be a string" in e["reason"].lower() for e in email_errors
+        ), body
 
 
 # ---------------- Default-org: single-default constraint ----------------
