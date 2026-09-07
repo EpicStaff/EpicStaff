@@ -54,9 +54,24 @@ class ElevenLabsClientEventHandler:
             )
 
     async def _handle_conversation_item_create(self, data: Dict[str, Any]) -> None:
-        logger.debug(
-            "ElevenLabs client handler: ignoring text message (not supported by EL WebSocket API)"
+        """Frontend text-chat path (typed messages, not spoken audio). ElevenLabs'
+        Conversational AI WebSocket protocol accepts injected text via a
+        {"type": "user_message", "text": ...} frame -- see
+        ElevenLabsRealtimeAgentClient.send_conversation_item_to_server."""
+        item = data.get("item") or {}
+        if item.get("role") not in (None, "user"):
+            return
+
+        text = "".join(
+            part.get("text", "")
+            for part in item.get("content", [])
+            if isinstance(part, dict) and part.get("type") in ("input_text", "text")
         )
+        if not text:
+            return
+
+        await self.client.server_event_handler.emit_user_text_item(text)
+        await self.client.send_conversation_item_to_server(text)
 
     async def _handle_noop(self, data: Dict[str, Any]) -> None:
         pass

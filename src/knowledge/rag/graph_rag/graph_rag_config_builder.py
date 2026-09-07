@@ -297,6 +297,15 @@ class GraphRagConfigBuilder:
         return InputConfig(
             storage=input_storage,
             file_type=file_type,
+            # graphrag's own InputConfig default (unset here) is `.*\.txt$` --
+            # GraphRagFileManager.load_documents_to_input writes exactly one
+            # file per document under its original name/extension (.md, .pdf,
+            # etc, already decoded to text), so a document that isn't
+            # literally named .txt silently matched zero files: the pipeline
+            # indexed 0 documents (see process_rag_indexing's error handling
+            # note below) while still reporting completion. Match every file
+            # this folder ever contains instead of guessing an extension.
+            file_pattern=r".*",
         )
 
     def _build_output_config(self, root_folder: Path) -> StorageConfig:

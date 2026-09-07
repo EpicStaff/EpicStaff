@@ -26,16 +26,17 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
         return self.serializer_class(instance).data
 
     def get_org_scope_q(self, org_id: int) -> Q:
-        # WebhookTrigger has no org column; it is reachable through the flows
-        # whose trigger nodes reference it (mirrors WebhookTriggerViewSet).
+        # WebhookTrigger is org-scoped directly via OrgScopedModel (org_id is
+        # NOT NULL at the DB layer, see migration 0206_webhook_trigger_org_not_null).
         if org_id is None:
             return Q()
-        return Q(webhook_trigger_nodes__graph__org_id=org_id)
+        return Q(org_id=org_id)
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Any:
+        org_id = kwargs.get("org_id")
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(org_id=org_id)
 
     def find_existing(
         self, data: dict, id_mapper: IDMapper, org_id: int = None

@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -12,12 +11,11 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ButtonComponent, LabelDropdownComponent } from '@shared/components';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { FlowsStorageService } from '../../services/flows-storage.service';
-import { LabelDropdownComponent } from '../label-dropdown/label-dropdown.component';
 
 interface FlowRenameData {
     flowName: string;
@@ -27,8 +25,7 @@ interface FlowRenameData {
 
 @Component({
     selector: 'app-flow-rename-dialog',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ButtonComponent, LabelDropdownComponent],
+    imports: [FormsModule, ButtonComponent, LabelDropdownComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dialog-container">

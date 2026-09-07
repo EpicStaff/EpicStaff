@@ -19,15 +19,20 @@ export interface GetPythonCodeToolRequest {
     python_code: GetPythonCodeRequest;
     name: string;
     description: string;
+    //TODO check is args_schema needed
     args_schema: ArgsSchema;
     built_in: boolean;
     variables?: unknown[];
     use_storage?: boolean;
+    is_favorite: boolean;
+    labels: number[];
 }
+
 export interface CreatePythonCodeToolRequest {
     python_code: CreatePythonCodeRequest;
     name: string;
     description: string;
+    labels?: number[];
     args_schema: ArgsSchema;
     use_storage?: boolean;
 }
@@ -37,7 +42,15 @@ export interface UpdatePythonCodeToolRequest {
     python_code: UpdatePythonCodeRequest;
     name: string; // Required, minLength: 1
     description: string;
+    labels?: number[];
     args_schema: ArgsSchema; // Now an object rather than a JSON string
+    use_storage?: boolean;
+}
+
+export interface PatchPythonCodeToolRequest {
+    name?: string;
+    description?: string;
+    labels?: number[];
     use_storage?: boolean;
 }
 
@@ -64,6 +77,6 @@ export interface CreatePythonCodeToolPayload {
     name: string;
     description: string;
     variables: unknown[];
-    python_code: CreatePythonCodeBody;
     use_storage?: boolean;
+    python_code: CreatePythonCodeBody;
 }

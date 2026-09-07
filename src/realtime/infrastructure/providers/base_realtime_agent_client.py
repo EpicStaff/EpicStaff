@@ -17,10 +17,14 @@ class BaseRealtimeAgentClient(IRealtimeAgentClient):
         api_key: str,
         connection_key: str,
         on_server_event: Optional[Callable[[dict], Awaitable[None]]] = None,
+        org_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ):
         self.api_key = api_key
         self.connection_key = connection_key
         self.on_server_event = on_server_event
+        self.org_id = org_id
+        self.user_id = user_id
         self.ws = None
 
         self._stream_sid: Optional[str] = None

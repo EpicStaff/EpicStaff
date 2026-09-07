@@ -239,7 +239,7 @@ class InvalidAvatarError(CustomAPIExeption):
 
 class AvatarTooLargeError(CustomAPIExeption):
     """Raised by UserAvatarStorageService when an avatar upload exceeds
-    settings.AVATAR_MAX_BYTES. The default_detail is overridden at
+    settings.AVATAR_MAX_SIZE. The default_detail is overridden at
     raise-site with the actual maximum so the FE can render it without
     hardcoding the number."""
 
@@ -256,6 +256,14 @@ class BuiltInRoleImmutableError(CustomAPIExeption):
     status_code = 403
     default_detail = "Built-in roles cannot be edited or deleted."
     default_code = "built_in_role_immutable"
+
+
+class BuiltInModelImmutableError(CustomAPIExeption):
+    """Raised when a write targets a shared built-in provider model row (org IS NULL)."""
+
+    status_code = 403
+    default_detail = "Built-in models cannot be edited or deleted."
+    default_code = "built_in_model_immutable"
 
 
 class OrgContextRequiredError(CustomAPIExeption):
@@ -324,3 +332,18 @@ class ApiKeyLimitExceededError(CustomAPIExeption):
         "Revoke or delete an existing key first."
     )
     default_code = "api_key_limit_exceeded"
+
+
+class FirstSetupDisabledError(CustomAPIExeption):
+    """Raised by FirstSetupView when settings.FIRST_SETUP_MODE is not
+    `open`. The HTTP endpoint is anonymous, so on an internet-exposed
+    deployment it would otherwise be claimable by whoever reaches it
+    first; the superadmin comes from `manage.py create_superadmin`
+    instead."""
+
+    status_code = 403
+    default_detail = (
+        "HTTP first-setup is disabled on this deployment. Create the first "
+        "superadmin with `python manage.py create_superadmin`."
+    )
+    default_code = "first_setup_disabled"

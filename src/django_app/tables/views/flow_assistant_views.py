@@ -42,6 +42,7 @@ from tables.services.rbac.organization_resolution import resolve_organization_us
 from tables.services.rbac.permission_assert import assert_org_permission
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.services.rbac.ticket_service import sse_ticket_service
+from tables.services.secrets import SecretResolutionError
 from tables.utils.mixins import SSEMixin
 from utils.logger import logger
 
@@ -388,6 +389,14 @@ class FlowAssistantStreamView(SSEMixin):
         except LLMConfigInvalidError as exc:
             logger.warning(
                 "FlowAssistant stream error (LLMConfigInvalidError): {}", exc
+            )
+            yield {
+                "event": "error",
+                "data": {"type": "error", "detail": str(exc)},
+            }
+        except SecretResolutionError as exc:
+            logger.warning(
+                "FlowAssistant stream error (SecretResolutionError): {}", exc
             )
             yield {
                 "event": "error",

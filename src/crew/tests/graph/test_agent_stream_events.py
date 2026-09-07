@@ -42,7 +42,6 @@ def test_knowledge_search_envelope_writes_extracted_chunks_without_incrementing_
     knowledge_message = calls[0].kwargs["message_data"]
     assert knowledge_message == {
         "message_type": "extracted_chunks",
-        "sse_visible": True,
         "collection_id": 7,
         "chunks": [{"text": "chunk"}],
     }
@@ -82,7 +81,6 @@ def test_known_envelope_types_map_to_generic_stream_message_with_incrementing_st
     for message in written_messages:
         assert message["message_type"] == "task_node_stream"
         assert message["is_final"] is False
-        assert message["sse_visible"] is True
         assert message["data"] == {"key": "value"}
 
 

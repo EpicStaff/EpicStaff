@@ -11,22 +11,60 @@
                 </h1>
             </div>
             <div class="header-actions">
-                <!-- <app-button type="ghost" [leftIcon]="'ui/upload'"> Import </app-button> -->
-                <app-button
-                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
-                    type="primary"
-                    class="btn-primary create-btn"
-                    [leftIcon]="createButtonIcon"
-                    (click)="onCreateToolClick()"
-                >
-                    {{ createButtonLabel }}
-                </app-button>
+                @if (viewState.selectMode()) {
+                    <app-button
+                        type="ghost"
+                        (click)="cancelExport()"
+                    >
+                        Cancel
+                    </app-button>
+                    <app-button
+                        type="ghost"
+                        (click)="toggleSelectAllTools()"
+                    >
+                        {{ viewState.isAllVisibleSelected() ? 'Deselect all' : 'Select all' }}
+                    </app-button>
+                    <app-button
+                        type="primary"
+                        [disabled]="viewState.selectedCount() === 0"
+                        (click)="confirmExport()"
+                    >
+                        Export {{ viewState.selectedCount() }} tools
+                    </app-button>
+                } @else {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                        leftIcon="download"
+                        type="outline-primary"
+                        (click)="onImportClick()"
+                    >
+                        Import
+                    </app-button>
+
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
+                        leftIcon="upload"
+                        type="outline-primary"
+                        (click)="onExportClick()"
+                    >
+                        Export
+                    </app-button>
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                        type="primary"
+                        leftIcon="plus"
+                        (click)="onCreateToolClick()"
+                    >
+                        Create Tool
+                    </app-button>
+                }
             </div>
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link) {
+                @for (tab of tabs; track tab.link; let last = $last) {
                     <app-tab-button
+                        mod="sm"
                         routerLink="{{ tab.link }}"
                         routerLinkActive="active"
                         #rla="routerLinkActive"
@@ -34,42 +72,179 @@
                     >
                         {{ tab.label }}
                     </app-tab-button>
+                    @if (!last) {
+                        <span class="tab-sep">/</span>
+                    }
                 }
             </div>
             <div class="tabs-right">
-                <div class="search-container">
-                    <app-svg-icon
-                        icon="search"
-                        class="search-icon"
-                        size="1.1rem"
-                    />
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search tools..."
-                        [(ngModel)]="searchTerm"
-                        (ngModelChange)="onSearchTermChange($event)"
-                    />
-                    @if (searchTerm) {
-                        <button
-                            type="button"
-                            class="clear-btn"
-                            aria-label="Clear"
-                            matTooltip="Clear search"
-                            matTooltipPosition="above"
-                            (click)="clearSearch()"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="1.1rem"
-                            />
-                        </button>
-                    }
-                </div>
+                <app-search
+                    class="search"
+                    mod="small"
+                    placeholder="Search by name or label..."
+                    [(searchTerm)]="searchTerm"
+                    (searchTermChange)="onSearchTermChange($event)"
+                />
             </div>
         </nav>
     </div>
     <section class="body">
-        <router-outlet></router-outlet>
+        @if (showSidebar()) {
+            <app-label-sidebar
+                [storageKey]="'tools'"
+                [allItemsLabel]="'All Tools'"
+                [resourceCode]="ResourceCode.Tools"
+                (closeSidebar)="toggleSidebar()"
+            ></app-label-sidebar>
+        }
+        <div class="body-content">
+            <div class="breadcrumb-bar">
+                <button
+                    class="expand-sidebar-btn"
+                    (click)="toggleSidebar()"
+                    [class.active]="showSidebar()"
+                    [matTooltip]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
+                    matTooltipPosition="right"
+                >
+                    <app-svg-icon
+                        icon="expand-sidebar"
+                        size="0.85rem"
+                    />
+                </button>
+                <div class="breadcrumb-path">
+                    <button
+                        class="breadcrumb-home"
+                        (click)="selectAllLabels()"
+                        matTooltip="All Tools"
+                        matTooltipPosition="right"
+                    >
+                        <app-svg-icon
+                            icon="home"
+                            size="1rem"
+                        />
+                    </button>
+                    @if (activeLabelFilterDisplay() !== 'all') {
+                        <span class="breadcrumb-sep">/</span>
+                        <span class="breadcrumb-label">{{ activeLabelFilterDisplay() }}</span>
+                    }
+                </div>
+
+                <div class="breadcrumb-actions">
+                    <div class="usage-toggle">
+                        <span class="usage-toggle__label">Show usage & unused</span>
+                        <app-toggle-switch
+                            [checked]="viewState.showUsageAndUnused()"
+                            (checkedChange)="viewState.showUsageAndUnused.set($event)"
+                        />
+                    </div>
+
+                    <button
+                        #bulkTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        type="button"
+                        class="menu-trigger"
+                        [class.active]="bulkMenuOpen()"
+                        (click)="toggleBulkMenu()"
+                    >
+                        <app-svg-icon
+                            icon="bulk-menu"
+                            size="0.875rem"
+                        />
+                        <span>Bulk Actions</span>
+                        <app-svg-icon
+                            icon="chevron-down"
+                            size="0.875rem"
+                            class="menu-chevron"
+                            [class.open]="bulkMenuOpen()"
+                        />
+                    </button>
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="bulkTrigger"
+                        [cdkConnectedOverlayOpen]="bulkMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="[
+                            {
+                                originX: 'end',
+                                originY: 'bottom',
+                                overlayX: 'end',
+                                overlayY: 'top',
+                            },
+                        ]"
+                        (backdropClick)="closeBulkMenu()"
+                        (detach)="closeBulkMenu()"
+                    >
+                        <app-tools-bulk-actions-menu
+                            [actions]="bulkActions()"
+                            [showManageLabels]="hasSelection() && canUpdateTools"
+                            [commonLabelIds]="commonSelectedLabelIds()"
+                            [partialLabelIds]="partialSelectedLabelIds()"
+                            (actionSelected)="onBulkAction($event)"
+                            (labelsApplied)="onBulkLabelsApplied($event)"
+                        />
+                    </ng-template>
+
+                    <button
+                        #filterTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        type="button"
+                        class="menu-trigger"
+                        [class.active]="filterMenuOpen() || viewState.hasActiveFilter()"
+                        (click)="toggleFilterMenu()"
+                    >
+                        <app-svg-icon
+                            icon="filter-outline"
+                            size="0.875rem"
+                        />
+                        <span>Filter</span>
+                        <app-svg-icon
+                            icon="chevron-down"
+                            size="0.875rem"
+                            class="menu-chevron"
+                            [class.open]="filterMenuOpen()"
+                        />
+                    </button>
+                    @if (viewState.hasActiveFilter()) {
+                        <button
+                            type="button"
+                            class="filter-clear"
+                            matTooltip="Clear all filters"
+                            matTooltipPosition="above"
+                            (click)="clearAllFilters()"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="0.85rem"
+                            />
+                        </button>
+                    }
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="filterTrigger"
+                        [cdkConnectedOverlayOpen]="filterMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="[
+                            {
+                                originX: 'end',
+                                originY: 'bottom',
+                                overlayX: 'end',
+                                overlayY: 'top',
+                            },
+                        ]"
+                        (backdropClick)="closeFilterMenu()"
+                        (detach)="closeFilterMenu()"
+                    >
+                        <app-tools-filter-menu (actionSelected)="onFilterMenuAction($event)" />
+                    </ng-template>
+                </div>
+            </div>
+            <div class="content-wrapper">
+                <router-outlet></router-outlet>
+            </div>
+        </div>
     </section>
 </div>

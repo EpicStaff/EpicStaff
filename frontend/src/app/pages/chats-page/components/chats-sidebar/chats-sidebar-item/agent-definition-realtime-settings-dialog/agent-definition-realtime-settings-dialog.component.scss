@@ -1,5 +1,5 @@
 .container {
-    background-color: #1e1e1e;
+    background-color: var(--color-background-body, #212325);
     border-radius: 12px;
     color: rgba(255, 255, 255, 0.9);
     min-width: 400px;
@@ -99,7 +99,7 @@
 
                     &:focus {
                         outline: none;
-                        border-color: #685fff;
+                        border-color: var(--accent-color, #685fff);
                     }
 
                     &.textarea {
@@ -137,7 +137,7 @@
             }
 
             &.create {
-                background-color: #685fff;
+                background-color: var(--accent-color, #685fff);
                 color: white;
 
                 &:hover {

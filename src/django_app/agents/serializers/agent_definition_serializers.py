@@ -49,7 +49,13 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
         if realtime_agent is None:
             return None
 
-        return realtime_agent.realtime_config_id
+        # `realtime_agent` is a `RealtimeAgentDefinition`; it may have at most
+        # one of openai_config/elevenlabs_config/gemini_config set (its
+        # `clean()` enforces that) — return whichever one is active. This
+        # used to be the old `realtime_config_id` FK id; the exposed field
+        # name (`agent_definition_realtime_config_id`) is unchanged, only the
+        # underlying provider-config model it points at has changed.
+        return realtime_agent.active_provider_config_id
 
     def get_has_realtime_definition(self, obj):
         return self._get_realtime_agent(obj) is not None

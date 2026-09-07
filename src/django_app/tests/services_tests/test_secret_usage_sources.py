@@ -37,8 +37,17 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.rbac_models import Organization
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    RealtimeChannel,
+    TwilioChannel,
+    WebhookTrigger,
+    WebhookTriggerAuth,
+    WebhookTriggerAuthKind,
+)
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_sources import (
+    CATEGORY_CHANNELS,
     CATEGORY_FLOWS,
     CATEGORY_LLM_CONFIGS,
     CATEGORY_TOOLS,
@@ -60,7 +69,7 @@ from tables.services.secrets.python_code_sites import (
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
 
 
-def _source(*, model, secret_path: str | None = None):
+def _source(*, model, secret_path: str | None = None, node_type: str | None = None):
     """The registry's configured source for this model.
 
     secret_path disambiguates ClassificationDecisionTableNode, which contributes two
@@ -71,10 +80,12 @@ def _source(*, model, secret_path: str | None = None):
         for source in USAGE_SOURCES
         if source.model is model
         and (secret_path is None or source.secret_path == secret_path)
+        and (node_type is None or source.node_type == node_type)
     ]
     assert len(matches) == 1, (
         f"expected exactly one registry source for {model.__name__}"
-        f"{f' at {secret_path}' if secret_path else ''}, found {len(matches)}"
+        f"{f' at {secret_path}' if secret_path else ''}"
+        f"{f' node_type={node_type}' if node_type else ''}, found {len(matches)}"
     )
     return matches[0]
 
@@ -247,6 +258,65 @@ class TestFlowForeignKeySource:
 
 
 @pytest.mark.django_db
+class TestChannelForeignKeySources:
+    def test_twilio_channel_reports_its_parent_channel_name(self, org, secret, ids):
+        channel = RealtimeChannel.objects.create(name="Support line", org=org)
+        TwilioChannel.objects.create(
+            channel=channel, account_sid="ACusage", auth_token_secret=secret
+        )
+
+        hits = _hits(source=_source(model=TwilioChannel), org_id=org.id, secret_ids=ids)
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "Support line")
+        ]
+
+    def test_a_twilio_channel_in_another_orgs_scope_is_not_reported(
+        self, org, secret, ids
+    ):
+        other = Organization.objects.create(name="Org SecretUsageSources Twilio Other")
+        channel = RealtimeChannel.objects.create(name="Foreign line", org=other)
+        TwilioChannel.objects.create(
+            channel=channel, account_sid="ACforeign", auth_token_secret=secret
+        )
+
+        assert (
+            _hits(source=_source(model=TwilioChannel), org_id=org.id, secret_ids=ids)
+            == []
+        )
+
+    def test_ngrok_webhook_config_reports_its_own_name(self, org, secret, ids):
+        trigger = WebhookTrigger.objects.create(path="usage-hook", org=org)
+        NgrokWebhookConfig.objects.create(
+            name="usage tunnel", trigger=trigger, auth_token_secret=secret
+        )
+
+        hits = _hits(
+            source=_source(model=NgrokWebhookConfig), org_id=org.id, secret_ids=ids
+        )
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "usage tunnel")
+        ]
+
+    def test_an_ngrok_config_in_another_orgs_scope_is_not_reported(
+        self, org, secret, ids
+    ):
+        other = Organization.objects.create(name="Org SecretUsageSources Ngrok Other")
+        trigger = WebhookTrigger.objects.create(path="foreign-hook", org=other)
+        NgrokWebhookConfig.objects.create(
+            name="foreign tunnel", trigger=trigger, auth_token_secret=secret
+        )
+
+        assert (
+            _hits(
+                source=_source(model=NgrokWebhookConfig), org_id=org.id, secret_ids=ids
+            )
+            == []
+        )
+
+
+@pytest.mark.django_db
 class TestDeclarationSources:
     def test_python_node_declaring_a_secret_is_reported(self, org, secret, ids):
         graph = Graph.objects.create(name="Python flow", org=org)
@@ -364,6 +434,51 @@ class TestDeclarationSources:
         )
 
         assert _hits(source=pre, org_id=org.id, secret_ids=ids) == []
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerAuthSources:
+    """`WebhookTriggerAuth` attaches to the `WebhookTrigger`, one row per
+    trigger regardless of `kind` -- a single registry entry covers all three
+    kinds (webhook/telegram/twilio)."""
+
+    def test_attached_row_reports_its_trigger_path(self, org, secret, ids):
+        trigger = WebhookTrigger.objects.create(
+            path="usage-source-path", provider_type=None, org=org
+        )
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger,
+            kind=WebhookTriggerAuthKind.WEBHOOK,
+            secret=secret,
+        )
+
+        hits = _hits(
+            source=_source(model=WebhookTriggerAuth), org_id=org.id, secret_ids=ids
+        )
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "usage-source-path")
+        ]
+
+    def test_a_trigger_in_another_orgs_scope_is_not_reported(self, org, secret, ids):
+        other = Organization.objects.create(name="Org WebhookTriggerAuth Other")
+        trigger = WebhookTrigger.objects.create(
+            path="foreign-usage-source-path", provider_type=None, org=other
+        )
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger,
+            kind=WebhookTriggerAuthKind.TELEGRAM,
+            secret=secret,
+        )
+
+        assert (
+            _hits(
+                source=_source(model=WebhookTriggerAuth),
+                org_id=org.id,
+                secret_ids=ids,
+            )
+            == []
+        )
 
 
 @pytest.mark.django_db
@@ -579,8 +694,10 @@ class TestDetailShapes:
         shapes = [source.detail_shape for source in USAGE_SOURCES]
 
         assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE}
-        # 4 configs + McpTool + PythonCodeTool / 5 named flow nodes / ConditionalEdge.
-        assert shapes.count(SHAPE_NAMED) == 6
+        # 4 configs + McpTool + PythonCodeTool + TwilioChannel +
+        # NgrokWebhookConfig + WebhookTriggerAuth / 5 flow nodes (Telegram,
+        # Python, Webhook, CDT pre, CDT post) / ConditionalEdge.
+        assert shapes.count(SHAPE_NAMED) == 9
         assert shapes.count(SHAPE_NODE) == 5
         assert shapes.count(SHAPE_EDGE) == 1
         assert set(HITS_ASSEMBLERS) == set(SHAPE_PROJECTIONS) == set(shapes)
@@ -647,12 +764,13 @@ class TestDetailShapes:
 
 @pytest.mark.django_db
 def test_registry_covers_every_declared_source():
-    """Twelve sources: six FK-declared written out, six derived from
-    PYTHON_CODE_SITES. A source added to the module but forgotten in the registry is
-    invisible to both endpoints, which is a silent under-report."""
+    """Fifteen sources: nine FK-declared written out (eight original + one
+    WebhookTriggerAuth entry), six derived from PYTHON_CODE_SITES. A source
+    added to the module but forgotten in the registry is invisible to both
+    endpoints, which is a silent under-report."""
     from tables.services.secrets.python_code_sites import PYTHON_CODE_SITES
 
-    assert len(USAGE_SOURCES) == 12
+    assert len(USAGE_SOURCES) == 15
     # The derived half tracks PYTHON_CODE_SITES automatically; assert the link rather
     # than the number, so adding a Python-carrying model cannot break this test while
     # leaving the dialog under-reporting.

@@ -9,10 +9,9 @@ from django.db import connection
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
-from tables.models.llm_models import RealtimeConfig, RealtimeModel
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
-from tables.models.realtime_models import RealtimeAgentDefinition
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
 
 
 @pytest.fixture
@@ -53,13 +52,12 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
     agent_definition_with_realtime = AgentDefinition.objects.create(
         name="ad-with-realtime", organization=org_a
     )
-    realtime_model = RealtimeModel.objects.create(name="m")
-    realtime_config = RealtimeConfig.objects.create(
-        custom_name="c", realtime_model=realtime_model, org=org_a
+    realtime_config = OpenAIRealtimeConfig.objects.create(
+        custom_name="c", org=org_a
     )
     RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition_with_realtime,
-        realtime_config=realtime_config,
+        openai_config=realtime_config,
     )
 
     agent_definition_without_realtime = AgentDefinition.objects.create(
@@ -104,20 +102,17 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
     assert retrieve_without_realtime.data["has_realtime_definition"] is False
 
 
-def _create_agent_definitions_with_realtime_config(
-    org, realtime_model, count, name_prefix
-):
+def _create_agent_definitions_with_realtime_config(org, count, name_prefix):
     for index in range(count):
         agent_definition = AgentDefinition.objects.create(
             name=f"ad-{name_prefix}-{index}", organization=org
         )
-        realtime_config = RealtimeConfig.objects.create(
+        realtime_config = OpenAIRealtimeConfig.objects.create(
             custom_name=f"c-{name_prefix}-{index}",
-            realtime_model=realtime_model,
             org=org,
         )
         RealtimeAgentDefinition.objects.create(
-            agent_definition=agent_definition, realtime_config=realtime_config
+            agent_definition=agent_definition, openai_config=realtime_config
         )
 
 
@@ -125,10 +120,8 @@ def _create_agent_definitions_with_realtime_config(
 def test_agentdef_list_does_not_issue_per_row_query_for_realtime_config(
     client_a, org_a
 ):
-    realtime_model = RealtimeModel.objects.create(name="m")
-
     _create_agent_definitions_with_realtime_config(
-        org_a, realtime_model, count=2, name_prefix="small"
+        org_a, count=2, name_prefix="small"
     )
 
     with CaptureQueriesContext(connection) as captured_queries_small:
@@ -139,7 +132,7 @@ def test_agentdef_list_does_not_issue_per_row_query_for_realtime_config(
     small_query_count = len(captured_queries_small.captured_queries)
 
     _create_agent_definitions_with_realtime_config(
-        org_a, realtime_model, count=6, name_prefix="large"
+        org_a, count=6, name_prefix="large"
     )
 
     with CaptureQueriesContext(connection) as captured_queries_large:

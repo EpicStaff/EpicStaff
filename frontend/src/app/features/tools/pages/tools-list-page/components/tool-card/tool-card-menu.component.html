@@ -1,0 +1,58 @@
+<div
+    class="card-menu"
+    role="menu"
+    (click)="$event.stopPropagation()"
+>
+    <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('duplicate')"
+    >
+        <span class="label">Duplicate</span>
+    </button>
+    <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="$event.stopPropagation(); ld.openAt($any($event.currentTarget))"
+    >
+        <span class="label">Manage Labels</span>
+    </button>
+    <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('export')"
+    >
+        <span class="label">Export</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('show_used_places')"
+    >
+        <span class="label">Show Used Places</span>
+    </button>
+    <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
+        type="button"
+        class="menu-item"
+        role="menuitem"
+        (click)="onSelect('delete')"
+    >
+        <span class="label">Delete</span>
+    </button>
+
+    <!-- Label picker (custom trigger: the "Add Label" menu-item button above). -->
+    <app-label-dropdown
+        #ld
+        [hideTrigger]="true"
+        [selectedLabelIds]="toolLabelIds()"
+        (selectionChange)="onLabelsChanged($event)"
+    />
+</div>

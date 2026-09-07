@@ -161,5 +161,5 @@ python -m venv venv
 venv\Scripts\activate
 pip install poetry
 poetry install --no-root
-python app.py --debug
+python main.py --debug
 ```

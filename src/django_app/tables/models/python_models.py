@@ -22,9 +22,11 @@ class PythonCodeTool(OrgScopedModel, models.Model):
     description = models.TextField()
     variables = models.JSONField(default=list, blank=True)
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE, null=False)
-    favorite = models.BooleanField(default=False)
     built_in = models.BooleanField(default=False)
     use_storage = models.BooleanField(default=False)
+    labels = models.ManyToManyField(
+        "Label", blank=True, related_name="python_code_tools"
+    )
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

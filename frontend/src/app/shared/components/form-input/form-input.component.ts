@@ -1,6 +1,6 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     Component,
     ElementRef,
     EventEmitter,
@@ -17,8 +17,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
-    standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
+    imports: [FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -121,7 +120,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         display: none;
                     }
                     background-color: var(--color-input-background);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border: 1px solid var(--color-input-border);
                     border-radius: 6px;
                     color: var(--color-text-primary);
                     font-size: 14px;
@@ -189,6 +188,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

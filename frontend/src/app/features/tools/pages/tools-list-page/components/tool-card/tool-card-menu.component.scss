@@ -1,0 +1,10 @@
+@use '../_menu-panel' as *;
+
+.card-menu {
+    @include menu-panel();
+
+    .menu-item {
+        @include menu-item();
+        justify-content: flex-start;
+    }
+}

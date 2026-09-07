@@ -29,10 +29,17 @@ class LLMModel(OrgScopedModel, models.Model):
     tags = models.ManyToManyField(LLMModelTag, blank=True, related_name="llm_models")
 
     class Meta(OrgScopedModel.Meta):
-        unique_together = (
-            "name",
-            "llm_provider",
-        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "llm_provider"],
+                name="unique_llmmodel_name_provider_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["name", "llm_provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_llmmodel_name_provider_builtin",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -112,20 +119,19 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     def get_default_model(self):
         return DefaultLLMConfig.load()
 
-    def delete(self, *args, **kwargs):
-        from tables.models import set_field_value_null_in_tool_configs
-        from tables.models import ToolConfigField
 
-        llm_config_id = self.pk
-        result = super().delete(*args, **kwargs)
-
-        set_field_value_null_in_tool_configs(
-            field_type=ToolConfigField.FieldType.LLM_CONFIG, value=llm_config_id
-        )
-        return result
+# ---------------------------------------------------------------------------
+# DEPRECATED: generic realtime model registry
+# These tables are kept for backward compatibility with quickstart,
+# import/export, and management commands, but are no longer used by the
+# realtime agent flow. New agents use OpenAIRealtimeConfig,
+# ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
+# ---------------------------------------------------------------------------
 
 
 class RealtimeModel(OrgScopedModel, models.Model):
+    """DEPRECATED: use provider-specific config models in realtime_models.py."""
+
     name = models.CharField(
         max_length=250, default="gpt-4o-mini-realtime-preview-2024-12-17"
     )
@@ -134,8 +140,23 @@ class RealtimeModel(OrgScopedModel, models.Model):
     )
     is_custom = models.BooleanField(default=False)
 
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "provider"],
+                name="unique_realtimemodel_name_provider_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["name", "provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_realtimemodel_name_provider_builtin",
+            ),
+        ]
+
 
 class RealtimeConfig(OrgScopedModel, models.Model):
+    """DEPRECATED: use OpenAIRealtimeConfig / ElevenLabsRealtimeConfig / GeminiRealtimeConfig."""
+
     custom_name = models.CharField(max_length=250)
     realtime_model = models.ForeignKey("RealtimeModel", on_delete=models.CASCADE)
     api_key_secret = models.ForeignKey(
@@ -151,14 +172,31 @@ class RealtimeConfig(OrgScopedModel, models.Model):
 
 
 class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
+    """DEPRECATED: transcription model is now a field inside OpenAIRealtimeConfig."""
+
     name = models.CharField(max_length=250, default="whisper-1")
     provider = models.ForeignKey(
         "Provider", on_delete=models.CASCADE, null=True, default=None
     )
     is_custom = models.BooleanField(default=False)
 
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "provider"],
+                name="unique_realtimetranscriptionmodel_name_prov_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["name", "provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_realtimetranscriptionmodel_name_prov_builtin",
+            ),
+        ]
+
 
 class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):
+    """DEPRECATED: transcription config is now embedded in OpenAIRealtimeConfig."""
+
     custom_name = models.CharField(max_length=250)
     realtime_transcription_model = models.ForeignKey(
         "RealtimeTranscriptionModel", on_delete=models.CASCADE

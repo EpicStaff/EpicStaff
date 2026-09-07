@@ -30,7 +30,7 @@ export class SecretsStorageService implements StorageService {
             this.pendingRequest$ = this.secretsApiService.getSecrets().pipe(
                 // A member/viewer has no access to this endpoint at all — that's a permanent,
                 // by-design restriction (see SKIP_FORBIDDEN_RELOAD on this request), not a
-                // failure worth surfacing as an error toast to every secret-picker consumer.
+                // failure worth surfacing as an error toast to every secrets consumer.
                 // Cache it as "loaded, zero secrets" instead of rethrowing.
                 catchError((err: HttpErrorResponse) => (err.status === 403 ? of([]) : throwError(() => err))),
                 tap((secrets) => this.createSecretsInCache(secrets)),

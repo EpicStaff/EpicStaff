@@ -22,7 +22,6 @@ RUN poetry install --no-ansi --no-root
 
 # Copy source code
 COPY ./manager /app/src/manager
-COPY ./tool /app/src/manager/tool
 COPY ./shared /app/src/shared
 
 # --- Stage 2: Runtime ---
@@ -39,5 +38,4 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 
 WORKDIR /app/src/manager
 
-EXPOSE 8000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["python", "-u", "main.py"]

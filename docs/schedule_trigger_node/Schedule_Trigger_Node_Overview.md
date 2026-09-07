@@ -12,7 +12,7 @@ The system is split across two services:
 
 - **Django** — persistence, HTTP/API, business guards, `current_runs`
   accounting, signal publishing.
-- **Manager** (FastAPI + APScheduler) — in-memory scheduler of jobs, consumes
+- **Manager** (asyncio worker + APScheduler) — in-memory scheduler of jobs, consumes
   Redis updates, fires callbacks, publishes back to Django.
 
 The two services communicate over a single Redis pub/sub channel whose
@@ -183,7 +183,7 @@ JSON. `_flat_schedule_payload` must stay in sync with
 
 ### 4.3 Manager — `ScheduleService`
 
-FastAPI-side APScheduler manager. On startup:
+Manager-side APScheduler service. On startup:
 
 1. `load_schedules_from_django()` — initial sync: reads all active nodes
    directly from the DB via `ScheduleTriggerNodeRepository`

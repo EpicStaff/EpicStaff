@@ -1,0 +1,214 @@
+.include-exclude-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 30rem;
+    max-width: 90vw;
+    min-height: 30rem;
+    max-height: 80vh;
+    background: var(--color-sidenav-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    color: var(--color-text-primary);
+    box-shadow:
+        0 6px 10px rgba(0, 0, 0, 0.15),
+        0 2px 3px rgba(0, 0, 0, 0.3);
+
+    .dialog-header {
+        margin-bottom: 0.75rem;
+
+        .title {
+            font-size: 1rem;
+            font-weight: 500;
+            margin: 0;
+        }
+    }
+}
+
+.tab-switch {
+    display: flex;
+    gap: 0.5rem;
+    background: var(--color-input-background);
+    padding: 0.25rem;
+    border-radius: 8px;
+    margin-bottom: 10px;
+
+    .tab-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        flex: 1;
+        padding: 0.55rem 0.75rem;
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        color: var(--color-text-secondary);
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition:
+            background 0.15s,
+            color 0.15s;
+
+        &:hover:not(.active) {
+            color: var(--color-text-primary);
+        }
+
+        &.active {
+            background: var(--accent-color);
+            color: #fff;
+        }
+    }
+}
+
+.selection-counter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+
+    .count-current {
+        color: var(--accent-color);
+        font-weight: 500;
+    }
+
+    .count-total {
+        color: var(--color-text-secondary);
+    }
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+    box-sizing: border-box;
+
+    &:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+    &::placeholder {
+        color: var(--color-input-text-placeholder);
+    }
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 22rem;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding-right: 0.25rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0;
+
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-text-secondary) transparent;
+
+    &::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: var(--color-text-secondary);
+        border-radius: 4px;
+        opacity: 0.5;
+    }
+
+    .empty {
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+        text-align: center;
+        padding: 1rem 0;
+    }
+}
+
+.list-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-height: 2.85rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-input-background);
+    border: 1px solid rgba(217, 217, 222, 0.16);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
+
+    &:hover {
+        border-color: var(--accent-color);
+    }
+
+    .row-label {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .row-checkbox-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        flex: 1;
+        min-width: 0;
+        cursor: pointer;
+    }
+}
+
+.label-row {
+    .expand-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        width: 0.75rem;
+        height: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .expand-icon {
+        transition: transform 0.15s ease;
+        &.expanded {
+            transform: rotate(90deg);
+        }
+    }
+}
+
+.list-row app-checkbox {
+    flex-shrink: 0;
+}
+
+.dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: auto -1.25rem -1.25rem;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--color-divider-subtle);
+
+    .footer-right {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+}

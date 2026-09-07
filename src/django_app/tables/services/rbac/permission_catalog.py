@@ -64,7 +64,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Tools",
         "group": "workspace",
         "description": "Tool definitions and configurations",
-        "applicable_actions": ["create", "read", "update", "delete"],
+        "applicable_actions": ["create", "read", "update", "delete", "export"],
     },
     {
         "code": ResourceType.SURFACES.value,
@@ -108,6 +108,13 @@ RESOURCE_TYPE_METADATA = [
         "description": "Provider API keys, credentials, sensitive config",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.VOICE.value,
+        "label": "Voice",
+        "group": "config",
+        "description": "Voice model configurations and settings",
+        "applicable_actions": ["create", "read", "update", "delete"],
+    }
 ]
 
 

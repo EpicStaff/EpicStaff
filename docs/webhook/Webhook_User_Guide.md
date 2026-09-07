@@ -31,14 +31,20 @@ Ngrok configuration you linked.
      corresponds to the domain configured in your selected Ngrok configuration  
      (for example, `https://your-custom-domain.ngrok.app`).
 
-2. **Find your Trigger ID**  
-   - This is the ID of the `WebhookTriggerNode` you created in Step 1.  
-   - You can find it by checking the node's details in the graph editor or
-     via the API.
+2. **Find your Path**  
+   - Requests are routed by `WebhookTrigger.path`, not by the node's numeric
+     ID -- there is no trigger/node ID anywhere in the URL. The path is a
+     string you assign when creating the webhook trigger, and it doubles as
+     your only routing secret: it's intentionally unguessable, and should be
+     treated the same way you'd treat a Stripe or GitHub webhook URL (don't
+     share it or log it anywhere public).
+   - You can find the current path -- and the full ready-to-use address, as
+     `live_url` -- on the node's webhook trigger details in the graph editor
+     or via the API.
 
 3. **Combine them**  
    - Your final public webhook URL has the format:  
-     `[Base URL]/webhooks/[Trigger ID]/`
+     `[Base URL]/webhooks/[path]/`
 
 Step 3: Send Data to the URL
 ----------------------------
@@ -48,7 +54,7 @@ a JSON body to your final URL.
 Example:
 
 ```http
-POST https://your-custom-domain.ngrok.app/webhooks/123/
+POST https://your-custom-domain.ngrok.app/webhooks/x7k2mQ9vLp3z/
 Content-Type: application/json
 
 {
@@ -56,3 +62,20 @@ Content-Type: application/json
   "any": "data your graph expects"
 }
 ```
+
+Inbound Request Authentication
+-------------------------------
+By default, requests to your webhook URL must be authenticated:
+
+- **Generic webhook triggers** (`WebhookTriggerNode`) require a secret set at
+  the trigger level: create a `Secret` (at least 32 characters) and point
+  the webhook trigger's `auth_secret_id` at it with `auth_kind: "webhook"`
+  via `/api/webhook-triggers/`. Your sending system must then send that
+  secret back on every request as an `EPICSTAFF_API_KEY` header. This is
+  mandatory -- there is no way to disable auth for a trigger; every trigger
+  either has a configured secret or requests to it are rejected with `401`.
+  See the Developer Guide's "Webhook Inbound Authentication" section for
+  details.
+- **Telegram triggers** are always auth-protected automatically, with
+  nothing for you to configure -- the secret-token exchange happens entirely
+  between this platform and Telegram when the bot's webhook is registered.

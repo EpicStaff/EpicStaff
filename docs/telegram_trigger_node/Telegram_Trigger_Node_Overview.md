@@ -12,15 +12,21 @@ The following database models persist configuration and mapping logic:
 
 - **TelegramTriggerNode**  
   - Represents the entry point within a graph.  
-  - Stores the `telegram_bot_api_key`.  
+  - Does **not** store the bot API key as a plaintext field. It holds
+    `telegram_bot_api_key_secret`, a `ForeignKey` to `Secret`
+    (`on_delete=SET_NULL`) -- the same Secret-reference pattern used by
+    `TwilioChannel.auth_token_secret` and `NgrokWebhookConfig.auth_token_secret`.
+    The actual key is only resolved server-side at call time (e.g. via
+    `secret_resolver.resolve(...)`), never returned as plaintext through the
+    regular API.
   - Linked via a `webhook_trigger` foreign key to a centralized
     `WebhookTrigger` entity.  
-  - **Note**: The webhook path (UUID) is now managed by the parent `Webhook`
-    entity, not directly on the node.
+  - **Note**: The webhook path (a string, not a UUID) is managed by the
+    parent `WebhookTrigger` entity, not directly on the node.
 
 - **NgrokWebhookConfig**  
-  - Stores tunneling details (domain, auth token, region, etc.) for the
-    webhook.  
+  - Stores tunneling details (domain, `auth_token_secret` -- a `ForeignKey`
+    to `Secret`, not a plaintext token -- region, etc.) for the webhook.  
   - Determines which public URL will be used to receive Telegram updates.
 
 - **TelegramTriggerNodeField**  
@@ -59,3 +65,20 @@ The `handle_telegram_trigger` method:
 3. Identifies the target graph and entrypoint node from the matching node(s).
 4. Injects the incoming payload into the session, using
    `TelegramTriggerNodeField` mappings to populate graph variables.
+
+3. Webhook Authentication
+-------------------------
+
+Every Telegram webhook is authenticated automatically and mandatorily --
+there is nothing for the API consumer to configure. When
+`register_telegram_trigger` calls Telegram's `setWebhook`, it also generates
+a random secret and stores it on the trigger's `WebhookTriggerAuth` row
+(`kind="telegram"`), passing it to Telegram as the `secret_token` parameter.
+Telegram then echoes that value back on every update as the
+`X-Telegram-Bot-Api-Secret-Token` header, which the `webhook` service
+verifies before the request is ever forwarded to Django. See the Webhook
+Developer Guide's "Webhook Inbound Authentication (`WebhookTriggerAuth`)"
+section for the full mechanism. Generic `WebhookTriggerNode`s use the same
+trigger-level model but a different, user-settable strategy
+(`kind="webhook"`, `EPICSTAFF_API_KEY` header) -- both are mandatory and
+fail-closed; there is no opt-out for either.

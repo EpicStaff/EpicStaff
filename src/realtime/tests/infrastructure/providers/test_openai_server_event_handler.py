@@ -57,6 +57,16 @@ async def test_session_created_forwarded(mock_db, handler, client):
     client.send_client.assert_awaited_once_with(data)
 
 
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_handle_event_forwards_org_id_to_db_write(mock_db, handler, client):
+    client.org_id = 55
+    data = {"type": "session.created", "session": {}}
+    await handler.handle_event(data)
+    _, kwargs = mock_db.call_args
+    assert kwargs.get("org_id") == 55
+
+
 # ---------------------------------------------------------------------------
 # handle_error — logs and forwards
 # ---------------------------------------------------------------------------

@@ -56,6 +56,8 @@ class RealtimeAgentClientFactory:
                 voice=config.voice,
                 instructions=instructions,
                 temperature=config.temperature or 1.0,
+                org_id=config.org_id,
+                user_id=config.user_id,
             )
             client.is_twilio = is_twilio
             return client
@@ -74,12 +76,14 @@ class RealtimeAgentClientFactory:
                 temperature=config.temperature,
                 llm_model=llm_model,
                 language=config.language,
+                org_id=config.org_id,
+                user_id=config.user_id,
             )
             client.is_twilio = is_twilio
             return client
 
         # Default: OpenAI
-        return OpenaiRealtimeAgentClient(
+        client = OpenaiRealtimeAgentClient(
             api_key=config.rt_api_key,
             connection_key=config.connection_key,
             on_server_event=on_server_event,
@@ -88,10 +92,14 @@ class RealtimeAgentClientFactory:
             model=config.rt_model_name,
             voice=config.voice,
             instructions=instructions,
-            temperature=config.temperature,
             input_audio_format="g711_ulaw" if is_twilio else config.input_audio_format,
             output_audio_format="g711_ulaw"
             if is_twilio
             else config.output_audio_format,
             turn_detection_mode=TurnDetectionMode.SERVER_VAD,
+            org_id=config.org_id,
+            user_id=config.user_id,
+            base_url=config.rt_base_url,
         )
+        client.is_twilio = is_twilio
+        return client

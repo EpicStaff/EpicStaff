@@ -42,8 +42,11 @@ class LabelStrategy(EntityImportExportStrategy):
             if old_parent_id
             else None
         )
+        scope = data.get("scope") or Label.Scope.FLOW
         return (
-            Label.objects.filter(name=data["name"], parent_id=parent_id)
+            Label.objects.filter(
+                name=data["name"], parent_id=parent_id, scope=scope
+            )
             .filter(self.get_org_scope_q(org_id))
             .first()
         )
@@ -61,10 +64,12 @@ class LabelStrategy(EntityImportExportStrategy):
             if old_parent_id
             else None
         )
+        scope = data.get("scope") or Label.Scope.FLOW
         label, _ = Label.objects.get_or_create(
             name=data["name"],
             parent_id=parent_id,
             org_id=org_id,
+            scope=scope,
             defaults={"metadata": data.get("metadata") or {}},
         )
         return label

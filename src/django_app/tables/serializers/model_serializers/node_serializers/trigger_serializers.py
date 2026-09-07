@@ -10,32 +10,73 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
     ScheduleTriggerNode,
 )
+
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
     ScheduleTriggerValidator,
 )
-from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.models.webhook_models import WebhookTrigger
+from tables.models.webhook_models import (
+    LOCAL_ONLY_PROVIDERS,
+    WebhookTrigger,
+    WebhookTriggerAuthKind,
+)
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.utils.mixins import NestedPythonCodeMixin, WebhookCreationMixin
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
-from tables.serializers.base_serializers import (
-    WebhookTriggerNestedSerializer,
-)
+from tables.services.schedule_trigger_service import ScheduleTriggerService
+
+
+_OTHER_NODE_TYPE_RELATED_NAME = {
+    WebhookTriggerAuthKind.WEBHOOK: "telegram_trigger_nodes",
+    WebhookTriggerAuthKind.TELEGRAM: "webhook_trigger_nodes",
+}
+
+
+def _reject_cross_type_trigger_conflict(
+    wt: WebhookTrigger | None, expected_kind: str
+) -> None:
+    if wt is None:
+        return
+
+    auth = getattr(wt, "auth", None)
+    if auth is not None and auth.kind != expected_kind:
+        raise serializers.ValidationError(
+            {
+                "webhook_trigger": (
+                    f"This trigger is already configured for "
+                    f"kind='{auth.kind}' auth and cannot be attached to a "
+                    f"node expecting kind='{expected_kind}' auth."
+                )
+            }
+        )
+
+    other_related_name = _OTHER_NODE_TYPE_RELATED_NAME[expected_kind]
+    if getattr(wt, other_related_name).exists():
+        raise serializers.ValidationError(
+            {
+                "webhook_trigger": (
+                    "This trigger is already attached to a different "
+                    "trigger node type and cannot also serve a "
+                    f"kind='{expected_kind}' node -- a trigger serves "
+                    "exactly one node type."
+                )
+            }
+        )
 
 
 class WebhookTriggerNodeSerializer(
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
-    WebhookCreationMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
-
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -48,51 +89,15 @@ class WebhookTriggerNodeSerializer(
             "webhook_trigger",
         ] + BaseGraphEntityMixin.Meta.common_fields
 
-    def to_internal_value(self, data):
-        # COMMIT_COMMENTS: Accept webhook_trigger as int FK ID (sent by frontend
-        # after loading from backend) in addition to nested dict — prevents
-        # validation error when the frontend round-trips the serialized data.
-        wt = data.get("webhook_trigger")
-        if isinstance(wt, int):
-            self._webhook_trigger_id = wt
-            data = data.copy()
-            data["webhook_trigger"] = None
-        else:
-            self._webhook_trigger_id = None
-        return super().to_internal_value(data)
+    def validate(self, attrs):
+        _reject_cross_type_trigger_conflict(
+            attrs.get("webhook_trigger"), WebhookTriggerAuthKind.WEBHOOK
+        )
+        return attrs
 
-    def create(self, validated_data):
-        webhook_trigger_data = validated_data.pop("webhook_trigger", None)
-        wt_id = getattr(self, "_webhook_trigger_id", None)
 
-        if wt_id:
-            validated_data["webhook_trigger"] = WebhookTrigger.objects.filter(
-                id=wt_id
-            ).first()
-        elif webhook_trigger_data:
-            validated_data["webhook_trigger"], _ = self._get_or_create_webhook_trigger(
-                webhook_trigger_data
-            )
-
-        return self._create_with_python_code(WebhookTriggerNode, validated_data)
-
-    def update(self, instance, validated_data):
-        wt_id = getattr(self, "_webhook_trigger_id", None)
-        if wt_id:
-            instance.webhook_trigger = WebhookTrigger.objects.filter(id=wt_id).first()
-            validated_data.pop("webhook_trigger", None)
-        elif "webhook_trigger" in validated_data:
-            webhook_trigger_data = validated_data.pop("webhook_trigger")
-
-            if webhook_trigger_data:
-                webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                    webhook_trigger_data
-                )
-                instance.webhook_trigger = webhook_trigger_instance
-            else:
-                instance.webhook_trigger = None
-
-        return super().update(instance, validated_data)
+class WebhookTriggerNodeReadSerializer(WebhookTriggerNodeSerializer):
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
 class TelegramTriggerNodeFieldSerializer(
@@ -111,7 +116,6 @@ class TelegramTriggerNodeFieldSerializer(
 
 class TelegramTriggerNodeSerializer(
     ContentHashWritableMixin,
-    WebhookCreationMixin,
     serializers.ModelSerializer,
 ):
     telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -120,7 +124,9 @@ class TelegramTriggerNodeSerializer(
         required=False,
         allow_null=True,
     )
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -135,39 +141,33 @@ class TelegramTriggerNodeSerializer(
             "webhook_trigger",
         ] + BaseGraphEntityMixin.Meta.common_fields
 
-    def create(self, validated_data):
-        fields_data = validated_data.pop("fields", [])
+    def validate(self, attrs):
+        wt = attrs.get("webhook_trigger")
+        provider_type = wt.provider_type if wt else None
 
-        webhook_trigger_data = validated_data.pop("webhook_trigger", None)
-        webhook_trigger_instance = None
-
-        if webhook_trigger_data:
-            webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                webhook_trigger_data
+        if provider_type and provider_type in LOCAL_ONLY_PROVIDERS:
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        "Localhost webhook provider is not reachable by Telegram. "
+                        "Use ngrok or a publicly accessible provider."
+                    )
+                }
             )
 
-        node = TelegramTriggerNode.objects.create(
-            webhook_trigger=webhook_trigger_instance, **validated_data
-        )
+        _reject_cross_type_trigger_conflict(wt, WebhookTriggerAuthKind.TELEGRAM)
+
+        return attrs
+
+    def create(self, validated_data):
+        fields_data = validated_data.pop("fields", [])
+        node = TelegramTriggerNode.objects.create(**validated_data)
         for item in fields_data:
             TelegramTriggerNodeField.objects.create(telegram_trigger_node=node, **item)
-
         return node
 
     def update(self, instance, validated_data):
         fields_data = validated_data.pop("fields", None)
-
-        if "webhook_trigger" in validated_data:
-            webhook_trigger_data = validated_data.pop("webhook_trigger")
-
-            webhook_trigger_instance = None
-            if webhook_trigger_data:
-                webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                    webhook_trigger_data
-                )
-
-            instance.webhook_trigger = webhook_trigger_instance
-
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -180,6 +180,10 @@ class TelegramTriggerNodeSerializer(
                 )
 
         return instance
+
+
+class TelegramTriggerNodeReadSerializer(TelegramTriggerNodeSerializer):
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
 class TelegramTriggerNodeDataFieldsSerializer(serializers.Serializer):

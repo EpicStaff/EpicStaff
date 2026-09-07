@@ -1,14 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, input } from '@angular/core';
 
 import { CollapseOnOverflowDirective } from '../../../directives/collapse-on-overflow.directive';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-button',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CollapseOnOverflowDirective],
     templateUrl: './button.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./button.component.scss'],
 })
 export class ButtonComponent {

@@ -1,14 +1,15 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { CreateLabelRequest, LabelDto, PatchLabelRequest, UpdateLabelRequest } from '@shared/models';
+import { LabelsApi } from '@shared/services';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
-import { ConfigService } from '../../../services/config/config.service';
-import { CreateLabelRequest, LabelDto, PatchLabelRequest, UpdateLabelRequest } from '../models/label.model';
+import { ConfigService } from '../../../services/config';
 
 @Injectable({ providedIn: 'root' })
-export class LabelsApiService {
+export class LabelsApiService implements LabelsApi {
     private http = inject(HttpClient);
     private configService = inject(ConfigService);
 

@@ -12,6 +12,7 @@ from infrastructure.transcription.event_handlers.transcription_server_event_hand
 
 from domain.ports.i_transcription_client import ITranscriptionClient
 from domain.services.chat_buffer import ChatSummarizedBuffer
+from utils.openai_endpoints import derive_realtime_ws_url
 
 
 class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
@@ -24,17 +25,22 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
         language: str | None = None,
         voice_recognition_prompt: str | None = None,
         buffer: ChatSummarizedBuffer = None,
-        temperature: float = 0.8,
+        connection_model: str = "gpt-realtime-1.5",
+        org_id: int | None = None,
+        user_id: int | None = None,
+        base_url: str | None = None,
     ):
         self.api_key = api_key
         self.connection_key = connection_key
         self.on_server_event = on_server_event
+        self.org_id = org_id
+        self.user_id = user_id
         self.model = model
+        self.connection_model = connection_model
         self.ws = None
         self.language = language
         self.voice_recognition_prompt = voice_recognition_prompt
-        self.temperature = temperature
-        self.base_url = "wss://api.openai.com/v1/realtime"
+        self.base_url = derive_realtime_ws_url(base_url)
         self.turn_detection_mode = "server_vad"
 
         self.buffer = buffer
@@ -46,12 +52,9 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
         self.client_event_handler = TranscriptionClientEventHandler(self, buffer=buffer)
 
     async def connect(self) -> None:
-        """Establish WebSocket connection with the Realtime transcription API."""
         url = f"{self.base_url}?intent=transcription"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "OpenAI-Beta": "realtime=v1",
         }
 
         self.ws = await websockets.connect(url, extra_headers=headers)
@@ -63,34 +66,34 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
             await self.on_server_event(data)
 
     async def update_session(self) -> None:
-        """Update session configuration."""
+        transcription: Dict[str, Any] = {"model": self.model}
+        if self.language is not None:
+            transcription["language"] = self.language
+        if self.voice_recognition_prompt is not None:
+            transcription["prompt"] = self.voice_recognition_prompt
 
         data = {
-            "type": "transcription_session.update",
+            "type": "session.update",
             "session": {
-                "input_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": self.model,
+                "type": "transcription",
+                "audio": {
+                    "input": {
+                        "format": {"type": "audio/pcm", "rate": 24000},
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.5,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 500,
+                        },
+                        "transcription": transcription,
+                        "noise_reduction": {"type": "near_field"},
+                    },
                 },
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
-                },
-                "input_audio_noise_reduction": {"type": "near_field"},
                 "include": [
                     "item.input_audio_transcription.logprobs",
                 ],
             },
         }
-        if self.language is not None:
-            data["session"]["input_audio_transcription"]["language"] = self.language
-
-        if self.voice_recognition_prompt is not None:
-            data["session"]["input_audio_transcription"]["prompt"] = (
-                self.voice_recognition_prompt
-            )
 
         await self.send_server(data)
 

@@ -21,16 +21,22 @@ on:
         description: 'Image tag to push (e.g. latest, branch-slug, vX.Y.Z)'
         required: true
         type: string
+      is_release:
+        description: 'Whether this build is an actual release (gates signing/SBOM steps)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 env:
   REGISTRY: ghcr.io
   OWNER: epicstaff
   COMPOSE_FILE: src/docker-compose.yaml
-  EXCLUDE_SERVICES: tool,redis-monitor
+  EXCLUDE_SERVICES: redis-monitor
 
 concurrency:
   group: build-and-push-${{ github.event_name }}-${{ inputs.tag || github.ref }}
@@ -168,6 +174,7 @@ jobs:
           echo ">> tags: ${TAGS}"
 
       - name: Build & push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -176,3 +183,83 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Install cosign
+        if: ${{ inputs.is_release }}
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        if: ${{ inputs.is_release }}
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Sign image (keyless)
+        if: ${{ inputs.is_release }}
+        shell: bash
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$IMAGE_REF"
+
+      - name: Generate SBOM (SPDX)
+        if: ${{ inputs.is_release }}
+        shell: bash
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          syft "$IMAGE_REF" -o spdx-json="${{ matrix.service }}.spdx.json"
+
+      - name: Attest SBOM (keyless)
+        if: ${{ inputs.is_release }}
+        shell: bash
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign attest --yes \
+            --type spdxjson \
+            --predicate "${{ matrix.service }}.spdx.json" \
+            "$IMAGE_REF"
+
+      - name: Write digest record
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"%s":"%s"}\n' "${{ matrix.service }}" "${{ steps.build.outputs.digest }}" \
+            > "${{ matrix.service }}-digest.json"
+          cat "${{ matrix.service }}-digest.json"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.service }}
+          path: ${{ matrix.service }}-digest.json
+          retention-days: 7
+
+  aggregate-digests:
+    name: Aggregate image digests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Merge into digest-map.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la digests
+          jq -s 'add' digests/*-digest.json > digest-map.json
+          cat digest-map.json
+
+      - name: Upload digest-map artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-map
+          path: digest-map.json
+          retention-days: 7

@@ -4,14 +4,13 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    CodeAgentNode,
     ConditionalEdge,
-    CrewNode,
     DecisionTableNode,
     Edge,
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -24,12 +23,11 @@ from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
     ClassificationDecisionTableNodeBulkSerializer,
-    CodeAgentNodeBulkSerializer,
-    CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
     FileExtractorNodeBulkSerializer,
     GraphNoteBulkSerializer,
+    KnowledgeNodeBulkSerializer,
     PythonNodeBulkSerializer,
     ScheduleTriggerNodeBulkSerializer,
     StartNodeBulkSerializer,
@@ -42,6 +40,7 @@ from tables.services.graph_bulk_save_service.factories import (
     ClassificationDecisionTableNodeSaveableFactory,
     DefaultNodeSaveableFactory,
     DecisionTableNodeSaveableFactory,
+    KnowledgeNodeSaveableFactory,
     NodeSaveableFactory,
 )
 
@@ -50,16 +49,17 @@ from tables.services.graph_bulk_save_service.factories import (
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()
 _CLASSIFICATION_DT_FACTORY = ClassificationDecisionTableNodeSaveableFactory()
 _DECISION_TABLE_FACTORY = DecisionTableNodeSaveableFactory()
+_KNOWLEDGE_FACTORY = KnowledgeNodeSaveableFactory()
 
 
 @dataclass
 class NodeTypeConfig:
     """NodeTypeConfig contains all required data about one node type"""
 
-    list_key: str  # key in the request payload, e.g. "crew_node_list"
-    delete_key: str  # key in the deleted dict, e.g. "crew_node_ids"
-    model_class: type  # Django model class, e.g. CrewNode
-    serializer_class: type  # bulk serializer class, e.g. CrewNodeBulkSerializer
+    list_key: str  # key in the request payload, e.g. "agent_node_list"
+    delete_key: str  # key in the deleted dict, e.g. "agent_node_ids"
+    model_class: type  # Django model class, e.g. AgentNode
+    serializer_class: type  # bulk serializer class, e.g. AgentNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
 
     def __post_init__(self):
@@ -86,18 +86,6 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
-    NodeTypeConfig(
-        "code_agent_node_list",
-        "code_agent_node_ids",
-        CodeAgentNode,
-        CodeAgentNodeBulkSerializer,
-    ),
-    NodeTypeConfig(
-        "crew_node_list",
-        "crew_node_ids",
-        CrewNode,
-        CrewNodeBulkSerializer,
-    ),
     NodeTypeConfig(
         "python_node_list",
         "python_node_ids",
@@ -153,6 +141,13 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "graph_note_ids",
         GraphNote,
         GraphNoteBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "knowledge_node_list",
+        "knowledge_node_ids",
+        KnowledgeNode,
+        KnowledgeNodeBulkSerializer,
+        saveable_factory=_KNOWLEDGE_FACTORY,
     ),
     NodeTypeConfig(
         "webhook_trigger_node_list",

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -8,7 +7,6 @@ import {
     AgentNodeModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     TaskNodeModel,
     ToolNodeModel,
@@ -16,8 +14,7 @@ import {
 
 @Component({
     selector: 'app-search-node-item',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -36,12 +33,11 @@ import {
                     {{ getNodeDisplayName() }}
                 </div>
                 <div class="node-details">
-                    <div
-                        class="node-description"
-                        *ngIf="node.node_name"
-                    >
-                        {{ node.node_name }}
-                    </div>
+                    @if (node.node_name) {
+                        <div class="node-description">
+                            {{ node.node_name }}
+                        </div>
+                    }
                 </div>
             </div>
             <div class="show-in-canvas">
@@ -183,8 +179,6 @@ export class SearchNodeItemComponent {
                 return 'Start';
             case NodeType.AGENT:
                 return (this.node as AgentNodeModel).data?.name || this.node.node_name;
-            case NodeType.PROJECT:
-                return (this.node as ProjectNodeModel).data?.name || this.node.node_name;
             case NodeType.TASK:
                 return (this.node as TaskNodeModel).data?.name || this.node.node_name;
             case NodeType.PYTHON:

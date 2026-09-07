@@ -7,18 +7,16 @@ from agents.models.surface_models import Surface
 from tables.models import Graph
 from tables.models.graph_models import AgentNode, AgentNodeTask, StorageFile, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
-from tables.models.llm_models import (
-    LLMConfig,
-    RealtimeConfig,
-    RealtimeModel,
-    RealtimeTranscriptionConfig,
-    RealtimeTranscriptionModel,
-)
+from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
-from tables.models.realtime_models import RealtimeAgentDefinition
+from tables.models.realtime_models import (
+    ElevenLabsRealtimeConfig,
+    OpenAIRealtimeConfig,
+    RealtimeAgentDefinition,
+)
 
 
 @pytest.fixture
@@ -314,58 +312,52 @@ def test_surface_knowledge_collection_cross_org_rejected(client_a, org_b):
 
 
 @pytest.fixture
-def realtime_config_factory():
+def openai_config_factory():
     def make(org):
-        model = RealtimeModel.objects.create(name="m")
-        return RealtimeConfig.objects.create(
-            custom_name="c", realtime_model=model, org=org
-        )
+        return OpenAIRealtimeConfig.objects.create(custom_name="c", org=org)
 
     return make
 
 
 @pytest.fixture
-def realtime_transcription_config_factory():
+def elevenlabs_config_factory():
     def make(org):
-        model = RealtimeTranscriptionModel.objects.create(name="m")
-        return RealtimeTranscriptionConfig.objects.create(
-            custom_name="c", realtime_transcription_model=model, org=org
-        )
+        return ElevenLabsRealtimeConfig.objects.create(custom_name="c", org=org)
 
     return make
 
 
 @pytest.mark.django_db
-def test_realtime_agent_definition_create_rejects_cross_org_realtime_config(
-    client_a, org_a, org_b, realtime_config_factory
+def test_realtime_agent_definition_create_rejects_cross_org_openai_config(
+    client_a, org_a, org_b, openai_config_factory
 ):
     agent_definition = AgentDefinition.objects.create(name="ad", organization=org_a)
-    other_config = realtime_config_factory(org_b)
+    other_config = openai_config_factory(org_b)
     resp = client_a.post(
         "/api/realtime-agent-definitions/",
-        {"agent_definition": agent_definition.id, "realtime_config": other_config.id},
+        {"agent_definition": agent_definition.id, "openai_config": other_config.id},
         format="json",
     )
     assert resp.status_code == 400
-    assert "realtime_config" in resp.data["message"]
+    assert "openai_config" in resp.data["message"]
 
 
 @pytest.mark.django_db
-def test_realtime_agent_definition_create_rejects_cross_org_transcription_config(
-    client_a, org_a, org_b, realtime_transcription_config_factory
+def test_realtime_agent_definition_create_rejects_cross_org_elevenlabs_config(
+    client_a, org_a, org_b, elevenlabs_config_factory
 ):
     agent_definition = AgentDefinition.objects.create(name="ad", organization=org_a)
-    other_config = realtime_transcription_config_factory(org_b)
+    other_config = elevenlabs_config_factory(org_b)
     resp = client_a.post(
         "/api/realtime-agent-definitions/",
         {
             "agent_definition": agent_definition.id,
-            "realtime_transcription_config": other_config.id,
+            "elevenlabs_config": other_config.id,
         },
         format="json",
     )
     assert resp.status_code == 400
-    assert "realtime_transcription_config" in resp.data["message"]
+    assert "elevenlabs_config" in resp.data["message"]
 
 
 @pytest.mark.django_db

@@ -1,8 +1,8 @@
 import os
-import re
 
 from rest_framework import serializers
 
+from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.validators.file_upload_validator import FileValidator
 
 
@@ -10,15 +10,14 @@ _MAX_STORAGE_PATH_BYTES = 1000
 
 
 def _normalize_path(value: str) -> str:
-    if not value:
-        return value
-    value = re.sub(r"/+", "/", value)
-    value = value.rstrip("/")
     if len(value.encode("utf-8")) > _MAX_STORAGE_PATH_BYTES:
         raise serializers.ValidationError(
             f"Path too long: max {_MAX_STORAGE_PATH_BYTES} bytes."
         )
-    return value
+    try:
+        return sanitize_storage_path(value, allow_empty=True)
+    except ValueError as exc:
+        raise serializers.ValidationError(str(exc))
 
 
 class StoragePathQuerySerializer(serializers.Serializer):
@@ -269,6 +268,9 @@ class StorageRemoveFromGraphSerializer(serializers.Serializer):
         allow_empty=False,
         help_text="Graph IDs to unlink from",
     )
+
+    def validate_paths(self, value: list[str]) -> list[str]:
+        return [_normalize_path(path) for path in value]
 
 
 class StorageGraphFilesQuerySerializer(serializers.Serializer):

@@ -167,7 +167,6 @@ function buildCreatedNodeIdMap(
         }
     }
 
-    mapByNewIds(nodeDiff.crewNodes.toCreate, responseGraph.crew_node_list ?? [], existingIdsByType(NodeType.PROJECT));
     mapByNewIds(
         nodeDiff.pythonNodes.toCreate,
         responseGraph.python_node_list ?? [],
@@ -205,11 +204,6 @@ function buildCreatedNodeIdMap(
         nodeDiff.decisionTableNodes.toCreate,
         responseGraph.decision_table_node_list ?? [],
         existingIdsByType(NodeType.TABLE)
-    );
-    mapByNewIds(
-        nodeDiff.codeAgentNodes.toCreate,
-        responseGraph.code_agent_node_list ?? [],
-        existingIdsByType(NodeType.CODE_AGENT)
     );
     mapByNewIds(nodeDiff.endNodes.toCreate, responseGraph.end_node_list ?? [], existingIdsByType(NodeType.END));
     mapByNewIds(nodeDiff.noteNodes.toCreate, responseGraph.graph_note_list ?? [], existingIdsByType(NodeType.NOTE));

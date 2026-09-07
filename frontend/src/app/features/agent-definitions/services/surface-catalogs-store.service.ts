@@ -7,8 +7,8 @@ import { finalize, map, shareReplay, tap } from 'rxjs/operators';
 import { StorageTreeNode } from '../../files/models/storage.models';
 import { StorageApiService } from '../../files/services/storage-api.service';
 import { CollectionsApiService } from '../../knowledge-sources/services/collections-api.service';
+import { CustomToolsService } from '../../tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../tools/services/mcp-tools/mcp-tools.service';
-import { PythonCodeToolService } from '../../tools/services/python-code-tool.service';
 import { SurfaceCollectionOption, SurfaceToolOption } from '../models/surface-card.model';
 
 export interface StorageFileMeta {
@@ -41,7 +41,7 @@ function toDropdownNode(
 
 @Injectable()
 export class SurfaceCatalogsStore {
-    private readonly pythonToolService = inject(PythonCodeToolService);
+    private readonly pythonToolService = inject(CustomToolsService);
     private readonly mcpToolService = inject(McpToolsService);
     private readonly collectionsService = inject(CollectionsApiService);
     private readonly storageApi = inject(StorageApiService);

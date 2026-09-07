@@ -1,0 +1,296 @@
+<div class="sidebar-header">
+    <span class="sidebar-title">Label Branches</span>
+    <button
+        class="close-btn"
+        matTooltip="Close sidebar"
+        matTooltipPosition="right"
+        (click)="closeSidebar.emit()"
+    >
+        <app-svg-icon
+            icon="x"
+            size="1.5rem"
+        />
+    </button>
+</div>
+
+<div class="sidebar-content">
+    <!-- All items row -->
+    <div
+        class="tree-item all-items-item"
+        [class.active]="activeLabelFilter() === 'all'"
+        (click)="selectAll()"
+    >
+        <app-svg-icon
+            icon="home"
+            size="0.9rem"
+        />
+        <span>{{ allItemsLabel() }}</span>
+    </div>
+
+    <!-- Labels section header -->
+    <div class="section-header">
+        <div class="section-label-header">
+            <app-svg-icon
+                icon="label"
+                size="12px"
+            />
+            <span class="section-label">Labels</span>
+        </div>
+        <button
+            *appHasPermission="[resourceCode(), ActionCode.Create]"
+            class="add-btn"
+            (click)="startAddRootLabel()"
+            matTooltip="Add label"
+            matTooltipPosition="above"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="1rem"
+            />
+        </button>
+    </div>
+
+    <!-- Root label add input -->
+    @if (addingRootLabel()) {
+        <div class="add-label-row root-add">
+            <input
+                class="label-input"
+                [class.has-error]="newLabelError()"
+                [ngModel]="newLabelNameValue()"
+                (ngModelChange)="newLabelNameValue.set($event); onNewLabelInput()"
+                placeholder="Enter Label Name..."
+                (keyup.enter)="confirmAddLabel()"
+                (keyup.escape)="cancelAddLabel()"
+                autofocus
+            />
+            <app-label-color-picker
+                [selectedColor]="newLabelColor()"
+                (colorChange)="newLabelColor.set($event)"
+            ></app-label-color-picker>
+            <button
+                class="confirm-btn"
+                (click)="confirmAddLabel()"
+                matTooltip="Confirm"
+                matTooltipPosition="above"
+            >
+                <app-svg-icon
+                    icon="check"
+                    size="0.85rem"
+                />
+            </button>
+            <button
+                class="cancel-btn"
+                (click)="cancelAddLabel()"
+                matTooltip="Cancel"
+                matTooltipPosition="above"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="0.85rem"
+                />
+            </button>
+        </div>
+        @if (newLabelError()) {
+            <div class="label-error">{{ newLabelError() }}</div>
+        }
+    }
+
+    <!-- Label tree (flat rendered) -->
+    @for (item of flatTree(); track item.node.id) {
+        <div
+            class="tree-item label-item"
+            [class.active]="activeLabelFilter() === item.node.id"
+            [style.paddingLeft]="getIndentPadding(item.depth)"
+            [style.--label-color]="getLabelIconColor(item.node)"
+            (click)="selectLabel(item.node.id)"
+        >
+            <button
+                class="toggle-btn"
+                (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
+                [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
+                [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
+                matTooltipPosition="above"
+            >
+                <app-svg-icon
+                    icon="expand"
+                    size="0.6rem"
+                    [class.expanded]="isExpanded(item.node.id)"
+                    class="expand-icon"
+                />
+            </button>
+            <app-svg-icon
+                icon="label"
+                size="12px"
+                class="label-icon"
+            />
+
+            @if (editingLabelId() === item.node.id) {
+                <input
+                    class="rename-input"
+                    [class.has-error]="renameLabelError()"
+                    [ngModel]="editingLabelNameValue()"
+                    (ngModelChange)="editingLabelNameValue.set($event); onRenameLabelInput()"
+                    (keyup.enter)="confirmRename(item.node.id)"
+                    (keyup.escape)="cancelRename()"
+                    (click)="$event.stopPropagation()"
+                    autofocus
+                />
+                <app-label-color-picker
+                    [selectedColor]="editingLabelColor()"
+                    (colorChange)="editingLabelColor.set($event)"
+                ></app-label-color-picker>
+                <button
+                    class="confirm-btn"
+                    (click)="$event.stopPropagation(); confirmRename(item.node.id)"
+                    matTooltip="Confirm"
+                    matTooltipPosition="above"
+                >
+                    <app-svg-icon
+                        icon="check"
+                        size="0.85rem"
+                    />
+                </button>
+                <button
+                    class="cancel-btn"
+                    (click)="$event.stopPropagation(); cancelRename()"
+                    matTooltip="Cancel"
+                    matTooltipPosition="above"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="0.85rem"
+                    />
+                </button>
+            } @else {
+                <span
+                    class="label-name"
+                    [matTooltip]="item.node.name"
+                    matTooltipPosition="above"
+                    matTooltipShowDelay="500"
+                    matTooltipClass="tree-name-tooltip"
+                    >{{ item.node.name }}</span
+                >
+
+                <div class="item-actions">
+                    <button
+                        *appHasPermission="[resourceCode(), ActionCode.Create]"
+                        class="action-btn"
+                        (click)="$event.stopPropagation(); startAddChildLabel(item.node.id)"
+                        matTooltip="Add sublabel"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="1rem"
+                        />
+                    </button>
+                    <button
+                        *appHasPermission="[resourceCode(), ActionCode.Update]"
+                        class="action-btn edit-label-btn"
+                        (click)="$event.stopPropagation(); startRename(item.node)"
+                        matTooltip="Rename"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="edit-label"
+                            size="0.75rem"
+                        />
+                    </button>
+                    <button
+                        *appHasPermission="[resourceCode(), ActionCode.Delete]"
+                        class="action-btn danger"
+                        (click)="$event.stopPropagation(); openDeleteDialog(item.node)"
+                        matTooltip="Delete"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="trash"
+                            size="0.75rem"
+                        />
+                    </button>
+                </div>
+            }
+        </div>
+
+        @if (renameLabelError() && editingLabelId() === item.node.id) {
+            <div
+                class="label-error rename-error"
+                [style.marginLeft]="getIndentPadding(item.depth)"
+                (click)="$event.stopPropagation()"
+            >
+                {{ renameLabelError() }}
+            </div>
+        }
+
+        @if (addingChildOf() === item.node.id) {
+            <div
+                class="add-label-row child-add"
+                [style.paddingLeft]="getIndentPadding(item.depth + 1)"
+            >
+                <input
+                    class="label-input"
+                    [class.has-error]="newLabelError()"
+                    [ngModel]="newLabelNameValue()"
+                    (ngModelChange)="newLabelNameValue.set($event); onNewLabelInput()"
+                    placeholder="Enter Sublabel Name..."
+                    (keyup.enter)="confirmAddLabel()"
+                    (keyup.escape)="cancelAddLabel()"
+                    autofocus
+                />
+                <app-label-color-picker
+                    [selectedColor]="newLabelColor()"
+                    (colorChange)="newLabelColor.set($event)"
+                ></app-label-color-picker>
+                <button
+                    class="confirm-btn"
+                    (click)="confirmAddLabel()"
+                    matTooltip="Confirm"
+                    matTooltipPosition="above"
+                >
+                    <app-svg-icon
+                        icon="check"
+                        size="1rem"
+                    />
+                </button>
+                <button
+                    class="cancel-btn"
+                    (click)="cancelAddLabel()"
+                    matTooltip="Cancel"
+                    matTooltipPosition="above"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1rem"
+                    />
+                </button>
+            </div>
+            @if (newLabelError()) {
+                <div
+                    class="label-error"
+                    [style.marginLeft]="getIndentPadding(item.depth + 1)"
+                >
+                    {{ newLabelError() }}
+                </div>
+            }
+        }
+    }
+
+    <!-- Unlabeled row -->
+    <div
+        class="tree-item unlabeled-item"
+        [class.active]="activeLabelFilter() === 'unlabeled'"
+        (click)="selectUnlabeled()"
+    >
+        <app-svg-icon
+            icon="nolabel"
+            size="12px"
+        />
+        <span>Unlabeled</span>
+    </div>
+</div>
+
+<div
+    class="resizable-sidebar-handle"
+    [appResizableSidebar]="storageKey()"
+    [sidebarTarget]="hostElement"
+></div>

@@ -1,3 +1,4 @@
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,8 +10,10 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.permissions import IsSuperadmin
-from tables.models.rbac_models import ApiKey
+from tables.models.rbac_models import ApiKey, OrganizationUser
+from django.contrib.auth import get_user_model
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
@@ -24,7 +27,10 @@ from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.auth_validation_service import AuthValidationService
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
-from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
+from tables.services.rbac.rbac_exceptions import (
+    FirstSetupDisabledError,
+    InvalidRefreshTokenError,
+)
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.services.rbac.utils.refresh_cookie import (
@@ -45,7 +51,12 @@ from tables.swagger_schemas.auth_schema import (
     TOKEN_INTROSPECT_POST,
     WS_TICKET_POST,
 )
-from tables.throttles import LoginThrottle, PasswordResetRequestThrottle
+from tables.throttles import (
+    LoginThrottle,
+    PasswordResetConfirmThrottle,
+    PasswordResetRequestThrottle,
+    TokenRefreshThrottle,
+)
 
 
 class LoginView(TokenObtainPairView):
@@ -143,10 +154,21 @@ class FirstSetupView(APIView):
 
     @extend_schema(**FIRST_SETUP_GET)
     def get(self, request):
-        return Response({"needs_setup": self._service.is_setup_required()})
+        # `needs_setup` stays false whenever the HTTP path is closed, so the
+        # frontend never offers a setup form it cannot submit.
+        http_allowed = FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE)
+        return Response(
+            {
+                "needs_setup": http_allowed and self._service.is_setup_required(),
+                "setup_mode": settings.FIRST_SETUP_MODE,
+            }
+        )
 
     @extend_schema(**FIRST_SETUP_POST)
     def post(self, request):
+        if not FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE):
+            raise FirstSetupDisabledError()
+
         cleaned = self._validator.validate_first_setup(request.data)
 
         result = self._service.setup(
@@ -200,12 +222,24 @@ class TokenIntrospectView(APIView):
         except TokenError:
             return Response({"active": False}, status=status.HTTP_200_OK)
 
+        user_id = access.get("user_id")
+        org_ids = list(
+            OrganizationUser.objects.filter(user_id=user_id).values_list(
+                "org_id", flat=True
+            )
+        )
+        is_superadmin = (
+            get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
+        )
+
         return Response(
             {
                 "active": True,
-                "user_id": access.get("user_id"),
+                "user_id": user_id,
                 "email": access.get("email"),
                 "scopes": access.get("scopes", []),
+                "org_ids": org_ids,
+                "is_superadmin": is_superadmin,
             },
             status=status.HTTP_200_OK,
         )
@@ -297,6 +331,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [PasswordResetConfirmThrottle]
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -362,6 +397,7 @@ class CookieTokenRefreshView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [TokenRefreshThrottle]
 
     @extend_schema(**REFRESH_POST)
     def post(self, request):
@@ -408,10 +444,7 @@ class ResetUserView(APIView):
         tokens = TokenPair.for_user(user)
 
         response = Response(
-            {
-                "access": tokens.access,
-                "api_key": raw_key,
-            },
+            {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
         set_refresh_cookie(response, tokens.refresh)

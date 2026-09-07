@@ -1,9 +1,11 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from tables.exceptions import (
     BuiltInToolModificationError,
     PythonCodeToolConfigSerializerError,
 )
+from tables.models.label_models import Label
 from tables.models.python_models import (
     PythonCode,
     PythonCodeResult,
@@ -18,6 +20,10 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueValidator,
     OrgScopedUniqueTogetherValidator,
     resolve_active_org_id,
+)
+from tables.serializers.utils.org_scoped_labels import (
+    org_scoped_label_ids,
+    set_org_scoped_labels,
 )
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
@@ -138,6 +144,7 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 class PythonCodeToolSerializer(serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
+    is_favorite = serializers.BooleanField(read_only=True, default=False)
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
     name = serializers.CharField(
         validators=[
@@ -146,6 +153,11 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
                 message="A tool with this name already exists.",
             )
         ]
+    )
+    labels = OrgScopedPrimaryKeyRelatedField(
+        many=True,
+        required=False,
+        queryset=Label.objects.filter(scope=Label.Scope.TOOL),
     )
 
     class Meta:
@@ -156,36 +168,63 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "description",
             "variables",
             "python_code",
-            "favorite",
+            "is_favorite",
             "built_in",
             "use_storage",
+            "labels",
         ]
         read_only_fields = ["id", "built_in"]
 
-    def create(self, validated_data):
-        python_code_data = validated_data.pop("python_code")
-        python_code = create_python_code(python_code_data=python_code_data)
-        python_code_tool = PythonCodeTool.objects.create(
-            python_code=python_code, **validated_data
+    def to_representation(self, instance):
+        """Scope the serialized `labels` to the active org.
+
+        `PythonCodeTool.labels` is a single M2M; a shared built-in tool
+        (`org=None`) can carry attachments from several orgs on the same
+        row. Without this, GET would leak another org's label ids on that
+        shared row (EST-3773).
+        """
+        representation = super().to_representation(instance)
+        representation["labels"] = org_scoped_label_ids(
+            instance, self.context.get("request")
         )
+        return representation
+
+    def create(self, validated_data):
+        labels = validated_data.pop("labels", [])
+        python_code_data = validated_data.pop("python_code")
+        with transaction.atomic():
+            python_code = create_python_code(python_code_data=python_code_data)
+            python_code_tool = PythonCodeTool.objects.create(
+                python_code=python_code, **validated_data
+            )
+            set_org_scoped_labels(
+                python_code_tool, labels, self.context.get("request")
+            )
         return python_code_tool
 
     def update(self, instance, validated_data):
-        if instance.built_in:
-            raise BuiltInToolModificationError()
-
+        labels = validated_data.pop("labels", None)
         python_code_data = validated_data.pop("python_code", None)
 
-        if python_code_data:
-            apply_python_code_fields(
-                python_code=instance.python_code,
-                python_code_data=python_code_data,
+        if instance.built_in and (validated_data or python_code_data):
+            raise BuiltInToolModificationError(
+                "Built-in tools cannot be modified, except for labels"
             )
 
-        for attr, value in validated_data.items():
-            if attr != "built_in":
-                setattr(instance, attr, value)
-        instance.save()
+        with transaction.atomic():
+            if python_code_data:
+                apply_python_code_fields(
+                    python_code=instance.python_code,
+                    python_code_data=python_code_data,
+                )
+
+            for attr, value in validated_data.items():
+                if attr != "built_in":
+                    setattr(instance, attr, value)
+            instance.save()
+
+            if labels is not None:
+                set_org_scoped_labels(instance, labels, self.context.get("request"))
 
         return instance
 

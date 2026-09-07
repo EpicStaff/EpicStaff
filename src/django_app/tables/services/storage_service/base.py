@@ -3,6 +3,10 @@ import zipfile
 from abc import ABC, abstractmethod
 from typing import Iterator
 
+from tables.services.storage_service.archive_limits import (
+    ArchiveExtractionGuard,
+    default_guard,
+)
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FolderInfo,
@@ -10,6 +14,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 
 
 class AbstractStorageBackend(ABC):
@@ -61,9 +66,16 @@ class AbstractStorageBackend(ABC):
         finally:
             archive_file.seek(pos)
 
-    def _iter_archive_entries(self, archive_file) -> Iterator[tuple[str, bytes]]:
+    def _sanitize_archive_member_name(self, name: str) -> str:
+        """Raise ValueError if an archive member name can escape the extraction folder."""
+        return sanitize_storage_path(name, allow_empty=False)
+
+    def _iter_archive_entries(
+        self, archive_file, guard: ArchiveExtractionGuard | None = None
+    ) -> Iterator[tuple[str, bytes]]:
         """Yield (relative_path, bytes) for every file inside a ZIP or TAR archive."""
         pos = archive_file.tell()
+        guard = guard or default_guard()
 
         if zipfile.is_zipfile(archive_file):
             archive_file.seek(pos)
@@ -71,7 +83,13 @@ class AbstractStorageBackend(ABC):
             with zipfile.ZipFile(archive_file, "r") as zf:
                 for entry in zf.infolist():
                     if not entry.is_dir():
-                        yield entry.filename, zf.read(entry.filename)
+                        guard.account_entry()
+                        safe_name = self._sanitize_archive_member_name(entry.filename)
+                        with zf.open(entry, "r") as member_file:
+                            yield (
+                                safe_name,
+                                guard.read_member(member_file, entry.filename),
+                            )
 
             return
 
@@ -87,10 +105,16 @@ class AbstractStorageBackend(ABC):
 
             with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
                 for member in tf.getmembers():
+                    if member.issym() or member.islnk():
+                        raise ValueError(
+                            f"Archive member is a symlink or hardlink: {member.name!r}"
+                        )
                     if member.isfile():
+                        guard.account_entry()
+                        safe_name = self._sanitize_archive_member_name(member.name)
                         fobj = tf.extractfile(member)
                         if fobj:
-                            yield member.name, fobj.read()
+                            yield safe_name, guard.read_member(fobj, member.name)
 
             return
 

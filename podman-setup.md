@@ -86,7 +86,7 @@ podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${RE
 ### CrewDB
 
 ```bash
-podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_PORT}   -v crew_pgdata:${PGDATA}   -e POSTGRES_DB=${POSTGRES_DB}   -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD}   -e PGDATA=${PGDATA}   -e DB_MANAGER_USER=${DB_MANAGER_USER}   -e DB_MANAGER_PASSWORD=${DB_MANAGER_PASSWORD}   -e DB_KNOWLEDGE_USER=${DB_KNOWLEDGE_USER}   -e DB_KNOWLEDGE_PASSWORD=${DB_KNOWLEDGE_PASSWORD}   -e DB_REALTIME_USER=${DB_REALTIME_USER}   -e DB_REALTIME_PASSWORD=${DB_REALTIME_PASSWORD}   -e DB_CREW_USER=${DB_CREW_USER}   -e DB_CREW_PASSWORD=${DB_CREW_PASSWORD}   --health-cmd="bash -c 'pg_isready -U postgres || exit 1 && /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users'"   --health-interval=15s   --health-timeout=10s   --health-retries=10   --health-start-period=15s   crewdb
+podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_PORT}   -v crew_pgdata:${PGDATA}   -e POSTGRES_DB=${POSTGRES_DB}   -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD}   -e PGDATA=${PGDATA}   -e DB_MANAGER_USER=${DB_MANAGER_USER}   -e DB_MANAGER_PASSWORD=${DB_MANAGER_PASSWORD}   -e DB_KNOWLEDGE_USER=${DB_KNOWLEDGE_USER}   -e DB_KNOWLEDGE_PASSWORD=${DB_KNOWLEDGE_PASSWORD}   -e DB_REALTIME_USER=${DB_REALTIME_USER}   -e DB_REALTIME_PASSWORD=${DB_REALTIME_PASSWORD}   --health-cmd="bash -c 'pg_isready -U postgres || exit 1 && /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users'"   --health-interval=15s   --health-timeout=10s   --health-retries=10   --health-start-period=15s   crewdb
 ```
 
 ---
@@ -102,7 +102,7 @@ podman run -d   --name django_app   --network backend-network   -p 8000:8000   -
 ### Manager
 
 ```bash
-podman run -d   --name manager_container   --network backend-network   --env-file .env   -p 8001:8000   -t   -i   -v /var/run/podman/podman.sock:/var/run/docker.sock   manager
+podman run -d   --name manager_container   --network backend-network   --env-file .env   -t   -i   manager
 ```
 
 ---

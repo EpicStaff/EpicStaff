@@ -1,5 +1,4 @@
 from urllib.parse import urlencode
-from uuid import UUID
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -23,9 +22,9 @@ class PasswordResetEmailSender:
     _SUBJECT_TEMPLATE = "rbac/password_reset_email.subject.txt"
     _BODY_TEMPLATE = "rbac/password_reset_email.txt"
 
-    def send(self, user, token: UUID) -> None:
+    def send(self, user, raw_token: str) -> None:
         try:
-            context = self._build_context(user, token)
+            context = self._build_context(user, raw_token)
             subject = render_to_string(self._SUBJECT_TEMPLATE, context).strip()
             body = render_to_string(self._BODY_TEMPLATE, context)
             send_mail(
@@ -38,12 +37,12 @@ class PasswordResetEmailSender:
         except Exception:
             logger.exception("password_reset_email_send_failed user_id={}", user.id)
 
-    def _build_context(self, user, token: UUID) -> dict:
+    def _build_context(self, user, raw_token: str) -> dict:
         base = settings.FRONTEND_BASE_URL.rstrip("/")
         path = settings.FRONTEND_PASSWORD_RESET_PATH
         if not path.startswith("/"):
             path = "/" + path
-        query = urlencode({"token": str(token)})
+        query = urlencode({"token": raw_token})
         reset_link = f"{base}{path}?{query}"
         ttl_minutes = max(1, int(settings.PASSWORD_RESET_TOKEN_TTL) // 60)
         return {

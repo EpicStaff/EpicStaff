@@ -1,5 +1,4 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     AfterViewChecked,
@@ -15,6 +14,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { LABELS_STORE } from '@shared/services';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
@@ -35,11 +35,10 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
 
 @Component({
     selector: 'app-my-flows',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './my-flows.component.html',
     styleUrls: ['./my-flows.component.scss'],
-    imports: [CommonModule, FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
+    imports: [FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);
@@ -213,7 +212,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             default:
-                console.log(`Action '${action}' not implemented for flow:`, flow.id);
+                console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
     }
 
@@ -247,6 +246,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 },
             },
             width: '500px',
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((result) => {
@@ -258,6 +258,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private openCopyDialog(flow: GetGraphLightRequest): void {
         const dialogRef = this.dialog.open<string>(FlowRenameDialogComponent, {
             data: { flowName: `${flow.name} Copy`, title: 'Copy Flow' },
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((newName) => {

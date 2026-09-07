@@ -24,53 +24,38 @@
                         [errorMessage]="getNodeNameErrorMessage()"
                     ></app-custom-input>
 
-                    <app-custom-input
-                        label="Webhook trigger path"
-                        tooltipText="Only enter the webhook name. The base URL is shown below."
-                        formControlName="webhook_trigger_path"
-                        placeholder="Enter webhook path"
-                        [required]="true"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getWebhookNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-webhook-trigger-select
+                        formControlName="webhook_trigger"
+                        [disallowedAuthKinds]="['telegram', 'twilio']"
+                        disallowedProviderMessage="This trigger is not supported for Webhook nodes. Use a trigger with webhook auth."
+                        (triggerResolved)="onTriggerResolved($event)"
+                    ></app-webhook-trigger-select>
 
-                    <div>
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
+                    @if (fullUrl(); as url) {
                         <div class="webhook-url-display">
-                            @if (webhookUrlDisplay(); as url) {
+                            <span
+                                class="webhook-url-text"
+                                [style.color]="activeColor"
+                            >
+                                {{ url }}
+                            </span>
+                            <button
+                                type="button"
+                                class="copy-button"
+                                (click)="copyWebhookUrl()"
+                                [disabled]="!url"
+                                aria-label="Copy webhook URL"
+                            >
                                 <span
-                                    class="webhook-url-text"
-                                    [style.color]="activeColor"
-                                >
-                                    {{ url }}
-                                </span>
-                                <button
-                                    type="button"
-                                    class="copy-button"
-                                    (click)="copyWebhookUrl()"
-                                    [disabled]="!url"
-                                    aria-label="Copy webhook URL"
-                                >
-                                    <span
-                                        class="copy-icon"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span>Copy</span>
-                                </button>
-                            } @else if (loadingTunnel()) {
-                                <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
-                            } @else {
-                                <div class="webhook-url-error">Ngrok config or path is empty</div>
-                            }
+                                    class="copy-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span>{{ copied() ? 'Copied' : 'Copy' }}</span>
+                            </button>
                         </div>
-                    </div>
+                    } @else if (webhookInvalid()) {
+                        <div class="webhook-warning">Webhook is not registered. Check the trigger configuration.</div>
+                    }
 
                     <app-node-secrets-field
                         [activeColor]="activeColor"

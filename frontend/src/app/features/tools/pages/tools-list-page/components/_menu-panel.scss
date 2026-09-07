@@ -1,0 +1,41 @@
+@mixin menu-panel() {
+    display: flex;
+    flex-direction: column;
+    min-width: 12rem;
+    padding: 0.25rem;
+    background: var(--color-sidenav-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    box-shadow:
+        0 6px 10px rgba(0, 0, 0, 0.15),
+        0 2px 3px rgba(0, 0, 0, 0.3);
+}
+
+@mixin menu-item() {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s ease;
+
+    &:hover {
+        background: var(--color-ghost-btn-hover);
+    }
+
+    .label {
+        flex: 1;
+    }
+
+    .chevron {
+        color: var(--color-text-secondary);
+        margin-left: 0.5rem;
+    }
+}

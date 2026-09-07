@@ -27,7 +27,7 @@ def org_visible_q(model, org_id):
     - **hybrid** (`is_custom` flag, e.g. *Model): built-ins (is_custom=False) + own-org;
     - **strict** (has `org`, no flag, e.g. McpTool / PythonCodeToolConfig / configs):
       own-org rows only;
-    - **global** (no `org` field, e.g. the deprecated ToolConfig): ``None`` (no filter).
+    - **global** (no `org` field, e.g. legacy/global-scoped models): ``None`` (no filter).
     """
     field_names = {f.name for f in model._meta.get_fields()}
     if "org" not in field_names:

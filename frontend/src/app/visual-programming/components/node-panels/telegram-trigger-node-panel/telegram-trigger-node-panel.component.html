@@ -43,34 +43,16 @@
                             }
                             <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
                         </div>
-
-                        <app-custom-input
-                            label="Webhook trigger path"
-                            tooltipText="Path"
-                            formControlName="webhook_trigger_path"
-                            placeholder="Enter webhook path"
-                            [required]="true"
-                            [activeColor]="activeColor"
-                        ></app-custom-input>
-
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
                     </div>
 
                     <div class="webhook-section">
-                        <div class="webhook-section__label-container">
-                            <label>Webhook</label>
-                            <app-help-tooltip
-                                text="Ngrok tunnel"
-                                position="right"
-                            />
-                        </div>
+                        <app-webhook-trigger-select
+                            formControlName="webhook_trigger"
+                            [disallowedProviderTypes]="['localhost']"
+                            [disallowedAuthKinds]="['webhook', 'twilio']"
+                            disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
+                            (triggerResolved)="onTriggerResolved($event)"
+                        ></app-webhook-trigger-select>
 
                         <div class="webhook-status__container">
                             @switch (webhookStatusDisplay()) {

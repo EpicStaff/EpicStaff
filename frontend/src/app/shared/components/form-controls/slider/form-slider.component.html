@@ -1,10 +1,7 @@
 <div class="visual-slider">
-    <label
-        *ngIf="label && label.trim() !== ''"
-        for="tempSlider"
-    >
-        {{ label }} {{ getFormattedValue() }}
-    </label>
+    @if (label && label.trim() !== '') {
+        <label for="tempSlider"> {{ label }} {{ getFormattedValue() }} </label>
+    }
 
     <input
         type="range"

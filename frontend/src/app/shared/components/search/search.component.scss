@@ -37,7 +37,7 @@
         padding: 0 0.875rem 0 2.25rem;
         border-radius: 0.5rem;
         border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
+        background-color: transparent;
         color: var(--color-text-primary);
         font-size: 0.9rem;
         transition: border-color 0.2s ease;
@@ -53,6 +53,11 @@
 
         &--with-clear {
             padding-right: 2.25rem;
+        }
+
+        &--small {
+            font-size: 0.75rem;
+            border-radius: 4px;
         }
     }
 

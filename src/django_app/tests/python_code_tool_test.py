@@ -50,7 +50,6 @@ def test_python_code_tool_serializer_create_and_update():
             "libraries": ["requests"],
             "global_kwargs": {},
         },
-        "favorite": False,
     }
 
     serializer = PythonCodeToolSerializer(data=tool_data)

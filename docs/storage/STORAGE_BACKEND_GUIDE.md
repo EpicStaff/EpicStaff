@@ -75,7 +75,7 @@ StorageAPIView (REST endpoints)
 | `tables/swagger_schemas/storage_schema.py` | Swagger/OpenAPI schema definitions |
 | `tables/urls.py` | Router registration (`/api/storage/`) |
 | `django_app/settings.py` | `STORAGE_*` settings (read from env) |
-| `shared/epicstaff_storage/storage.py` | Storage SDK for Python/Code Agent nodes in flows |
+| `shared/epicstaff_storage/storage.py` | Storage SDK for Python nodes in flows |
 
 ---
 
@@ -275,5 +275,5 @@ The `django_app` service depends on `minio` being healthy before starting.
 ## Related Documentation
 
 - [Storage API Reference](STORAGE_API_REFERENCE.md) — complete endpoint documentation
-- [Storage SDK Reference](STORAGE_SDK_REFERENCE.md) — SDK for Python/Code Agent nodes
+- [Storage SDK Reference](STORAGE_SDK_REFERENCE.md) — SDK for Python nodes
 - [Storage System Documentation](STORAGE_SYSTEM_DOCUMENTATION.md) — architecture and internals

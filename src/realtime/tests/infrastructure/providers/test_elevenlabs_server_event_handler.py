@@ -71,6 +71,15 @@ async def test_handle_event_routes_user_transcript(mock_db, handler, client):
 
 @pytest.mark.asyncio
 @patch("infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_handle_event_forwards_org_id_to_db_write(mock_db, handler, client):
+    client.org_id = 33
+    await handler.handle_event({"type": "ping"})
+    _, kwargs = mock_db.call_args
+    assert kwargs.get("org_id") == 33
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
 async def test_handle_event_ignored_for_unknown_type(mock_db, handler, client):
     await handler.handle_event({"type": "totally_unknown_event"})
     client.send_client.assert_not_awaited()

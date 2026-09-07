@@ -9,7 +9,6 @@ const ON_ACCENT_ICON = 'var(--color-text-primary, #d9d9de)';
 
 @Component({
     selector: 'app-button-round',
-    standalone: true,
     imports: [AppSvgIconComponent],
     template: `
         <button

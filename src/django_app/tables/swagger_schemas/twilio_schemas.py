@@ -1,12 +1,30 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
+from drf_spectacular.utils import OpenApiResponse, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-TWILIO_PHONE_NUMBERS_GET = dict(
+TWILIO_CHANNEL_PHONE_NUMBERS_GET = dict(
     summary="Return the list of incoming phone numbers from Twilio.",
-    description="Fetches up to 100 incoming phone numbers associated with the configured Twilio account. "
-    "Requires Twilio Account SID and Auth Token to be set in Voice Settings. "
-    "Each number includes its SID, phone number, friendly name, and currently configured voice URL.",
+    description="Fetches up to 100 incoming phone numbers for a Twilio account. "
+    "Expects the Account SID and a Secret ID as query parameters. It resolves "
+    "the auth token server-side from the stored `Secret` — the raw auth token "
+    "is never exposed to the client. Each number includes its SID, "
+    "phone number, friendly name, and currently configured voice URL.",
+    parameters=[
+        OpenApiParameter(
+            name="sid",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The Twilio Account SID.",
+        ),
+        OpenApiParameter(
+            name="auth_token_secret_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The ID of the stored Secret containing the Twilio Auth Token.",
+        ),
+    ],
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -14,25 +32,29 @@ TWILIO_PHONE_NUMBERS_GET = dict(
             examples=[
                 OpenApiExample(
                     "Phone numbers list",
-                    value=[
-                        {
-                            "sid": "PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                            "phone_number": "+15551234567",
-                            "friendly_name": "My Twilio Number",
-                            "voice_url": "https://example.com/voice",
-                        }
-                    ],
+                    value={
+                        "results": [
+                            {
+                                "sid": "PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                                "phone_number": "+15551234567",
+                                "friendly_name": "My Twilio Number",
+                                "voice_url": "https://example.com/voice",
+                            }
+                        ]
+                    },
                     response_only=True,
                 ),
             ],
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Bad Request - Twilio credentials are missing.",
+            description="Bad Request - Missing required query parameters.",
             examples=[
                 OpenApiExample(
-                    "Missing credentials",
-                    value={"error": "Twilio Account SID and Auth Token are required"},
+                    "Missing parameters",
+                    value={
+                        "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
+                    },
                     response_only=True,
                 ),
             ],
@@ -48,6 +70,53 @@ TWILIO_PHONE_NUMBERS_GET = dict(
                     response_only=True,
                 ),
             ],
+        ),
+    },
+)
+
+REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET = dict(
+    summary="Resolve a RealtimeChannel by its unique token (internal, API-key only).",
+    description="Looks up a RealtimeChannel directly by its unique `token` field, "
+    "bypassing org-context scoping. The token is an unguessable UUID that is "
+    "itself the authorization/lookup key — used by the `realtime` service to "
+    "resolve which agent answers an inbound Twilio call, a request Twilio makes "
+    "with no logged-in user and no `X-Organization-Id` header. Restricted to "
+    "system API-key-authenticated callers (`IsSystemApiKeyAuthenticated`, "
+    "`key_type=SYSTEM` only); a JWT session or a self-issued user API key "
+    "cannot use this endpoint.",
+    parameters=[
+        OpenApiParameter(
+            name="token",
+            type=OpenApiTypes.UUID,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The RealtimeChannel's unique token.",
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Channel found and returned.",
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Bad Request - missing token query param.",
+            examples=[
+                OpenApiExample(
+                    "Missing token",
+                    value={"error": "token is required"},
+                    response_only=True,
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Forbidden - caller is not authenticated with a system API key.",
+        ),
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="No channel exists for the given token.",
         ),
     },
 )

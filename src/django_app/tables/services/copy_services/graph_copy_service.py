@@ -1,5 +1,5 @@
 from tables.import_export.utils import ensure_unique_identifier
-from tables.models import Graph
+from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code
@@ -34,7 +34,7 @@ class GraphCopyService(BaseCopyService):
             enable_persistent_variables=graph.enable_persistent_variables,
             org_id=target_org_id,
         )
-        new_graph.labels.set(graph.labels.all())
+        new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(
             new_graph, source_start.variables if source_start else {}

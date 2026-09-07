@@ -16,23 +16,21 @@ from tables.models.knowledge_models import (
 )
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.provider import Provider
-from tables.models.crew_models import Agent
-from tables.models.llm_models import LLMConfig, LLMModel
 
 
 @pytest.fixture
-def source_collection():
+def source_collection(default_org):
     """Create a test source collection."""
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user"
+        collection_name="Test Collection", user_id="test_user", org=default_org
     )
 
 
 @pytest.fixture
-def empty_collection():
+def empty_collection(default_org):
     """Create an empty source collection."""
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user"
+        collection_name="Empty Collection", user_id="test_user", org=default_org
     )
 
 
@@ -135,13 +133,14 @@ def test_embedding_model(embedding_provider):
 
 
 @pytest.fixture
-def test_embedding_config(test_embedding_model):
+def test_embedding_config(test_embedding_model, default_org):
     """Create a test embedding config."""
     config, _ = EmbeddingConfig.objects.get_or_create(
         custom_name="Test Embedder Config",
         defaults={
             "model": test_embedding_model,
             "task_type": "retrieval_document",
+            "org": default_org,
         },
     )
     return config
@@ -201,44 +200,3 @@ def processing_naive_rag(base_rag_type, test_embedding_config):
         embedder=test_embedding_config,
         rag_status=NaiveRag.NaiveRagStatus.PROCESSING,
     )
-
-
-@pytest.fixture
-def agent_without_rag(default_org):
-    """Create an agent without RAG assignment."""
-    return Agent.objects.create(
-        role="Test Agent",
-        goal="Test Goal",
-        backstory="Test Backstory",
-        org=default_org,
-    )
-
-
-@pytest.fixture
-def llm_provider():
-    """Create LLM provider for tests."""
-    provider, _ = Provider.objects.get_or_create(name="openai")
-    return provider
-
-
-@pytest.fixture
-def llm_model(llm_provider):
-    """Create LLM model for tests."""
-    model, _ = LLMModel.objects.get_or_create(
-        name="gpt-4o", defaults={"llm_provider": llm_provider}
-    )
-    return model
-
-
-@pytest.fixture
-def llm_config(llm_model):
-    """Create LLM config for tests."""
-    config, _ = LLMConfig.objects.get_or_create(
-        custom_name="Test LLM Config",
-        defaults={
-            "model": llm_model,
-            "temperature": 0.7,
-            "is_visible": True,
-        },
-    )
-    return config
