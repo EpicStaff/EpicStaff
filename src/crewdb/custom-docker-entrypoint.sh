@@ -113,36 +113,6 @@ EOF
     echo "[realtime] Role ready: ${realtime_user}"
 }
 
-create_crew_user() {
-    local crew_user="${CREW_DB_USER}"
-    local crew_password="${CREW_DB_PASSWORD}"
-
-    if [[ -z "$crew_user" || -z "$crew_password" ]]; then
-        echo "[crew] WARNING: CREW_DB_USER or CREW_DB_PASSWORD not set, skipping"
-        return 0
-    fi
-
-    echo "[crew] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${crew_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${crew_user}', '${crew_password}');
-        RAISE NOTICE '[crew] Created user ${crew_user}';
-    ELSE
-        RAISE NOTICE '[crew] User ${crew_user} already exists, skipping';
-    END IF;
-END
-\$\$;
-
-GRANT USAGE ON SCHEMA public TO "${crew_user}";
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    REVOKE ALL ON TABLES FROM "${crew_user}";
-EOF
-    echo "[crew] Role ready: ${crew_user}"
-}
-
 # TABLE PERMISSION GRANT FUNCTIONS
 # Called only after Django migrations have run.
 # Each function is safe to call multiple times.
@@ -302,30 +272,6 @@ END
 \$\$;
 EOF
     echo "[realtime] Permissions granted"
-}
-
-grant_crew_permissions() {
-    local crew_user="${CREW_DB_USER}"
-    [[ -z "$crew_user" ]] && return 0
-
-    echo "[crew] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'tables_memorydatabase'
-    ) THEN
-        REVOKE ALL ON TABLE tables_memorydatabase FROM "${crew_user}";
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_memorydatabase TO "${crew_user}";
-        RAISE NOTICE '[crew] CRUD granted on tables_memorydatabase';
-    ELSE
-        RAISE NOTICE '[crew] tables_memorydatabase not found, skipping';
-    END IF;
-END
-\$\$;
-EOF
-    echo "[crew] Permissions granted"
 }
 
 # TABLE EXISTENCE CHECK
