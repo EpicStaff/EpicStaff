@@ -32,8 +32,10 @@ export const RESOURCE_META: Record<ResourceCode, ResourceMeta> = {
     flows: { description: 'Automation pipelines' },
     agents: { description: 'Manage AI agents and their capabilities' },
     tools: { description: 'Manage built-in and custom tools' },
+    surfaces: { description: 'Manage surfaces for Agents' },
     knowledge_sources: { description: 'RAG collections and embeddings' },
     files: { description: 'Files and folders in organization storage' },
     llm_configs: { description: 'LLM model configurations and settings' },
     secrets: { description: 'Provider API keys, credentials, sensitive config' },
+    voice: { description: 'Manage voice settings' },
 };

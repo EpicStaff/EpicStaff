@@ -29,7 +29,7 @@ import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string;
+    routeLink?: string | (() => string | null);
     icon?: string;
     label: string;
     showTooltip: boolean;
@@ -179,12 +179,10 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: 'files',
+                routeLink: () => this.resolveFilesRoute(),
                 icon: 'sources',
                 label: 'Files',
-                isPermitted: () =>
-                    this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
-                    this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+                isPermitted: () => this.resolveFilesRoute() !== null,
                 showTooltip: false,
             },
             {
@@ -256,5 +254,18 @@ export class LeftSidebarComponent implements AfterViewInit {
             event.preventDefault();
             item.action();
         }
+    }
+
+    public resolveRouteLink(item: NavItem): string | null {
+        if (typeof item.routeLink === 'function') return item.routeLink();
+        return item.routeLink ?? null;
+    }
+
+    /** Route to whichever `/files/*` sub-tab the user has read access to in the current org, or `null` if none. */
+    private resolveFilesRoute(): string | null {
+        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read))
+            return '/files/knowledge-sources';
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        return null;
     }
 }

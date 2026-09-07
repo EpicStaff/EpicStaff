@@ -15,10 +15,12 @@ export enum ResourceCode {
     Flows = 'flows',
     Agents = 'agents',
     Tools = 'tools',
+    Surfaces = 'surfaces',
     KnowledgeSources = 'knowledge_sources',
     Files = 'files',
     LlmConfigs = 'llm_configs',
     Secrets = 'secrets',
+    Voice = 'voice',
 }
 
 export interface ActivePermissions {
