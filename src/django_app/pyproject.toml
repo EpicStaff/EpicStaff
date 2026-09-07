@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-Django = "5.1.7"
+Django = "5.1.14"
 djangorestframework = "3.16.0"
 djangorestframework-simplejwt = "5.4.0"
 psycopg2 = "2.9.10"
