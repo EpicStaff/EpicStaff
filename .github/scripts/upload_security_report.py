@@ -8,6 +8,7 @@ import sys
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -19,6 +20,58 @@ def drive_service(raw_key: str):
         json.loads(raw_key), scopes=DRIVE_SCOPES
     )
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
+
+
+def _accessible_shared_drives(svc) -> list[str]:
+    try:
+        drives = svc.drives().list(pageSize=100, fields="drives(id, name)").execute()
+        return [f"{d['name']} ({d['id']})" for d in drives.get("drives", [])]
+    except HttpError:
+        return []
+
+
+def preflight(svc, root_id: str, client_email: str) -> int:
+    try:
+        folder = (
+            svc.files()
+            .get(fileId=root_id, fields="id, name, mimeType, driveId, trashed",
+                 supportsAllDrives=True)
+            .execute()
+        )
+    except HttpError as exc:
+        if exc.resp.status not in (403, 404):
+            raise
+        visible = _accessible_shared_drives(svc)
+        print(f"::error::Drive folder {root_id} is not visible to the service "
+              f"account {client_email}.", file=sys.stderr)
+        if visible:
+            print(f"That account IS a member of: {'; '.join(visible)}. So it "
+                  f"authenticates fine -- the folder is either in a different "
+                  f"Shared Drive or not shared with this account.", file=sys.stderr)
+        else:
+            print("That account is a member of NO Shared Drive. Folder-level "
+                  "sharing is often blocked for service accounts by the Shared "
+                  "Drive's external-sharing setting -- add it as a MEMBER of the "
+                  "Shared Drive itself (Content manager), not just to the folder.",
+                  file=sys.stderr)
+        return 1
+
+    if folder.get("trashed"):
+        print(f"::error::Folder {folder.get('name')!r} is in the trash.",
+              file=sys.stderr)
+        return 1
+    if folder.get("mimeType") != FOLDER_MIME_TYPE:
+        print(f"::error::SECURITY_GDRIVE_ROOT_ID points at "
+              f"{folder.get('mimeType')!r}, not a folder.", file=sys.stderr)
+        return 1
+    if not folder.get("driveId"):
+        print(f"::error::Folder {folder.get('name')!r} is not in a Shared Drive. A "
+              f"service account has no storage quota, so uploads here fail.",
+              file=sys.stderr)
+        return 1
+
+    print(f"Destination: {folder.get('name')!r} (Shared Drive {folder['driveId']})")
+    return 0
 
 
 def get_or_create_folder(svc, parent_id: str, name: str) -> str:
@@ -87,6 +140,11 @@ def main() -> int:
         return 1
 
     svc = drive_service(raw_key)
+
+    client_email = json.loads(raw_key).get("client_email", "<unknown>")
+    failed = preflight(svc, root_id, client_email)
+    if failed:
+        return failed
 
     month_folder = get_or_create_folder(svc, root_id, report_name[:7])
 
