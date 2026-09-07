@@ -66,6 +66,7 @@ services:
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
+      DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:-False}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
       DJANGO_TIMEZONE: ${DJANGO_TIMEZONE:?}
       DJANGO_JWT_ACCESS_LIFETIME: ${DJANGO_JWT_ACCESS_LIFETIME:?}
@@ -198,8 +199,6 @@ services:
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       REALTIME_DB_USER: ${REALTIME_DB_USER:?}
       REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
-      CREW_DB_USER: ${CREW_DB_USER:?}
-      CREW_DB_PASSWORD: ${CREW_DB_PASSWORD:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
     volumes:
@@ -244,15 +243,13 @@ services:
       start_period: 5s
 
   crew:
-#    image: ghcr.io/epicstaff/crew:${IMAGE_TAG:-latest}
+    image: ghcr.io/epicstaff/crew:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./crew/Dockerfile.crew
     container_name: crew
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
-      CREW_DB_USER: ${CREW_DB_USER:?}
-      CREW_DB_PASSWORD: ${CREW_DB_PASSWORD:?}
+      <<: [*docker-env, *redis-env, *communication-env]
       CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
@@ -262,7 +259,7 @@ services:
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
-      TOKEN_BUDGET: ${TOKEN_BUDGET:?}
+      CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
     networks:
       - backend-network
     tty: true
@@ -272,8 +269,6 @@ services:
         condition: service_healthy
       sandbox:
         condition: service_started
-      crewdb:
-        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -398,7 +393,7 @@ services:
       - frontend-network
 
   webhook:
-#    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
     container_name: webhook
     build:
       context: .
@@ -440,7 +435,6 @@ services:
     environment:
       NGINX_DOMAIN_NAME: ${NGINX_DOMAIN_NAME:?}
       NGINX_SSL_ENABLE: ${NGINX_SSL_ENABLE:?}
-      FRONTEND_PORT: ${FRONTEND_PORT:?}
       FRONTEND_INTERNAL_PORT: ${FRONTEND_INTERNAL_PORT:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
     volumes:

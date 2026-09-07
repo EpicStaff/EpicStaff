@@ -7,6 +7,15 @@ org-scoped resolution. Merging `main` (which still read the removed plaintext
 `RealtimeConfig.api_key` column) into the secrets branch broke exactly this
 path, so both halves are pinned here — the key reaches the payload, and it can
 only come from the caller's own org.
+
+`config` is an unconstrained `DictField` and `RealtimeService.init_realtime_agent_definition`
+setattrs every key that exists on the payload, so `rt_api_key_secret_id` is a
+declared carrier a caller can override directly in the request body.
+`test_agent_definition_config_cannot_name_another_orgs_secret` proves a
+foreign org's secret id is rejected; `test_agent_definition_config_with_own_orgs_secret_still_works`
+is the matching positive control -- proving the theft is blocked is worthless
+if the legitimate override (a caller pointing at one of their own org's other
+secrets) broke along with it.
 """
 
 import json
@@ -102,3 +111,25 @@ def test_agent_definition_config_cannot_name_another_orgs_secret(
     assert "could not be resolved" in resp.data["error"]
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert FOREIGN_PLAINTEXT not in published
+
+
+@pytest.mark.django_db
+def test_agent_definition_config_with_own_orgs_secret_still_works(
+    default_org_client, rt_agent_definition, default_org, redis_client_mock
+):
+    own_secret = secret_service.create(
+        text="sk-own-rt-definition-key", org=default_org, name="own-rt-definition-key"
+    )
+
+    resp = default_org_client.post(
+        "/api/init-realtime/",
+        {
+            "agent_definition_id": rt_agent_definition.pk,
+            "config": {"rt_api_key_secret_id": own_secret.pk},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201, resp.data
+    published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
+    assert "sk-own-rt-definition-key" in published

@@ -1,13 +1,11 @@
 import pytest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 from dotdict import DotDict
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.graph_session_manager_service import (
     SessionGraphBuilder,
     RedisService,
-    CrewParserService,
-    RunPythonCodeService,
     KnowledgeSearchService,
 )
 from src.shared.models import (
@@ -27,6 +25,38 @@ from src.shared.models import (
     TaskNodeData,
 )
 import asyncio
+import json
+
+
+class FakePythonCodeExecutorService:
+    """In-process stand-in for RunPythonCodeService.
+
+    Mirrors the sandbox contract (`ExecuteCodeHandler.wrap_code`): kwargs are
+    exposed as a DotDict, globals come from `global_kwargs`, the return value is
+    JSON-encoded, and any exception becomes returncode 1 with stderr set. Lets
+    the graph tests exercise real routing without a live redis + sandbox stack.
+    """
+
+    async def run_code(
+        self,
+        python_code_data: PythonCodeData,
+        inputs: dict | None = None,
+        additional_global_kwargs: dict | None = None,
+        stop_event=None,
+    ) -> dict:
+        namespace: dict = {"DotDict": DotDict}
+        namespace.update(python_code_data.global_kwargs or {})
+        namespace.update(additional_global_kwargs or {})
+        try:
+            exec(python_code_data.code, namespace)
+            result = namespace[python_code_data.entrypoint](**DotDict(inputs or {}))
+            return {
+                "returncode": 0,
+                "stderr": "",
+                "result_data": json.dumps(result),
+            }
+        except Exception as e:
+            return {"returncode": 1, "stderr": str(e), "result_data": "null"}
 
 
 @pytest.fixture
@@ -38,10 +68,7 @@ def mock_services():
     )
     return {
         "redis_service": redis_service,
-        "crew_parser_service": Mock(spec=CrewParserService),
-        "python_code_executor_service": RunPythonCodeService(
-            redis_service=redis_service
-        ),
+        "python_code_executor_service": FakePythonCodeExecutorService(),
         "knowledge_search_service": Mock(spec=KnowledgeSearchService),
         "agent_task_service": Mock(spec=AgentTaskService),
     }
@@ -140,8 +167,8 @@ def mock_session_data() -> SessionData:
                     next_error_node="error_node",
                 )
             ],
-            crew_node_list=[],
             entrypoint="start_node",
+            end_node=None,
         ),
     )
 
@@ -150,10 +177,9 @@ def test_compile_from_schema(mock_services, mock_session_data):
     builder = SessionGraphBuilder(
         session_id=mock_session_data.id,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
     )
 
     compiled_graph = builder.compile_from_schema(mock_session_data)
@@ -166,10 +192,9 @@ def test_compile_run(mock_services, mock_session_data):
     builder = SessionGraphBuilder(
         session_id=mock_session_data.id,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
     )
 
     state = {
@@ -193,10 +218,9 @@ def test_run_decision_table_node_with_error(mock_services, mock_session_data):
     builder = SessionGraphBuilder(
         session_id=mock_session_data.id,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
     )
 
     state = {
@@ -250,9 +274,7 @@ def test_compile_from_schema_with_task_node(mock_services, mock_llm_data):
     builder = SessionGraphBuilder(
         session_id=456,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
         agent_task_service=mock_services["agent_task_service"],
@@ -269,9 +291,7 @@ def test_compile_from_schema_with_task_node_raises_without_service(
     builder = SessionGraphBuilder(
         session_id=456,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
         agent_task_service=None,
@@ -315,9 +335,7 @@ def test_compile_from_schema_with_agent_node(mock_services, mock_llm_data):
     builder = SessionGraphBuilder(
         session_id=789,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
         agent_task_service=mock_services["agent_task_service"],
@@ -336,9 +354,7 @@ def test_compile_from_schema_with_agent_node_raises_without_service(
     builder = SessionGraphBuilder(
         session_id=789,
         redis_service=mock_services["redis_service"],
-        crew_parser_service=mock_services["crew_parser_service"],
         python_code_executor_service=mock_services["python_code_executor_service"],
-        crewai_output_channel="output",
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
         agent_task_service=None,

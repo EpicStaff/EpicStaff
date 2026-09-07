@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from src.shared.envtools import Env
@@ -14,12 +13,6 @@ REDIS_PORT = env.int("REDIS_PORT")
 REDIS_USER = env.str("REDIS_USER")
 REDIS_PASSWORD = env.str("REDIS_PASSWORD")
 
-DB_USER = env.str("CREW_DB_USER")
-DB_PASSWORD = env.str("CREW_DB_PASSWORD")
-DB_PORT = env.int("DB_PORT")
-DB_HOST = env.str("DB_HOST")
-DB_NAME = env.str("DB_NAME")
-
 LLM_HEADERS = env.str("CREW_LLM_HEADERS")
 REMEMBERED_OUTPUTS_TTL = env.time("CREW_REMEMBERED_OUTPUTS_TTL")
 
@@ -34,7 +27,6 @@ CODE_RESULT_CHUNNEL = env.str("CODE_RESULT_CHANNEL")
 
 CREWAI_OUTPUT_CHANNEL = env.str("CREWAI_OUTPUT_CHANNEL")
 STOP_SESSION_CHANNEL = env.str("STOP_SESSION_CHANNEL")
-MEMORY_UPDATE_CHANNEL = env.str("MEMORY_UPDATE_CHANNEL")
 
 AGENT_REQUEST_STREAM = env.str("AGENT_REQUEST_STREAM")
 AGENT_RESULT_STREAM = env.str("AGENT_RESULT_STREAM")
@@ -50,31 +42,4 @@ GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 # reserved key "__token_budget__"). None (default) means "no limit" —
 # the feature is fully inert unless TOKEN_BUDGET is set or a run explicitly
 # opts in, so existing runs are byte-for-byte unchanged.
-DEFAULT_TOKEN_BUDGET = env.int("TOKEN_BUDGET") or None
-
-USER_ID = "onlyone"
-SESSION_ID = "111"
-
-PGVECTOR_MEMORY_CONFIG = {
-    "provider": "local_mem0",
-    "config": {"user_id": USER_ID, "run_id": SESSION_ID},
-    "config_dict": {
-        "vector_store": {
-            "provider": "pgvector",
-            "config": {
-                "collection_name": "tables_memorydatabase",
-                "user": DB_USER,
-                "password": DB_PASSWORD,
-                "port": DB_PORT,
-                "host": DB_HOST,
-                "dbname": DB_NAME,
-            },
-        },
-        "redis": {
-            "host": REDIS_HOST,
-            "port": REDIS_PORT,
-            "db": 0,
-            "channel": MEMORY_UPDATE_CHANNEL,
-        },
-    },
-}
+DEFAULT_TOKEN_BUDGET = env.int("CREW_TOKEN_BUDGET") or None

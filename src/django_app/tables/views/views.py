@@ -4,20 +4,13 @@ from collections import defaultdict
 import uuid
 import base64
 from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
-from tables.services.webhook_trigger_service import WebhookTriggerService
-from tables.models.graph_models import TelegramTriggerNode
-from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.serializers.model_serializers import TelegramTriggerNodeDataFieldsSerializer
 
-from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
-    TelegramTriggerNode,
     PythonNode,
     GraphSessionMessage,
 )
-from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
 from agents.models import AgentDefinition
 from tables.swagger_schemas.python_node_test_mode_schema import (
@@ -72,13 +65,11 @@ from tables.serializers.model_serializers import (
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.serializers import (
-    AnswerToLLMSerializer,
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
-    RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
@@ -129,7 +120,6 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
-    ANSWER_TO_LLM,
     GET_UPDATES_GET,
     RUN_SESSION_POST,
     SESSION_BULK_DELETE_POST,
@@ -143,9 +133,7 @@ from tables.swagger_schemas.sessions_schema import (
 )
 from tables.swagger_schemas.telegram_schemas import (
     TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET,
-    REGISTER_TELEGRAM_TRIGGER_POST,
 )
-from tables.swagger_schemas.webhook_schemas import REGISTER_WEBHOOKS_POST
 from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
 from .default_config import *
 
@@ -580,69 +568,6 @@ class StopSession(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class AnswerToLLM(APIView):
-    @extend_schema(**ANSWER_TO_LLM)
-    def post(self, request, *args, **kwargs):
-        serializer = AnswerToLLMSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        session_id = serializer.validated_data["session_id"]
-        name = serializer.validated_data["name"]
-        crew_id = serializer.validated_data["crew_id"]
-        execution_order = serializer.validated_data["execution_order"]
-        answer = serializer.validated_data["answer"]
-        try:
-            session = Session.objects.get(id=session_id)
-        except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-
-        # Org isolation: only a member of the session's (graph) org may answer it
-        # — same gate as stop/get-updates (FLOWS READ; superadmin bypass).
-        assert_session_org_access(request.user, session, Permission.READ)
-
-        logger.info(
-            f"{session.status} == {Session.SessionStatus.WAIT_FOR_USER} : {session.status == Session.SessionStatus.WAIT_FOR_USER}"
-        )
-
-        if session.status != Session.SessionStatus.WAIT_FOR_USER:
-            return Response(
-                "Session status is not wait_for_user",
-                status=status.HTTP_418_IM_A_TEAPOT,
-            )
-
-        created_at_dt = datetime.now(timezone.utc)
-        created_at_iso = created_at_dt.isoformat(timespec="milliseconds").replace(
-            "+00:00", "Z"
-        )
-
-        session_manager_service.register_message(
-            data={
-                "session_id": session_id,
-                "name": name,
-                "execution_order": execution_order,
-                "timestamp": created_at_iso,
-                "message_data": {
-                    "text": answer,
-                    "crew_id": crew_id,
-                    "message_type": "user",
-                },
-                "uuid": str(uuid.uuid4()),
-            },
-            created_at_dt=created_at_dt,
-        )
-
-        redis_service.send_user_input(
-            session_id=session_id,
-            node_name=name,
-            crew_id=crew_id,
-            execution_order=execution_order,
-            message=answer,
-        )
-
-        return Response(status=status.HTTP_202_ACCEPTED)
-
-
 class NotifyEmailView(APIView):
     """sends a notification email via notification_tool
     (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
@@ -755,19 +680,17 @@ class InitRealtimeAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        agent_id = serializer.validated_data.get("agent_id")
-        agent_definition_id = serializer.validated_data.get("agent_definition_id")
+        agent_definition_id = serializer.validated_data["agent_definition_id"]
         config = serializer.validated_data.get("config", {})
         # Visibility only, no behavior change: `config` is the dict that gets
         # setattr-merged onto `RealtimeAgentChatData` in RealtimeService
         # (see realtime_service.py's _apply_config_overrides). connection_key
-        # doesn't exist yet at this point, so correlate by agent_id /
+        # doesn't exist yet at this point, so correlate by
         # agent_definition_id — logged so a future occurrence of a
         # null-org_id (or any other unexpected-field) session can be traced
         # back to exactly what config payload the caller sent.
         logger.info(
-            "init-realtime: agent_id={} agent_definition_id={} config={}",
-            agent_id,
+            "init-realtime: agent_definition_id={} config={}",
             agent_definition_id,
             config,
         )
@@ -778,48 +701,39 @@ class InitRealtimeAPIView(APIView):
         ):
             # Trusted internal caller (realtime's Twilio MediaStream bridge, see
             # _voice_stream_handler) has no end-user session and therefore no
-            # X-Organization-Id to send. It already resolved agent_id server-side
-            # (via RealtimeChannelViewSet.lookup_by_token, itself scoped by the
-            # channel's own org), so org is derived here from the agent's own
-            # `org` FK instead of requiring a header — same approach as
-            # lookup_by_token. This branch never runs for a JWT/user session:
-            # request.auth is only an ApiKey instance for API-key-authenticated
-            # requests (see IsApiKeyAuthenticated / ApiKeyAuthentication).
+            # X-Organization-Id to send. It already resolved the agent definition
+            # server-side (via RealtimeChannelViewSet.lookup_by_token, itself
+            # scoped by the channel's own org), so org is derived here from the
+            # definition's own `organization` FK instead of requiring a header —
+            # same approach as lookup_by_token. This branch never runs for a
+            # JWT/user session: request.auth is only an ApiKey instance for
+            # API-key-authenticated requests (see IsApiKeyAuthenticated /
+            # ApiKeyAuthentication).
             #
             # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it
             # would let any org member start a realtime session on ANY org's
-            # agent (org is derived here from the agent's own row, with no
+            # agent (org is derived here from the definition's own row, with no
             # ownership/membership check). A USER-type key instead falls
             # through to the else branch below, which resolves org from
             # X-Organization-Id / the key owner's membership and enforces
             # AGENTS.READ normally — same as a JWT session.
-            if agent_definition_id is not None:
-                agent_definition = AgentDefinition.objects.filter(
-                    pk=agent_definition_id
-                ).first()
-                if agent_definition is None:
-                    raise ValidationError(
-                        {
-                            "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
-                        }
-                    )
-                org_id = agent_definition.organization_id
-            else:
-                agent = Agent.objects.filter(id=agent_id).first()
-                if agent is None:
-                    raise ValidationError(
-                        {
-                            "agent_id": f'Invalid pk "{agent_id}" - object does not exist.'
-                        }
-                    )
-                org_id = agent.org_id
+            agent_definition = AgentDefinition.objects.filter(
+                pk=agent_definition_id
+            ).first()
+            if agent_definition is None:
+                raise ValidationError(
+                    {
+                        "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                    }
+                )
+            org_id = agent_definition.organization_id
             # Twilio's MediaStream bridge has no end-user session (see comment
             # above) — created_by/user_id stays None for these sessions.
             user_id = None
         else:
             # Org isolation: starting a realtime session is a read/use of an
-            # agent, so require AGENTS.READ and reject an agent_id/agent_definition_id
+            # agent, so require AGENTS.READ and reject an agent_definition_id
             # outside the active org (rejected like a missing id — existence
             # never leaks).
             org_id = self._org_context.resolve(
@@ -840,42 +754,25 @@ class InitRealtimeAPIView(APIView):
                 else None
             )
 
-        if agent_id is not None:
-            if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
-                raise ValidationError(
-                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
-                )
-
-        if agent_definition_id is not None:
-            if not AgentDefinition.objects.filter(
-                pk=agent_definition_id, organization_id=org_id
-            ).exists():
-                raise ValidationError(
-                    {
-                        "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
-                    }
-                )
+        if not AgentDefinition.objects.filter(
+            pk=agent_definition_id, organization_id=org_id
+        ).exists():
+            raise ValidationError(
+                {
+                    "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                }
+            )
 
         try:
-            if agent_definition_id is not None:
-                connection_key = realtime_service.init_realtime_agent_definition(
-                    agent_definition_id=agent_definition_id,
-                    config=config,
-                    user_id=user_id,
-                    org_id=org_id,
-                )
-            else:
-                connection_key = realtime_service.init_realtime(
-                    agent_id=agent_id,
-                    config=config,
-                    user_id=user_id,
-                    org_id=org_id,
-                )
-
+            connection_key = realtime_service.init_realtime_agent_definition(
+                agent_definition_id=agent_definition_id,
+                config=config,
+                user_id=user_id,
+                org_id=org_id,
+            )
         except Exception as e:
             logger.exception(
-                f"Error occurred while creating realtime agent for agent_id {agent_id} "
-                f"or agent_definition_id {agent_definition_id}"
+                f"Error occurred while creating realtime agent for agent_definition_id {agent_definition_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
         else:
@@ -1091,41 +988,6 @@ class TelegramTriggerNodeAvailableFieldsView(APIView):
         data = load_telegram_trigger_fields()
         serializer = TelegramTriggerNodeDataFieldsSerializer({"data": data})
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class RegisterTelegramTriggerApiView(APIView):
-    @extend_schema(**REGISTER_TELEGRAM_TRIGGER_POST)
-    def post(self, request):
-        serializer = RegisterTelegramTriggerSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
-            telegram_trigger_node_id = serializer.validated_data[
-                "telegram_trigger_node_id"
-            ]
-            telegram_trigger_node = TelegramTriggerNode.objects.filter(
-                pk=telegram_trigger_node_id
-            ).first()
-            if not telegram_trigger_node:
-                return Response(
-                    {"error": "TelegramTriggerNode not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            telegram_trigger_service = TelegramTriggerService()
-
-            telegram_trigger_service.register_telegram_trigger(
-                telegram_trigger_instance=telegram_trigger_node,
-                force=True,
-            )
-
-            return Response(status=status.HTTP_200_OK)
-
-
-class RegisterWebhooksApiView(APIView):
-    @extend_schema(**REGISTER_WEBHOOKS_POST)
-    def post(self, request):
-        webhook_trigger_service = WebhookTriggerService()
-        webhook_trigger_service.register_webhooks()
-        return Response(status=status.HTTP_200_OK)
 
 
 class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):

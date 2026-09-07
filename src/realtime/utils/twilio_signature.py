@@ -74,7 +74,11 @@ def validate_twilio_signature(
     expected_without_port = _compute_signature(uri_without_port, params, auth_token)
     expected_with_port = _compute_signature(uri_with_port, params, auth_token)
 
-    valid_without_port = hmac.compare_digest(expected_without_port, signature)
-    valid_with_port = hmac.compare_digest(expected_with_port, signature)
+    valid_without_port = hmac.compare_digest(
+        expected_without_port.encode("utf-8"), signature.encode("utf-8")
+    )
+    valid_with_port = hmac.compare_digest(
+        expected_with_port.encode("utf-8"), signature.encode("utf-8")
+    )
 
     return valid_without_port or valid_with_port

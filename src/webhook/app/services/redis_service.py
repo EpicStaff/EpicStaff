@@ -25,7 +25,6 @@ class RedisService:
         path: str,
         payload: Dict[str, Any],
         config_id: str | None = None,
-        auth_principal: str | None = None,
     ):
         """
         Modifies the data and publishes it to a Redis channel.
@@ -34,7 +33,6 @@ class RedisService:
             path=path,
             payload=payload,
             config_id=config_id,
-            auth_principal=auth_principal,
         )
 
         logger.debug(f"Publishing to Redis channel '{self.webhook_channel}'")

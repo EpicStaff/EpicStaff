@@ -13,6 +13,7 @@ export interface RealtimeChannel {
     name: string;
     channel_type: 'twilio';
     token: string;
+    /** Legacy staff destination. Read-only here — the UI writes realtime_agent_definition. */
     realtime_agent: number | null;
     realtime_agent_definition: number | null;
     is_active: boolean;
@@ -22,7 +23,6 @@ export interface RealtimeChannel {
 export interface CreateRealtimeChannelRequest {
     name: string;
     channel_type: 'twilio';
-    realtime_agent?: number | null;
     realtime_agent_definition?: number | null;
     is_active?: boolean;
 }
@@ -30,7 +30,6 @@ export interface CreateRealtimeChannelRequest {
 export interface UpdateRealtimeChannelRequest {
     id: number;
     name?: string;
-    realtime_agent?: number | null;
     realtime_agent_definition?: number | null;
     is_active?: boolean;
 }

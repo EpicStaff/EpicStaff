@@ -16,7 +16,7 @@ from typing import Literal
 
 import yaml
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1] / 'src'
 
 BANNER = """
 # GENERATED FROM: {schema_file}

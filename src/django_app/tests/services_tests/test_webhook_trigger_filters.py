@@ -39,8 +39,6 @@ Three related classes of the same underlying bug:
 
 import pytest
 
-from src.shared.models import UNAUTHENTICATED_FALLBACK_PRINCIPAL
-
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.python_models import PythonCode
 from tables.models.rbac_models import Organization
@@ -49,8 +47,6 @@ from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
-    WebhookAuthScheme,
-    WebhookNodeAuth,
     WebhookTrigger,
 )
 from tables.services.session_manager_service import SessionManagerService
@@ -71,9 +67,11 @@ class _FakeSessionData:
 def _stub_publish(monkeypatch):
     """Stub the run_session tail (SessionData build + Redis publish)."""
     sm = SessionManagerService()
-    monkeypatch.setattr(sm, "create_session_data", lambda session: _FakeSessionData())
     monkeypatch.setattr(
-        sm.redis_service, "publish_session_data", lambda session_data: 2
+        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+    )
+    monkeypatch.setattr(
+        sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
     )
     return sm
 
@@ -428,17 +426,13 @@ class TestHandleTelegramTriggerConfigIsolation:
 
 
 @pytest.mark.django_db
-class TestAuthPrincipalDispatchRestriction:
-    """A principal-bearing event restricts fan-out to only
-    the node it names; a `None`-principal event preserves today's
-    unrestricted fan-out to every attached node on the path.
-
-    Principal parsing (`"<label>:<pk>"` -> a specific `node_id`, cross-type
-    label rejection) is `RedisPubSub._parse_auth_principal`'s job, not the
-    service layer's -- these are service-level unit tests, so they exercise
-    `handle_webhook_trigger`/`handle_telegram_trigger` with the already
-    resolved `node_id` int, the shape `RedisPubSub.webhook_events_handler`
-    actually calls them with.
+class TestUnrestrictedFanOutAcrossSharedPath:
+    """Auth is now enforced once, upstream, by the `webhook` service against
+    the trigger's single fixed strategy (see `webhook_routes.handle_webhook`)
+    -- by the time an event reaches `handle_webhook_trigger`/
+    `handle_telegram_trigger` it has already passed (or didn't need) that
+    check, so dispatch is unrestricted fan-out to every node on the path,
+    with no per-node restriction parameter left to test.
     """
 
     @pytest.fixture(autouse=True)
@@ -450,43 +444,18 @@ class TestAuthPrincipalDispatchRestriction:
             lambda self, telegram_trigger_instance=None, **kwargs: None,
         )
 
-    def test_telegram_node_id_restricts_to_its_own_node_only(
+    def test_webhook_dispatch_fans_out_to_every_node_on_the_shared_path(
         self, default_org, monkeypatch
     ):
-        graph = Graph.objects.create(name="principal-tg-graph", org=default_org)
-        trigger = WebhookTrigger.objects.create(
-            path="principal-shared-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        telegram_node = TelegramTriggerNode.objects.create(
-            node_name="principal-tg-node", graph=graph, webhook_trigger=trigger
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="principal-tg-node-other", graph=graph, webhook_trigger=trigger
-        )
-
-        _stub_publish(monkeypatch)
-
-        TelegramTriggerService().handle_telegram_trigger(
-            path="principal-shared-path",
-            payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:principal-shared-path",
-            node_id=telegram_node.pk,
-        )
-
-        assert Session.objects.filter(graph=graph).count() == 1
-
-    def test_webhook_node_id_restricts_to_its_own_node_only(
-        self, default_org, monkeypatch
-    ):
-        graph = Graph.objects.create(name="principal-wh-graph", org=default_org)
+        graph = Graph.objects.create(name="fanout-wh-graph", org=default_org)
         node_a = _make_webhook_trigger_node(
-            graph=graph, path="principal-wh-shared", provider_type=ProviderType.NGROK
+            graph=graph, path="fanout-wh-shared", provider_type=ProviderType.NGROK
         )
         python_code = PythonCode.objects.create(
             code="def handler(event, context): return event", entrypoint="handler"
         )
         WebhookTriggerNode.objects.create(
-            node_name="principal-wh-node-b",
+            node_name="fanout-wh-node-b",
             graph=graph,
             webhook_trigger=node_a.webhook_trigger,
             python_code=python_code,
@@ -495,158 +464,36 @@ class TestAuthPrincipalDispatchRestriction:
         _stub_publish(monkeypatch)
 
         WebhookTriggerService().handle_webhook_trigger(
-            path="principal-wh-shared",
+            path="fanout-wh-shared",
             payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:principal-wh-shared",
-            node_id=node_a.pk,
-        )
-
-        assert Session.objects.filter(graph=graph).count() == 1
-
-    def test_none_principal_preserves_unrestricted_fan_out(
-        self, default_org, monkeypatch
-    ):
-        graph = Graph.objects.create(name="principal-none-graph", org=default_org)
-        node_a = _make_webhook_trigger_node(
-            graph=graph, path="principal-none-path", provider_type=ProviderType.NGROK
-        )
-        python_code = PythonCode.objects.create(
-            code="def handler(event, context): return event", entrypoint="handler"
-        )
-        WebhookTriggerNode.objects.create(
-            node_name="principal-none-node-b",
-            graph=graph,
-            webhook_trigger=node_a.webhook_trigger,
-            python_code=python_code,
-        )
-
-        _stub_publish(monkeypatch)
-
-        WebhookTriggerService().handle_webhook_trigger(
-            path="principal-none-path",
-            payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:principal-none-path",
-            node_id=None,
+            config_id=f"ngrok:{default_org.id}:fanout-wh-shared",
         )
 
         assert Session.objects.filter(graph=graph).count() == 2
 
-
-@pytest.mark.django_db
-class TestUnauthenticatedFallbackSentinelDispatch:
-    """Post-implementation dual-attach fix: a mixed-attach path --
-    one node with mandatory/enabled auth, one node with none -- must not
-    401-brick the auth-free node. `RedisPubSub.webhook_events_handler`
-    recognizes `UNAUTHENTICATED_FALLBACK_PRINCIPAL` and calls both services
-    with `unauthenticated_only=True`: `handle_webhook_trigger` restricts to
-    nodes with no enabled `WebhookNodeAuth`; `handle_telegram_trigger`
-    always no-ops, since Telegram auth is mandatory and unconditional.
-    """
-
-    @pytest.fixture(autouse=True)
-    def _mock_telegram_signal_side_effects(self, monkeypatch):
-        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
-        monkeypatch.setattr(
-            TelegramTriggerService,
-            "register_telegram_trigger",
-            lambda self, telegram_trigger_instance=None, **kwargs: None,
-        )
-
-    def test_sentinel_restricts_webhook_dispatch_to_the_auth_free_node_only(
+    def test_telegram_dispatch_fans_out_to_every_node_on_the_shared_path(
         self, default_org, monkeypatch
     ):
-        # Separate graphs per node so which node actually dispatched is
-        # unambiguous from which graph got a session.
-        auth_free_graph = Graph.objects.create(
-            name="sentinel-webhook-auth-free-graph", org=default_org
+        graph = Graph.objects.create(name="fanout-tg-graph", org=default_org)
+        trigger = WebhookTrigger.objects.create(
+            path="fanout-tg-shared", provider_type=ProviderType.NGROK, org=default_org
         )
-        auth_required_graph = Graph.objects.create(
-            name="sentinel-webhook-auth-required-graph", org=default_org
+        TelegramTriggerNode.objects.create(
+            node_name="fanout-tg-node-a", graph=graph, webhook_trigger=trigger
         )
-        auth_free_node = _make_webhook_trigger_node(
-            graph=auth_free_graph,
-            path="sentinel-shared-path",
-            provider_type=ProviderType.NGROK,
-        )
-        python_code = PythonCode.objects.create(
-            code="def handler(event, context): return event", entrypoint="handler"
-        )
-        auth_required_node = WebhookTriggerNode.objects.create(
-            node_name="sentinel-auth-required-node",
-            graph=auth_required_graph,
-            webhook_trigger=auth_free_node.webhook_trigger,
-            python_code=python_code,
-        )
-        WebhookNodeAuth.objects.create(
-            enabled=True,
-            scheme=WebhookAuthScheme.HMAC_SHA256,
-            header_name="X-Webhook-Signature",
-            signing_secret="hmac-key",
-            webhook_trigger_node=auth_required_node,
-        )
-
-        _stub_publish(monkeypatch)
-
-        WebhookTriggerService().handle_webhook_trigger(
-            path="sentinel-shared-path",
-            payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:sentinel-shared-path",
-            unauthenticated_only=True,
-        )
-
-        assert Session.objects.filter(graph=auth_free_graph).count() == 1
-        assert Session.objects.filter(graph=auth_required_graph).count() == 0
-
-    def test_sentinel_never_drives_a_telegram_node(self, default_org, monkeypatch):
-        graph = Graph.objects.create(name="sentinel-telegram-graph", org=default_org)
-        _make_telegram_trigger_node(
-            graph=graph, path="sentinel-telegram-path", provider_type=ProviderType.NGROK
+        TelegramTriggerNode.objects.create(
+            node_name="fanout-tg-node-b", graph=graph, webhook_trigger=trigger
         )
 
         _stub_publish(monkeypatch)
 
         TelegramTriggerService().handle_telegram_trigger(
-            path="sentinel-telegram-path",
+            path="fanout-tg-shared",
             payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:sentinel-telegram-path",
-            unauthenticated_only=True,
+            config_id=f"ngrok:{default_org.id}:fanout-tg-shared",
         )
 
-        assert Session.objects.filter(graph=graph).count() == 0
-
-    def test_sentinel_never_drives_a_node_with_disabled_auth_row_marked_enabled_elsewhere(
-        self, default_org, monkeypatch
-    ):
-        """A node whose `WebhookNodeAuth.enabled` is False counts as
-        auth-free for sentinel dispatch purposes -- disabled auth means no
-        credential is required, matching `ConverterService._convert_node_auth`
-        (which also excludes disabled rows from `auths`)."""
-        graph = Graph.objects.create(
-            name="sentinel-disabled-auth-graph", org=default_org
-        )
-        node = _make_webhook_trigger_node(
-            graph=graph,
-            path="sentinel-disabled-auth-path",
-            provider_type=ProviderType.NGROK,
-        )
-        WebhookNodeAuth.objects.create(
-            enabled=False,
-            scheme=WebhookAuthScheme.HMAC_SHA256,
-            header_name="X-Webhook-Signature",
-            signing_secret="hmac-key",
-            webhook_trigger_node=node,
-        )
-
-        _stub_publish(monkeypatch)
-
-        WebhookTriggerService().handle_webhook_trigger(
-            path="sentinel-disabled-auth-path",
-            payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:sentinel-disabled-auth-path",
-            unauthenticated_only=True,
-        )
-
-        assert Session.objects.filter(graph=graph).count() == 1
+        assert Session.objects.filter(graph=graph).count() == 2
 
 
 @pytest.mark.django_db

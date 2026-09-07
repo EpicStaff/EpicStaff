@@ -40,7 +40,7 @@ Core Logic: When a POST request hits `/webhooks/{custom_path}/`, the `webhook` F
 
 1. It parses the JSON payload from the request body (a malformed body is rejected by FastAPI's own parsing with `422` before anything below runs).
 2. It resolves `custom_path` to a registered tunnel config via `TunnelRegistry.resolve_by_path` -- an in-memory pool of `BaseTunnelConfigData` entries (populated from messages Django publishes on `REDIS_TUNNEL_CONFIG_CHANNEL` whenever a `WebhookTrigger`/tunnel config is saved or deleted), matched purely by `config.name == custom_path`. No match -> `404`. More than one tunnel config registered for the same path -> `409` (fails closed rather than guessing which one owns the request).
-3. If the matched config carries any inbound auth credentials (`config.auths` -- one entry per node with an enabled `WebhookNodeAuth` sharing this path), it verifies the request against each in turn (`static_header` or `hmac_sha256` -- see "Webhook Inbound Authentication" below). No credential matches -> `401`, unless the path also has an auth-free node sharing it, in which case the request is forwarded scoped to that node only (fail-open passthrough, never for Telegram).
+3. The matched config carries a single inbound auth strategy (`config.auth`, resolved from that trigger's `WebhookTriggerAuth` row -- one per `WebhookTrigger`, not per node). It reads the header named by `auth.header_name` and compares it against `auth.secret` with `hmac.compare_digest` (see "Webhook Inbound Authentication" below). If `config.auth` is `None`, or the header is missing/doesn't match -> `401`. There is no auth-free passthrough: every trigger either has auth configured or the request is rejected (fail-closed).
 4. It republishes the payload -- plus the resolved `config_id` and, when one credential matched, that node's `auth_principal` -- to Redis for Django to pick up. No `SessionData`/graph knowledge lives in this service.
 5. On the Django side, `WebhookTriggerService.handle_webhook_trigger` / `TelegramTriggerService.handle_telegram_trigger` resolve the actual `WebhookTriggerNode` / `TelegramTriggerNode` row(s) by filtering on `webhook_trigger__path` (plus org/provider scoping parsed out of `config_id`), read each matched node's `graph` and `node_name` as the entrypoint, and call `run_session(variables={"trigger_payload": payload}, ...)` (`telegram_payload` for Telegram).
 
@@ -165,63 +165,65 @@ received.
 }
 ```
 
-Webhook Inbound Authentication (`WebhookNodeAuth`)
----------------------------------------------------
+Webhook Inbound Authentication (`WebhookTriggerAuth`)
+------------------------------------------------------
 
-Every `TelegramTriggerNode` and `WebhookTriggerNode` can carry one
-`WebhookNodeAuth` row (`tables.models.webhook_models.WebhookNodeAuth`, a
-one-to-one keyed by exactly one of `telegram_trigger_node` /
-`webhook_trigger_node`) that gates inbound requests on the shared
-`/webhooks/{path}/` route. There are two schemes
-(`WebhookAuthScheme`):
+Auth is configured once per `WebhookTrigger`, not per node. Each
+`WebhookTrigger` can carry one `WebhookTriggerAuth` row
+(`tables.models.webhook_models.WebhookTriggerAuth`, a one-to-one on
+`trigger`) that gates every inbound request on that trigger's
+`/webhooks/{path}/` route. There are three fixed strategies
+(`WebhookTriggerAuthKind`), each with a code-constant header name
+(`WebhookTriggerAuth.HEADER_NAMES`):
 
-- **`static_header`** -- Telegram only. Mandatory and fully automatic:
-  `TelegramTriggerService.register_telegram_trigger` mints a random token
-  (`secrets.token_urlsafe(32)`), passes it as `secret_token` on Telegram's
-  `setWebhook` call, and stores only a PBKDF2 hash of it
-  (`WebhookNodeAuth.secret_hash`, via Django's `make_password` /
-  `check_password`) -- the raw token is never persisted or exposed through
-  the API. Telegram echoes the token back on every update as the
-  `X-Telegram-Bot-Api-Secret-Token` header, which the `webhook` service
-  verifies with `django_pbkdf2_sha256.verify` (run off the event loop via
-  `run_in_threadpool`, since PBKDF2 verification is CPU-bound). There is
-  nothing for the API consumer to configure.
-- **`hmac_sha256`** -- generic `WebhookTriggerNode`s. Enabled by default but
-  user-toggleable. `WebhookTriggerService.ensure_webhook_auth` generates a
-  plaintext `signing_secret` (`secrets.token_hex(32)`) that **is** returned
-  through the API (`WebhookNodeAuthSerializer.signing_secret`) so the
-  developer can configure their sending system. The sender must compute:
+- **`webhook`** -- generic `WebhookTriggerNode`s. Header:
+  `EPICSTAFF_API_KEY`. User-settable: the client points `auth_secret_id` at
+  an existing `Secret` (holding the plaintext key the sender must send back
+  in that header) via `WebhookTriggerService.set_trigger_auth_secret`.
+- **`telegram`** -- `TelegramTriggerNode`s. Header:
+  `X-Telegram-Bot-Api-Secret-Token`. Also user-settable via
+  `set_trigger_auth_secret`, but in practice it is normally auto-provisioned
+  and kept in sync by `TelegramTriggerService.register_telegram_trigger`
+  (which passes the resolved plaintext to Telegram's `setWebhook` as
+  `secret_token`); Telegram echoes it back on every update, and the
+  `webhook` service compares it against the stored secret.
+- **`twilio`** -- reserved via `set_trigger_auth_secret(kind="twilio")` as a
+  bare, secret-less claim on the trigger (it rejects an explicit `secret`
+  argument for this kind); the row is filled in once a `TwilioChannel`
+  claims the trigger and syncs its own `auth_token_secret` onto it. This
+  kind has **no** `src/webhook`-side header check at all
+  (`WebhookTriggerAuth.header_name` returns `None` for it) -- Twilio inbound
+  requests are authenticated separately, in `src/realtime`, by verifying the
+  `X-Twilio-Signature` header against `TwilioChannel.auth_token_secret` (see
+  `src/realtime/utils/twilio_signature.py`).
 
-  ```
-  signature = hex(HMAC-SHA256(key=signing_secret, msg=f"{timestamp}.{raw_body}"))
-  ```
+For both user-settable kinds, the resolved plaintext secret must be at
+least `AUTH_SECRET_MIN_LENGTH = 32` characters
+(`webhook_trigger_service.AUTH_SECRET_MIN_LENGTH`); `telegram` additionally
+runs `validate_telegram_secret_token` (1-256 chars, `[A-Za-z0-9_-]` only) on
+top of the length check. `set_trigger_auth_secret` also enforces: a trigger's
+`kind` can't be changed once set (must delete/recreate the auth row to
+switch strategies) and a trigger can only be claimed by nodes/channels of
+one kind at a time -- `kind="webhook"` is rejected if a Telegram node is
+already attached (and vice versa), and `kind="twilio"` is rejected if either
+a webhook or Telegram node is already attached. Cross-type conflicts are
+also enforced at the node-attach layer (`trigger_serializers.py`
+validation) and orphaned `WebhookTriggerAuth` rows are cleaned up by
+signals in `webhook_signals.py`/`telegram_signals.py` when the last node of
+a kind is detached.
 
-  and send it as two headers:
-  - `X-Webhook-Signature: <signature>`
-  - `X-Webhook-Timestamp: <unix timestamp>`
+**Configuring it:** via `/api/webhook-triggers/` (`WebhookTriggerNestedSerializer`
+in `tables/serializers/base_serializers.py`), write-only fields
+`auth_kind` (`webhook` / `telegram` / `twilio`) and `auth_secret_id` (id of
+an existing `Secret`). The read-only nested `auth` object on the trigger
+representation exposes `{"kind": ..., "secret_tail": ...}` -- the resolved
+secret's plaintext is never returned through the API, only its `tail`
+(a truncated preview) via `Secret.tail`.
 
-  The `webhook` service (`webhook_routes.verify_hmac_signature`) recomputes
-  the same HMAC and compares with `hmac.compare_digest`. A timestamp is only
-  accepted within `tolerance_seconds` in the past (default `300`) and up to
-  `CLOCK_SKEW_ALLOWANCE_SECONDS` (5s) in the future. A valid, fresh signature
-  is also checked against a Redis-backed replay cache
-  (`webhook:seen:<principal>:<signature>`, TTL = `tolerance_seconds`) so a
-  captured request/signature pair can't be replayed.
-
-**Toggling:** the only client-writable sub-field is `enabled`, via
-`PATCH /api/webhook-trigger-nodes/{id}/` with body
-`{"webhook_node_auth": {"enabled": false}}`. Every other field (`scheme`,
-`header_name`, `signing_secret`, `secret_hash`, ...) is server-controlled --
-`WebhookNodeAuthInputSerializer` accepts and validates only `enabled`,
-silently ignoring anything else sent alongside it. Re-enabling reuses the
-existing `signing_secret` rather than rotating it
-(`WebhookTriggerService.ensure_webhook_auth` never disables an existing row
-and only backfills a missing secret), so disabling and re-enabling never
-breaks an already-configured sending system. `TelegramTriggerNode`'s auth is
-not exposed for toggling at all -- it is always on.
-
-**Response codes** from the `webhook` service's auth layer: `401` when no
-credential on the path matches (and no auth-free node shares the path),
-`409` when the requested path matches more than one registered tunnel
-config (ambiguous routing), `422` when the request body is not valid JSON
-(rejected by FastAPI's own body parsing before auth runs).
+**Response codes** from the `webhook` service's auth layer: `401` when the
+trigger has no `WebhookTriggerAuth` configured, or the request's header is
+missing or doesn't match the stored secret (fail-closed -- there is no
+auth-free passthrough), `409` when the requested path matches more than one
+registered tunnel config (ambiguous routing), `422` when the request body
+is not valid JSON (rejected by FastAPI's own body parsing before auth
+runs).

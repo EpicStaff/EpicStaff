@@ -1,113 +1,115 @@
 <div class="table__wrapper">
-    <!-- HEADER ROW -->
-    <div
-        class="table__row table__header"
-        [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
-    >
-        <!-- 1. Checkbox -->
-        <div class="table__col">
-            <app-checkbox
-                color="secondary"
-                [checked]="allChecked()"
-                [indeterminate]="indeterminate()"
-                (changed)="toggleAll()"
-            />
-        </div>
-
-        <!-- 2. Files (sortable dropdown) -->
-        <div class="table__col">
-            <app-multi-select
-                icon="filter-rows"
-                label="FILES"
-                searchPlaceholder="Search headers..."
-                [items]="fileTypeSelectItems"
-                (selectionChange)="onFileTypeFilterChange($event)"
-            />
-        </div>
-
-        <!-- 3. Chunk Strategy -->
-        <div class="table__col">
-            <app-multi-select
-                icon="filter-rows"
-                label="CHUNK STRATEGY"
-                searchPlaceholder="Search headers..."
-                [items]="chunkStrategySelectItems"
-                (selectionChange)="onChunkStrategyFilterChange($event)"
-            />
-        </div>
-
-        <!-- 4. Chunk Size -->
-        <div class="table__col table__col--center">CHUNK SIZE</div>
-
-        <!-- 5. Overlap -->
-        <div class="table__col table__col--center">OVERLAP</div>
-
-        <!-- 6. Empty space -->
-        <div class="table__col"></div>
-    </div>
-
-    <!-- BULK EDIT ROW  -->
-    @if (showBulkRow()) {
-        <div class="table__row table__bulk-row">
-            <div class="table__col"></div>
-            <div class="table__col">For selected:</div>
-
-            <!-- strategy select -->
-            <div class="table__col">
-                <app-select
-                    mod="small"
-                    [items]="chunkStrategySelectItems"
-                    [(selectedValue)]="bulkChunkStrategy"
-                />
-            </div>
-
-            @if (bulkChunkStrategy() === 'csv') {
-                <!-- chunk size -->
-                <div class="table__col table__col--unavailable">Unavailable</div>
-
-                <!-- overlap -->
-                <div class="table__col table__col--unavailable">Unavailable</div>
-            } @else {
-                <!-- chunk size -->
+    <div class="table__files-wrapper">
+        <div class="table__sticky-head">
+            <!-- HEADER ROW -->
+            <div
+                class="table__row table__header"
+                [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
+            >
+                <!-- 1. Checkbox -->
                 <div class="table__col">
-                    <app-input-number
-                        mod="small"
-                        [min]="20"
-                        [max]="8000"
-                        [stepSize]="DEFAULT_STEP_SIZE"
-                        [(value)]="bulkChunkSize"
+                    <app-checkbox
+                        color="secondary"
+                        [checked]="allChecked()"
+                        [indeterminate]="indeterminate()"
+                        (changed)="toggleAll()"
                     />
                 </div>
 
-                <!-- overlap -->
+                <!-- 2. Files (sortable dropdown) -->
                 <div class="table__col">
-                    <app-input-number
-                        mod="small"
-                        [min]="0"
-                        [max]="1000"
-                        [stepSize]="DEFAULT_STEP_SIZE"
-                        [(value)]="bulkChunkOverlap"
+                    <app-multi-select
+                        icon="filter-rows"
+                        label="FILES"
+                        searchPlaceholder="Search headers..."
+                        [items]="fileTypeSelectItems"
+                        (selectionChange)="onFileTypeFilterChange($event)"
                     />
+                </div>
+
+                <!-- 3. Chunk Strategy -->
+                <div class="table__col">
+                    <app-multi-select
+                        icon="filter-rows"
+                        label="CHUNK STRATEGY"
+                        searchPlaceholder="Search headers..."
+                        [items]="chunkStrategySelectItems"
+                        (selectionChange)="onChunkStrategyFilterChange($event)"
+                    />
+                </div>
+
+                <!-- 4. Chunk Size -->
+                <div class="table__col table__col--center">CHUNK SIZE</div>
+
+                <!-- 5. Overlap -->
+                <div class="table__col table__col--center">OVERLAP</div>
+
+                <!-- 6. Empty space -->
+                <div class="table__col"></div>
+            </div>
+
+            <!-- BULK EDIT ROW  -->
+            @if (showBulkRow()) {
+                <div class="table__row table__bulk-row">
+                    <div class="table__col"></div>
+                    <div class="table__col">For selected:</div>
+
+                    <!-- strategy select -->
+                    <div class="table__col">
+                        <app-select
+                            mod="small"
+                            [items]="chunkStrategySelectItems"
+                            [(selectedValue)]="bulkChunkStrategy"
+                        />
+                    </div>
+
+                    @if (bulkChunkStrategy() === 'csv') {
+                        <!-- chunk size -->
+                        <div class="table__col table__col--unavailable">Unavailable</div>
+
+                        <!-- overlap -->
+                        <div class="table__col table__col--unavailable">Unavailable</div>
+                    } @else {
+                        <!-- chunk size -->
+                        <div class="table__col">
+                            <app-input-number
+                                mod="small"
+                                [min]="20"
+                                [max]="8000"
+                                [stepSize]="DEFAULT_STEP_SIZE"
+                                [(value)]="bulkChunkSize"
+                            />
+                        </div>
+
+                        <!-- overlap -->
+                        <div class="table__col">
+                            <app-input-number
+                                mod="small"
+                                [min]="0"
+                                [max]="1000"
+                                [stepSize]="DEFAULT_STEP_SIZE"
+                                [(value)]="bulkChunkOverlap"
+                            />
+                        </div>
+                    }
+
+                    <!-- apply -->
+                    <div class="table__col">
+                        <app-button
+                            class="table__col-btn"
+                            type="outline-primary"
+                            mod="small"
+                            [disabled]="!checkedDocumentIds().length"
+                            (click)="onApplyBulkEdit()"
+                        >
+                            Apply
+                        </app-button>
+                    </div>
                 </div>
             }
-
-            <!-- apply -->
-            <div class="table__col">
-                <app-button
-                    class="table__col-btn"
-                    type="outline-primary"
-                    mod="small"
-                    [disabled]="!checkedDocumentIds().length"
-                    (click)="onApplyBulkEdit()"
-                >
-                    Apply
-                </app-button>
-            </div>
         </div>
-    }
 
-    <!-- DATA ROWS -->
-    <div class="table__files-wrapper">
+        <!-- DATA ROWS -->
         <ol class="table__rows">
             @for (d of filteredDocuments(); track d.naive_rag_document_id; let odd = $odd; let i = $index) {
                 <div

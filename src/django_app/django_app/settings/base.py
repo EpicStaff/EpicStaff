@@ -41,11 +41,15 @@ MIDDLEWARE = [
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
-    {"NAME": "tables.services.rbac.utils.printable_ascii_password_validator.PrintableAsciiPasswordValidator"},
+    {
+        "NAME": "tables.services.rbac.utils.printable_ascii_password_validator.PrintableAsciiPasswordValidator"
+    },
 ]
 
 FRONTEND_BASE_URL = env.str("DJANGO_FRONTEND_BASE_URL").rstrip("/")
@@ -93,3 +97,6 @@ MAX_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_UNCOMPRESSED_S
 TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
+
+# Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
+SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)

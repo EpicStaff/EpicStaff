@@ -392,7 +392,6 @@ class GraphVersioningManager:
     def _build_missing_sets(self, missing: dict) -> _MissingSets:
         """Gather all missing dependencies ids into dataclass structure"""
         return _MissingSets(
-            crews=set(missing.get(EntityType.CREW.value, [])),
             subgraphs=set(missing.get(EntityType.GRAPH.value, [])),
             llm_configs=set(missing.get(EntityType.LLM_CONFIG.value, [])),
             webhooks=set(missing.get(EntityType.WEBHOOK_TRIGGER.value, [])),
@@ -718,7 +717,12 @@ class GraphVersioningManager:
 
     def _wipe_graph_children(self, graph: Graph) -> None:
         """
-        Wipe all graph related nodes
+        Wipe all graph related nodes.
+
+        Intentionally hard-deletes and is NOT routed through the soft-delete
+        cascade (DeleteService): this replaces a graph's content during a
+        version restore, it does not delete the graph itself, so soft-delete
+        semantics don't apply here. Do not "fix" this to go through .delete().
         """
         python_code_ids: set[int] = set()
         python_code_ids.update(
