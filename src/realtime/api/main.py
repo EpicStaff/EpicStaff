@@ -101,7 +101,7 @@ async def get_channel_config(channel_token: str) -> dict:
     # no logged-in user and no org context, so it cannot use the normal
     # org-scoped list endpoint (that 400s with org_context_required).
     url = f"{config.DJANGO_API_BASE_URL}/realtime-channels/lookup-by-token/"
-    logger.info(f"[channel_config] fetching from Django: {url}?token={channel_token}")
+    logger.info(f"[channel_config] fetching from Django: {url}")
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -121,7 +121,7 @@ async def get_channel_config(channel_token: str) -> dict:
                 logger.info(
                     f"[channel_config] loaded: agent_definition_id={data.get('realtime_agent_definition')} "
                     f"legacy_realtime_agent={data.get('realtime_agent')} "
-                    f"twilio={data.get('twilio')}"
+                    f"twilio_configured={bool(data.get('twilio'))}"
                 )
                 return data
             else:
@@ -206,7 +206,8 @@ async def root(
     token = websocket.query_params.get("token")
     logger.info(
         f"WebSocket connect attempt path={websocket.url.path} "
-        f"query_params={websocket.query_params}"
+        f"has_token={bool(websocket.query_params.get('token'))} "
+        f"has_connection_key={bool(websocket.query_params.get('connection_key'))}"
     )
     if not token:
         logger.warning("WebSocket auth missing token")
@@ -228,7 +229,7 @@ async def root(
     )
 
     if realtime_agent_chat_data is None:
-        logger.warning(f"Connection not found for key: {connection_key}")
+        logger.warning("Connection not found for connection_key")
         await websocket.close(code=1011)
         return
 
@@ -241,7 +242,7 @@ async def root(
     # construction (factory.create) or an unscoped session later on.
     if getattr(realtime_agent_chat_data, "org_id", None) is None:
         logger.error(
-            f"WebSocket auth rejected: connection_key={connection_key} has no "
+            "WebSocket auth rejected: connection has no "
             "org_id on its RealtimeAgentChatData payload — refusing to start "
             "an unscoped realtime session."
         )
