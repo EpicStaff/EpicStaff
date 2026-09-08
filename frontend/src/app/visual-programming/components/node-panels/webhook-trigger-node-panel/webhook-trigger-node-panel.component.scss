@@ -175,7 +175,7 @@
 }
 
 .webhook-url-display {
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: rgba(255, 255, 255, 0.65);
     word-break: break-all;
     display: flex;
@@ -196,7 +196,7 @@
 }
 
 .webhook-warning {
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: #ef4444;
     word-break: break-word;
 }
@@ -239,7 +239,7 @@
     padding: 6px 8px;
     border-left: 2px solid var(--color-ks-status-warning);
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.5;
     color: var(--color-ks-status-warning);
     background: var(--color-ks-transparent-yellow);
@@ -251,7 +251,7 @@
     color: rgba(255, 255, 255, 0.8);
     padding: 4px 8px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
     transition:
         border-color 0.2s ease,

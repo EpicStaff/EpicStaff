@@ -17,9 +17,8 @@
     }
 
     &__title {
-        font-family: Inter, sans-serif;
-        font-size: 18px;
-        font-weight: 500;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
         line-height: 1;
         color: var(--color-text-primary);
         margin: 0;

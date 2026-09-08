@@ -13,9 +13,26 @@ $compact-theme: mat.define-theme(
     )
 );
 
+// Material's --mat-sys-*-font tokens default to Roboto; point them at --font-family.
 :root {
     --mat-tooltip-container-color: rgba(33, 35, 37, 1);
     --mat-tooltip-supporting-text-color: #d9d9de;
+
+    --mat-sys-body-large-font: var(--font-family);
+    --mat-sys-body-medium-font: var(--font-family);
+    --mat-sys-body-small-font: var(--font-family);
+    --mat-sys-label-large-font: var(--font-family);
+    --mat-sys-label-medium-font: var(--font-family);
+    --mat-sys-label-small-font: var(--font-family);
+    --mat-sys-title-large-font: var(--font-family);
+    --mat-sys-title-medium-font: var(--font-family);
+    --mat-sys-title-small-font: var(--font-family);
+    --mat-sys-headline-large-font: var(--font-family);
+    --mat-sys-headline-medium-font: var(--font-family);
+    --mat-sys-headline-small-font: var(--font-family);
+    --mat-sys-display-large-font: var(--font-family);
+    --mat-sys-display-medium-font: var(--font-family);
+    --mat-sys-display-small-font: var(--font-family);
 
     @include mat.form-field-density($compact-theme);
 }

@@ -29,7 +29,7 @@
     overflow: hidden;
     position: relative;
     font-family: var(--ep-font-family);
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 :host.mode-floating .panel {
@@ -194,8 +194,8 @@
 }
 
 .panel-title {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     color: var(--color-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -287,7 +287,7 @@
             color: var(--ep-chat-text-question);
             border-radius: var(--ep-radius-sm);
             padding: 12px;
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 20px;
             max-width: calc(100% - 30px);
             margin-left: 30px;
@@ -306,7 +306,7 @@
             border-radius: 0 var(--ep-radius-sm) var(--ep-radius-sm) var(--ep-radius-sm);
             padding: 12px;
             max-width: 100%;
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 20px;
             color: var(--color-text-primary);
         }
@@ -529,7 +529,7 @@
         background: transparent;
         color: var(--ep-color-text);
         font-family: var(--ep-font-family);
-        font-size: 14px;
+        font-size: 0.875rem;
         line-height: 20px;
         min-height: 20px;
         max-height: 50vh;
@@ -610,7 +610,7 @@
         background: transparent;
         border: none;
         color: var(--color-text-primary);
-        font-size: 12px;
+        font-size: 0.75rem;
         text-align: left;
         cursor: pointer;
 

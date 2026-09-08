@@ -240,8 +240,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .input-map-header label {
-                font-size: 0.875rem;
-                font-weight: 400;
+                font-size: var(--text-body-size);
+                font-weight: var(--text-body-weight);
                 color: var(--color-text-primary);
                 margin: 0;
             }
@@ -362,7 +362,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: 1rem;
                 }
             }
 
@@ -378,8 +378,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: 8px 12px;
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
-                font-size: 0.875rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 text-align: center;
@@ -419,7 +419,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 border-left: 1px solid rgba(255, 207, 0, 1);
                 border-radius: 10px;
                 padding: 10px 12px;
-                font-size: 13px;
+                font-size: 0.8125rem;
                 color: inherit;
                 margin-top: 8px;
             }

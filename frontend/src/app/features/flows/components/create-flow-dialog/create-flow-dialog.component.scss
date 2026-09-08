@@ -14,8 +14,8 @@
 
         .dialog-title {
             margin: 0;
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: var(--text-h3-size);
+            font-weight: var(--text-h3-weight);
             color: var(--color-text-primary);
         }
 
@@ -79,7 +79,7 @@
             }
 
             .error-message {
-                font-size: 12px;
+                font-size: 0.75rem;
                 color: var(--color-error);
                 margin-top: 4px;
             }
@@ -131,7 +131,7 @@
 
 .dialog-error-message {
     color: #ff4d4f;
-    font-size: 13px;
+    font-size: 0.8125rem;
     text-align: center;
     margin-top: 10px;
     margin-bottom: 10px;

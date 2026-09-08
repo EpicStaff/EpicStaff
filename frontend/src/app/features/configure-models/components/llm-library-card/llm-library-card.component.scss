@@ -29,7 +29,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 11px;
+        font-size: 0.6875rem;
         font-weight: 500;
         color: rgba(217, 217, 222, 0.5);
     }
@@ -57,7 +57,7 @@
             border-color 0.2s ease;
 
         i {
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 1;
         }
 
@@ -76,8 +76,8 @@
     }
 
     &__name {
-        font-size: 15px;
-        font-weight: 600;
+        font-size: 0.9375rem;
+        font-weight: 500;
         color: var(--configure-models-dialog-active-color, #d9d9de);
         word-break: break-word;
     }
@@ -89,7 +89,7 @@
     }
 
     &__tag {
-        font-size: 11px;
+        font-size: 0.6875rem;
         font-weight: 500;
         color: rgba(217, 217, 222, 0.5);
     }
@@ -106,11 +106,11 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: rgba(217, 217, 222, 0.5);
 
         i {
-            font-size: 14px;
+            font-size: 0.875rem;
         }
     }
 
@@ -118,13 +118,13 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        font-size: 12px;
-        font-weight: 500;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         color: var(--color-ks-status-processing);
     }
 
     &__usage {
-        font-size: 12px;
+        font-size: 0.75rem;
         color: rgba(217, 217, 222, 0.5);
 
         &--active {

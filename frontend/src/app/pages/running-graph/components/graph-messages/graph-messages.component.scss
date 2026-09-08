@@ -30,8 +30,8 @@
             gap: 0.5rem;
             padding: 0.75rem 1rem;
             border-radius: 8px;
-            font-size: 0.875rem;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             transition: all 0.3s ease;
 
             &.reconnecting {
@@ -307,7 +307,7 @@
             height: 40px;
             border-radius: 8px;
             border: none;
-            font-size: 23px;
+            font-size: 1.4375rem;
             background-color: var(--color-nodes-background);
             color: #d9d9de99;
             display: inline-flex;
@@ -336,9 +336,9 @@
             color: var(--gray-300);
             overflow: hidden;
             transition: width 0.25s ease;
-            font-weight: 400;
+            font-weight: var(--text-body-small-weight);
             font-style: normal;
-            font-size: 12px;
+            font-size: var(--text-body-small-size);
             line-height: 1;
             letter-spacing: 0;
         }
@@ -365,7 +365,7 @@
         }
 
         .search-icon {
-            font-size: 19px;
+            font-size: 1.1875rem;
         }
 
         .breadcrumbs-search-input {
@@ -451,7 +451,7 @@
         }
 
         .icon-container {
-            font-size: 23px;
+            font-size: 1.4375rem;
             color: #ffffff99;
         }
 
@@ -486,7 +486,7 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         background-color: #2c2c2e;
         color: var(--color-ks-transparent-text-60);
-        font-size: 16px;
+        font-size: 1rem;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -524,8 +524,8 @@
             border-radius: 9px;
             background-color: #685fff;
             color: #fff;
-            font-size: 11px;
-            font-weight: 600;
+            font-size: 0.6875rem;
+            font-weight: 500;
             line-height: 18px;
             text-align: center;
         }
@@ -651,7 +651,7 @@
 }
 
 .empty-list {
-    font-weight: 600;
+    font-weight: 500;
     color: #c69999;
     margin: 10px;
 }

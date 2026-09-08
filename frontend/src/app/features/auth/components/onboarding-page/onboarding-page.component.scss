@@ -6,8 +6,8 @@
     padding-top: 10%;
 
     .step-label {
-        font-size: 14px;
-        font-weight: 700;
+        font-size: var(--text-body-large-size);
+        font-weight: var(--text-body-large-weight);
         color: var(--color-ks-secondary);
         margin: 0;
         text-align: center;
@@ -19,15 +19,15 @@
         text-align: center;
 
         .title {
-            font-size: 32px;
+            font-size: var(--text-h1-hero-size);
             line-height: 130%;
-            font-weight: 700;
+            font-weight: var(--text-h1-hero-weight);
             color: var(--color-ks-text);
             margin: 0 0 0.5rem;
         }
 
         .subtitle {
-            font-size: 18px;
+            font-size: 1.125rem;
             color: var(--color-ks-secondary);
             margin: 0;
         }
@@ -45,7 +45,7 @@
             gap: 0.375rem;
 
             .hint {
-                font-size: 12px;
+                font-size: 0.75rem;
                 color: var(--color-ks-secondary);
                 margin: 0;
             }
@@ -86,8 +86,8 @@
             }
 
             .title {
-                font-size: 18px;
-                font-weight: 500;
+                font-size: var(--text-h4-size);
+                font-weight: var(--text-h4-weight);
                 color: var(--color-ks-text);
             }
 
@@ -95,7 +95,7 @@
                 width: 100%;
                 border-top: 1px solid var(--color-divider-subtle);
                 padding-top: 16px;
-                font-size: 12px;
+                font-size: 0.75rem;
                 color: var(--color-ks-secondary);
             }
         }

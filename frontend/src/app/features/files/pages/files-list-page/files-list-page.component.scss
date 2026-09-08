@@ -32,15 +32,15 @@
 
                 .title {
                     margin: 0;
-                    font-size: 1.8rem;
-                    font-weight: 400;
+                    font-size: var(--text-h1-size);
+                    font-weight: var(--text-h1-weight);
                     color: var(--color-text-primary);
                 }
                 .subtitle-inline {
                     margin-left: 0.7rem;
-                    font-size: 1.1rem;
-                    font-weight: 400;
-                    color: var(--color-text-secondary);
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    color: var(--text-secondary-60);
                 }
             }
 
@@ -99,7 +99,7 @@
             border: 1px solid var(--color-input-border);
             background-color: var(--color-input-background);
             color: var(--color-text-primary);
-            font-size: 12px;
+            font-size: 0.75rem;
             transition: border-color 0.2s ease;
 
             &:focus {

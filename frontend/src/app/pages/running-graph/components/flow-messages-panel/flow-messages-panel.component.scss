@@ -29,8 +29,8 @@
     .text {
         min-width: 0;
         margin: 0;
-        font-weight: 500;
-        font-size: 14px;
+        font-weight: var(--text-body-medium-weight);
+        font-size: var(--text-body-medium-size);
         line-height: 1.2;
         letter-spacing: -0.03em;
     }
@@ -170,7 +170,7 @@
     background: #202022;
     color: var(--color-text-primary, #fff);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 0.8125rem;
     transition: border-color 0.2s ease;
 
     &:hover {
@@ -221,7 +221,7 @@
         border-radius: 4px;
         background: transparent;
         color: var(--color-text-primary, #fff);
-        font-size: 13px;
+        font-size: 0.8125rem;
         outline: none;
         box-sizing: border-box;
 
@@ -250,7 +250,7 @@
         background: transparent;
         color: var(--color-text-primary, #fff);
         cursor: pointer;
-        font-size: 13px;
+        font-size: 0.8125rem;
         text-align: left;
         transition: background-color 0.15s ease;
         font-weight: 400;
@@ -269,7 +269,7 @@
     }
 
     &__item-time {
-        font-size: 10px;
+        font-size: 0.625rem;
         color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.6));
         flex-shrink: 0;
         margin-left: 12px;
@@ -278,7 +278,7 @@
     &__empty {
         padding: 12px;
         text-align: center;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.4));
     }
 }
@@ -311,7 +311,7 @@
         gap: 6px;
         height: 100%;
         color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.4));
-        font-size: 13px;
+        font-size: 0.8125rem;
         text-align: center;
     }
 
@@ -324,13 +324,13 @@
         border-radius: 4px;
         background-color: var(--accent-color);
         color: white;
-        font-size: 12px;
-        font-weight: 400;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
         vertical-align: middle;
         cursor: default;
 
         app-svg-icon {
-            font-size: 10px;
+            font-size: 0.625rem;
         }
     }
     .graph-messages-list {

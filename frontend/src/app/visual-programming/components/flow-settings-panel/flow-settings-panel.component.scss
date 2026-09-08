@@ -30,8 +30,8 @@
 }
 
 .title {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 1rem;
+    font-weight: 500;
     color: rgba(255, 255, 255, 0.9);
     margin: 0;
 }
@@ -76,7 +76,7 @@
 }
 
 .section-label {
-    font-size: 14px;
+    font-size: var(--text-body-size);
     color: rgba(255, 255, 255, 0.7);
-    font-weight: 400;
+    font-weight: var(--text-body-weight);
 }

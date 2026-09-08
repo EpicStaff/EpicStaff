@@ -18,7 +18,7 @@
         overflow: hidden;
 
         .title {
-            font-size: 24px;
+            font-size: 1.5rem;
             font-weight: 400;
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -61,7 +61,7 @@
         .slash {
             color: #999;
             margin: 0 0.5rem;
-            font-size: 24px;
+            font-size: 1.5rem;
             font-weight: 400;
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -78,7 +78,7 @@
         }
 
         .graph-name {
-            font-size: 24px;
+            font-size: 1.5rem;
             font-weight: 400;
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -107,8 +107,8 @@
             padding: 0 0.75rem;
             height: 36px;
             border-radius: 6px;
-            font-size: 14px;
-            font-weight: 400;
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
             cursor: pointer;
             transition: all 0.2s ease-in-out;
             min-width: 0;
@@ -225,7 +225,7 @@
                 border: none;
                 border-right: 1px solid var(--accent-color);
                 border-radius: 0;
-                font-size: 14px;
+                font-size: 0.875rem;
                 cursor: pointer;
 
                 &:hover:not(:disabled) {
@@ -304,18 +304,18 @@
     gap: 6px;
     margin-left: 8px;
     color: #685fff;
-    font-size: 14px;
+    font-size: 0.875rem;
     white-space: nowrap;
 
     i {
-        font-size: 10px;
+        font-size: 0.625rem;
         margin-right: 6px;
         color: #685fff;
     }
 
     .unsaved-text {
-        font-size: 12px;
-        font-weight: 500;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         color: #685fff;
     }
 
