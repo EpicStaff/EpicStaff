@@ -24,6 +24,7 @@ from tables.serializers.org_scoped_fields import (
 
 
 from ..utils.mixins import TagHandlingMixin
+from ..utils.secret_reference_guard import SecretReferenceGuardMixin
 
 
 class RealtimeModelSerializer(serializers.ModelSerializer):
@@ -40,7 +41,9 @@ class RealtimeModelSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeConfigSerializer(serializers.ModelSerializer):
+class RealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -75,7 +78,11 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
+class RealtimeTranscriptionConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -93,7 +100,11 @@ class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class LLMConfigSerializer(
+    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
