@@ -392,7 +392,7 @@ services:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:-latest}
     container_name: webhook
     build:
       context: .

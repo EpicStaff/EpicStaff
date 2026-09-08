@@ -17,7 +17,8 @@ endif
         prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
         clean docker-generate-certs \
         gen-env check-env \
-        django-makemigrations django-migrate django-manage django-tests crew-tests
+        uv-sync \
+        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests
 
 # --- Help ---
 
@@ -189,27 +190,34 @@ docker-generate-certs:
 # LOCAL DJANGO DEVELOPMENT
 # ==========================================
 
-# Use each service's OWN venv interpreter explicitly so these targets work
-# regardless of which venv (if any) is currently activated on PATH.
+# Use each service's own uv-managed venv interpreter explicitly so these
+# targets work regardless of what (if anything) is currently activated on
+# PATH. Every service's venv lives at a plain .venv. A missing .venv fails
+# loudly; `make uv-sync svc=<service>` is the one-command fix.
 ifeq ($(OS),Windows_NT)
-VENV_PY := venv\Scripts\python.exe
+venv_py := .venv\Scripts\python.exe
 else
-VENV_PY := venv/bin/python
+venv_py := .venv/bin/python
 endif
+
+# --no-install-project keeps this target in lockstep with the Docker builders.
+uv-sync:
+	@test -n "$(svc)" || (echo "ERROR: svc is required. Usage: make uv-sync svc=<service>" && exit 1)
+	@cd src/$(svc) && uv sync --frozen --no-install-project --all-groups
 
 django-makemigrations django-migrate django-manage django-tests: export PYTHONPATH = $(CURDIR)
 
 django-makemigrations:
-	@cd src/django_app && $(VENV_PY) manage.py makemigrations $(ARGS)
+	@cd src/django_app && $(venv_py) manage.py makemigrations $(ARGS)
 
 django-migrate:
-	@cd src/django_app && $(VENV_PY) manage.py migrate $(ARGS)
+	@cd src/django_app && $(venv_py) manage.py migrate $(ARGS)
 
 django-manage:
-	@cd src/django_app && $(VENV_PY) manage.py $(CMD)
+	@cd src/django_app && $(venv_py) manage.py $(CMD)
 
 django-tests:
-	@cd src/django_app && $(VENV_PY) -m pytest $(ARGS)
+	@cd src/django_app && $(venv_py) -m pytest $(ARGS)
 
 # ==========================================
 # LOCAL CREW DEVELOPMENT
@@ -218,9 +226,9 @@ django-tests:
 crew-tests: export PYTHONPATH = $(CURDIR)
 
 crew-tests:
-	@cd src/crew && $(VENV_PY) -m pytest $(ARGS)
+	@cd src/crew && $(venv_py) -m pytest $(ARGS)
 
 agent-tests: export PYTHONPATH = $(CURDIR)
 
 agent-tests:
-	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)
+	@cd src/agent && $(venv_py) -m pytest $(ARGS)

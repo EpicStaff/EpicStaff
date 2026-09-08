@@ -1,44 +1,52 @@
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Wheels only. Installing from an sdist runs setup.py / a PEP 517 backend at
-# install time; a wheel does not. psycopg2 publishes no Linux wheel, so it is
-# the one audited exception -- a service that gains psycopg2 without adding it
-# here will fail the build rather than silently regain source execution.
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_INSTALLER_ONLY_BINARY=":all:" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache \
-    POETRY_REQUESTS_TIMEOUT=100 \
+# Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
+# sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
+# never executes arbitrary Python code. dotdict is a local first-party path
+# dependency with no wheel of its own, so it is the one audited exception in
+# this service, carved out via UV_NO_BINARY_PACKAGE below -- a service that
+# gains another dependency with no Linux wheel will fail the build rather than
+# silently regain source execution.
+#
+# UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
+# interpreter instead of using the digest-pinned base image above, silently
+# defeating that pin.
+RUN pip install --no-cache-dir uv==0.11.21
+
+ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE=dotdict \
+    UV_PROJECT_ENVIRONMENT=/app/src/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app/src
 
-# Install updated pip, setuptools, wheel and poetry
-RUN pip install --upgrade pip setuptools wheel poetry
+# Copy only dependency descriptors first (better layer caching).
+# dotdict is a local path dependency, so its source must already exist in the
+# image before `uv sync` runs -- copied here, ahead of the sync, rather than
+# with the rest of ./shared below. pyproject.toml/uv.lock land flattened at
+# /app/src (matching the descriptor-copy convention used by every service in
+# this repo), so the "../shared/dotdict" path in [tool.uv.sources] resolves
+# to /app/shared/dotdict -- one level above WORKDIR, not /app/src/shared.
+COPY ./crew/pyproject.toml ./crew/uv.lock ./crew/.python-version ./
+COPY ./shared/dotdict /app/shared/dotdict
 
-# Copy only dependency descriptors first (better caching)
-COPY ./crew/pyproject.toml ./crew/poetry.lock ./
-
-ENV POETRY_REQUESTS_TIMEOUT=1000
-# Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root --without dotdict -v
+# Install dependencies into /app/src/.venv.
+# --all-groups is required: secfloor (and any other non-dev group) is not
+# installed by default.
+RUN uv sync --frozen --no-install-project --all-groups
 
 # Copy application source
 COPY ./crew /app/src/crew
 COPY ./shared /app/src/shared
 
-WORKDIR /app/src/crew
-ENV VIRTUAL_ENV=/app/src/.venv
-# If dotdict is a poetry group and depends on src/shared presence, install it now from project root
-RUN poetry install --no-ansi --no-root --only dotdict -v
-
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
-
-RUN pip install --upgrade pip poetry
 
 # Copy built app from builder
 COPY --from=builder /app /app
@@ -57,4 +65,4 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 WORKDIR /app/src/crew
 
 # Run entrypoint (code is in /src)
-CMD ["poetry", "run", "python3", "/app/src/crew/main.py"]
+CMD ["python3", "/app/src/crew/main.py"]

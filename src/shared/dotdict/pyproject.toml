@@ -10,6 +10,10 @@ dependencies = [
 ]
 
 
+# dotdict is a real installable, consumed by `crew` as a local path
+# dependency, so it must stay buildable from source. poetry-core here is a
+# build backend used only in an ephemeral build environment; it never ships
+# in a runtime image.
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
