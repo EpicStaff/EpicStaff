@@ -411,3 +411,49 @@ def test_remove_superadmin_membership_allowed(
     resp = client_as(admin_acme).delete(detail_url(membership.id))
     assert resp.status_code == status.HTTP_204_NO_CONTENT
     assert not OrganizationUser.objects.filter(pk=membership.pk).exists()
+
+
+# ---- visibility: a row the caller cannot see is 404, never 403 ----
+
+
+@pytest.fixture
+def admin_beta_member_acme(
+    db, django_user_model, acme, beta, role_org_admin, role_member
+):
+    """Org Admin of beta (clears the MEMBERSHIPS door gate) and a plain Member
+    of acme (no MEMBERSHIPS bits there)."""
+    user = django_user_model.objects.create_user(
+        email="admin-beta-member-acme-mem@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    return user
+
+
+@pytest.mark.django_db
+def test_patch_membership_without_bits_in_its_org_is_404(
+    client_as, admin_beta_member_acme, acme, member_only, role_viewer
+):
+    row = OrganizationUser.objects.get(user=member_only, org=acme)
+
+    resp = client_as(admin_beta_member_acme).patch(
+        detail_url(row.id), {"role_id": role_viewer.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "membership_not_found"
+    row.refresh_from_db()
+    assert row.role_id != role_viewer.id
+
+
+@pytest.mark.django_db
+def test_delete_membership_without_bits_in_its_org_is_404(
+    client_as, admin_beta_member_acme, acme, member_only
+):
+    row = OrganizationUser.objects.get(user=member_only, org=acme)
+
+    resp = client_as(admin_beta_member_acme).delete(detail_url(row.id))
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "membership_not_found"
+    assert OrganizationUser.objects.filter(pk=row.id).exists()

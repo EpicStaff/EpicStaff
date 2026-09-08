@@ -42,12 +42,6 @@ def test_empty_org_set_raises_the_resource_not_found(service, admin_acme):
 
 
 @pytest.mark.django_db
-def test_member_without_the_bit_is_denied(service, member_only, acme):
-    with pytest.raises(PermissionDenied):
-        service.authorize_any_org(member_only, {acme.id}, Permission.DELETE)
-
-
-@pytest.mark.django_db
 def test_bit_in_any_one_org_authorizes(
     service, django_user_model, role_org_admin, role_member, acme, beta
 ):
@@ -91,3 +85,44 @@ def test_verb_without_read_is_still_authorized(service, django_user_model, acme)
 
     assert service.resolve_readable_org_ids(user) == set()
     service.authorize_any_org(user, {acme.id}, Permission.DELETE)
+
+
+# ---- visibility rule (existential form) ----
+#
+# `authorize_any_org` is `resolve_for_write` over a set of orgs, so it applies
+# the same split: the row is visible when SOME reachable org grants READ or the
+# action, and only then can a missing verb surface as 403.
+
+
+@pytest.mark.django_db
+def test_reachable_without_read_or_verb_is_not_found(service, django_user_model, acme):
+    """A plain member of the owner's org holds no api_keys/roles bits at all,
+    so the row is not visible to them — 403 would confirm the id."""
+    bystander_role = Role.objects.create(
+        name="NoRolesBits-xorg", org=acme, is_built_in=False
+    )
+    user = django_user_model.objects.create_user(
+        email="no-bits-anyorg@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=bystander_role)
+
+    with pytest.raises(RoleNotFoundError):
+        service.authorize_any_org(user, {acme.id}, Permission.DELETE)
+
+
+@pytest.mark.django_db
+def test_read_without_verb_is_denied(service, django_user_model, acme):
+    """READ makes the row visible, so the missing DELETE is an honest 403."""
+    reader_role = Role.objects.create(
+        name="ReaderOnly-anyorg", org=acme, is_built_in=False
+    )
+    RolePermission.objects.create(
+        role=reader_role, resource_type="roles", permissions=int(Permission.READ)
+    )
+    user = django_user_model.objects.create_user(
+        email="read-no-delete-anyorg@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=reader_role)
+
+    with pytest.raises(PermissionDenied):
+        service.authorize_any_org(user, {acme.id}, Permission.DELETE)

@@ -156,11 +156,16 @@ class MembershipManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def change_role(self, actor, membership_id, role_id):
-        """Change a member's role. Cross-org membership → 404 (no-leak);
-        own membership → 403 (self-mutation blocked); member lacking the
-        MEMBERSHIPS.UPDATE bit → 403."""
+        """Change a member's role.
+
+        A membership the caller cannot see → 404 (no-leak): an org they are
+        not a member of, or one where they hold neither MEMBERSHIPS.READ nor
+        MEMBERSHIPS.UPDATE. Own membership → 403 (self-mutation blocked). A
+        visible membership whose org grants READ but not UPDATE → 403."""
         membership = self._get_membership_locked(membership_id)
-        effective = self.resolve_for_write(actor, membership.org_id)  # no-leak 404
+        effective = self.resolve_for_write(
+            actor, membership.org_id, action=Permission.UPDATE
+        )  # no-leak 404
         self._assert_not_self(actor, membership)
         self.assert_can(effective, Permission.UPDATE)
         UserManagementGuards.assert_membership_holder_is_assignable(membership)
@@ -184,10 +189,15 @@ class MembershipManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def remove_member(self, actor, membership_id):
-        """Remove a membership. Cross-org → 404; own → 403; lacking
-        MEMBERSHIPS.DELETE → 403. No last-org-admin guard by design."""
+        """Remove a membership.
+
+        A membership the caller cannot see → 404 (no-leak; see change_role);
+        own → 403; visible but lacking MEMBERSHIPS.DELETE → 403. No
+        last-org-admin guard by design."""
         membership = self._get_membership_locked(membership_id)
-        effective = self.resolve_for_write(actor, membership.org_id)  # no-leak 404
+        effective = self.resolve_for_write(
+            actor, membership.org_id, action=Permission.DELETE
+        )  # no-leak 404
         self._assert_not_self(actor, membership)
         self.assert_can(effective, Permission.DELETE)
         membership.delete()

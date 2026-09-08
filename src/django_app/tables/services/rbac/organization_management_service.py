@@ -77,9 +77,13 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     def get_for_read(self, actor, org_id) -> Organization:
         """Fetch one org for the settings/detail view. Requires
-        ORGANIZATIONS.READ in that org (or superadmin); a non-member surfaces
-        as OrganizationNotFoundError (404 — no existence leak)."""
-        effective = self.resolve_for_write(actor, org_id)
+        ORGANIZATIONS.READ in that org (or superadmin); an org the caller
+        cannot see — not a member, or a member without that bit — surfaces as
+        OrganizationNotFoundError (404 — no existence leak). `assert_can` is
+        redundant for this action, since visibility already implies READ, and
+        is kept so every method on this service reads as the same
+        visibility-then-verb sequence."""
+        effective = self.resolve_for_write(actor, org_id, action=Permission.READ)
         self.assert_can(effective, Permission.READ)
         return self._get_organization_with_member_count(org_id)
 
@@ -103,7 +107,7 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def rename_organization(self, actor, org_id: int, name: str) -> Organization:
-        effective = self.resolve_for_write(actor, org_id)
+        effective = self.resolve_for_write(actor, org_id, action=Permission.UPDATE)
         self.assert_can(effective, Permission.UPDATE)
         org = self._get_locked_org(org_id)
         if org.name == name:

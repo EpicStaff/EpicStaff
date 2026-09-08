@@ -223,3 +223,95 @@ def test_builtin_roles_assigned_count_is_zero(
     assert body["built_in_roles"]  # sanity: built-ins are present
     for role in body["built_in_roles"]:
         assert role["assigned_count"] == 0
+
+
+# ---- QA: writes must not confirm a role the read surface denies ----
+
+
+@pytest.fixture
+def admin_beta_member_acme(
+    db, django_user_model, acme, beta, role_org_admin, role_member
+):
+    """Org Admin of beta (clears the ROLES door gate) and a plain Member of
+    acme (no ROLES bits there) — the caller shape from the QA report."""
+    user = django_user_model.objects.create_user(
+        email="admin-beta-member-acme@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    return user
+
+
+@pytest.mark.django_db
+def test_patch_role_without_roles_bits_in_its_org_is_404(
+    auth_client, admin_beta_member_acme, acme
+):
+    target = Role.objects.create(name="Hidden-patch-api", org=acme, is_built_in=False)
+
+    resp = auth_client(admin_beta_member_acme).patch(
+        f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "role_not_found"
+    assert Role.objects.get(pk=target.id).name == "Hidden-patch-api"
+
+
+@pytest.mark.django_db
+def test_delete_role_without_roles_bits_in_its_org_is_404(
+    auth_client, admin_beta_member_acme, acme
+):
+    target = Role.objects.create(name="Hidden-del-api", org=acme, is_built_in=False)
+
+    resp = auth_client(admin_beta_member_acme).delete(f"/api/admin/roles/{target.id}/")
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "role_not_found"
+    assert Role.objects.filter(pk=target.id).exists()
+
+
+@pytest.mark.django_db
+def test_get_and_patch_agree_on_an_invisible_role(
+    auth_client, admin_beta_member_acme, acme
+):
+    """The bug QA reported: GET said 404 while PATCH said 403, confirming an
+    id the read surface denies."""
+    target = Role.objects.create(name="Hidden-agree-api", org=acme, is_built_in=False)
+    client = auth_client(admin_beta_member_acme)
+
+    read = client.get(f"/api/admin/roles/{target.id}/")
+    write = client.patch(f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json")
+
+    assert read.status_code == write.status_code == status.HTTP_404_NOT_FOUND
+    assert read.json()["code"] == write.json()["code"] == "role_not_found"
+
+
+@pytest.mark.django_db
+def test_patch_role_with_read_but_no_update_is_403(
+    auth_client, django_user_model, acme, beta, role_org_admin
+):
+    """READ makes the role visible, so a missing UPDATE stays an honest 403.
+
+    The caller is Org Admin of beta so the coarse door gate passes on UPDATE;
+    the 403 therefore comes from the per-org check in RoleManagementService,
+    which is the branch under test.
+    """
+    reader_role = Role.objects.create(
+        name="ReaderOnly-api", org=acme, is_built_in=False
+    )
+    RolePermission.objects.create(
+        role=reader_role, resource_type="roles", permissions=int(Permission.READ)
+    )
+    reader = django_user_model.objects.create_user(
+        email="reader-only-api@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=reader, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=reader, org=acme, role=reader_role)
+    target = Role.objects.create(name="Visible-api", org=acme, is_built_in=False)
+
+    resp = auth_client(reader).patch(
+        f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert resp.json()["code"] == "permission_denied"

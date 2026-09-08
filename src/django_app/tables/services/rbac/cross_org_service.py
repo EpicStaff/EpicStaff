@@ -25,9 +25,10 @@ class CrossOrgResourceService:
     - `apply_org_scope` — filter a queryset to those orgs, honouring an
       explicit `?org_ids=` selection with a 403 fail-loud on a forbidden id.
     - `resolve_for_write` — resolve the caller's permissions in a row's org,
-      turning a non-member into the resource's own 404 (no existence leak).
+      turning an invisible row into the resource's own 404 (no existence leak).
     - `authorize_any_org` — like `resolve_for_write`, for a row scoped
       through a set of orgs rather than a single org column.
+    - `assert_visible` — the visibility check (404 on failure).
     - `assert_can` — the verb check (403 on failure).
     - `delegated_scope_q` — optional extra `Q` filter `apply_org_scope`
       applies for non-superadmins (e.g. an owner-membership join).
@@ -56,15 +57,40 @@ class CrossOrgResourceService:
             if scope.effective.can(self.rbac_resource_type.value, Permission.READ)
         }
 
-    def resolve_for_write(self, actor, row_org_id):
-        """Resolve the caller's permissions in the row's org for a write. A
-        non-member (or inactive org) surfaces as the resource's 404 — a row in
-        an org the caller can't see is indistinguishable from a missing one.
-        Superadmin short-circuits inside the resolver."""
+    def resolve_for_write(self, actor, row_org_id, action: Permission):
+        """Resolve the caller's permissions in the row's org for `action`.
+
+        Two conditions make the row indistinguishable from a missing one, and
+        both raise the resource's 404: the caller is not a member of the row's
+        org (or it is inactive), and the caller is a member who can neither
+        READ the resource there nor perform `action` on it. Only once the row
+        is visible may the caller's `assert_can` return 403 — a 403 on an
+        invisible row would confirm an id the read surface denies.
+
+        `action` is required: it is what separates a row the caller may not
+        see from one they may see but not touch, so every call site has to
+        state which verb it is authorizing. Superadmin short-circuits inside
+        the resolver and inside `EffectivePermissions.can`.
+        """
         try:
-            return self._resolver.resolve(user=actor, org_id=row_org_id)
+            effective = self._resolver.resolve(user=actor, org_id=row_org_id)
         except OrgMembershipRequiredError as exc:
             raise self.not_found_exception() from exc
+        self.assert_visible(effective=effective, action=action)
+        return effective
+
+    def assert_visible(self, effective, action: Permission) -> None:
+        """Raise the resource's 404 unless the row is visible to `effective`.
+
+        Visible means READ **or** the action being attempted. READ is the
+        ordinary way to see a row; holding the verb without READ is the
+        deliberate write-without-read grant, which must keep working rather
+        than 404 on a row it is authorized to change.
+        """
+        resource = self.rbac_resource_type.value
+        if effective.can(resource, Permission.READ) or effective.can(resource, action):
+            return
+        raise self.not_found_exception()
 
     def authorize_any_org(
         self,
@@ -75,8 +101,11 @@ class CrossOrgResourceService:
     ) -> None:
         """Authorize a row scoped through a set of orgs rather than one column.
 
-        Membership decides the 404, the permission bit decides the 403 — the
-        same split as `resolve_for_write`, which is this method with one org.
+        Visibility decides the 404, the permission bit decides the 403 — the
+        same split as `resolve_for_write`, which is this method with one org,
+        applied existentially: the row is visible when at least one reachable
+        org grants READ or `action`, and authorized when at least one grants
+        `action`.
         """
         if getattr(actor, "is_superadmin", False):
             return
@@ -88,6 +117,10 @@ class CrossOrgResourceService:
             raise self.not_found_exception()
         resource: str = self.rbac_resource_type.value
         if not any(scope.effective.can(resource, action) for scope in reachable):
+            if not any(
+                scope.effective.can(resource, Permission.READ) for scope in reachable
+            ):
+                raise self.not_found_exception()
             raise PermissionDenied("You do not have permission to perform this action.")
 
     def assert_can(self, effective, action) -> None:

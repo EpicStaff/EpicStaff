@@ -80,11 +80,19 @@ class RoleManagementService(CrossOrgResourceService):
 
     def update_role(self, actor, role_id, changes) -> Role:
         """Apply a partial update (subset of name/description/permissions).
-        `permissions`, if present, is a full replacement. Atomic + row-locked."""
+        `permissions`, if present, is a full replacement. Atomic + row-locked.
+
+        A role the caller cannot see raises RoleNotFoundError (404) from
+        `resolve_for_write`, so this endpoint never confirms an id that the
+        detail route reports as missing; only a visible role can reach the
+        403 from `assert_can`. Built-ins short-circuit before either check —
+        they are visible to every caller, so their 403 leaks nothing."""
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self.resolve_for_write(actor, role.org_id)
+            effective = self.resolve_for_write(
+                actor, role.org_id, action=Permission.UPDATE
+            )
             self.assert_can(effective=effective, action=Permission.UPDATE)
             if "permissions" in changes:
                 self._assert_within_ceiling(
@@ -115,7 +123,7 @@ class RoleManagementService(CrossOrgResourceService):
         the role is fetched without a row lock."""
         role = self._fetch_role_or_404(role_id=role_id)
         self.assert_mutable(role)
-        effective = self.resolve_for_write(actor, role.org_id)
+        effective = self.resolve_for_write(actor, role.org_id, action=Permission.DELETE)
         self.assert_can(effective=effective, action=Permission.DELETE)
         memberships = OrganizationUser.objects.filter(role_id=role.id).select_related(
             "user"
@@ -141,7 +149,9 @@ class RoleManagementService(CrossOrgResourceService):
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self.resolve_for_write(actor, role.org_id)
+            effective = self.resolve_for_write(
+                actor, role.org_id, action=Permission.DELETE
+            )
             self.assert_can(effective=effective, action=Permission.DELETE)
             viewer_role = Role.objects.get(
                 name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
