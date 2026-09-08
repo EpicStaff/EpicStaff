@@ -5,7 +5,8 @@ from cachetools import TTLCache
 from loguru import logger
 
 from settings import AUDIT_TRAIL_ENABLED, AUDITOR_INGEST_API_KEY, AUDITOR_URL
-from src.shared.audit import AuditClient, SessionAuditWriter
+from src.shared.audit.client import AuditClient
+from src.shared.audit.session_audit_writer import SessionAuditWriter
 from src.shared.models import SessionAuditEvent
 
 # session_id -> org_id. Crew-only plumbing: SessionData carries org_id once,

@@ -13,7 +13,8 @@ dependencies = [
     "pydantic-settings (>=2.15.0,<3.0.0)",
     "opensearch-py[async] (>=3.2.0,<4.0.0)",
     "pyjwt (>=2.13.0,<3.0.0)",
-    "watchfiles (>=1.1.1,<2.0.0)"
+    "watchfiles (>=1.1.1,<2.0.0)",
+    "redis (>=5.3.1,<5.4.0)"
 ]
 
 
@@ -23,8 +24,11 @@ package-mode = false
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
 pytest-asyncio = "^0.24.0"
+fakeredis = "^2.26.1"
+httpx = "^0.28.1"
 
 [tool.pytest.ini_options]
+pythonpath = [".", "../.."]
 markers = [
     "integration: requires a live OpenSearch instance (see tests/test_search_integration.py) - skips itself if unreachable",
 ]

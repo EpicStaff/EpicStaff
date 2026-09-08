@@ -32,7 +32,11 @@ session_timeout_service = SessionTimeoutService(
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
-export_cleanup_service = ExportCleanupService(redis_client=redis_export_service)
+export_cleanup_service = ExportCleanupService(
+    redis_client=redis_export_service,
+    sweep_interval_seconds=int(os.environ.get("EXPORT_SWEEP_INTERVAL_SECONDS", 60)),
+    export_data_dir=os.environ.get("EXPORT_DATA_DIR", "/app/export_data"),
+)
 
 
 async def test_database_connection():
@@ -109,7 +113,7 @@ async def shutdown():
         await redis_service.aioredis_client.close()
     if redis_export_service:
         await export_cleanup_service.stop()
-        await redis_export_service.close()
+        await redis_export_service.aclose()
 
 
 if __name__ == "__main__":

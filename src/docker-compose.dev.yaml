@@ -87,6 +87,7 @@ services:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./manager:/app/src/manager
+      - ./shared:/app/src/shared
 
   crew:
     command: >

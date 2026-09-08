@@ -2,9 +2,9 @@ from enum import Enum
 from time import time
 from redis.asyncio import Redis
 
-from shared.audit.export_jobs import JOB_KEY_PREFIX, EXPIRY_ZSET_KEY
+from src.shared.audit.export_jobs import JOB_KEY_PREFIX, EXPIRY_ZSET_KEY
 
-JOB_HASH_TTL_BACKSTOP = 60 * 60 * 24 * 7
+JOB_HASH_TTL_SAFETY_MARGIN_SECONDS = 60 * 60 * 24
 
 
 class JobStatus(str, Enum):
@@ -36,21 +36,30 @@ class ExportJobService:
                     "format": format,
                 },
             )
-            pipe.expire(key, JOB_HASH_TTL_BACKSTOP)
+            pipe.expire(key, ttl_seconds + JOB_HASH_TTL_SAFETY_MARGIN_SECONDS)
             pipe.zadd(EXPIRY_ZSET_KEY, {job_id: expires_at})
             await pipe.execute()
 
-    async def mark_done(self, job_id, file_path: str) -> None:
+    async def mark_done(self, job_id: str, file_path: str) -> bool:
+        key = f"{JOB_KEY_PREFIX}{job_id}"
+        if not await self._redis.exists(key):
+            return False
         await self._redis.hset(
-            f"{JOB_KEY_PREFIX}{job_id}",
+            key,
             mapping={"status": JobStatus.COMPLETED.value, "file_path": file_path},
         )
+        return True
 
-    async def mark_failed(self, job_id, error: str) -> None:
+    async def mark_failed(self, job_id: str, error: str) -> bool:
+        """Same "don't resurrect a deleted job" guard as mark_done - see there."""
+        key = f"{JOB_KEY_PREFIX}{job_id}"
+        if not await self._redis.exists(key):
+            return False
         await self._redis.hset(
-            f"{JOB_KEY_PREFIX}{job_id}",
+            key,
             mapping={"status": JobStatus.FAILED.value, "error": error},
         )
+        return True
 
     async def get_job(self, job_id: str) -> dict | None:
         job = await self._redis.hgetall(f"{JOB_KEY_PREFIX}{job_id}")
@@ -63,4 +72,4 @@ class ExportJobService:
             await pipe.execute()
 
     async def close(self) -> None:
-        await self._redis.close()
+        await self._redis.aclose()

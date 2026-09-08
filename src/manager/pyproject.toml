@@ -16,6 +16,12 @@ apscheduler = "^3.10.4"
 
 [tool.poetry.group.dev.dependencies]
 watchfiles = "^0.22.0"
+pytest = "^8.3.2"
+pytest-asyncio = "^0.24.0"
+fakeredis = "^2.26.1"
+
+[tool.pytest.ini_options]
+pythonpath = [".", "../.."]
 
 [build-system]
 requires = ["poetry-core"]

@@ -150,6 +150,8 @@ services:
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
       AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:-1}
+      EXPORT_DATA_DIR: ${EXPORT_DATA_DIR:-/app/export_data}
+      EXPORT_SWEEP_INTERVAL_SECONDS: ${EXPORT_SWEEP_INTERVAL_SECONDS:-60}
     networks:
       - backend-network
     volumes:
@@ -525,6 +527,8 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:-1}
+      EXPORT_DATA_DIR: ${EXPORT_DATA_DIR:-/app/export_data}
+      EXPORT_FILE_TTL_SECONDS: ${EXPORT_FILE_TTL_SECONDS:-86400}
     networks:
       - backend-network
     volumes:

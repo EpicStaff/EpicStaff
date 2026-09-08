@@ -45,11 +45,20 @@ class ExportRequest(BaseModel):
         return None
 
 
-async def _get_owned_job(job_service, job_id: str, claims: dict) -> dict:
-    """Fetch a job and enforce ownership. 404 either way (missing or not
-    yours) so a non-owner can't distinguish the two cases."""
+async def _get_owned_job(
+    job_service: ExportJobService, job_id: str, claims: dict
+) -> dict:
+    """Fetch a job and enforce ownership. 404 either way (missing, not yours,
+    or not your org) so a non-owner can't distinguish the cases. Org is
+    checked alongside user_id, not instead of it: a user in multiple orgs
+    could otherwise lose AUDIT:export in org A and still reach an org-A job
+    via a token minted for org B."""
     job = await job_service.get_job(job_id)
-    if job is None or str(job["user_id"]) != str(claims["user_id"]):
+    if (
+        job is None
+        or str(job.get("user_id")) != str(claims["user_id"])
+        or str(job.get("org_id")) != str(claims["org_id"])
+    ):
         raise HTTPException(404, "Export job not found")
     return job
 
@@ -97,8 +106,10 @@ async def get_export(
     if job["status"] != JobStatus.COMPLETED.value:
         return {"status": job["status"]}
 
-    path = job["file_path"]
-    ext = pathlib.Path(path).suffix.lstrip(".")
+    path = pathlib.Path(job["file_path"])
+    if not path.exists():
+        raise HTTPException(status_code=410, detail="Export file has expired")
+    ext = path.suffix.lstrip(".")
     media_type = "text/csv" if ext == "csv" else "application/json"
 
     return FileResponse(
@@ -169,7 +180,9 @@ async def _run_export(
         with open(file_path, "wb") as f:
             f.write(content)
 
-        await job_service.mark_done(job_id, file_path)
+        was_recorded = await job_service.mark_done(job_id, file_path)
+        if not was_recorded:
+            pathlib.Path(file_path).unlink(missing_ok=True)
 
     except Exception as e:
         logger.exception(f"Export job {job_id} failed: {e}")
