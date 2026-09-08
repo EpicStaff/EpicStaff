@@ -99,18 +99,10 @@
     &__mock-data-info {
         display: flex;
         align-items: center;
-        font-size: 12px;
+        font-size: 0.75rem;
         padding: 0.5rem 2.5rem 0 1.875rem;
         color: var(--color-ks-transparent-text-80);
         opacity: 0.7;
-    }
-
-    &__mock-data-info-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
-        color: var(--accent-color);
-        cursor: help;
     }
 
     &__mock-data-link {

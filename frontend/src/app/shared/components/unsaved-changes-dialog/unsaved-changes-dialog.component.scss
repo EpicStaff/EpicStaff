@@ -30,8 +30,8 @@
 }
 
 .dialog-title {
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
     margin: 0;
     color: var(--color-text-primary);
 }
@@ -48,7 +48,7 @@
 
     ::ng-deep strong {
         color: var(--color-text-primary);
-        font-weight: 600;
+        font-weight: 500;
         word-wrap: break-word;
         overflow-wrap: break-word;
         max-width: 100%;
@@ -71,8 +71,8 @@
 .button {
     padding: 8px 12px;
     border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     cursor: pointer;
     transition: all 0.2s ease;
     border: none;

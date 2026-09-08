@@ -18,7 +18,6 @@ from tables.import_export.enums import NodeType, EntityType
 
 # NodeType -> reverse-relation accessor on the Graph model.
 NODE_RELATIONS: dict[str, str] = {
-    NodeType.CREW_NODE: "crew_node_list",
     NodeType.SUBGRAPH_NODE: "subgraph_node_list",
     NodeType.PYTHON_NODE: "python_node_list",
     NodeType.WEBHOOK_TRIGGER_NODE: "webhook_trigger_node_list",

@@ -64,8 +64,8 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         color: var(--color-text-primary);
 
         ::ng-deep svg path {
@@ -83,8 +83,8 @@
     border-radius: 4px;
     cursor: pointer;
     color: var(--color-text-primary);
-    font-size: 0.75rem;
-    font-weight: 400;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
     height: 28px;
     padding: 0 0.5rem;
     white-space: nowrap;

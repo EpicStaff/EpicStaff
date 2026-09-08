@@ -18,8 +18,8 @@
     }
 
     .title {
-        font-size: 1.25rem;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         margin: 0;
     }
 
@@ -139,8 +139,8 @@
     }
 
     .section-title {
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--color-text-secondary);

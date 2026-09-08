@@ -83,7 +83,7 @@
     &--active {
         .session-row__title {
             color: var(--ep-color-accent);
-            font-weight: 600;
+            font-weight: 500;
         }
     }
 
@@ -96,7 +96,7 @@
     }
 
     &__title {
-        font-size: 12px;
+        font-size: 0.75rem;
         line-height: 14px;
         color: var(--ep-color-text);
         white-space: nowrap;

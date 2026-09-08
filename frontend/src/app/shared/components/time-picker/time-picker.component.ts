@@ -54,7 +54,6 @@ function parseValue(value: string): string | null {
 
 @Component({
     selector: 'app-time-picker',
-    standalone: true,
     imports: [FormsModule, OverlayModule, TooltipComponent],
     templateUrl: './time-picker.component.html',
     styleUrls: ['./time-picker.component.scss'],

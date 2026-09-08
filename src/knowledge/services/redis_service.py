@@ -8,9 +8,10 @@ from utils.singleton_meta import SingletonMeta
 
 
 class RedisService(metaclass=SingletonMeta):
-    def __init__(self, host: str, port: int, password: str):
+    def __init__(self, host: str, port: int, user: str, password: str):
         self.host = host
         self.port = port
+        self.user = user
         self.password = password
 
         self.aioredis_client: aioredis.Redis | None = None
@@ -19,6 +20,7 @@ class RedisService(metaclass=SingletonMeta):
     async def connect(self):
         self.aioredis_client = await aioredis.from_url(
             f"redis://{self.host}:{self.port}",
+            username=self.user,
             password=self.password,
             decode_responses=True,
             retry=self._retry,

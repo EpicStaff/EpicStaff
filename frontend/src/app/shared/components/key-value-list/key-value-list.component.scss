@@ -124,8 +124,8 @@
     }
 
     &__card-name {
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--accent-color, #685fff);
         white-space: nowrap;
         overflow: hidden;

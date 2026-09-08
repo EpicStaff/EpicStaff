@@ -94,8 +94,8 @@
 }
 
 .surface-category__label {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -132,8 +132,8 @@
     border-radius: 4px;
     background: transparent;
     color: var(--accent-color);
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
     white-space: nowrap;
     cursor: pointer;
     flex-shrink: 1;

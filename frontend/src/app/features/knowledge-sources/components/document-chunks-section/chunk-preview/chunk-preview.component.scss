@@ -23,11 +23,13 @@
     &__items {
         display: flex;
         width: 100%;
-        font-size: 0.875rem;
+        font-size: var(--text-body-size);
         //line-height: 130%;
-        font-weight: 200;
+        font-weight: var(--text-body-weight);
         white-space: pre-wrap;
-        overflow: auto;
+        overflow-wrap: anywhere;
+        overflow-x: hidden;
+        overflow-y: auto;
     }
 
     &__id-column {

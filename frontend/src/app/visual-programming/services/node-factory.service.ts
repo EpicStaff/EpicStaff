@@ -32,7 +32,7 @@ export class NodeFactoryService {
         const ports: ViewPort[] = type === NodeType.NOTE ? [] : generatePortsForNode(id, type, nodeData);
         const nodeNumber =
             type === NodeType.START || type === NodeType.END ? undefined : this.flowService.getNextNodeNumber();
-        const nodeName = generateNodeDisplayName(type, nodeData, nodeNumber);
+        const nodeName = generateNodeDisplayName(type, nodeNumber);
         const snappedPosition = snapPointToGrid(overrides?.position ?? { x: 0, y: 0 });
 
         return {

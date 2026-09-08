@@ -2,14 +2,6 @@
     display: block;
     height: 100%;
     width: 100%;
-    // Dialog renders in the CDK overlay (outside the page root), so re-anchor Inter here.
-    font-family:
-        'Inter',
-        -apple-system,
-        BlinkMacSystemFont,
-        'Segoe UI',
-        Roboto,
-        sans-serif;
 }
 
 .usage-dialog {
@@ -34,8 +26,8 @@
 
 .usage-dialog__title {
     margin: 0;
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
     color: var(--color-text-primary);
 }
 
@@ -85,7 +77,7 @@
 
 .usage-section__count {
     color: var(--accent-color);
-    font-weight: 600;
+    font-weight: 500;
 }
 .usage-summary__cards {
     display: flex;
@@ -117,7 +109,7 @@
 
     strong {
         color: var(--color-text-primary);
-        font-weight: 600;
+        font-weight: 500;
     }
 }
 .usage-list {

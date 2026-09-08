@@ -17,8 +17,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     line-height: 1;
     border-bottom: 1px solid var(--gray-820);
     border-top-left-radius: 4px;
@@ -52,7 +52,7 @@
             display: block;
             color: var(--red-460);
             font-size: 0.9rem;
-            font-weight: 300;
+            font-weight: 400;
             margin-left: 0.2rem;
             line-height: 1;
         }

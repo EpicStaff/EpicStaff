@@ -1,5 +1,5 @@
 import { CommonModule, NgStyle } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -12,7 +12,6 @@ import {
 
 @Component({
     selector: 'app-memory-item',
-    standalone: true,
     imports: [CommonModule, NgStyle, AppSvgIconComponent, MatTooltip],
     template: `
         <div class="memory-item">
@@ -58,48 +57,45 @@ import {
                 </button>
 
                 <!-- Expandable Details Section -->
-                <div
-                    class="memory-details"
-                    *ngIf="isExpanded(memory.id)"
-                >
-                    <!-- Entity Memory Details -->
-                    @if (memory.payload.type === 'entity') {
-                        <div class="memory-relationships">
-                            <p class="details-title">Relationships:</p>
-                            <p class="details-content">{{ getEntityRelationships(memory) }}</p>
-                        </div>
-                    }
-
-                    <!-- Short Term Memory Details -->
-                    @if (memory.payload.type === 'short_term') {
-                        <div class="memory-observation">
-                            <p class="details-title">Observation:</p>
-                            <p class="details-content">{{ getShortTermObservation(memory) }}</p>
-                        </div>
-                    }
-
-                    <!-- Long Term Memory Details -->
-                    @if (memory.payload.type === 'long_term') {
-                        <div class="memory-quality">
-                            <p class="details-title">Quality: {{ getLongTermQuality(memory) }}/10</p>
-                            <p class="details-title">Expected output: {{ getLongTermExpectedOutput(memory) }}</p>
-
-                            @if (hasLongTermSuggestions(memory)) {
-                                <div class="suggestions">
-                                    <p class="details-title">Suggestions:</p>
-                                    <ul class="suggestions-list">
-                                        @for (suggestion of getLongTermSuggestions(memory); track $index) {
-                                            <li>{{ suggestion }}</li>
-                                        }
-                                    </ul>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
+                @if (isExpanded(memory.id)) {
+                    <div class="memory-details">
+                        <!-- Entity Memory Details -->
+                        @if (memory.payload.type === 'entity') {
+                            <div class="memory-relationships">
+                                <p class="details-title">Relationships:</p>
+                                <p class="details-content">{{ getEntityRelationships(memory) }}</p>
+                            </div>
+                        }
+                        <!-- Short Term Memory Details -->
+                        @if (memory.payload.type === 'short_term') {
+                            <div class="memory-observation">
+                                <p class="details-title">Observation:</p>
+                                <p class="details-content">{{ getShortTermObservation(memory) }}</p>
+                            </div>
+                        }
+                        <!-- Long Term Memory Details -->
+                        @if (memory.payload.type === 'long_term') {
+                            <div class="memory-quality">
+                                <p class="details-title">Quality: {{ getLongTermQuality(memory) }}/10</p>
+                                <p class="details-title">Expected output: {{ getLongTermExpectedOutput(memory) }}</p>
+                                @if (hasLongTermSuggestions(memory)) {
+                                    <div class="suggestions">
+                                        <p class="details-title">Suggestions:</p>
+                                        <ul class="suggestions-list">
+                                            @for (suggestion of getLongTermSuggestions(memory); track $index) {
+                                                <li>{{ suggestion }}</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
             }
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .memory-item {
@@ -124,8 +120,8 @@ import {
             }
 
             .memory-type {
-                font-size: 12px;
-                font-weight: 600;
+                font-size: var(--text-body-small-large-size);
+                font-weight: var(--text-body-small-large-weight);
                 text-transform: capitalize;
                 color: var(--gray-300);
                 background: var(--gray-750);
@@ -134,7 +130,7 @@ import {
             }
 
             .memory-date {
-                font-size: 12px;
+                font-size: 0.75rem;
                 color: var(--gray-400);
             }
 
@@ -155,7 +151,7 @@ import {
 
             .memory-content {
                 margin-bottom: 12px;
-                font-size: 14px;
+                font-size: 0.875rem;
                 line-height: 1.5;
                 color: var(--white);
             }
@@ -170,7 +166,7 @@ import {
                 border-radius: 4px;
                 padding: 8px 12px;
                 color: var(--gray-300);
-                font-size: 13px;
+                font-size: 0.8125rem;
                 cursor: pointer;
                 margin-top: 10px;
             }
@@ -199,7 +195,7 @@ import {
                 padding: 12px;
                 padding-bottom: 4px;
                 margin-top: 8px;
-                font-size: 13px;
+                font-size: 0.8125rem;
             }
 
             .memory-relationships,

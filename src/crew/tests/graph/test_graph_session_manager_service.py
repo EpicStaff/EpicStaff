@@ -29,12 +29,12 @@ def make_finish_chunk(
     session_id: int,
     total_tokens: int,
     execution_order: int = 0,
-    name: str = "crew_node",
+    name: str = "agent_node",
     subgraph_execution_ids: list[str] | None = None,
 ) -> tuple[str, GraphMessage]:
-    """Build a ("custom", GraphMessage) chunk mimicking a CrewNode finish
-    message with token usage attached to output (see crew_node.py:92-111 and
-    custom_message_writer.py add_finish_message)."""
+    """Build a ("custom", GraphMessage) chunk mimicking an AgentNode/TaskNode
+    finish message with token usage attached to output (see agent_node.py
+    and custom_message_writer.py add_finish_message)."""
     message_data = FinishMessageData(
         output={
             "message": "ok",
@@ -97,11 +97,9 @@ def service():
 
     svc = GraphSessionManagerService(
         redis_service=redis_service,
-        crew_parser_service=Mock(),
         python_code_executor_service=Mock(),
         session_schema_channel="session_schema",
         session_timeout_channel="session_timeout",
-        crewai_output_channel="crewai_output",
         stop_session_channel="stop_session",
         knowledge_search_service=Mock(),
     )
@@ -201,7 +199,9 @@ async def test_budget_is_per_session_not_shared(service, monkeypatch):
     chunks_a = [make_finish_chunk(session_a_id, total_tokens=60)]
     _patch_builder(monkeypatch, FakeCompiledGraph(chunks_a))
     stop_event_a = StopEvent()
-    await service.run_session(_session_data(session_a_id, token_budget=100), stop_event_a)
+    await service.run_session(
+        _session_data(session_a_id, token_budget=100), stop_event_a
+    )
     assert not stop_event_a.is_set()
 
     chunks_b = [
@@ -210,7 +210,9 @@ async def test_budget_is_per_session_not_shared(service, monkeypatch):
     ]
     _patch_builder(monkeypatch, FakeCompiledGraph(chunks_b))
     stop_event_b = StopEvent()
-    await service.run_session(_session_data(session_b_id, token_budget=100), stop_event_b)
+    await service.run_session(
+        _session_data(session_b_id, token_budget=100), stop_event_b
+    )
     assert stop_event_b.is_set()
 
     # Re-running session A's exact scenario again afterwards must still not
@@ -229,19 +231,19 @@ async def test_subgraph_finish_messages_count_toward_budget(service, monkeypatch
     """Subgraph finish messages are re-streamed through the parent's writer
     (subgraphs/subgraph_node.py::_execute_subgraph) and tagged with
     subgraph_execution_ids, but land in run_session()'s custom-stream loop
-    just like top-level crew node messages. They must count toward the
-    same running total."""
+    just like top-level agent/task node messages. They must count toward
+    the same running total."""
     session_id = 30
     chunks = [
-        # A nested subgraph's own CrewNode finish message, as it would
+        # A nested subgraph's own AgentNode finish message, as it would
         # appear after being re-streamed by SubGraphNode._execute_subgraph.
         make_finish_chunk(
             session_id,
             total_tokens=90,
-            name="nested_crew_node",
+            name="nested_task_node",
             subgraph_execution_ids=["exec-1"],
         ),
-        make_finish_chunk(session_id, total_tokens=90, name="top_level_crew_node"),
+        make_finish_chunk(session_id, total_tokens=90, name="top_level_agent_node"),
     ]
     _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
 

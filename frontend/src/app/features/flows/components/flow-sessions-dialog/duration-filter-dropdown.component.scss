@@ -11,7 +11,7 @@
     border: none;
     color: var(--color-text-primary);
     font-size: 1em;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
@@ -50,7 +50,7 @@
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: 0.6875rem;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
@@ -79,7 +79,7 @@
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: 0.6875rem;
     cursor: pointer;
     transition: all 0.15s;
 
@@ -110,7 +110,7 @@
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     outline: none;
 
     &:focus {

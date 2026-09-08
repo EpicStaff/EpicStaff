@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from shared.models.tools import McpToolData
 
 from app.exceptions import McpToolError
 from app.tools.mcp.client_factory import FastMCPClientFactory
+
+_MAX_MCP_DESCRIPTION_CHARS = 1024
+_C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 @dataclass
@@ -49,8 +53,16 @@ class McpToolGateway:
                 f"Tool '{data.tool_name}' not found on MCP server at {data.transport!r}"
             )
 
+        has_description = bool(tool.description and tool.description.strip())
+        description = tool.description if has_description else data.tool_name
+
+        if has_description:
+            cleaned = _C0_CONTROL_CHARS_RE.sub("", tool.description)
+            truncated = cleaned[:_MAX_MCP_DESCRIPTION_CHARS]
+            description = f"[external MCP tool description] {truncated}"
+
         return McpToolDescription(
-            description=tool.description or data.tool_name,
+            description=description,
             input_schema=dict(tool.inputSchema) if tool.inputSchema else {},
         )
 

@@ -1,10 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
-import { MarkdownModule } from 'ngx-markdown';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
@@ -16,9 +13,7 @@ import {
 
 @Component({
     selector: 'app-finish-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
+    imports: [CommonModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="finish-container">
             <!-- Finish Message Header with Toggle -->
@@ -39,57 +34,56 @@ import {
                     />
                 </div>
                 <h3>
-                    <span
-                        class="project-name"
-                        *ngIf="project && project.name"
-                        >{{ project.name }}</span
-                    >
-                    <span *ngIf="!project || !project.name">Default Project</span>
+                    @if (nodeName) {
+                        <span class="node-name">{{ nodeName }}</span>
+                    } @else {
+                        <span>Flow</span>
+                    }
                     finished
                 </h3>
-                <span
-                    class="stop-reason-badge"
-                    [ngClass]="'stop-reason-badge--' + getStopReason()"
-                    *ngIf="getStopReason() as stopReason"
-                >
-                    {{ getStopReasonLabel(stopReason) }}
-                </span>
+                @if (getStopReason(); as stopReason) {
+                    <span
+                        class="stop-reason-badge"
+                        [ngClass]="'stop-reason-badge--' + getStopReason()"
+                    >
+                        {{ getStopReasonLabel(stopReason) }}
+                    </span>
+                }
             </div>
 
             <!-- Collapsible Finish Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="finish-content">
                     <!-- Variables Section -->
-                    <div
-                        class="variables-container"
-                        *ngIf="hasVariables()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('variables')"
-                        >
-                            <app-svg-icon
-                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Variables
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="variables-content">
-                                <app-copy-button [text]="variablesJson" />
-                                <ngx-json-viewer
-                                    [json]="getVariables()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasVariables()) {
+                        <div class="variables-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('variables')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Variables
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isVariablesExpanded"
+                            >
+                                <div class="variables-content">
+                                    <app-copy-button [text]="variablesJson" />
+                                    <app-json-viewer
+                                        [json]="getVariables()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Final Output Section -->
                     <div class="output-container">
@@ -106,43 +100,43 @@ import {
 
                         <!-- Always use JSON viewer for output -->
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isOutputExpanded"
                         >
                             <div class="output-content">
                                 <app-copy-button [text]="outputJson" />
-                                <ngx-json-viewer
+                                <app-json-viewer
                                     [json]="getOutput()"
                                     [expanded]="false"
-                                ></ngx-json-viewer>
+                                ></app-json-viewer>
                             </div>
                         </div>
                     </div>
 
                     <!-- Schema-validated output (schema_satisfied): parsed JSON view of output.message -->
-                    <div
-                        class="schema-output-container"
-                        *ngIf="getSchemaOutput() as schemaOutput"
-                    >
-                        <div class="section-heading">
-                            <app-svg-icon
-                                icon="caret-down-filled"
-                                size="1rem"
-                            />
-                            Schema-Validated Output
+                    @if (getSchemaOutput(); as schemaOutput) {
+                        <div class="schema-output-container">
+                            <div class="section-heading">
+                                <app-svg-icon
+                                    icon="caret-down-filled"
+                                    size="1rem"
+                                />
+                                Schema-Validated Output
+                            </div>
+                            <div class="output-content">
+                                <app-copy-button [text]="schemaOutputJson" />
+                                <app-json-viewer
+                                    [json]="schemaOutput"
+                                    [expanded]="true"
+                                ></app-json-viewer>
+                            </div>
                         </div>
-                        <div class="output-content">
-                            <app-copy-button [text]="schemaOutputJson" />
-                            <ngx-json-viewer
-                                [json]="schemaOutput"
-                                [expanded]="true"
-                            ></ngx-json-viewer>
-                        </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: `
         .finish-container {
             position: relative;
@@ -187,14 +181,14 @@ import {
                 h3 {
                     color: var(--gray-100);
                     font-size: 1.1rem;
-                    font-weight: 600;
+                    font-weight: 500;
                     margin: 0;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     max-width: 100%;
 
-                    .project-name {
+                    .node-name {
                         color: #5672cd;
                         font-weight: 400;
                         margin-right: 5px;
@@ -205,8 +199,8 @@ import {
                     margin-left: 12px;
                     padding: 0.15rem 0.6rem;
                     border-radius: 999px;
-                    font-size: 0.75rem;
-                    font-weight: 600;
+                    font-size: var(--text-body-small-large-size);
+                    font-weight: var(--text-body-small-large-weight);
                     white-space: nowrap;
                     flex-shrink: 0;
 
@@ -253,10 +247,6 @@ import {
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-
-                &.ng-animating {
-                    overflow: hidden;
-                }
             }
 
             .variables-content,
@@ -279,7 +269,8 @@ import {
 })
 export class FinishMessageComponent implements OnInit {
     @Input() message!: GraphMessage;
-    @Input() project: GetProjectRequest | null = null;
+    /** Name of the graph node this finish message came from; null for a whole-flow finish. */
+    @Input() nodeName: string | null = null;
 
     isMessageExpanded = false;
     isOutputExpanded = true;

@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject } from '@angular/core';
 import { ICellEditorParams } from 'ag-grid-community';
 
 import { toDisplayExpression, toStoredExpression } from '../../../../../utils/condition-expression.helper';
@@ -24,6 +24,7 @@ export interface ExpressionBuilderCellEditorParams extends ICellEditorParams {
             (cancel)="onCancel()"
         />
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {

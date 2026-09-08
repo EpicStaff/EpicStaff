@@ -15,8 +15,8 @@
     justify-content: center;
     padding: 0.5rem 0.4rem;
     border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     cursor: pointer;
     color: var(--color-text-primary);
     transition: all 0.2s ease;

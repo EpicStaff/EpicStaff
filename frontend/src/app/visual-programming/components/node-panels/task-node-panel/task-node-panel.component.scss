@@ -157,8 +157,8 @@
     border: 1px solid var(--accent-color);
     border-radius: 4px;
     color: var(--accent-color);
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
     cursor: pointer;
     transition:
         background-color 0.15s ease,

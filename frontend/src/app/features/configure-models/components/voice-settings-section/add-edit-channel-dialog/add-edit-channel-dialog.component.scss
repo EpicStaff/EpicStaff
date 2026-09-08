@@ -12,8 +12,8 @@
     &__header {
         padding: 1.25rem;
         border-bottom: 1px solid var(--color-divider-subtle);
-        font-size: 1.25rem;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         flex-shrink: 0;
     }
 
@@ -61,8 +61,8 @@
     }
 
     &__section-label {
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: var(--color-text-secondary);

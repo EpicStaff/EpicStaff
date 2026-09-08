@@ -1,5 +1,4 @@
 import { Overlay } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -26,7 +25,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-enable-filter-header',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div class="enable-header">
             <span class="enable-label">{{ label }}</span>
@@ -119,7 +118,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
             }
             .ef-item {
                 padding: 8px 12px;
-                font-size: 13px;
+                font-size: 0.8125rem;
                 color: var(--color-text-primary);
                 border-radius: 4px;
                 cursor: pointer;

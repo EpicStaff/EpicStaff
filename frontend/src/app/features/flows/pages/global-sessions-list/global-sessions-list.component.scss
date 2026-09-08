@@ -20,7 +20,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 24px;
+    font-size: 1.5rem;
     font-weight: 400;
     letter-spacing: -0.02em;
     line-height: 1.2;
@@ -85,7 +85,7 @@
             align-items: center;
             gap: 8px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 0.8125rem;
             color: var(--color-text-primary);
             user-select: none;
             padding: 5px;
@@ -186,7 +186,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--color-text-secondary);
     white-space: nowrap;
 }
@@ -290,8 +290,8 @@
     }
 
     .preview-header-title {
-        font-size: 14px;
-        font-weight: 600;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--color-text-primary);
         white-space: nowrap;
     }
@@ -304,8 +304,8 @@
     }
 
     .preview-session-id-badge {
-        font-size: 12px;
-        font-weight: 600;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         color: var(--accent-color);
         background: color-mix(in srgb, var(--accent-color) 12%, transparent);
         border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
@@ -349,7 +349,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 13px;
+        font-size: 0.8125rem;
         color: var(--color-text-secondary);
         opacity: 0.5;
         user-select: none;

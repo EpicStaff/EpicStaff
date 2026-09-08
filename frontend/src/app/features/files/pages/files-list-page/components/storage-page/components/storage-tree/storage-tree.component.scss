@@ -19,9 +19,9 @@
     }
 
     &__header-label {
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 1.3;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
         color: var(--color-text-secondary);
     }
 
@@ -53,9 +53,9 @@
 
     &__toolbar-label {
         flex: 1;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.3;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         color: var(--color-text-primary);
     }
 
@@ -218,9 +218,9 @@
         flex: 1 1 auto;
         min-width: 0;
         max-width: 120px;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.3;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         color: var(--color-text-primary);
         white-space: nowrap;
         overflow: hidden;
@@ -233,11 +233,10 @@
     }
 
     &__empty-badge {
-        font-family: Inter, sans-serif;
         font-style: normal;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 130%;
+        font-weight: var(--text-body-weight);
+        font-size: var(--text-body-size);
+        line-height: var(--text-body-line-height);
         letter-spacing: 0;
         text-align: right;
         vertical-align: middle;
@@ -373,8 +372,8 @@
         cursor: pointer;
         color: var(--color-text-primary);
         font-style: normal;
-        font-weight: 400;
-        font-size: 10px;
+        font-weight: var(--text-caption-weight);
+        font-size: var(--text-caption-size);
         line-height: 1;
         letter-spacing: 0;
         text-align: left;

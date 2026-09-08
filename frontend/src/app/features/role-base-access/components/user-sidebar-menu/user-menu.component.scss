@@ -31,7 +31,7 @@
 }
 
 .user-name {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -52,7 +52,7 @@
 }
 
 .section-label {
-    font-size: 14px;
+    font-size: 0.875rem;
     padding: 8px 16px;
     color: var(--text-secondary-60);
 }
@@ -92,7 +92,7 @@
 }
 
 .org-name {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--color-text-primary);
     flex: 1;
     min-width: 0;
@@ -118,7 +118,7 @@
     cursor: pointer;
     text-align: left;
     color: var(--text);
-    font-size: 14px;
+    font-size: 0.875rem;
     transition: background-color 0.15s ease;
     &:hover {
         background-color: var(--color-secondary-btn-background-hover);

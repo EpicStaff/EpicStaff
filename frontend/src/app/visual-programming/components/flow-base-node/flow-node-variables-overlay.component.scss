@@ -20,29 +20,29 @@
 }
 
 .inputs-title {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 0.6875rem;
+    font-weight: 500;
     letter-spacing: 0.5px;
     color: var(--gray-450);
 }
 
 .inputs-list {
     width: 100%;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .input-item {
     display: flex;
     gap: 0.5em;
     align-items: center;
-    font-size: 13px;
+    font-size: 0.8125rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .input-key {
-    font-weight: 600;
+    font-weight: 500;
     color: var(--color-text-primary);
     max-width: 5rem;
     overflow: hidden;
@@ -86,16 +86,16 @@
 }
 
 .output-title {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 0.6875rem;
+    font-weight: 500;
     letter-spacing: 0.5px;
     color: var(--gray-450);
     margin-bottom: 4px;
 }
 
 .output-label {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 0.8125rem;
+    font-weight: 500;
     color: var(--color-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;

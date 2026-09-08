@@ -16,8 +16,8 @@
     }
 
     &__title {
-        font-size: 1.25rem;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         color: var(--color-text-primary);
         margin: 0;
     }
@@ -245,8 +245,8 @@
         flex-shrink: 0;
         margin-left: auto;
         padding-left: 0.75rem;
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         color: var(--color-text-primary);
         opacity: 0.16;
         white-space: nowrap;
@@ -275,8 +275,8 @@
         height: 40px;
         padding: 0 1.75rem;
         border-radius: 8px;
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         cursor: pointer;
         transition: background-color 0.15s ease;
 

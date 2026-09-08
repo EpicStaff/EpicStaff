@@ -3,7 +3,6 @@ export enum NodeType {
     TASK = 'task',
     TOOL = 'tool',
     LLM = 'llm',
-    PROJECT = 'project',
     PYTHON = 'python',
     EDGE = 'edge',
     START = 'start',
