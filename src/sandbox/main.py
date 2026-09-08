@@ -7,7 +7,6 @@ from src.shared.models import CodeTaskData
 from services.storage_credential_manager import StorageCredentialManager
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
-from secret_scrubber import MASK_SECRET_ENV_VAR, masking_enabled
 from utils.logger import logger
 
 import settings
@@ -59,14 +58,13 @@ def sweep_output_path():
 
 def log_secret_masking_state():
     """Announce the MASK_SECRET setting once per process."""
-    if masking_enabled():
+    if settings.MASK_SECRET:
         logger.info("Secret masking is ON: secret values are redacted from output.")
     else:
         logger.warning(
-            "Secret masking is OFF ({}=false): plaintext secret values will appear "
+            "Secret masking is OFF (SANDBOX_MASK_SECRET=false): plaintext secret values will appear "
             "in stdout, stderr, execution results and these logs. Do not use this "
-            "with real credentials.",
-            MASK_SECRET_ENV_VAR,
+            "with real credentials."
         )
 
 
