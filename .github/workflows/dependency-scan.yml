@@ -23,17 +23,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
 
       # TBD if blocking
       - name: Scan src/ (actionable)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # Pin the scanner explicitly. The action's own default lags, and
+          # inheriting it means a future action bump silently changes results.
+          version: v0.74.0
           scan-type: fs
           scanners: vuln
           scan-ref: src
@@ -47,8 +50,11 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
       
       - name: Scan src/ (all known)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # Pin the scanner explicitly. The action's own default lags, and
+          # inheriting it means a future action bump silently changes results.
+          version: v0.74.0
           scan-type: fs
           scanners: vuln
           scan-ref: src
@@ -62,8 +68,11 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
       - name: Scan frontend/ (actionable)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # Pin the scanner explicitly. The action's own default lags, and
+          # inheriting it means a future action bump silently changes results.
+          version: v0.74.0
           scan-type: fs
           scanners: vuln
           scan-ref: frontend
@@ -82,8 +91,11 @@ jobs:
       # exposure -- but a compromised build-time package still matters, and
       # trivy hides them by default.
       - name: Scan frontend/ (all known)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # Pin the scanner explicitly. The action's own default lags, and
+          # inheriting it means a future action bump silently changes results.
+          version: v0.74.0
           scan-type: fs
           scanners: vuln
           scan-ref: frontend
