@@ -1,13 +1,12 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.permission_serializers import RoleResponseSerializer
 from tables.services.rbac.role_management_service import RoleManagementService
 from tables.services.rbac.role_validation_service import RoleValidationService
-from tables.views.cross_org_admin import CrossOrgAdminViewSet
+from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 from tables.swagger_schemas.role_admin_schema import (
     ROLES_CREATE_POST,
     ROLES_DESTROY_DELETE,
@@ -15,12 +14,6 @@ from tables.swagger_schemas.role_admin_schema import (
     ROLES_RETRIEVE_GET,
     ROLES_UPDATE_PATCH,
 )
-
-
-class RolesPagination(PageNumberPagination):
-    page_size = 50
-    page_size_query_param = "page_size"
-    max_page_size = 200
 
 
 class RoleAdminViewSet(CrossOrgAdminViewSet):
@@ -36,7 +29,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
     authorization + the ceiling rule are enforced in RoleManagementService.
     """
 
-    pagination_class = RolesPagination
+    pagination_class = CrossOrgAdminPagination
 
     rbac_resource_type = ResourceType.ROLES
     rbac_action_map = {

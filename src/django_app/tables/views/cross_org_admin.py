@@ -1,4 +1,5 @@
 from rest_framework import viewsets
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
@@ -6,8 +7,16 @@ from tables.services.rbac.permissions import HasResourcePermissionAnywhere, IsSu
 from tables.services.rbac.rbac_exceptions import OrgContextRequiredError
 
 
+class CrossOrgAdminPagination(PageNumberPagination):
+    """Paging for every cross-org governance list."""
+
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
 class CrossOrgAdminViewSet(viewsets.ViewSet):
-    """Base for flat cross-org governance viewsets (roles, memberships, orgs).
+    """Base for flat cross-org governance viewsets (roles, memberships, orgs, API keys).
 
     - **Door gate:** `HasResourcePermissionAnywhere(rbac_resource_type)` —
       resolved via `rbac_action_map` (subclass sets both). Coarse: passes if

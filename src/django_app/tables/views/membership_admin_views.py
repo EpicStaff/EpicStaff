@@ -1,6 +1,5 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -19,7 +18,7 @@ from tables.swagger_schemas.membership_schema import (
     MEMBERSHIPS_LIST_GET,
     MEMBERSHIPS_UPDATE_PATCH,
 )
-from tables.views.cross_org_admin import CrossOrgAdminViewSet
+from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 
 _ORDERING_WHITELIST = {
     "email": "user__email",
@@ -28,12 +27,6 @@ _ORDERING_WHITELIST = {
     "org": "org__name",
 }
 _DEFAULT_ORDERING = ("org__name", "user__email")
-
-
-class MembershipsPagination(PageNumberPagination):
-    page_size = 50
-    page_size_query_param = "page_size"
-    max_page_size = 200
 
 
 class MembershipAdminViewSet(CrossOrgAdminViewSet):
@@ -48,7 +41,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
     and invariants live in MembershipManagementService.
     """
 
-    pagination_class = MembershipsPagination
+    pagination_class = CrossOrgAdminPagination
     rbac_resource_type = ResourceType.MEMBERSHIPS
     rbac_action_map = {
         "list": Permission.READ,

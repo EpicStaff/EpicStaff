@@ -1,7 +1,6 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -17,19 +16,13 @@ from tables.services.rbac.organization_management_service import (
 from tables.services.rbac.organization_validation_service import (
     OrganizationValidationService,
 )
-from tables.views.cross_org_admin import CrossOrgAdminViewSet
+from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 
 _ORG_ORDERING_WHITELIST = {
     "name": "name",
     "created_at": "created_at",
     "member_count": "member_count",
 }
-
-
-class OrganizationsPagination(PageNumberPagination):
-    page_size = 50
-    page_size_query_param = "page_size"
-    max_page_size = 200
 
 
 class OrganizationAdminViewSet(CrossOrgAdminViewSet):
@@ -46,7 +39,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     """
 
     superadmin_actions = frozenset({"create", "deactivate", "reactivate"})
-    pagination_class = OrganizationsPagination
+    pagination_class = CrossOrgAdminPagination
     rbac_resource_type = ResourceType.ORGANIZATIONS
     rbac_action_map = {
         "list": Permission.READ,
