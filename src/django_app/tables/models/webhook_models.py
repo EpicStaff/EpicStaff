@@ -91,9 +91,8 @@ class LocalhostWebhookConfig(models.Model):
 
 
 class WebhookAuthScheme(models.TextChoices):
-    STATIC_HEADER = "static_header"  # Telegram: literal header value compare
-    HMAC_SHA256 = "hmac_sha256"  # Generic: signed body + one-sided timestamp
-    # window + Redis-backed replay check (see `webhook_routes.handle_webhook`)
+    STATIC_HEADER = "static_header"
+    HMAC_SHA256 = "hmac_sha256"
 
 
 class WebhookNodeAuth(models.Model):
@@ -279,7 +278,10 @@ class RealtimeChannel(OrgScopedModel, models.Model):
     def clean(self):
         # A channel answers to exactly one destination — either a staff
         # RealtimeAgent or a RealtimeAgentDefinition — never both.
-        if self.realtime_agent_id is not None and self.realtime_agent_definition_id is not None:
+        if (
+            self.realtime_agent_id is not None
+            and self.realtime_agent_definition_id is not None
+        ):
             raise ValidationError(
                 "A RealtimeChannel may have at most one destination set "
                 "(realtime_agent or realtime_agent_definition)."
@@ -359,4 +361,3 @@ class TwilioChannel(models.Model):
                 "Use ngrok or a publicly accessible provider."
             )
         return None
-

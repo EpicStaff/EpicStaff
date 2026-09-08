@@ -76,7 +76,7 @@ export class RagSelectorComponent implements ControlValueAccessor {
     readonly selectedRag = computed<RagSelectorItem | null>(() => {
         const current = this.value();
         if (!current) return null;
-        return this.rags().find((r) => r.rag_id === current.rag_id) ?? null;
+        return this.rags().find((r) => r.rag_id === current.rag_id && r.rag_type === current.rag_type) ?? null;
     });
 
     @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLButtonElement>;

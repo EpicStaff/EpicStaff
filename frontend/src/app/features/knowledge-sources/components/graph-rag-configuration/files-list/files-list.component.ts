@@ -15,7 +15,7 @@ interface GraphRagDocumentWithDisabled extends GraphRagDocument {
     selector: 'app-graph-rag-files-list',
     templateUrl: './files-list.component.html',
     styleUrls: ['./files-list.component.scss'],
-    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent, MatTooltipModule,],
+    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagFilesListComponent {

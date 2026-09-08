@@ -155,6 +155,8 @@ class InvalidFileTypeException(DocumentUploadException):
 class CollectionNotFoundException(DocumentUploadException):
     """Raised when source collection is not found."""
 
+    status_code = 404
+
     def __init__(self, collection_id):
         self.collection_id = collection_id
         super().__init__(f"Source collection with id {collection_id} not found")
@@ -357,6 +359,71 @@ class BulkSaveValidationError(CustomAPIExeption):
     def __init__(self, errors: dict):
         self.errors = errors
         super().__init__(str(errors))
+
+
+class NoGraphRagForCollectionException(RagException):
+    """Raised when a collection has no GraphRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} does not exist. "
+            f"Create a GraphRag for this collection first."
+        )
+
+
+class GraphRagIndexNotReadyException(RagException):
+    """Raised when GraphRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
+
+
+class GraphRagMetricsUnavailableException(RagException):
+    """Raised when chunk metrics can't be fetched from the knowledge service."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG metrics for collection {collection_id} are temporarily "
+            f"unavailable. Retry shortly."
+        )
+
+
+class NoNaiveRagForCollectionException(RagException):
+    """Raised when a collection has no NaiveRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"NaiveRag for collection {collection_id} does not exist. "
+            f"Create a NaiveRag for this collection first."
+        )
+
+
+class NaiveRagIndexNotReadyException(RagException):
+    """Raised when NaiveRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"NaiveRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
 
 
 class LLMConfigMissingError(CustomAPIExeption):

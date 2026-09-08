@@ -263,7 +263,12 @@ export class CreateAgentFormComponent implements OnInit {
 
         const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds) as ToolUniqueName[];
 
-        const searchConfigs = formData.rag?.rag_type ? { [formData.rag.rag_type]: formData.search_configs } : null;
+        // search_configs may hold controls disabled by rag-tab logic (e.g. Global's
+        // dynamic_community_selection dependents) — .value would drop them, so read
+        // that one subtree raw. Scoped intentionally: the rest of the form still uses
+        // .value since nothing else here gets disabled.
+        const searchConfigsRaw = this.agentForm.get('search_configs')?.getRawValue() ?? null;
+        const searchConfigs = formData.rag?.rag_type ? { [formData.rag.rag_type]: searchConfigsRaw } : null;
 
         const basePayload = {
             role: formData.role,

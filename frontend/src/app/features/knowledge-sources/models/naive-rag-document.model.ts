@@ -15,8 +15,8 @@ export interface NaiveRagDocumentConfig {
     chunk_overlap: number;
     additional_params: NaiveRagAdditionalParams;
     status: NaiveRagDocumentStatus;
-    outdated_reasons: string | null;
-    error_message: Record<string, string>;
+    outdated_reasons: Record<string, string> | null;
+    error_message: string | null;
     failed_at: string | null;
     total_chunks: number;
     total_embeddings: number;

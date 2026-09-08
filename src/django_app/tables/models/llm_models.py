@@ -80,6 +80,10 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     max_tokens = models.IntegerField(
         default=4096, null=True, blank=True, validators=[MinValueValidator(500)]
     )
+    context_window = models.IntegerField(
+        default=16000,
+        validators=[MinValueValidator(1000)],
+    )
     presence_penalty = models.FloatField(default=0.0, null=True, blank=True)
     frequency_penalty = models.FloatField(default=0.0, null=True, blank=True)
     logit_bias = models.JSONField(null=True, blank=True)
@@ -112,14 +116,6 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     def get_default_model(self):
         return DefaultLLMConfig.load()
 
-
-# ---------------------------------------------------------------------------
-# DEPRECATED: generic realtime model registry
-# These tables are kept for backward compatibility with quickstart,
-# import/export, and management commands, but are no longer used by the
-# realtime agent flow. New agents use OpenAIRealtimeConfig,
-# ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
-# ---------------------------------------------------------------------------
 
 class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""

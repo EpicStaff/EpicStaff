@@ -48,11 +48,11 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public collapsible: boolean = false;
     @Input() public collapsed: boolean = true;
     @Input() public allowCopy: boolean = false;
+    @Input() public readonly: boolean = false;
     @Input() public allowExpand: boolean = false;
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public exampleHint: string = '';
-    @Input() public readonly: boolean = false;
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',

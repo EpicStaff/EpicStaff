@@ -106,7 +106,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
                 },
             });
 
-        this.pollingService.startDocumentConfigsPolling(id);
+        this.pollingService.startDocumentConfigsPolling(id, this.collectionId());
         this.destroyRef.onDestroy(() => this.pollingService.stopDocumentConfigsPolling());
     }
 

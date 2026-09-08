@@ -113,7 +113,7 @@
                     [class.table__row-wrapper--dark]="odd"
                     [class.table__row-wrapper--selected]="d.naive_rag_document_id === selectedRagDocId()"
                 >
-                    @if (processingConfigIds().has(d.naive_rag_document_id)) {
+                    @if (isRowProcessing(d)) {
                         <div class="table__status-icon table__status-spinner"></div>
                     } @else {
                         @switch (d.status) {
@@ -126,12 +126,18 @@
                                     size="0.75rem"
                                 />
                             }
-                            @case ('processing') {
-                                <div class="table__status-icon table__status-spinner"></div>
-                            }
                             @case ('outdated') {
                                 <app-svg-icon
                                     matTooltip="Indexed config outdated"
+                                    matTooltipPosition="above"
+                                    icon="clock"
+                                    class="table__status-icon table__status-icon--warning"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('processing') {
+                                <app-svg-icon
+                                    matTooltip="Indexing was stopped — status unknown, re-index to refresh"
                                     matTooltipPosition="above"
                                     icon="clock"
                                     class="table__status-icon table__status-icon--warning"

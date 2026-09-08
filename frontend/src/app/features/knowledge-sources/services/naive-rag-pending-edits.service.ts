@@ -26,8 +26,9 @@ export class NaiveRagPendingEditsService {
         value: string | number | null,
         savedValue: unknown
     ): void {
-        if (value === null) return;
-
+        // No early-return on null: a cleared nullable numeric field (e.g.
+        // chunk_overlap) legitimately stages as null — it's diffed against
+        // savedValue exactly like any other value below.
         this.pendingSignal.update((prev) => {
             const next = new Map(prev);
             const current = { ...(next.get(documentId) ?? {}) };

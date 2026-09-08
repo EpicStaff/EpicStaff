@@ -11,6 +11,7 @@ import { inlineSurfaceToSurface } from '../../../../utils/surface/inline-surface
 export interface LocalSurfaceDialogData {
     mode: 'create' | 'edit';
     inlineSurface: InlineSurface | null;
+    llmConfigId: number | null;
 }
 
 const EMPTY_INLINE_SURFACE: InlineSurface = {
@@ -39,6 +40,7 @@ export class LocalSurfaceDialogComponent {
     readonly title = this.isCreateMode ? 'Create Local Surface' : 'Edit Local Surface';
 
     readonly workingSurface: Surface = inlineSurfaceToSurface(this.data.inlineSurface ?? EMPTY_INLINE_SURFACE);
+    readonly llmConfigId = this.data.llmConfigId;
 
     onConfirm(): void {
         const card = this.surfaceCard();

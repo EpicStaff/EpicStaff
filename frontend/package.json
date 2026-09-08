@@ -10,6 +10,7 @@
         "test": "ng test",
         "build-mym": "ng build --base-href /epicstaff/",
         "prepare": "cd .. && npx husky frontend/.husky",
+        "postinstall": "patch-package",
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
         "format": "prettier --write \"src/**/*.{ts,html,scss,json}\""
@@ -50,6 +51,8 @@
         "ag-grid-angular": "33.3.2",
         "ag-grid-community": "33.3.2",
         "docx-preview": "^0.3.7",
+        "lodash-es": "4.18.0",
+        "mammoth": "1.12.0",
         "monaco-editor": "0.52.2",
         "ngx-image-cropper": "9.1.6",
         "ngx-json-viewer": "3.2.1",
@@ -60,6 +63,7 @@
         "rxjs": "7.8.2",
         "tslib": "2.8.1",
         "wavtools": "0.1.5",
+        "xlsx": "0.18.5",
         "zone.js": "0.15.1"
     },
     "devDependencies": {
@@ -68,6 +72,7 @@
         "@angular/cli": "^19.2.0",
         "@angular/compiler-cli": "^19.2.0",
         "@types/jasmine": "~5.1.0",
+        "@types/lodash-es": "^4.17.12",
         "@types/papaparse": "^5.5.2",
         "eslint": "^9.39.4",
         "eslint-plugin-simple-import-sort": "^12.1.1",
@@ -79,6 +84,7 @@
         "karma-jasmine": "^5.1.0",
         "karma-jasmine-html-reporter": "^2.1.0",
         "lint-staged": "^16.3.3",
+        "patch-package": "^8.0.1",
         "prettier": "^3.8.1",
         "typescript": "~5.5.2",
         "typescript-eslint": "^8.57.0"

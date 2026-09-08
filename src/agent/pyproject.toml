@@ -13,6 +13,7 @@ redis = "5.2.1"
 pydantic = "2.13.4"
 jsonschema = "4.26.0"
 fastmcp = "2.12.5"
+httpx = "0.28.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "9.0.3"

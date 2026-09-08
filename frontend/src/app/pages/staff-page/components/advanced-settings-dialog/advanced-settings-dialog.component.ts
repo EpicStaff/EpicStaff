@@ -40,6 +40,7 @@ export interface AdvancedSettingsData {
     max_retry_limit: number | null;
     default_temperature: number | null;
     knowledge_collection?: number | null;
+    llm_config: number | null;
     fcm_llm_config: number | null;
     rag: AgentRag | null;
     search_configs: AgentSearchConfigs;
@@ -200,11 +201,16 @@ export class AdvancedSettingsDialogComponent implements OnInit {
     public save(): void {
         if (this.form.invalid) return;
 
-        const { search_configs, rag, ...rest } = this.form.value;
+        const { rag, ...rest } = this.form.value;
+        // search_configs may hold controls disabled by rag-tab logic (e.g. Global's
+        // dynamic_community_selection dependents) — .value would drop them, so read
+        // that one subtree raw instead. The explicit `search_configs` below overrides
+        // whatever `...rest` picked up from `.value`.
+        const searchConfigsRaw = this.form.get('search_configs')?.getRawValue() ?? null;
         const result = {
             ...rest,
             rag,
-            search_configs: rag?.rag_type ? { ...this.data.search_configs, [rag.rag_type]: search_configs } : null,
+            search_configs: rag?.rag_type ? { ...this.data.search_configs, [rag.rag_type]: searchConfigsRaw } : null,
         };
 
         // Update agentData with current form control values

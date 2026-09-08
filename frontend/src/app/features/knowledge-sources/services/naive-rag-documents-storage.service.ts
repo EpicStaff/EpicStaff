@@ -202,6 +202,9 @@ export class NaiveRagDocumentsStorageService implements StorageService {
     public markPendingDelete(id: number): void {
         if (!this.pendingDeletes.markPendingDelete(id)) return;
         this.catalog.uncheckIfChecked(id);
+        // Otherwise a stale edit reattaches silently if the delete fails or the
+        // doc comes back via clearPendingDeletes()/"Re-include Files".
+        this.pendingEdits.dropPending([id]);
     }
 
     public clearPendingDeletes(): void {

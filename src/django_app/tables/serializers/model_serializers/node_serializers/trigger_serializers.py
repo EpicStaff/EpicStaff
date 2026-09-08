@@ -28,14 +28,6 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 from tables.services.schedule_trigger_service import ScheduleTriggerService
-# NOTE: WebhookTriggerService is imported lazily inside
-# WebhookTriggerNodeSerializer.create() below, not here at module level.
-# tables.services.webhook_trigger_service -> converter_service ->
-# tables.serializers.model_serializers (this package, via
-# node_serializers/__init__.py -> this module) forms a circular import if
-# WebhookTriggerService is imported at module scope -- Django's app.ready()
-# import chain then fails with "cannot import name 'ConverterService' from
-# partially initialized module" before the app can even boot.
 
 
 class WebhookNodeAuthSerializer(serializers.ModelSerializer):
@@ -104,7 +96,7 @@ class WebhookTriggerNodeSerializer(
                     {
                         "webhook_node_auth": (
                             "Must be an object with an 'enabled' boolean, "
-                            "e.g. {\"enabled\": false}."
+                            'e.g. {"enabled": false}.'
                         )
                     }
                 )
@@ -130,21 +122,12 @@ class WebhookTriggerNodeSerializer(
 
         from tables.services.webhook_trigger_service import WebhookTriggerService
 
-        WebhookTriggerService().sync_webhook_auth(
-            node, enabled=auth_input["enabled"]
-        )
+        WebhookTriggerService().sync_webhook_auth(node, enabled=auth_input["enabled"])
 
     def create(self, validated_data):
         auth_input = validated_data.pop("webhook_node_auth", None)
         node = super().create(validated_data)
 
-        # WebhookTriggerNode's post_save signal (webhook_signals.py) already
-        # guarantees a WebhookNodeAuth row exists here, enabled by default --
-        # covering every creation path (this serializer, version restore,
-        # import/copy, admin), not just this one. Only apply an explicit
-        # client override on top of that default; omitting webhook_node_auth
-        # entirely is a no-op, leaving the signal's enabled=True default in
-        # place (default-safe, preserves existing behavior).
         self._sync_webhook_node_auth(node, auth_input)
 
         node.refresh_from_db()

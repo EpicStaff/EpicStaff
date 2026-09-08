@@ -13,7 +13,7 @@ import {
     signal,
     untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
@@ -148,6 +148,12 @@ export class AgentDetailComponent implements OnInit {
         description: [''],
         instructions: [''],
         llm_config: [null as number | null],
+    });
+
+    // Live (unsaved) LLM selection — the Surfaces panel's RAG config needs this
+    // immediately when creating/editing an agent, not just after autosave round-trips.
+    readonly liveLlmConfigId = toSignal(this.form.controls.llm_config.valueChanges, {
+        initialValue: this.form.controls.llm_config.value,
     });
 
     readonly bootAsDoc = signal<boolean>(false);

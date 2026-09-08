@@ -27,6 +27,15 @@ input[type='number'] {
         &--invalid {
             border-color: var(--color-ks-status-failed);
         }
+
+        &--warning {
+            border-color: var(--color-ks-status-warning);
+        }
+
+        &--disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     }
 
     &__step {
@@ -46,7 +55,7 @@ input[type='number'] {
             cursor: not-allowed;
         }
 
-        &:hover {
+        &:hover:not(:disabled) {
             background-color: var(--color-ks-button-activated);
         }
 
@@ -89,5 +98,19 @@ input[type='number'] {
         height: 26px;
         padding: 0.25rem 0.5rem;
         font-size: 12px;
+    }
+}
+
+.input__message {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+
+    &--error {
+        color: var(--color-ks-status-failed);
+    }
+
+    &--warning {
+        color: var(--color-ks-status-warning);
     }
 }

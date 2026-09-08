@@ -13,6 +13,7 @@ import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/con
 import { RagType } from '../../../../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
+import { GraphRagDocumentsStorageService } from '../../../../../services/graph-rag-documents-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../../../../services/naive-rag-documents-storage.service';
 import { RagDeleteRegistryService } from '../../../../../services/rag-delete-registry.service';
 
@@ -31,6 +32,7 @@ export class CollectionRagsComponent {
     private confirmationService = inject(ConfirmationDialogService);
     private ragDeleteRegistry = inject(RagDeleteRegistryService);
     private naiveRagDocumentsStorage = inject(NaiveRagDocumentsStorageService);
+    private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
 
     collection = input.required<CreateCollectionDtoResponse>();
 
@@ -67,7 +69,11 @@ export class CollectionRagsComponent {
             )
             .subscribe(() => {
                 this.toast.success('RAG deleted');
-                this.naiveRagDocumentsStorage.clear();
+                if (type === 'naive') {
+                    this.naiveRagDocumentsStorage.clear();
+                } else if (type === 'graph') {
+                    this.graphRagDocumentsStorage.clear();
+                }
             });
     }
 

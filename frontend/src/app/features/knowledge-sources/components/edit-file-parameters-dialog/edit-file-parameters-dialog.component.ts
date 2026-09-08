@@ -5,14 +5,17 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     inject,
     signal,
+    untracked,
     ViewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
+import { ToastService } from '../../../../services/notifications';
 import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
@@ -36,6 +39,7 @@ export class EditFileParametersDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef);
     private destroyRef = inject(DestroyRef);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
+    private toast = inject(ToastService);
     readonly data: { ragId: number; collectionId: number; ragDocumentId: number; allDocumentIds: number[] } =
         inject(DIALOG_DATA);
 
@@ -45,14 +49,35 @@ export class EditFileParametersDialogComponent implements AfterViewInit {
     documents = this.documentsStorageService.documents;
     selectedDocumentId = signal<number>(this.data.ragDocumentId);
 
-    document = computed<TableDocument>(
-        () => this.documents().find((d) => d.naive_rag_document_id === this.selectedDocumentId())!
-    );
+    // `formSection`/`chunksSection` are static view queries, so the template can't
+    // be wrapped in an @if to hide it once the document disappears (e.g. deleted
+    // elsewhere while this dialog is open, or a failed delete's poll catches up).
+    // Keep rendering the last-known document instead of crashing — the effect
+    // below closes the dialog as soon as that happens.
+    private lastKnownDocument: TableDocument | null = null;
+    document = computed<TableDocument>(() => {
+        const found = this.documents().find((d) => d.naive_rag_document_id === this.selectedDocumentId());
+        if (found) this.lastKnownDocument = found;
+        return found ?? this.lastKnownDocument!;
+    });
     currentIndex = computed(() => this.data.allDocumentIds.indexOf(this.selectedDocumentId()));
     isPrevDisabled = computed(() => this.currentIndex() <= 0);
     isNextDisabled = computed(
         () => this.currentIndex() === -1 || this.currentIndex() >= this.data.allDocumentIds.length - 1
     );
+
+    constructor() {
+        effect(() => {
+            const id = this.selectedDocumentId();
+            const stillExists = this.documents().some((d) => d.naive_rag_document_id === id);
+            if (!stillExists && this.lastKnownDocument) {
+                untracked(() => {
+                    this.toast.error('This document is no longer available.');
+                    this.dialogRef.close();
+                });
+            }
+        });
+    }
 
     ngAfterViewInit(): void {
         this.formSection.form.valueChanges

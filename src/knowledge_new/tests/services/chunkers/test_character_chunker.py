@@ -91,9 +91,18 @@ async def test_chunking_raises_error_for_invalid_data(text):
 
 
 @pytest.mark.parametrize("extra", [{}, {"character": {}}, {"character": {"regex": None}}])
-async def test_chunking_uses_default_regexp(extra):
+async def test_default_no_regex_chunks_whole_text_by_size(extra):
     chunker = build_chunker(chunk_size=4, chunk_overlap=0, extra=extra)
-    assert chunker.regex_pattern == r".+"
+    chunks = await chunker.chunk("12345678")
+    assert chunks == [PreviewChunk(text=t) for t in ["1234", "5678"]]
+
+
+@pytest.mark.parametrize("regex", ["+", "*", "?"])
+async def test_invalid_regex_is_treated_as_literal_separator(regex):
+    text = f"aaa{regex}bbb"
+    chunker = build_chunker(chunk_size=8, chunk_overlap=0, extra={"character": {"regex": regex}})
+    chunks = await chunker.chunk(text)
+    assert chunks == [PreviewChunk(text=t) for t in ["aaa", "bbb"]]
 
 
 @pytest.mark.parametrize(

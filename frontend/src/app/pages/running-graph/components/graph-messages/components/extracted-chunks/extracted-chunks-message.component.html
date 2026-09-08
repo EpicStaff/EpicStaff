@@ -28,7 +28,7 @@
             </p>
         </div>
         <div class="meta">
-            <span class="chip">{{ data.chunks.length }} chunks</span>
+            <span class="chip">{{ chunks.length }} chunks</span>
         </div>
     </div>
 
@@ -38,41 +38,81 @@
         [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
     >
         <div class="stats">
-            <div class="stat">
-                <span class="label">Search limit</span>
-                <span class="value">{{ data.rag_search_config.search_limit }}</span>
-            </div>
-            <div class="stat">
-                <span class="label">Retrieved</span>
-                <span class="value">{{ data.retrieved_chunks }}</span>
-            </div>
-            <div class="stat">
-                <span class="label">Similarity threshold</span>
-                <span class="value">
-                    {{ data.rag_search_config.similarity_threshold | percent: '1.0-1' }}
-                </span>
-            </div>
+            <ng-container *ngIf="naiveSearchConfig as naive; else graphStats">
+                <div class="stat">
+                    <span class="label">Search limit</span>
+                    <span class="value">{{ naive.search_limit }}</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Retrieved</span>
+                    <span class="value">{{ data.retrieved_chunks }}</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Similarity threshold</span>
+                    <span class="value">
+                        {{ naive.similarity_threshold | percent: '1.0-1' }}
+                    </span>
+                </div>
+            </ng-container>
+            <ng-template #graphStats>
+                <div class="stat">
+                    <span class="label">Search method</span>
+                    <span class="value">{{ (graphSearchMethod | titlecase) || '—' }}</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Retrieved</span>
+                    <span class="value">{{ data.retrieved_chunks }}</span>
+                </div>
+                <div
+                    class="stat"
+                    *ngIf="graphMaxContextTokens != null"
+                >
+                    <span class="label">Max context tokens</span>
+                    <span class="value">{{ graphMaxContextTokens }}</span>
+                </div>
+            </ng-template>
         </div>
 
         <div class="chunks">
             <article
                 class="chunk-card"
-                *ngFor="let chunk of data.chunks; trackBy: trackByOrder"
+                *ngFor="let chunk of chunks; trackBy: trackByOrder"
             >
-                <app-copy-button [text]="chunk.text" />
+                <app-copy-button
+                    *ngIf="chunk.text"
+                    [text]="chunk.text"
+                />
                 <div class="chunk-header">
                     <div class="chunk-order">#{{ chunk.order }}</div>
                     <div
                         class="chunk-source"
-                        [title]="chunk.source"
+                        *ngIf="chunk.source || ragKind === 'naive'"
+                        [title]="chunk.source || 'Unknown source'"
                     >
                         {{ chunk.source || 'Unknown source' }}
                     </div>
-                    <span class="similarity">
+                    <span
+                        class="similarity"
+                        *ngIf="chunk.similarity != null"
+                    >
                         {{ chunk.similarity | percent: '1.0-2' }}
                     </span>
                 </div>
-                <pre class="chunk-text">{{ chunk.text }}</pre>
+                <!-- Graph RAG's grounding guard intentionally returns an empty answer when
+                     it can't verify the response against retrieved context (anti-hallucination
+                     safeguard) — distinguish that from a rendering failure instead of showing
+                     an unexplained blank box. -->
+                <p
+                    class="chunk-empty"
+                    *ngIf="!chunk.text"
+                >
+                    No grounded answer found — the retrieved context couldn't verify a response for this query.
+                </p>
+                <pre
+                    class="chunk-text"
+                    *ngIf="chunk.text"
+                    >{{ chunk.text }}</pre
+                >
             </article>
         </div>
     </div>

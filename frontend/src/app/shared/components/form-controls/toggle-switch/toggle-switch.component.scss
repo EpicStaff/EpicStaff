@@ -15,9 +15,16 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: var(--gray-700);
+        background-color: var(--color-ks-toggle-track);
         border-radius: 6px;
         transition: background 0.2s;
+    }
+    &--disabled {
+        opacity: 0.6;
+
+        .slider {
+            cursor: not-allowed;
+        }
     }
     input:checked + .slider {
         background-color: var(--accent-color);

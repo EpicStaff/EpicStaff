@@ -9,6 +9,7 @@ import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confi
 import { CollectionGraphRag } from '../../../models/graph-rag.model';
 import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { GraphRagService } from '../../../services/graph-rag.service';
+import { GraphRagDocumentsStorageService } from '../../../services/graph-rag-documents-storage.service';
 import { GraphRagConfigurationComponent } from '../../graph-rag-configuration/graph-rag-configuration.component';
 import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.component';
 
@@ -22,6 +23,7 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
     private graphRagService = inject(GraphRagService);
     private collectionsStorage = inject(CollectionsStorageService);
+    private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
     private ragConfiguration = viewChild(GraphRagConfigurationComponent);
 
     graphRag = signal<CollectionGraphRag | null>(null);
@@ -32,18 +34,23 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
                 ?.getIndexingDocuments()
                 .map((d) => d.configId) ?? []
     );
+    // Distinct from docConfigIds (checked checkboxes, only meaningful for starting a
+    // new run): reopening this dialog while indexing is already running mounts a fresh
+    // component with nothing checked, so "Stop indexing" needs the actually-processing
+    // ids instead — mirrors NaiveRagConfigurationDialog.processingDocIds.
+    processingDocIds = computed(() => {
+        const processing = this.collectionsStorage.processingConfigIds();
+        return this.graphRagDocumentsStorage
+            .documents()
+            .map((d) => d.graph_rag_document_id)
+            .filter((id) => processing.has(id));
+    });
     hasUnsavedChanges = computed(() => this.ragConfiguration()?.hasUnsavedChanges() ?? false);
     indexingDisabled = computed(() => !this.docConfigIds().length && !this.hasUnsavedChanges());
     runButtonLabel = computed(() => {
         return this.ragConfiguration()?.indexMode() === 'total_reindex' ? 'Save & Re-index' : 'Save & Run Index';
     });
-    isIndexing = computed(() => {
-        for (const c of this.collectionsStorage.fullCollections()) {
-            const config = c.rag_configurations.find((r) => r.rag_id === this.data.ragId);
-            if (config) return config.status === 'processing';
-        }
-        return false;
-    });
+    isIndexing = computed(() => this.collectionsStorage.getRagStatus(this.data.ragId, 'graph') === 'processing');
 
     ngOnInit() {
         this.getGraphRag(this.data.ragId);

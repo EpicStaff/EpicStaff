@@ -2,7 +2,6 @@ import zoneinfo
 from datetime import datetime, timedelta, timezone as _tz
 from typing import TYPE_CHECKING
 
-from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
@@ -99,10 +98,6 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         signal publishes a node_update echo that Manager consumes to drop its
         APScheduler job. We intentionally do not publish 'deactivate' here to
         keep the channel's direction rule intact (Manager → Django only).
-
-        A fire is also skipped — without consuming a run or deactivating — when
-        the owning org is already at SCHEDULE_MAX_CONCURRENT_SESSIONS_PER_ORG,
-        so a backlog throttles schedules instead of compounding.
         """
         try:
             now = timezone.now()
@@ -123,12 +118,6 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
                 )
                 return
 
-            fire_after = now + timedelta(microseconds=1)
-
-            if self._is_session_cap_reached(node):
-                self._persist_next_run(node, after=fire_after)
-                return
-
             self._start_session(node)
             self._increment_runs(node)
 
@@ -139,7 +128,13 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
                 )
                 return
 
-            self._persist_next_run(node, after=fire_after)
+            next_run = self._compute_next_run_date_time(
+                node, after=now + timedelta(microseconds=1)
+            )
+            ScheduleTriggerNode.objects.filter(pk=node.pk).update(
+                next_run_date_time=next_run,
+                updated_at=timezone.now(),
+            )
 
         except Exception as exc:
             logger.error(
@@ -159,35 +154,6 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
                 f"inactive, or locked by another worker. Skipping."
             )
         return node
-
-    def _is_session_cap_reached(self, node: ScheduleTriggerNode) -> bool:
-        """Return True when the node's org has too many live sessions to fire again."""
-        cap = settings.SCHEDULE_MAX_CONCURRENT_SESSIONS_PER_ORG
-        if cap <= 0:
-            return False
-
-        org_id = node.graph.org_id
-        live = self.session_manager_service.count_live_sessions(org_id=org_id)
-        if live < cap:
-            return False
-
-        logger.warning(
-            "[ScheduleTriggerService] Node {}: org {} is at the session cap "
-            "({}/{}); skipping this fire.",
-            node.id,
-            org_id,
-            live,
-            cap,
-        )
-        return True
-
-    def _persist_next_run(self, node: ScheduleTriggerNode, after: datetime) -> None:
-        """Recompute and store next_run_date_time, bypassing post_save on purpose."""
-        next_run = self._compute_next_run_date_time(node, after=after)
-        ScheduleTriggerNode.objects.filter(pk=node.pk).update(
-            next_run_date_time=next_run,
-            updated_at=timezone.now(),
-        )
 
     def _start_session(self, node: ScheduleTriggerNode) -> None:
         self.session_manager_service.run_session(

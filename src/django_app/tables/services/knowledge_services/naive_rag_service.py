@@ -111,7 +111,9 @@ class NaiveRagService:
 
     @classmethod
     def _create_rag(
-        cls, collection: SourceCollection, embedding_config: EmbeddingConfig,
+        cls,
+        collection: SourceCollection,
+        embedding_config: EmbeddingConfig,
     ) -> NaiveRag:
         base_rag_type = BaseRagType.objects.create(
             source_collection=collection, rag_type=BaseRagType.RagType.NAIVE
@@ -133,12 +135,16 @@ class NaiveRagService:
 
     @classmethod
     def _update_rag(
-        cls, rag: NaiveRag, collection: SourceCollection, embedding_config: EmbeddingConfig,
+        cls,
+        rag: NaiveRag,
+        collection: SourceCollection,
+        embedding_config: EmbeddingConfig,
     ) -> NaiveRag:
         updated_fields = set()
         embedding_provider_changed = (
             rag.embedder is None
-            or rag.embedder.model.embedding_provider != embedding_config.model.embedding_provider
+            or rag.embedder.model.embedding_provider
+            != embedding_config.model.embedding_provider
         )
 
         if rag.embedder is None or rag.embedder.pk != embedding_config.pk:
@@ -208,7 +214,9 @@ class NaiveRagService:
         if chunk_overlap >= chunk_size:
             reason = "'chunk_overlap' must be less than 'chunk_size'"
             raise InvalidChunkParametersException(
-                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
+                errors=[
+                    {"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}
+                ],
             )
 
         chunk_strategy = data.get("chunk_strategy", "")
@@ -225,7 +233,13 @@ class NaiveRagService:
                 f" Allowed: {', '.join(sorted(allowed))}"
             )
             raise InvalidChunkParametersException(
-                errors=[ {"field": "chunk_strategy", "value": chunk_strategy, "reason": reason}],
+                errors=[
+                    {
+                        "field": "chunk_strategy",
+                        "value": chunk_strategy,
+                        "reason": reason,
+                    }
+                ],
             )
 
         updated_fields = set()
@@ -531,7 +545,9 @@ class NaiveRagService:
             "updated": updated,
             "unupdated": unupdated,
             "failed": failed,
-            "configs": total_updated_configs + total_unupdated_configs + total_failed_configs,
+            "configs": total_updated_configs
+            + total_unupdated_configs
+            + total_failed_configs,
             "errors": errors,
         }
 

@@ -40,7 +40,6 @@ export class StoragePreviewComponent {
 
     constructor() {
         effect(() => {
-            this.content();
             this.loadPreview(this.item());
         });
     }

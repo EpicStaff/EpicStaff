@@ -139,14 +139,34 @@ export interface UpdateSessionStatusMessageData {
 export interface ExtractedChunk {
     text: string;
     order: number;
-    source: string;
-    similarity: number;
+    source?: string;
+    similarity?: number;
 }
 
+// Graph RAG returns a single synthesized answer string rather than a list of
+// chunks (EST-3985) — sent as a bare string inside `chunks` (crew service path)
+// or in a separate `answer` field (redis agent-service path).
+export type RawExtractedChunk = ExtractedChunk | string;
+
+// Two backend paths emit this with different shapes (EST-3985):
+//   - redis-agent/TaskNode (shared/models/knowledge.py): `rag_type`, graph
+//     params nested under `search_params.search_method`.
+//   - CrewAI/Project-node (shared/models/knowledge_new.py via
+//     RagSearchConfigFactory): `rag_strategy`, graph params flat (`method`,
+//     `max_context_tokens`).
+// Naive's fields are named the same in both.
 export interface RagSearchConfig {
-    rag_type: string;
-    search_limit: number;
-    similarity_threshold: number;
+    rag_type?: 'naive' | 'graph';
+    rag_strategy?: 'naive' | 'graph';
+    search_limit?: number;
+    similarity_threshold?: number;
+    method?: string;
+    max_context_tokens?: number;
+    search_params?: {
+        search_method?: string;
+        max_context_tokens?: number;
+        [key: string]: unknown;
+    };
 }
 
 export interface ExtractedChunksMessageData {
@@ -155,7 +175,8 @@ export interface ExtractedChunksMessageData {
     collection_id: number;
     retrieved_chunks: number;
     knowledge_query: string;
-    chunks: ExtractedChunk[];
+    chunks: RawExtractedChunk[];
+    answer?: string | null;
     message_type: MessageType.EXTRACTED_CHUNKS;
     associatedProject?: GetProjectRequest;
     rag_search_config: RagSearchConfig;

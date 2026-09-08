@@ -56,13 +56,7 @@ async def main() -> None:
     )
     await sandbox_client.start()
 
-    knowledge_client = KnowledgeClient(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password,
-        request_channel=settings.knowledge_search_request_channel,
-        response_channel=settings.knowledge_search_response_channel,
-    )
+    knowledge_client = KnowledgeClient(base_url=settings.knowledge_base_url)
     await knowledge_client.start()
 
     loader = DataLoader(

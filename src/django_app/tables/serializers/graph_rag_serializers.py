@@ -141,7 +141,7 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
     total_documents_in_collection = serializers.SerializerMethodField()
     documents_in_graph_rag = serializers.SerializerMethodField()
     processing_document_ids = serializers.ListSerializer(
-        source='indexing_document_config_ids',
+        source="indexing_document_config_ids",
         child=serializers.IntegerField(),
         allow_empty=True,
     )
@@ -241,11 +241,11 @@ class GraphRagIndexConfigUpdateSerializer(serializers.Serializer):
                 "At least one field must be provided for update"
             )
 
-        chunk_size = attrs.get('chunk_size')
-        chunk_overlap = attrs.get('chunk_overlap')
+        chunk_size = attrs.get("chunk_size")
+        chunk_overlap = attrs.get("chunk_overlap")
         if chunk_size and chunk_overlap and chunk_overlap >= chunk_size:
             raise serializers.ValidationError(
-                {'chunk_overlap': ['Must be less than "chunk_size".']}
+                {"chunk_overlap": ['Must be less than "chunk_size".']}
             )
 
         return attrs
@@ -308,8 +308,12 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
+        max_value=2000000,
         help_text="Maximum context tokens (100-100000)",
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 
@@ -355,8 +359,106 @@ class GraphLocalSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
-        help_text="Maximum context tokens (100-100000)",
+        help_text="Maximum context tokens (upper bound = model context window)",
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
+    )
+
+
+class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
+    """Input serializer for graph RAG global search config."""
+
+    map_prompt = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
+    )
+    reduce_prompt = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
+    )
+    knowledge_prompt = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
+    )
+    max_context_tokens = serializers.IntegerField(required=False, min_value=100)
+    data_max_tokens = serializers.IntegerField(required=False, min_value=100)
+    map_max_length = serializers.IntegerField(
+        required=False, min_value=1, max_value=10000
+    )
+    reduce_max_length = serializers.IntegerField(
+        required=False, min_value=1, max_value=10000
+    )
+    dynamic_community_selection = serializers.BooleanField(required=False)
+    dynamic_search_threshold = serializers.IntegerField(required=False, min_value=0)
+    dynamic_search_keep_parent = serializers.BooleanField(required=False)
+    dynamic_search_num_repeats = serializers.IntegerField(required=False, min_value=1)
+    dynamic_search_use_summary = serializers.BooleanField(required=False)
+    dynamic_search_max_level = serializers.IntegerField(
+        required=False, min_value=0, max_value=10
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
+    )
+
+
+class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
+    """Input serializer for graph RAG drift search config."""
+
+    prompt = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    reduce_prompt = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
+    )
+    data_max_tokens = serializers.IntegerField(required=False, min_value=100)
+    reduce_max_tokens = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    reduce_temperature = serializers.FloatField(
+        required=False, min_value=0.0, max_value=2.0
+    )
+    reduce_max_completion_tokens = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    concurrency = serializers.IntegerField(required=False, min_value=1, max_value=256)
+    drift_k_followups = serializers.IntegerField(
+        required=False, min_value=1, max_value=100
+    )
+    primer_folds = serializers.IntegerField(required=False, min_value=1, max_value=100)
+    primer_llm_max_tokens = serializers.IntegerField(required=False, min_value=100)
+    n_depth = serializers.IntegerField(required=False, min_value=1, max_value=10)
+    community_level = serializers.IntegerField(
+        required=False, min_value=0, max_value=10
+    )
+    local_search_text_unit_prop = serializers.FloatField(
+        required=False, min_value=0.0, max_value=1.0
+    )
+    local_search_community_prop = serializers.FloatField(
+        required=False, min_value=0.0, max_value=1.0
+    )
+    local_search_top_k_mapped_entities = serializers.IntegerField(
+        required=False, min_value=1, max_value=100
+    )
+    local_search_top_k_relationships = serializers.IntegerField(
+        required=False, min_value=1, max_value=100
+    )
+    local_search_max_data_tokens = serializers.IntegerField(
+        required=False, min_value=100
+    )
+    local_search_temperature = serializers.FloatField(
+        required=False, min_value=0.0, max_value=2.0
+    )
+    local_search_top_p = serializers.FloatField(
+        required=False, min_value=0.0, max_value=1.0
+    )
+    local_search_n = serializers.IntegerField(required=False, min_value=1, max_value=10)
+    local_search_llm_max_gen_tokens = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    local_search_llm_max_gen_completion_tokens = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 
@@ -364,7 +466,7 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
     """Input serializer for graph RAG search config wrapper."""
 
     search_method = serializers.ChoiceField(
-        choices=["basic", "local"],
+        choices=["basic", "local", "global", "drift"],
         required=False,
         allow_null=True,
         help_text="Active search method",
@@ -377,12 +479,25 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
         required=False,
         help_text="Local search configuration",
     )
+    global_ = GraphGlobalSearchConfigInputSerializer(
+        required=False,
+        help_text="Global search configuration",
+    )
+    drift = GraphDriftSearchConfigInputSerializer(
+        required=False,
+        help_text="Drift search configuration",
+    )
+
+    def get_fields(self):
+        fields = super().get_fields()
+        fields["global"] = fields.pop("global_")
+        return fields
 
 
 class GraphRagDocumentListSerializer(serializers.Serializer):
     graph_rag_document_id = serializers.IntegerField()
     document_id = serializers.IntegerField()
-    file_name = serializers.CharField(source='document.file_name')
-    file_size = serializers.IntegerField(source='document.file_size')
+    file_name = serializers.CharField(source="document.file_name")
+    file_size = serializers.IntegerField(source="document.file_size")
     status = serializers.CharField()
     created_at = serializers.DateTimeField()

@@ -79,10 +79,13 @@ class SearchConfigEntry(BaseModel):
     graph-local).  ``AgentResolver`` builds one search tool per entry so the
     LLM can choose the appropriate strategy at runtime.
 
-    ``embedder`` itself is not part of the ``BaseKnowledgeSearchMessage``
-    wire format -- ``ToolRegistryBuilder`` extracts ``embedder.config.api_key``
-    onto ``KnowledgeSearchTarget.embedder_api_key``, which is what actually
-    reaches the wire message.
+    ``ToolRegistryBuilder`` extracts ``embedder.config.api_key`` and
+    ``llm.config.api_key`` onto ``KnowledgeSearchTarget``; both arrive already
+    resolved to plaintext (SecretResolver runs at publish time), the raw
+    credentials the knowledge_new REST search endpoint expects.
+
+    ``llm`` is only populated for graph entries — graph RAG runs LLM calls
+    server-side; naive search leaves it ``None``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -91,6 +94,7 @@ class SearchConfigEntry(BaseModel):
     rag_type: Literal["naive", "graph"]
     search_config: RagSearchConfig
     embedder: EmbedderData
+    llm: LLMData | None = None
 
 
 class CollectionSpec(BaseModel):

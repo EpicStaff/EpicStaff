@@ -92,6 +92,10 @@ class SurfaceCombineService:
                     "naive_search_config": entry.get("naive_search_config"),
                     "graph_basic_search_config": entry.get("graph_basic_search_config"),
                     "graph_local_search_config": entry.get("graph_local_search_config"),
+                    "graph_global_search_config": entry.get(
+                        "graph_global_search_config"
+                    ),
+                    "graph_drift_search_config": entry.get("graph_drift_search_config"),
                 }
 
                 if collection_id not in seen:
@@ -110,6 +114,12 @@ class SurfaceCombineService:
                     ),
                     "graph_local_search_config": seen[collection_id].get(
                         "graph_local_search_config"
+                    ),
+                    "graph_global_search_config": seen[collection_id].get(
+                        "graph_global_search_config"
+                    ),
+                    "graph_drift_search_config": seen[collection_id].get(
+                        "graph_drift_search_config"
                     ),
                 }
 

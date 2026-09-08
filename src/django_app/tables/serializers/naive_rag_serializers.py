@@ -1,7 +1,11 @@
 from rest_framework import serializers
 
-from tables.constants.knowledge_constants import MIN_CHUNK_SIZE, MAX_CHUNK_SIZE, MIN_CHUNK_OVERLAP, \
-    MAX_CHUNK_OVERLAP
+from tables.constants.knowledge_constants import (
+    MIN_CHUNK_SIZE,
+    MAX_CHUNK_SIZE,
+    MIN_CHUNK_OVERLAP,
+    MAX_CHUNK_OVERLAP,
+)
 from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
@@ -79,6 +83,9 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "outdated_reasons",
+            "error_message",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -110,6 +117,9 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "outdated_reasons",
+            "error_message",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -125,6 +135,9 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "outdated_reasons",
+            "error_message",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -156,7 +169,7 @@ class DocumentConfigUpdateSerializer(serializers.Serializer):
         required=False,
         min_value=MIN_CHUNK_OVERLAP,
         max_value=MAX_CHUNK_OVERLAP,
-        help_text="New chunk overlap"
+        help_text="New chunk overlap",
     )
     chunk_strategy = serializers.ChoiceField(
         required=False,
@@ -379,7 +392,7 @@ class AssignRagSerializer(serializers.Serializer):
 class NaiveRagSearchConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = NaiveRagSearchConfig
-        fields = ["search_limit", "similarity_threshold"]
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
 
 
 class NaiveSearchConfigInputSerializer(serializers.Serializer):
@@ -396,6 +409,10 @@ class NaiveSearchConfigInputSerializer(serializers.Serializer):
         min_value=0.0,
         max_value=1.0,
         help_text="Similarity threshold for search (0.0-1.0)",
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 
@@ -465,7 +482,9 @@ class PreviewChunksByIdsResponseSerializer(serializers.Serializer):
 
 
 class ChunkingConfigSerializer(serializers.Serializer):
-    chunk_strategy = serializers.ChoiceField(choices=NaiveRagDocumentConfig.ChunkStrategy.choices)
+    chunk_strategy = serializers.ChoiceField(
+        choices=NaiveRagDocumentConfig.ChunkStrategy.choices
+    )
     chunk_size = serializers.IntegerField(
         min_value=MIN_CHUNK_SIZE,
         max_value=MAX_CHUNK_SIZE,
@@ -477,8 +496,8 @@ class ChunkingConfigSerializer(serializers.Serializer):
     additional_params = serializers.JSONField(default=dict)
 
     def validate(self, attrs):
-        chunk_size = attrs['chunk_size']
-        chunk_overlap = attrs['chunk_overlap']
+        chunk_size = attrs["chunk_size"]
+        chunk_overlap = attrs["chunk_overlap"]
         if chunk_overlap >= chunk_size:
             raise serializers.ValidationError(
                 {"chunk_overlap": ["'chunk_overlap' must be less then 'chunk_size'"]}

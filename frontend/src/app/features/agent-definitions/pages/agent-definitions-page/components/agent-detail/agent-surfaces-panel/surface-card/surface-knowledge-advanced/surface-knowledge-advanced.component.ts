@@ -12,21 +12,15 @@ import {
     untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import {
-    InputNumberComponent,
-    RadioButtonComponent,
-    SelectComponent,
-    SelectItem,
-    SliderWithStepperComponent,
-    TabButtonComponent,
-    TextareaComponent,
-} from '@shared/components';
+import { SelectComponent, SelectItem, TabButtonComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
+import { AgentSearchConfigs, GraphSearchMethod, NaiveRagSearchConfig } from '@shared/models';
 import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { RagTabComponent } from '../../../../../../../../../shared/components/create-agent-form-dialog/tabs/rag/rag-tab.component';
 import { CollectionsApiService } from '../../../../../../../../knowledge-sources/services/collections-api.service';
 import { SurfaceKnowledge } from '../../../../../../../models/surface.model';
 import { SurfaceCollectionOption } from '../../../../../../../models/surface-card.model';
@@ -38,13 +32,10 @@ type RagKind = 'naive' | 'graph' | null;
     imports: [
         ReactiveFormsModule,
         SelectComponent,
-        RadioButtonComponent,
-        TextareaComponent,
-        InputNumberComponent,
-        SliderWithStepperComponent,
         TabButtonComponent,
         MatTooltipModule,
         TooltipOnOverflowDirective,
+        RagTabComponent,
     ],
     templateUrl: './surface-knowledge-advanced.component.html',
     styleUrls: ['./surface-knowledge-advanced.component.scss'],
@@ -58,11 +49,38 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     collections = input.required<SurfaceCollectionOption[]>();
     knowledge = input.required<SurfaceKnowledge[]>();
     readOnly = input<boolean>(false);
+    /** The owning AgentDefinition's llm_config — forwarded to the embedded RAG tab
+     * so suggested-params requests know which LLM's context window to use. */
+    llmConfigId = input<number | null>(null);
+    /** Shared surfaces have no owning agent to source an LLM from — suggested
+     * params are out of scope for them by product decision (EST-3986). */
+    suggestionsDisabled = input<boolean>(false);
 
     readonly knowledgeChange = output<SurfaceKnowledge>();
 
     readonly activeCollectionId = signal<number | null>(null);
+
+    /** The RAG-kind picker's own small form (just `{ rag: RagKind }`) — kept
+     * separate from the rag-tab adapter form below so this component still owns
+     * the per-collection kind picker exactly as before. */
     readonly form = signal<FormGroup | null>(null);
+    /** Adapter form fed to the embedded `<app-rag-tab>`: `{ knowledge_collection, rag }`,
+     * matching the shape `RagTabComponent` expects. It sets its own `search_configs`
+     * control onto this group once initialized. */
+    readonly ragTabForm = signal<FormGroup | null>(null);
+    // `RagTabComponent.ngOnInit()` wires itself up once against whatever `form`
+    // it's first given — swapping the `[form]` input to a different FormGroup
+    // instance later does NOT re-run ngOnInit, so simply rebinding wouldn't pick
+    // up the new collection's controls. Wrapping in a single-item @for keyed by
+    // this list's own FormGroup reference forces Angular to destroy/recreate the
+    // <app-rag-tab> element (and re-run its ngOnInit) every time rebuildForm()
+    // produces a new instance, i.e. on every collection switch.
+    readonly ragTabFormList = computed<FormGroup[]>(() => {
+        const f = this.ragTabForm();
+        return f ? [f] : [];
+    });
+    readonly ragTabSearchConfigs = signal<AgentSearchConfigs | null>(null);
+    readonly currentGraphMethod = signal<GraphSearchMethod | null>(null);
 
     private readonly ragKindItems: SelectItem[] = [
         { name: 'Naive RAG', value: 'naive' },
@@ -90,15 +108,13 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
 
     readonly noRagsAvailable = computed<boolean>(() => !this.ragsLoading() && this.ragItems().length === 0);
 
-    readonly searchTypes: SelectItem[] = [
-        { name: 'Basic', value: 'basic' },
-        { name: 'Local', value: 'local' },
-        { name: 'Global', value: 'global' },
-        { name: 'DRIFT', value: 'drift' },
-    ];
-
-    private formSub?: Subscription;
+    private formSub = new Subscription();
     private lastEmitted: string | null = null;
+    // Tracks the form a debounced emitCurrent() is currently pending for, so a
+    // collection switch or destroy mid-debounce can flush it instead of the
+    // unsubscribe below silently dropping the edit.
+    private pendingCollectionId: number | null = null;
+    private pendingRagTabForm: FormGroup | null = null;
 
     constructor() {
         effect(() => {
@@ -150,8 +166,22 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     private storedRagKind(collectionId: number): RagKind {
         const item = this.knowledge().find((k) => k.collection === collectionId);
         if (item?.naive_search_config) return 'naive';
-        if (item?.graph_basic_search_config || item?.graph_local_search_config) return 'graph';
+        if (
+            item?.graph_basic_search_config ||
+            item?.graph_local_search_config ||
+            item?.graph_global_search_config ||
+            item?.graph_drift_search_config
+        ) {
+            return 'graph';
+        }
         return null;
+    }
+
+    private storedGraphMethod(item: SurfaceKnowledge | undefined): GraphSearchMethod {
+        if (item?.graph_local_search_config) return 'local';
+        if (item?.graph_global_search_config) return 'global';
+        if (item?.graph_drift_search_config) return 'drift';
+        return 'basic';
     }
 
     selectCollection(id: number): void {
@@ -159,122 +189,154 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     }
 
     ngOnDestroy(): void {
-        this.formSub?.unsubscribe();
+        this.flushPending();
+        this.formSub.unsubscribe();
+    }
+
+    /** Emits synchronously whatever emitCurrent() had debounced for the collection
+     * being left, instead of letting the unsubscribe below cancel it silently. */
+    private flushPending(): void {
+        if (this.pendingCollectionId != null && this.pendingRagTabForm) {
+            this.emitCurrent(this.pendingCollectionId, this.pendingRagTabForm);
+        }
     }
 
     private rebuildForm(collectionId: number | null): void {
-        this.formSub?.unsubscribe();
+        this.flushPending();
+        this.formSub.unsubscribe();
+        this.formSub = new Subscription();
         this.lastEmitted = null;
+
         if (collectionId == null) {
+            this.pendingCollectionId = null;
+            this.pendingRagTabForm = null;
             this.form.set(null);
+            this.ragTabForm.set(null);
+            this.ragTabSearchConfigs.set(null);
+            this.currentGraphMethod.set(null);
             return;
         }
 
         const item = this.knowledge().find((k) => k.collection === collectionId);
-        const fg = this.buildForm(item);
+        const kind = this.storedRagKind(collectionId);
+
+        const fg = this.fb.group({ rag: [kind] });
         if (this.readOnly()) fg.disable({ emitEvent: false });
         this.form.set(fg);
-        this.formSub = fg.valueChanges.pipe(debounceTime(500)).subscribe(() => this.emitCurrent(collectionId, fg));
-    }
 
-    private buildForm(item: SurfaceKnowledge | undefined): FormGroup {
-        const rag: RagKind = item?.naive_search_config
-            ? 'naive'
-            : item?.graph_basic_search_config || item?.graph_local_search_config
-              ? 'graph'
-              : null;
-        const method = item?.graph_local_search_config ? 'local' : 'basic';
-        const naive = item?.naive_search_config;
-        const basic = item?.graph_basic_search_config;
-        const local = item?.graph_local_search_config;
-
-        return this.fb.group({
-            rag: [rag],
-            search_method: [method, [Validators.required]],
-            naive: this.fb.group({
-                search_limit: [naive?.search_limit ?? 3, [Validators.min(1), Validators.max(1000)]],
-                similarity_threshold: [
-                    Number(naive?.similarity_threshold ?? 0.2),
-                    [Validators.min(0), Validators.max(1)],
-                ],
-            }),
-            basic: this.fb.group({
-                prompt: [basic?.prompt ?? null, [Validators.maxLength(1000)]],
-                k: [basic?.k ?? 10, [Validators.required, Validators.min(1), Validators.max(100)]],
-                max_context_tokens: [
-                    basic?.max_context_tokens ?? 12000,
-                    [Validators.required, Validators.min(100), Validators.max(100000)],
-                ],
-            }),
-            local: this.fb.group({
-                prompt: [local?.prompt ?? null, [Validators.maxLength(1000)]],
-                text_unit_prop: [local?.text_unit_prop ?? 0.5, [Validators.min(0), Validators.max(1)]],
-                community_prop: [local?.community_prop ?? 0.15, [Validators.min(0), Validators.max(1)]],
-                conversation_history_max_turns: [
-                    local?.conversation_history_max_turns ?? 5,
-                    [Validators.required, Validators.min(1), Validators.max(50)],
-                ],
-                top_k_entities: [
-                    local?.top_k_entities ?? 10,
-                    [Validators.required, Validators.min(1), Validators.max(100)],
-                ],
-                top_k_relationships: [
-                    local?.top_k_relationships ?? 10,
-                    [Validators.required, Validators.min(1), Validators.max(100)],
-                ],
-                max_context_tokens: [
-                    local?.max_context_tokens ?? 12000,
-                    [Validators.required, Validators.min(100), Validators.max(100000)],
-                ],
-            }),
+        const ragTabForm = this.fb.group({
+            knowledge_collection: [collectionId],
+            // RagTabComponent.ngOnInit() treats a truthy `rag` value as "a kind is
+            // selected" — must be plain `null`, not `{ rag_id: null, rag_type: null }`,
+            // when nothing's picked yet, or it'll try to init an empty search-config form.
+            rag: [kind ? { rag_id: null, rag_type: kind } : null],
         });
+        this.ragTabForm.set(ragTabForm);
+        this.ragTabSearchConfigs.set(this.buildSearchConfigsInput(item));
+        this.currentGraphMethod.set(kind === 'graph' ? this.storedGraphMethod(item) : null);
+        this.pendingCollectionId = collectionId;
+        this.pendingRagTabForm = ragTabForm;
+
+        // The visible RAG-kind select (`fg.rag`) drives the adapter form's `rag`
+        // control that `<app-rag-tab>` actually reads from.
+        this.formSub.add(
+            fg.get('rag')!.valueChanges.subscribe((newKind: RagKind) => {
+                ragTabForm.get('rag')!.setValue(newKind ? { rag_id: null, rag_type: newKind } : null);
+            })
+        );
+
+        this.formSub.add(
+            ragTabForm.valueChanges.subscribe(() => {
+                const method = ragTabForm.get('search_configs')?.get('search_method')?.value ?? null;
+                this.currentGraphMethod.set(method);
+            })
+        );
+
+        this.formSub.add(
+            ragTabForm.valueChanges.pipe(debounceTime(500)).subscribe(() => this.emitCurrent(collectionId, ragTabForm))
+        );
     }
 
-    private emitCurrent(collectionId: number, fg: FormGroup): void {
+    private buildSearchConfigsInput(item: SurfaceKnowledge | undefined): AgentSearchConfigs | null {
+        if (!item) return null;
+        const naive: NaiveRagSearchConfig | undefined = item.naive_search_config
+            ? {
+                  search_limit: item.naive_search_config.search_limit,
+                  similarity_threshold: Number(item.naive_search_config.similarity_threshold),
+                  is_suggested: item.naive_search_config.is_suggested,
+              }
+            : undefined;
+        return {
+            naive,
+            graph: {
+                search_method: this.storedGraphMethod(item),
+                basic: item.graph_basic_search_config
+                    ? { ...item.graph_basic_search_config, prompt: item.graph_basic_search_config.prompt ?? null }
+                    : undefined,
+                local: item.graph_local_search_config
+                    ? { ...item.graph_local_search_config, prompt: item.graph_local_search_config.prompt ?? null }
+                    : undefined,
+                global: item.graph_global_search_config ?? undefined,
+                drift: item.graph_drift_search_config ?? undefined,
+            },
+        };
+    }
+
+    private emitCurrent(collectionId: number, ragTabForm: FormGroup): void {
         if (this.readOnly()) return;
 
-        const v = fg.getRawValue();
+        const searchConfigsCtrl = ragTabForm.get('search_configs');
+        if (!searchConfigsCtrl) return; // rag-tab hasn't initialized yet (no rag kind picked)
+
+        const ragValue = ragTabForm.get('rag')?.value as { rag_type: RagKind } | null;
+        const ragType = ragValue?.rag_type ?? null;
+        const raw = searchConfigsCtrl.getRawValue();
+
         let item: SurfaceKnowledge | null = null;
 
-        if (v.rag === 'naive') {
+        if (ragType === 'naive') {
             item = {
                 collection: collectionId,
                 naive_search_config: {
-                    search_limit: v.naive.search_limit,
-                    similarity_threshold: Number(Number(v.naive.similarity_threshold).toFixed(2)),
+                    search_limit: raw.search_limit,
+                    similarity_threshold: Number(Number(raw.similarity_threshold).toFixed(2)),
+                    is_suggested: raw.is_suggested,
                 },
                 graph_basic_search_config: null,
                 graph_local_search_config: null,
+                graph_global_search_config: null,
+                graph_drift_search_config: null,
             };
-        } else if (v.rag === 'graph' && v.search_method === 'basic') {
+        } else if (ragType === 'graph') {
+            const method = raw.search_method as GraphSearchMethod;
             item = {
                 collection: collectionId,
                 naive_search_config: null,
-                graph_basic_search_config: {
-                    prompt: v.basic.prompt || null,
-                    k: v.basic.k,
-                    max_context_tokens: v.basic.max_context_tokens,
-                },
-                graph_local_search_config: null,
-            };
-        } else if (v.rag === 'graph' && v.search_method === 'local') {
-            item = {
-                collection: collectionId,
-                naive_search_config: null,
-                graph_basic_search_config: null,
-                graph_local_search_config: {
-                    prompt: v.local.prompt || null,
-                    text_unit_prop: v.local.text_unit_prop,
-                    community_prop: v.local.community_prop,
-                    conversation_history_max_turns: v.local.conversation_history_max_turns,
-                    top_k_entities: v.local.top_k_entities,
-                    top_k_relationships: v.local.top_k_relationships,
-                    max_context_tokens: v.local.max_context_tokens,
-                },
+                graph_basic_search_config:
+                    method === 'basic' ? { ...raw.basic, prompt: raw.basic.prompt || null } : null,
+                graph_local_search_config:
+                    method === 'local' ? { ...raw.local, prompt: raw.local.prompt || null } : null,
+                graph_global_search_config:
+                    method === 'global'
+                        ? {
+                              ...raw.global,
+                              map_prompt: raw.global.map_prompt || null,
+                              reduce_prompt: raw.global.reduce_prompt || null,
+                              knowledge_prompt: raw.global.knowledge_prompt || null,
+                          }
+                        : null,
+                graph_drift_search_config:
+                    method === 'drift'
+                        ? {
+                              ...raw.drift,
+                              prompt: raw.drift.prompt || null,
+                              reduce_prompt: raw.drift.reduce_prompt || null,
+                          }
+                        : null,
             };
         }
 
-        if (!item || fg.invalid) return;
+        if (!item || searchConfigsCtrl.invalid) return;
         const json = JSON.stringify(item);
         if (json === this.lastEmitted) return;
         this.lastEmitted = json;

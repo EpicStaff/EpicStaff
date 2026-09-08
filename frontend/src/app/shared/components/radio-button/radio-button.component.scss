@@ -35,6 +35,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.35rem;
     flex: 1;
     color: var(--color-text-primary);
     background: transparent;
@@ -52,6 +53,11 @@
     &.active {
         background: var(--accent-color);
     }
+}
+
+.option-icon {
+    color: var(--color-text-primary);
+    opacity: 0.6;
 }
 
 .segmented {
@@ -82,6 +88,10 @@
     }
 
     &__option {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
         flex: 1;
         position: relative;
         z-index: 1;

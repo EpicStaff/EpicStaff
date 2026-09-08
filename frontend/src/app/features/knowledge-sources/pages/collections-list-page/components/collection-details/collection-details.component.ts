@@ -22,7 +22,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { EMPTY, filter, throwError } from 'rxjs';
+import { EMPTY, filter, Subject, throwError } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
@@ -77,6 +77,7 @@ export class CollectionDetailsComponent implements OnInit {
     selectedCollectionId = this.collectionsStorageService.selectedCollectionId;
 
     readonly descriptionSaveFailedTick = signal<number>(0);
+
     collectionName: FormControl = new FormControl('', [
         Validators.required,
         notWhitespaceValidator(),
@@ -85,7 +86,32 @@ export class CollectionDetailsComponent implements OnInit {
 
     private lastInitializedCollectionId: number | null = null;
 
+    private readonly nameSave$ = new Subject<{ id: number; collection_name: string }>();
+
     constructor() {
+        this.nameSave$
+            .pipe(
+                switchMap(({ id, collection_name }) =>
+                    this.collectionsStorageService.updateCollectionById(id, { collection_name }).pipe(
+                        catchError(() => {
+                            this.toastService.error('Collection Update failed');
+                            return EMPTY;
+                        })
+                    )
+                )
+            )
+            .subscribe(() => {
+                this.toastService.success('Collection Updated');
+                this.collectionName.markAsPristine();
+            });
+
+        // Structural *appHasPermission would remove the input (and the name it
+        // displays) entirely for view-only users — disable it instead so the name
+        // stays visible, just not editable.
+        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update)) {
+            this.collectionName.disable();
+        }
+
         effect(() => {
             const selectedId = this.selectedCollectionId();
             const collection = this.collectionsStorageService
@@ -94,8 +120,17 @@ export class CollectionDetailsComponent implements OnInit {
 
             if (collection) {
                 this.fullCollection.set(collection);
-                if (this.lastInitializedCollectionId !== collection.collection_id) {
+                const isNewSelection = this.lastInitializedCollectionId !== collection.collection_id;
+                // Re-sync whenever this field isn't being actively typed into, not just on
+                // first selection — the name can also change via the create-collection
+                // wizard's own (separate) name field writing into the same cache entry,
+                // and without this the write-once guard used to freeze this panel on the
+                // placeholder default forever (EST-3988).
+                if (isNewSelection || !this.collectionName.dirty) {
                     this.collectionName.setValue(collection.collection_name, { emitEvent: false });
+                    this.collectionName.markAsPristine();
+                }
+                if (isNewSelection) {
                     this.lastInitializedCollectionId = collection.collection_id;
                 }
             } else {
@@ -117,7 +152,13 @@ export class CollectionDetailsComponent implements OnInit {
                 .uploadingDocuments()
                 .filter((d) => d.source_collection === collectionId);
 
-            this.documents.set([...realDocs, ...uploading]);
+            // Invalid dropped files (wrong type/size) never reach uploadDocuments, so they
+            // only ever exist in this signal's own prior state — carry them forward or this
+            // rebuild (re-triggered by any upload anywhere finishing, not just this collection's)
+            // silently wipes them instead of leaving them visible with their error state.
+            const invalidLocal = untracked(() => this.documents().filter((d) => !d.isValidType || !d.isValidSize));
+
+            this.documents.set([...realDocs, ...uploading, ...invalidLocal]);
         });
 
         effect(() => {
@@ -137,18 +178,12 @@ export class CollectionDetailsComponent implements OnInit {
                 debounceTime(600),
                 distinctUntilChanged(),
                 filter(() => this.collectionName.valid),
-                filter(() => !!this.fullCollection()),
-                switchMap((collection_name: string) => {
-                    const id = this.fullCollection()!.collection_id;
-                    return this.collectionsStorageService.updateCollectionById(id, { collection_name }).pipe(
-                        catchError(() => {
-                            this.toastService.error('Collection Update failed');
-                            return EMPTY;
-                        })
-                    );
-                })
+                filter(() => !!this.fullCollection())
             )
-            .subscribe(() => this.toastService.success('Collection Updated'));
+            .subscribe((collection_name: string) => {
+                const id = this.fullCollection()!.collection_id;
+                this.nameSave$.next({ id, collection_name });
+            });
     }
 
     onDescriptionSave(description: string): void {

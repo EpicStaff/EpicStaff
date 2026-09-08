@@ -1,13 +1,13 @@
 import {
     ChangeDetectionStrategy,
-    ChangeDetectorRef,
     Component,
+    computed,
     EventEmitter,
     forwardRef,
-    inject,
     Input,
     input,
     Output,
+    signal,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
@@ -33,30 +33,41 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    disabled = input<boolean>(false);
     ariaLabel = input<string>('');
 
-    @Input() checked = false;
-    @Output() checkedChange = new EventEmitter<boolean>();
+    private checkedState = signal(false);
 
-    private readonly cdr = inject(ChangeDetectorRef);
+    // Kept as a plain @Input()/@Output() pair for external API compatibility
+    // (banana-in-a-box, formControlName's ControlValueAccessor writeValue,
+    // etc.) — internally backed by a signal so the template updates
+    // reliably under OnPush regardless of markForCheck timing.
+    @Input()
+    set checked(value: boolean) {
+        this.checkedState.set(value);
+    }
+    get checked(): boolean {
+        return this.checkedState();
+    }
+    @Output() checkedChange = new EventEmitter<boolean>();
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
-    disabled = false;
+    private formDisabled = signal(false);
+
+    isDisabled = computed(() => this.disabled() || this.formDisabled());
 
     onToggle() {
-        if (this.disabled) return;
-        const next = !this.checked;
-        this.checked = next;
+        if (this.isDisabled()) return;
+        const next = !this.checkedState();
+        this.checkedState.set(next);
         this.checkedChange.emit(next);
         this.onChange(next);
         this.onTouched();
-        this.cdr.markForCheck();
     }
 
     writeValue(value: boolean): void {
-        this.checked = value;
-        this.cdr.markForCheck();
+        this.checkedState.set(value);
     }
 
     registerOnChange(fn: (value: boolean) => void): void {
@@ -68,7 +79,6 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.disabled = isDisabled;
-        this.cdr.markForCheck();
+        this.formDisabled.set(isDisabled);
     }
 }
