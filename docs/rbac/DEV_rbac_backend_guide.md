@@ -68,7 +68,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 ```python
 class ResourceType(models.TextChoices):
     ORGANIZATIONS, FLOWS, AGENTS, TOOLS, KNOWLEDGE_SOURCES,
-    FILES, PROJECTS, LLM_CONFIGS, SECRETS, MEMBERSHIPS, ROLES
+    FILES, PROJECTS, LLM_CONFIGS, SECRETS, MEMBERSHIPS, ROLES, API_KEYS
 
 class Permission(IntFlag):
     CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
@@ -90,10 +90,11 @@ Superadmin role row has **zero** `RolePermission` rows — authority comes exclu
 | files | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
-| secrets | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
+| secrets — reserved for provider credentials, grants nothing until the `Secret` model ships | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
 | memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
 | organizations | 6 (R+U) | 0 | 0 |
+| api_keys | 10 (R+D) | 0 | 0 |
 
 If you change a seed, do it with a new idempotent data migration — never edit an applied one.
 
@@ -129,8 +130,9 @@ Two authentication classes (`tables/services/rbac/authentication.py`), both glob
   `user`-type key resolves to its owner. `request.user` is that principal, `request.auth`
   is the `ApiKey` row. A user key inherits the owner's live RBAC permissions per the
   `X-Organization-Id` header the caller sends — identical to that owner authenticating with
-  a JWT. Key management endpoints (`/api/profile/api-keys/`, `/api/api-keys/`) are JWT-only
-  (`DenyApiKeyAuth`) — see [api_keys.md](api_keys.md).
+  a JWT. Key management endpoints (`/api/profile/api-keys/`,
+  `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
+  [api_keys.md](api_keys.md).
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `tables/services/rbac/ticket_service.py`): `POST /api/auth/sse-ticket/`
@@ -251,6 +253,21 @@ the single-use ticket first, then calls this.
 - `SuperadminWriteMixin` (`tables/views/mixins.py`) — same idea for ViewSets (global
   registry/catalog rows): safe actions need `IsAuthenticated`, write actions (plus any
   action named in `superadmin_write_actions`) need `IsSuperadmin`. Not org-scoped.
+
+`CrossOrgResourceService` (`services/rbac/cross_org_service.py`) is the base every cross-org
+admin surface (roles, memberships, organizations, API keys) extends for its precise per-org
+authorization. `resolve_for_write(actor, org_id)` resolves the caller's permissions in one
+target org, turning a non-member into the resource's own 404 rather than a 403 — a row in an
+org the caller can't see must be indistinguishable from a missing one.
+`authorize_any_org(actor, org_ids, action)` is the existential counterpart: it authorizes a row
+scoped through a *set* of orgs instead of a single column — an API key's scope is every
+organization its owner belongs to — and passes if the caller holds the bit in **at least one**
+org from that set; sharing none of them still 404s, exactly as `resolve_for_write` does for one.
+`delegated_scope_q`, an optional class attribute a subclass may declare, is an extra queryset
+restriction `apply_org_scope` applies only when a delegated (non-superadmin) caller is being
+org-scoped at all — never to a superadmin, who already bypasses the org filter entirely.
+`ApiKeyManagementService` sets it to exclude superadmin-owned keys from a delegated admin's
+list, since the superadmin's own request already reaches them without it.
 
 ### 5.5 Service-layer guards (defense in depth)
 
@@ -486,11 +503,12 @@ path — the default org is only for bootstrap and data migrations.
 | CLI superadmin creation | `management/commands/create_superadmin.py` |
 | Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
-| Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs |
+| Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs / API keys |
 | Org management (list/read/rename permission-aware; create/deactivate superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
 | Membership management (cross-org, MEMBERSHIPS-gated) + assignable-user lookup | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
 | User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
 | Roles CRUD + ceiling + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `services/rbac/api_key/management_service.py`, `views/api_key_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `services/rbac/permission_assert.py` |
 | Session/SSE authorization | `services/rbac/session_access.py`, `views/sse_views.py` |

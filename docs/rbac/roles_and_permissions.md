@@ -90,6 +90,7 @@ of caller and org. Cache-friendly.
     { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Rename and manage organization settings",        "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"] },
     { "code": "memberships",       "label": "Members",             "group": "admin",     "description": "Add, remove, and re-role members within an org", "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "api_keys",          "label": "API Keys",            "group": "admin",     "description": "Members' personal API keys — view and revoke",   "applicable_actions": ["read", "delete"] },
     { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete"] },
@@ -97,7 +98,7 @@ of caller and org. Cache-friendly.
     { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
-    { "code": "secrets",           "label": "API Keys / Secrets",  "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "update", "delete"] }
+    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider credentials and sensitive configuration", "applicable_actions": ["create", "read", "update", "delete"] }
   ]
 }
 ```
@@ -174,6 +175,21 @@ Suggestions are direct, not transitive: `projects:create` recommends
 `flows:create`, and `flows:create` has recommendations of its own. Look up
 each cell as the user accepts it and the chain unfolds one step at a time,
 which keeps the initial suggestion short and lets the user stop early.
+
+The shape holds however small the resource is. `api_keys` has only two
+applicable actions and one recommendation:
+
+```json
+{
+  "code": "api_keys",
+  "applicable_actions": ["read", "delete"],
+  "platform_actions": [],
+  "recommended_with": {
+    "read": [],
+    "delete": [{ "resource_type": "api_keys", "action": "read" }]
+  }
+}
+```
 
 ---
 
@@ -679,7 +695,7 @@ the next step of the chain.
 
 ---
 
-## Resource scoping coverage (EST-2423)
+## Resource scoping coverage
 
 Every workspace/config resource is now scoped to the active org and gated by its `resource_type`.
 Two patterns beyond plain org ownership:
@@ -702,6 +718,11 @@ Two patterns beyond plain org ownership:
 | KNOWLEDGE_SOURCES | source-collections, documents, naive-rag, graph-rag, indexing | **R** | C R U D |
 | LLM_CONFIGS | llm/embedding/realtime configs **and custom models** | **R** | C R U D |
 | FILES | storage | C R U E | C R U D E |
+| API_KEYS † | admin/api-keys | — | R D |
+
+† `API_KEYS` is cross-org rather than active-org scoped — it is governed by `?org_ids=` against
+the key owner's memberships, not the `X-Organization-Id` header. See
+[api_keys.md](api_keys.md).
 
 **Cross-org references are rejected** like a non-existent pk (`400 Invalid pk … does not exist`): a
 write in org A cannot attach org B's tool (`tool_ids`), knowledge collection, rag, or LLM/embedding

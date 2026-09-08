@@ -1,7 +1,7 @@
 # API Keys
 
 Covers the API key model, self-service key management (`/api/profile/api-keys/`),
-org-scoped admin management (`/api/api-keys/`), the singleton system key, and
+cross-org admin management (`/api/admin/api-keys/`), the singleton system key, and
 how keys interact with introspection, SSE tickets, and org-scoped RBAC.
 
 See [auth_endpoints.md](auth_endpoints.md) for the rest of the auth surface
@@ -41,8 +41,9 @@ es-kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw
 | Expiry | never (`expires_at` forced `NULL` by the same constraint) | optional — default 90 days, or `null` for no expiry, or an explicit day count |
 | Resolves to (`request.user`) | synthetic `SystemServicePrincipal` (`is_authenticated=True`, `is_superadmin=True`, no `email`/`pk`) | the owning `User` — same live RBAC permissions that user would have with a JWT |
 | How many can exist | one active at a time (singleton — seeding revokes any previous active `SYSTEM` key) | up to 5 active (non-revoked, non-expired) per user |
-| Visible in `GET /api/api-keys/` or `GET /api/profile/api-keys/` | never | yes, to its owner and to org admins of an org the owner belongs to |
+| Visible in `GET /api/admin/api-keys/` or `GET /api/profile/api-keys/` | never | yes, to its owner, and to any caller holding `api_keys` read in an organization the owner belongs to (or to a superadmin, always) |
 | Revocable/deletable over HTTP | no — both management endpoints only ever operate on `key_type=USER` rows; a `SYSTEM` key's id returns `404 api_key_not_found` | yes |
+| Authenticates while the owner's account is deactivated | n/a — no owner | no — a deactivated owner's key stops authenticating immediately, even though the row itself is untouched |
 
 Both classes authenticate the same way — header `X-Api-Key: <raw_key>`
 (preferred) or `Authorization: ApiKey <raw_key>` — and both update
@@ -195,90 +196,113 @@ which ids exist.
 
 ---
 
-## Management: `/api/api-keys/`
+## Management: `/api/admin/api-keys/`
 
-Lets an org's privileged members inspect and retire **their own org's
-members'** keys — for incident response ("this laptop was stolen, kill
-its keys") without needing DB access. Only ever operates on `USER` keys;
+Lets a privileged caller inspect and retire the `USER` keys of people they
+administer — for incident response ("this laptop was stolen, kill its
+keys") without needing DB access. Only ever operates on `USER` keys;
 `SYSTEM` keys are invisible here.
 
+```
+GET    /api/admin/api-keys/            ?org_ids= &user= &status= &search= &page= &page_size=
+POST   /api/admin/api-keys/{id}/revoke/
+DELETE /api/admin/api-keys/{id}/
+```
+
 Auth: `permission_classes = [IsAuthenticated, DenyApiKeyAuth,
-HasOrgPermission]` — JWT only (same `DenyApiKeyAuth` rule as
-self-service), plus a `SECRETS` resource-type permission check:
+HasResourcePermissionAnywhere]` — JWT only (same `DenyApiKeyAuth` rule as
+self-service), gated on the `api_keys` resource:
 
-| Action | Required `SECRETS` permission bit |
+| Action | Required `api_keys` permission bit |
 |---|---|
-| `GET /api/api-keys/` (list) | `READ` |
-| `POST /api/api-keys/{id}/revoke/` | `UPDATE` |
-| `DELETE /api/api-keys/{id}/` | `DELETE` |
+| `GET /api/admin/api-keys/` (list) | `READ` |
+| `POST /api/admin/api-keys/{id}/revoke/` | `DELETE` |
+| `DELETE /api/admin/api-keys/{id}/` | `DELETE` |
 
-Built-in role bitmasks for `SECRETS` (seeded by migration `0183`):
+The built-in **Org Admin** role holds `api_keys` `READ|DELETE`, so it can
+list and retire keys. **Member** and **Viewer** hold neither bit, so `GET
+/api/admin/api-keys/` returns `403` for them and both write actions do
+too.
 
-- **Org Admin** — `207` = `CREATE|READ|UPDATE|DELETE|USE|LIST` → full
-  access to all three actions.
-- **Member** / **Viewer** — `192` = `USE|LIST` (no `READ` bit) → `GET
-  /api/api-keys/` returns `403`.
+### Scope: no header, ownership-derived
 
-### Org scoping
+There is no `X-Organization-Id` on this surface — organization is data,
+selected through the `?org_ids=` query param, never an implicit active
+context. A key carries no organization of its own; its scope is the set
+of organizations **its owner** belongs to:
 
-The active org comes from the `X-Organization-Id` header (required,
-resolved by the same `OrgContextService` used elsewhere). A key is in
-scope for a caller iff **the key's owner is a member of that org**:
+- A caller **sees** a key in the list if they hold `api_keys` `READ` in
+  at least one organization the owner belongs to.
+- A caller may **revoke or delete** a key if they hold `api_keys`
+  `DELETE` in at least one organization the owner belongs to.
 
-```
-ApiKey.objects.filter(key_type="user", created_by__organization_memberships__org_id=<active_org>)
-```
+A superadmin bypasses both checks and sees and retires every `USER` key,
+including keys owned by other superadmins. Nobody else can see or reach a
+superadmin-owned key at all — it is absent from their list and a revoke
+or delete against its id returns `404 api_key_not_found`, identical to an
+unknown id.
 
-**Superadmin exception:** a superadmin may **omit** `X-Organization-Id`
-entirely, in which case the org filter is lifted and every org's keys are
-returned. A superadmin who *does* send the header is scoped to that org
-like anyone else.
-
-### Filters (`GET /api/api-keys/`)
+### Filters and ordering (`GET /api/admin/api-keys/`)
 
 | Query param | Behavior |
 |---|---|
+| `?org_ids=1,2` | Comma-separated org ids; restricts the list to keys owned by members of those orgs. An id the caller cannot `api_keys` `READ` in (and isn't superadmin) fails the whole request with `403`. A non-integer value → `400 org_context_required`. Omitted → every org the caller can read. |
 | `?user=<id>` | Only keys owned by that user id. Non-integer → `400 invalid`. |
 | `?status=active\|expired\|revoked` | Any other value → `400 invalid`. |
 | `?search=<text>` | Case-insensitive substring match on `name` OR `prefix`. |
 
-Ordering is fixed: `last_used_at` descending with nulls last, then
-`created_at` descending — most-recently-active keys first, never-used
-keys last (still newest-first among themselves).
+Ordering is fixed (no `?ordering=` param): `last_used_at` descending with
+nulls last, then `created_at` descending, then `id` — most-recently-active
+keys first, never-used keys last, with `id` breaking ties so pagination
+stays stable across pages.
 
-Each item embeds the owner:
+**Response 200** — a paginated envelope (default page size 50, max 200):
 
 ```json
 {
-  "id": 12,
-  "name": "laptop-cli",
-  "prefix": "es-kR3f9s1n1",
-  "created_at": "2026-07-14T10:00:00Z",
-  "expires_at": "2026-08-13T10:00:00Z",
-  "last_used_at": "2026-07-15T09:30:00Z",
-  "revoked_at": null,
-  "status": "active",
-  "owner": { "id": 7, "email": "dev@acme.com", "display_name": "Dev User" }
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 12,
+      "name": "laptop-cli",
+      "prefix": "es-kR3f9s1n1",
+      "created_at": "2026-07-14T10:00:00Z",
+      "expires_at": "2026-08-13T10:00:00Z",
+      "last_used_at": "2026-07-15T09:30:00Z",
+      "revoked_at": null,
+      "status": "active",
+      "owner": { "id": 7, "email": "dev@acme.com", "display_name": "Dev User", "avatar_url": null },
+      "org_ids": [10, 20]
+    }
+  ]
 }
 ```
+
+`org_ids` is the owner's organization memberships **intersected with the
+organizations the caller can read** — it reports where the key's owner
+works without widening what the caller is allowed to see. It never
+indicates that the owner belongs to further organizations outside the
+caller's view.
 
 ### Revoke / delete a member's key
 
 Same semantics as self-service revoke/delete (idempotent revoke, hard
-delete), scoped by org membership instead of ownership. An id outside the
-caller's org (or that doesn't exist, or is the SYSTEM key) returns `404
-api_key_not_found` — same non-enumerating 404 as self-service.
+delete), authorized by the ownership-derived scope above. An id that
+doesn't exist, is the SYSTEM key, or belongs to an owner who shares no
+organization with the caller returns `404 api_key_not_found` — the same
+non-enumerating 404 as self-service.
 
 ### Cross-org revocation caveat
 
 **API keys are not tied to any organization.** A `USER` key authenticates
-its owner everywhere that owner is a member — across every org, using
-whichever org the caller supplies via `X-Organization-Id`. Consequently:
+its owner everywhere that owner is a member. Consequently:
 
-> Revoking or deleting a member's key from one org's `/api/api-keys/`
-> view kills that key **everywhere** — including in every other
-> organization the key's owner belongs to. There is no way to revoke a
-> key "for this org only."
+> Revoking or deleting a member's key kills that key **everywhere** —
+> including in every other organization the key's owner belongs to, even
+> ones the acting administrator cannot see and does not know exist.
+> There is no way to revoke a key "for this org only."
 
 ---
 
@@ -356,7 +380,7 @@ curl -s -X POST http://localhost:8000/api/auth/sse-ticket/ \
   you rotate the system key: change `DJANGO_API_KEY` and restart the
   container.
 - **Invisible everywhere:** neither `GET /api/profile/api-keys/` nor `GET
-  /api/api-keys/` ever return `SYSTEM` keys (both filter on
+  /api/admin/api-keys/` ever return `SYSTEM` keys (both filter on
   `key_type="user"`). It also cannot be revoked or deleted through either
   HTTP management surface — those endpoints scope every lookup to
   `key_type="user"`, so a `SYSTEM` key's id simply isn't found (`404
@@ -378,13 +402,13 @@ keys:
 |---|---|---|
 | `api_key_limit_exceeded` | 400 | Self-service create, at 5 active keys |
 | `invalid` | 400 | Self-service create (bad `name`/`expires_in_days`); management `?status=`/`?user=` filters |
-| `api_key_not_found` | 404 | Self-service revoke/delete on a foreign/unknown id; management revoke/delete on an out-of-org/unknown/SYSTEM id |
-| `authentication_failed` | 401 | Any request authenticating with a raw key that doesn't match a non-revoked key (`"Invalid API key"`), or matches an expired one (`"API key has expired"`) |
-| `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint) or `HasOrgPermission` (missing `SECRETS` bit) |
-| `org_membership_required` | 403 | Caller (JWT or API key) is not a member of the org named by `X-Organization-Id` |
-| `org_context_required` | 400 | `X-Organization-Id` missing or not an integer on a header-required endpoint |
+| `api_key_not_found` | 404 | Self-service revoke/delete on a foreign/unknown id; management revoke/delete on an id whose owner shares no organization with the caller, an unknown id, a SYSTEM key's id, or a superadmin-owned key seen by a non-superadmin |
+| `authentication_failed` | 401 | Any request authenticating with a raw key that doesn't match a non-revoked key (`"Invalid API key"`), matches an expired one (`"API key has expired"`), or matches a key whose owner's account is deactivated (`"API key owner is inactive"`) |
+| `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint), the `api_keys` door gate, or a forbidden `?org_ids=` entry on the management list |
+| `org_membership_required` | 403 | Caller (JWT or API key) sends `X-Organization-Id` pointing to an org they are not a member of — applies to ordinary org-scoped endpoints; the admin API-key surface has no header and never raises this |
+| `org_context_required` | 400 | `X-Organization-Id` missing or not an integer on a header-required endpoint; on the admin API-key list, a non-integer `?org_ids=` value |
 | `not_authenticated` | 401 | No credential supplied at all |
 
 See [auth_endpoints.md](auth_endpoints.md) for the rest of the auth
 surface, and [roles_and_permissions.md](roles_and_permissions.md) for the
-full `SECRETS` / RBAC permission model.
+full `api_keys` / RBAC permission model.
