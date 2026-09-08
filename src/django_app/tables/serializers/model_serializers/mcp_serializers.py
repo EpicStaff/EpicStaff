@@ -41,7 +41,7 @@ class McpToolSerializer(serializers.ModelSerializer):
     class Meta:
         model = McpTool
         exclude = ["auth_secret"]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at", "updated_at"]
 
     def to_internal_value(self, data):
         if isinstance(data, dict) and data.get("labels") is None:
