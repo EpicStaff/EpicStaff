@@ -1,10 +1,12 @@
-from typing import Optional
+from typing import Iterable, Optional
 
+from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
+    OrgScope,
 )
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
@@ -12,7 +14,7 @@ from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
 
 class CrossOrgResourceService:
     """Reusable authorization skeleton for cross-org management resources
-    (roles, memberships, organizations).
+    (roles, memberships, organizations, API keys).
 
     The coarse door gate (holds the action in >=1 org) runs in the view
     (`HasResourcePermissionAnywhere`). These methods do the precise per-org
@@ -24,7 +26,11 @@ class CrossOrgResourceService:
       explicit `?org_ids=` selection with a 403 fail-loud on a forbidden id.
     - `resolve_for_write` — resolve the caller's permissions in a row's org,
       turning a non-member into the resource's own 404 (no existence leak).
+    - `authorize_any_org` — like `resolve_for_write`, for a row scoped
+      through a set of orgs rather than a single org column.
     - `assert_can` — the verb check (403 on failure).
+    - `delegated_scope_q` — optional extra `Q` filter `apply_org_scope`
+      applies for non-superadmins (e.g. an owner-membership join).
 
     Subclasses set `rbac_resource_type` (a `ResourceType`) and
     `not_found_exception` (the resource's 404 exception class).
@@ -32,6 +38,7 @@ class CrossOrgResourceService:
 
     rbac_resource_type = None
     not_found_exception = None
+    delegated_scope_q: Optional[Q] = None
 
     _resolver = PermissionResolver()
     _org_access = CrossOrgPermissionResolver()
@@ -59,6 +66,30 @@ class CrossOrgResourceService:
         except OrgMembershipRequiredError as exc:
             raise self.not_found_exception() from exc
 
+    def authorize_any_org(
+        self,
+        actor,
+        org_ids: Iterable[int],
+        action: Permission,
+        scopes: Optional[list[OrgScope]] = None,
+    ) -> None:
+        """Authorize a row scoped through a set of orgs rather than one column.
+
+        Membership decides the 404, the permission bit decides the 403 — the
+        same split as `resolve_for_write`, which is this method with one org.
+        """
+        if getattr(actor, "is_superadmin", False):
+            return
+        if scopes is None:
+            scopes = self._org_access.resolve_all(user=actor)
+        requested: set[int] = set(org_ids)
+        reachable: list[OrgScope] = [s for s in scopes if s.org.id in requested]
+        if not reachable:
+            raise self.not_found_exception()
+        resource: str = self.rbac_resource_type.value
+        if not any(scope.effective.can(resource, action) for scope in reachable):
+            raise PermissionDenied("You do not have permission to perform this action.")
+
     def assert_can(self, effective, action) -> None:
         if not effective.can(self.rbac_resource_type.value, action):
             raise PermissionDenied("You do not have permission to perform this action.")
@@ -69,6 +100,8 @@ class CrossOrgResourceService:
         the whole request. `org_ids=None` = every readable org (superadmin =
         no filter). `org_field` is the queryset lookup to the org id."""
         readable = self.resolve_readable_org_ids(actor, scopes=scopes)
+        if readable is not None and self.delegated_scope_q is not None:
+            base_qs = base_qs.filter(self.delegated_scope_q)
         if org_ids is not None:
             requested = set(org_ids)
             if readable is not None:
