@@ -9,20 +9,29 @@ endif
 # IMPORTANT: This Makefile must be run from the project's root directory
 # (the same directory this file is in).
 
+# Single compose file + single env file for every environment.
+COMPOSE := docker compose -f docker-compose.yaml --env-file ./.env
+
+# Guard for single-service targets: warn (but still proceed) when s=<service>
+# is missing, in which case docker compose acts on ALL services. A make
+# function (not shell `test`) so it also works under cmd.exe on Windows.
+warn-no-s = $(if $(strip $(s)),,$(warning no s=<service> given - applying to ALL services))
+
 .DEFAULT_GOAL := help
 .PHONY: help \
         backup apply-backup stash-tags apply-tags switch \
-        dev dev-init dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
-        dev-voice dev-ngrok \
-        prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
+        init ensure-env up down build rebuild rebuild-s restart logs logs-s \
         clean docker-generate-certs \
-        gen-env check-env \
-        django-makemigrations django-migrate django-manage django-tests crew-tests
+        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests
 
 # --- Help ---
 
 help:
+ifeq ($(OS),Windows_NT)
 	@type make_scripts\help.txt
+else
+	@cat make_scripts/help.txt
+endif
 
 # ==========================================
 # BRANCH SWITCHING
@@ -69,10 +78,10 @@ else
 endif
 
 # ==========================================
-# DEVELOPMENT Environment
+# ENVIRONMENT
 # ==========================================
 
-dev-init:
+init:
 	@echo "--- Creating external volumes and networks ---"
 	@docker volume create sandbox_venvs      || true
 	@docker volume create crew_pgdata        || true
@@ -81,103 +90,55 @@ dev-init:
 	@docker network create mcp-network       || true
 	@echo "--- Done ---"
 
-dev: dev-init
-	@echo "--- Starting development services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up -d
+# Create src/.env from the tracked template on first run. src/.env is gitignored,
+# so a fresh clone has none; every target that starts containers depends on this.
+ensure-env:
+ifeq ($(OS),Windows_NT)
+	@if not exist src\.env ( echo --- Creating src\.env from src\.env.example --- & copy src\.env.example src\.env >NUL )
+else
+	@test -f src/.env || (echo "--- Creating src/.env from src/.env.example ---" && cp src/.env.example src/.env)
+endif
 
-dev-down:
-	@echo "--- Stopping development services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env down
+up: init ensure-env
+	@echo "--- Starting services ---"
+	@cd src && $(COMPOSE) up -d
 
-dev-build:
-	@echo "--- Building development services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env build
+down:
+	@echo "--- Stopping services ---"
+	@cd src && $(COMPOSE) down
 
-dev-logs:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f
+build: init ensure-env
+	@echo "--- Building images ---"
+	@cd src && $(COMPOSE) build
 
-dev-restart:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env restart $(s)
+rebuild: init ensure-env
+	@echo "--- Rebuilding all services (no cache) ---"
+	@cd src && $(COMPOSE) build --no-cache
+	@cd src && $(COMPOSE) up -d
 
-dev-logs-s:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f $(s)
+rebuild-s: ensure-env
+	$(warn-no-s)
+	@echo "--- Rebuilding and restarting a single service (uses cache) ---"
+	@cd src && $(COMPOSE) up --build -d $(s)
 
-dev-rebuild-s:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up --build -d $(s)
+restart:
+	$(warn-no-s)
+	@cd src && $(COMPOSE) restart $(s)
 
-rebuild-dev: dev-init
-	@echo "--- Rebuilding development services (no cache) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env build --no-cache
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up -d
+logs:
+	@cd src && $(COMPOSE) logs -f
 
-dev-voice: dev-init
-	@echo "--- Starting development services with voice (ngrok) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env --profile voice up -d
-
-dev-ngrok: dev-init
-	@echo "--- Starting ngrok tunnel ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env --profile voice up ngrok
-
-# ==========================================
-# PRODUCTION Environment
-# ==========================================
-
-prod-init:
-	@echo "--- Creating external volumes and networks ---"
-	@docker volume create sandbox_venvs      || true
-	@docker volume create crew_pgdata        || true
-	@docker volume create media_data         || true
-	@docker volume create graph_data         || true
-	@docker network create mcp-network       || true
-	@echo "--- Done ---"
-
-prod: prod-build prod-up
-
-prod-build: prod-init
-	@echo "--- Building production images ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env build
-
-prod-up: prod-init
-	@echo "--- Starting production services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env up -d
-
-start-prod: prod
-
-prod-down:
-	@echo "--- Stopping production services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down
-
-prod-logs:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env logs -f
-
-prod-voice:
-	@echo "--- Starting production services with voice (ngrok) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env --profile voice up -d
-
-prod-ngrok:
-	@echo "--- Starting ngrok tunnel (production) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env --profile voice up ngrok
-
-# ==========================================
-# ENV FILE GENERATION
-# ==========================================
-
-gen-env:
-	@echo "--- Regenerating src/.dev.env, src/.debug.env, src/.env.example from src/env.yaml ---"
-	@python scripts/generate_env.py
-
-check-env:
-	@echo "--- Checking generated env files match src/env.yaml ---"
-	@python scripts/generate_env.py --check
+logs-s:
+	$(warn-no-s)
+	@cd src && $(COMPOSE) logs -f $(s)
 
 # ==========================================
 # UTILITIES
 # ==========================================
 
 clean:
-	@echo "--- Cleaning up all environments and removing volumes ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env down -v --remove-orphans
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down -v --remove-orphans
+	@echo "--- Stopping services and removing volumes. WARNING: wipes DB data. ---"
+	@cd src && $(COMPOSE) down -v --remove-orphans
 
 docker-generate-certs:
 	@test -n "$(domain)" || (echo "ERROR: domain is required. Usage: make docker-generate-certs domain=example.com" && exit 1)
