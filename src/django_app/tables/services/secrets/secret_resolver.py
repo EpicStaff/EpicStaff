@@ -17,10 +17,10 @@ _SECRET_ID_SUFFIX = "_secret_id"
 _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
 
-# Third convention: `secret(<name>)` markers embedded in header string values.
-# The value keeps the marker in the persisted graph_schema; only the
+# Third convention: `epicstaff_secret(<name>)` markers embedded in header string
+# values. The value keeps the marker in the persisted graph_schema; only the
 # resolve_payload copy (bound for Redis/upstream) gets the plaintext.
-_HEADER_FIELDS = frozenset({"headers", "extra_headers"})
+_HEADER_FIELDS = frozenset({"extra_headers"})
 _SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
 
 
@@ -182,7 +182,7 @@ class SecretResolver:
     def _fill_header_markers(
         self, *, model: BaseModel, field_name: str, org_id: int
     ) -> None:
-        """Replace `secret(<name>)` markers in a header dict with plaintext."""
+        """Replace `epicstaff_secret(<name>)` markers in a header dict with plaintext."""
         headers = getattr(model, field_name)
         if not headers:
             return

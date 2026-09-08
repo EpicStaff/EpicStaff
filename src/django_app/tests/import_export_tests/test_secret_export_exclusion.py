@@ -36,8 +36,8 @@ _CREDENTIAL_NAME_RE = re.compile(
 # Credential-shaped names verified safe to export. `max_tokens` is a generation
 # limit (matches on "token"), not a credential. Secret FKs (api_key_secret, ...)
 # are already dropped via each serializer's Meta.exclude, so they never appear.
-# headers/extra_headers carry only `secret(<name>)` markers (names, not raw
-# values) and do not match the pattern, so they need no entry here.
+# extra_headers carries only `epicstaff_secret(<name>)` markers (names, not raw
+# values) and does not match the pattern, so it needs no entry here.
 SAFE_CREDENTIAL_SHAPED_FIELDS = {"max_tokens"}
 
 
