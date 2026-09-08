@@ -1,4 +1,7 @@
-<div class="tools-list-page">
+<div
+    class="tools-list-page"
+    (click)="onPageClick($event)"
+>
     <div class="sticky-header">
         <header class="header">
             <div
@@ -14,12 +17,14 @@
                 @if (viewState.selectMode()) {
                     <app-button
                         type="ghost"
+                        data-selection-safe
                         (click)="cancelExport()"
                     >
                         Cancel
                     </app-button>
                     <app-button
                         type="ghost"
+                        data-selection-safe
                         (click)="toggleSelectAllTools()"
                     >
                         {{ viewState.isAllVisibleSelected() ? 'Deselect all' : 'Select all' }}
@@ -27,6 +32,7 @@
                     <app-button
                         type="primary"
                         [disabled]="viewState.selectedCount() === 0"
+                        data-selection-safe
                         (click)="confirmExport()"
                     >
                         Export {{ viewState.selectedCount() }} tools
@@ -45,6 +51,7 @@
                         *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
                         leftIcon="upload"
                         type="outline-primary"
+                        data-selection-safe
                         (click)="onExportClick()"
                     >
                         Export
@@ -101,6 +108,7 @@
             <div class="breadcrumb-bar">
                 <button
                     class="expand-sidebar-btn"
+                    data-selection-safe
                     (click)="toggleSidebar()"
                     [class.active]="showSidebar()"
                     [matTooltip]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
@@ -143,8 +151,11 @@
                         cdkOverlayOrigin
                         type="button"
                         class="menu-trigger"
+                        data-selection-safe
                         [class.active]="bulkMenuOpen()"
                         (click)="toggleBulkMenu()"
+                        (mouseenter)="onBulkButtonEnter()"
+                        (mouseleave)="onBulkButtonLeave()"
                     >
                         <app-svg-icon
                             icon="bulk-menu"
@@ -162,8 +173,6 @@
                         cdkConnectedOverlay
                         [cdkConnectedOverlayOrigin]="bulkTrigger"
                         [cdkConnectedOverlayOpen]="bulkMenuOpen()"
-                        [cdkConnectedOverlayHasBackdrop]="true"
-                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
                         [cdkConnectedOverlayOffsetY]="6"
                         [cdkConnectedOverlayPositions]="[
                             {
@@ -173,7 +182,7 @@
                                 overlayY: 'top',
                             },
                         ]"
-                        (backdropClick)="closeBulkMenu()"
+                        (overlayOutsideClick)="onBulkOverlayOutsideClick()"
                         (detach)="closeBulkMenu()"
                     >
                         <app-tools-bulk-actions-menu
@@ -183,6 +192,9 @@
                             [partialLabelIds]="partialSelectedLabelIds()"
                             (actionSelected)="onBulkAction($event)"
                             (labelsApplied)="onBulkLabelsApplied($event)"
+                            (labelsOpenChange)="onBulkLabelsOpenChange($event)"
+                            (mouseenter)="onBulkMenuEnter()"
+                            (mouseleave)="onBulkMenuLeave()"
                         />
                     </ng-template>
 

@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ConnectedPosition } from '@angular/cdk/overlay';
+import { ChangeDetectionStrategy, Component, effect, input, output, viewChild } from '@angular/core';
 import { AppSvgIconComponent, LabelDropdownComponent } from '@shared/components';
 
 import { ToolsBulkActionKind } from '../../../../services/tools-view-storage.service';
@@ -28,6 +29,21 @@ export class ToolsBulkActionsMenuComponent {
 
     public readonly actionSelected = output<ToolsBulkAction>();
     public readonly labelsApplied = output<{ addLabelIds: number[]; removeLabelIds: number[] }>();
+    public readonly labelsOpenChange = output<boolean>();
+
+    protected readonly labelsPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 6 },
+        { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -6 },
+    ];
+
+    private readonly labelsDropdown = viewChild(LabelDropdownComponent);
+
+    constructor() {
+        effect(() => {
+            const ld = this.labelsDropdown();
+            this.labelsOpenChange.emit(ld ? ld.isOpen() : false);
+        });
+    }
 
     public onSelect(action: ToolsBulkAction): void {
         this.actionSelected.emit(action);

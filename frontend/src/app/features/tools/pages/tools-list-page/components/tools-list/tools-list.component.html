@@ -22,6 +22,7 @@
                 } @else {
                     @for (card of cards(); track card.id) {
                         <app-tool-card
+                            data-selection-safe
                             [tool]="card"
                             [selected]="viewState.isSelected(card.id)"
                             [showUsage]="viewState.showUsageAndUnused()"

@@ -5,6 +5,7 @@ import {
     Component,
     computed,
     DestroyRef,
+    HostListener,
     inject,
     OnDestroy,
     OnInit,
@@ -80,6 +81,11 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     public showSidebar = signal<boolean>(true);
     public filterMenuOpen = signal<boolean>(false);
     public bulkMenuOpen = signal<boolean>(false);
+
+    private readonly isMouseOnBulkButton = signal<boolean>(false);
+    private readonly isMouseOnBulkMenu = signal<boolean>(false);
+    private readonly isBulkLabelsOpen = signal<boolean>(false);
+    private bulkCloseTimeout: ReturnType<typeof setTimeout> | null = null;
 
     private readonly dialog = inject(Dialog);
     private readonly permissionService = inject(PermissionsService);
@@ -194,6 +200,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     }
 
     public ngOnDestroy(): void {
+        this.cancelBulkCloseTimeout();
         this.toolsSearchService.clearSearch();
         this.viewState.setSelectMode(false);
         this.viewState.clearSelection();
@@ -300,12 +307,95 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         });
     }
 
+    /** Clears the tool selection when the user clicks anywhere on the page
+     *  that isn't a tool card or one of the explicitly whitelisted controls
+     *  (marked with `data-selection-safe`). CDK overlays live outside this
+     *  root so their clicks never reach this handler. */
+    public onPageClick(event: MouseEvent): void {
+        if (this.viewState.selectedCount() === 0) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('[data-selection-safe]')) return;
+        this.viewState.clearSelection();
+    }
+
+    @HostListener('document:keydown.escape')
+    public onEscape(): void {
+        if (this.viewState.selectedCount() === 0) return;
+        this.viewState.clearSelection();
+    }
+
     public toggleBulkMenu(): void {
-        this.bulkMenuOpen.update((v) => !v);
+        const next = !this.bulkMenuOpen();
+        this.bulkMenuOpen.set(next);
+        if (next) {
+            this.cancelBulkCloseTimeout();
+            this.isMouseOnBulkButton.set(true);
+            this.isMouseOnBulkMenu.set(false);
+        }
     }
 
     public closeBulkMenu(): void {
+        this.cancelBulkCloseTimeout();
         this.bulkMenuOpen.set(false);
+        this.isMouseOnBulkButton.set(false);
+        this.isMouseOnBulkMenu.set(false);
+    }
+
+    public onBulkButtonEnter(): void {
+        this.isMouseOnBulkButton.set(true);
+        this.cancelBulkCloseTimeout();
+    }
+
+    public onBulkButtonLeave(): void {
+        this.isMouseOnBulkButton.set(false);
+        this.scheduleBulkClose();
+    }
+
+    public onBulkMenuEnter(): void {
+        this.isMouseOnBulkMenu.set(true);
+        this.cancelBulkCloseTimeout();
+    }
+
+    public onBulkMenuLeave(): void {
+        this.isMouseOnBulkMenu.set(false);
+        this.scheduleBulkClose();
+    }
+
+    public onBulkOverlayOutsideClick(): void {
+        if (this.isBulkLabelsOpen()) return;
+        this.closeBulkMenu();
+    }
+
+    public onBulkLabelsOpenChange(open: boolean): void {
+        this.isBulkLabelsOpen.set(open);
+        if (open) {
+            this.cancelBulkCloseTimeout();
+        } else {
+            this.scheduleBulkClose();
+        }
+    }
+
+    private scheduleBulkClose(): void {
+        if (this.isBulkLabelsOpen()) return;
+        if (this.bulkMenuOpen() && !this.isMouseOnBulkButton() && !this.isMouseOnBulkMenu()) {
+            this.bulkCloseTimeout = setTimeout(() => {
+                if (
+                    !this.isBulkLabelsOpen() &&
+                    this.bulkMenuOpen() &&
+                    !this.isMouseOnBulkButton() &&
+                    !this.isMouseOnBulkMenu()
+                ) {
+                    this.closeBulkMenu();
+                }
+            }, 100);
+        }
+    }
+
+    private cancelBulkCloseTimeout(): void {
+        if (this.bulkCloseTimeout) {
+            clearTimeout(this.bulkCloseTimeout);
+            this.bulkCloseTimeout = null;
+        }
     }
 
     public onBulkAction(action: ToolsBulkAction): void {

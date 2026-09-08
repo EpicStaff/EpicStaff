@@ -4,55 +4,58 @@
     (click)="onCardClick()"
 >
     <div class="card-body">
-        <div
-            class="card-top-row"
-            (click)="$event.stopPropagation()"
-        >
+        <div class="card-top-row">
             <div class="card-top-left">
-                <app-checkbox
-                    color="secondary"
-                    [checked]="selected()"
-                    (changed)="onSelectToggle($event)"
-                />
+                <span
+                    class="checkbox-hit"
+                    (click)="$event.stopPropagation(); onCheckboxHitClick($event)"
+                >
+                    <app-checkbox
+                        color="secondary"
+                        [checked]="selected()"
+                        (changed)="onSelectToggle($event)"
+                    />
+                </span>
                 <app-svg-icon
                     icon="tools"
                     size="1rem"
                 />
 
-                @if (showUsage()) {
-                    @if (tool().unused) {
-                        <span class="unused">Unused</span>
-                    } @else {
-                        <div class="usage-chip">
-                            @if (tool().agentSurfaceUsage) {
-                                <span class="chip-item">
-                                    <app-svg-icon
-                                        icon="agent"
-                                        size="1rem"
-                                    />
-                                    <span>{{ tool().agentSurfaceUsage }}</span>
-                                </span>
-                            }
-                            @if (tool().sharedSurfaceUsage) {
-                                <span class="chip-item">
-                                    <app-svg-icon
-                                        icon="surfaces-tab"
-                                        size="0.875rem"
-                                    />
-                                    <span>{{ tool().sharedSurfaceUsage }}</span>
-                                </span>
-                            }
-                            @if (tool().inlineUsage) {
-                                <span class="chip-item">
-                                    <app-svg-icon
-                                        icon="local-surface"
-                                        size="1rem"
-                                    />
-                                    <span>{{ tool().inlineUsage }}</span>
-                                </span>
-                            }
-                        </div>
-                    }
+                @if (showUsage() && !tool().unused) {
+                    <div
+                        class="usage-chip"
+                        matTooltip="Show used places"
+                        matTooltipPosition="above"
+                        (click)="$event.stopPropagation(); onUsageChipClick()"
+                    >
+                        @if (tool().agentSurfaceUsage) {
+                            <span class="chip-item">
+                                <app-svg-icon
+                                    icon="agent"
+                                    size="1rem"
+                                />
+                                <span>{{ tool().agentSurfaceUsage }}</span>
+                            </span>
+                        }
+                        @if (tool().sharedSurfaceUsage) {
+                            <span class="chip-item">
+                                <app-svg-icon
+                                    icon="surfaces-tab"
+                                    size="0.875rem"
+                                />
+                                <span>{{ tool().sharedSurfaceUsage }}</span>
+                            </span>
+                        }
+                        @if (tool().inlineUsage) {
+                            <span class="chip-item">
+                                <app-svg-icon
+                                    icon="local-surface"
+                                    size="1rem"
+                                />
+                                <span>{{ tool().inlineUsage }}</span>
+                            </span>
+                        }
+                    </div>
                 }
             </div>
 
@@ -63,11 +66,11 @@
                     matTooltip="Add to favorites"
                     matTooltipPosition="above"
                     [class.active]="tool().favorite"
-                    (click)="onStarClick($event)"
+                    (click)="$event.stopPropagation(); onStarClick($event)"
                 >
                     <app-svg-icon
                         [icon]="tool().favorite ? 'star-filled' : 'star'"
-                        size="1.1rem"
+                        size="1.125rem"
                     />
                 </button>
                 <button
@@ -78,7 +81,9 @@
                     matTooltip="Options"
                     matTooltipPosition="above"
                     [class.active]="menuOpen()"
-                    (click)="toggleMenu($event)"
+                    (click)="$event.stopPropagation(); toggleMenu($event)"
+                    (mouseenter)="onButtonEnter()"
+                    (mouseleave)="onButtonLeave()"
                 >
                     <app-svg-icon
                         icon="dots-vertical"
@@ -90,8 +95,6 @@
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="menuTrigger"
                     [cdkConnectedOverlayOpen]="menuOpen()"
-                    [cdkConnectedOverlayHasBackdrop]="true"
-                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
                     [cdkConnectedOverlayOffsetX]="6"
                     [cdkConnectedOverlayPositions]="[
                         {
@@ -107,13 +110,17 @@
                             overlayY: 'top',
                         },
                     ]"
-                    (backdropClick)="closeMenu()"
+                    (overlayOutsideClick)="onOverlayOutsideClick()"
                     (detach)="closeMenu()"
                 >
                     <app-tool-card-menu
                         [toolLabelIds]="tool().labelIds"
+                        [isBuiltIn]="!!tool().builtIn"
                         (actionSelected)="onMenuAction($event)"
                         (labelsChanged)="onMenuLabelsChanged($event)"
+                        (labelsOpenChange)="onLabelsOpenChange($event)"
+                        (mouseenter)="onMenuEnter()"
+                        (mouseleave)="onMenuLeave()"
                     />
                 </ng-template>
             </div>
