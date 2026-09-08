@@ -77,6 +77,10 @@ jobs:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
+      # Dev dependencies are included here and NOT in the actionable pass: they
+      # never reach the nginx image, so they are inventory rather than shipped
+      # exposure -- but a compromised build-time package still matters, and
+      # trivy hides them by default.
       - name: Scan frontend/ (all known)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -86,6 +90,7 @@ jobs:
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           skip-dirs: '**/node_modules'
+          trivy-config: .github/trivy-frontend-devdeps.yaml
           format: table
           output: trivy-frontend-all.txt
           exit-code: '0'
