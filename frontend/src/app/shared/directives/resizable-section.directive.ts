@@ -24,6 +24,7 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
     readonly dragStart = output<void>();
 
     private isResizing = false;
+    private hasMoved = false;
     private startY = 0;
     private startHeight = 0;
     private effectiveMaxHeight = 600;
@@ -49,6 +50,7 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
 
     private onResizeStart(event: PointerEvent): void {
         this.isResizing = true;
+        this.hasMoved = false;
         this.startY = event.clientY;
         this.startHeight = this.sectionTarget().getBoundingClientRect().height;
         const dynamicMax = this.sectionMaxHeightFn()?.();
@@ -56,6 +58,7 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
             dynamicMax != null ? Math.min(this.sectionMaxHeight(), dynamicMax) : this.sectionMaxHeight();
         this.pointerId = event.pointerId;
         this.el.nativeElement.setPointerCapture(event.pointerId);
+        this.renderer.addClass(this.el.nativeElement, 'is-dragging');
         this.document.body.style.cursor = 'row-resize';
         this.document.body.style.userSelect = 'none';
         event.preventDefault();
@@ -85,20 +88,25 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         if (!this.isResizing) {
             return;
         }
+        this.hasMoved = true;
         this.pendingHeight = this.startHeight + (event.clientY - this.startY);
         if (this.frameId !== null) {
             return;
         }
         this.frameId = requestAnimationFrame(() => {
             this.frameId = null;
-            this.ngZone.run(() => {
-                this.sectionHeightService.setHeight(
-                    this.storageKey(),
-                    this.pendingHeight,
-                    this.sectionMinHeight(),
-                    this.effectiveMaxHeight
-                );
-            });
+            this.applyPendingHeight();
+        });
+    }
+
+    private applyPendingHeight(): void {
+        this.ngZone.run(() => {
+            this.sectionHeightService.setHeight(
+                this.storageKey(),
+                this.pendingHeight,
+                this.sectionMinHeight(),
+                this.effectiveMaxHeight
+            );
         });
     }
 
@@ -108,8 +116,14 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         }
         this.isResizing = false;
         this.releasePointerCapture();
-        this.resetBodyStyles();
-        if (commit) {
+        this.resetDragState();
+        if (this.frameId !== null) {
+            // A pointerup can land between rAF frames — flush the last move so we don't commit stale height.
+            cancelAnimationFrame(this.frameId);
+            this.frameId = null;
+            this.applyPendingHeight();
+        }
+        if (commit && this.hasMoved) {
             this.ngZone.run(() => this.sectionHeightService.commitHeight(this.storageKey()));
         }
         this.unlistenPointerMove?.();
@@ -124,7 +138,9 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         this.pointerId = null;
     }
 
-    private resetBodyStyles(): void {
+    /** Undoes everything onResizeStart applied: the dragging class and the body cursor/selection lock. */
+    private resetDragState(): void {
+        this.renderer.removeClass(this.el.nativeElement, 'is-dragging');
         this.document.body.style.cursor = '';
         this.document.body.style.userSelect = '';
     }
@@ -140,7 +156,7 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         if (this.isResizing) {
             this.isResizing = false;
             this.releasePointerCapture();
-            this.resetBodyStyles();
+            this.resetDragState();
         }
         this.unlistenPointerMove?.();
         this.unlistenPointerUp?.();

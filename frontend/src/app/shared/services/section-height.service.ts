@@ -8,12 +8,13 @@ const STORAGE_PREFIX = 'section-height:';
 export class SectionHeightService {
     private readonly heightSignals = new Map<string, WritableSignal<number | null>>();
 
-    public getHeight(key: string): Signal<number | null> {
-        return this.getOrCreateSignal(key).asReadonly();
+    /** `min` guards only against a stored height that's since fallen below the section's floor — there's no matching `max` since that bound is drag-time-only (see `sectionMaxHeightFn`). */
+    public getHeight(key: string, min = 0): Signal<number | null> {
+        return this.getOrCreateSignal(key, min).asReadonly();
     }
 
     public setHeight(key: string, px: number, min: number, max: number): void {
-        this.getOrCreateSignal(key).set(this.clamp(px, min, max));
+        this.getOrCreateSignal(key, min).set(this.clamp(px, min, max));
     }
 
     public commitHeight(key: string): void {
@@ -28,16 +29,16 @@ export class SectionHeightService {
         }
     }
 
-    private getOrCreateSignal(key: string): WritableSignal<number | null> {
+    private getOrCreateSignal(key: string, min: number): WritableSignal<number | null> {
         let existing = this.heightSignals.get(key);
         if (!existing) {
-            existing = signal(this.readStoredHeight(key));
+            existing = signal(this.readStoredHeight(key, min));
             this.heightSignals.set(key, existing);
         }
         return existing;
     }
 
-    private readStoredHeight(key: string): number | null {
+    private readStoredHeight(key: string, min: number): number | null {
         let raw: string | null = null;
         try {
             raw = localStorage.getItem(STORAGE_PREFIX + key);
@@ -48,7 +49,7 @@ export class SectionHeightService {
             return null;
         }
         const parsed = Number(raw);
-        return Number.isFinite(parsed) ? parsed : null;
+        return Number.isFinite(parsed) ? Math.max(min, Math.round(parsed)) : null;
     }
 
     private clamp(px: number, min: number, max: number): number {

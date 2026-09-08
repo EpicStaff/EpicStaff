@@ -149,9 +149,9 @@
 
 .explorer__section-body--fill {
     flex: 1 1 auto;
-    // 6 full tree rows (tree-node.component.scss: .row min-height 28px) — keep in sync with
+    // 3 full tree rows (tree-node.component.scss: .row min-height 28px) — keep in sync with
     // FILL_BODY_MIN_HEIGHT in explorer.component.ts, which reserves this same floor during drags.
-    min-height: 168px;
+    min-height: 84px;
     overflow-y: auto;
 }
 
@@ -162,19 +162,20 @@
 
 .explorer__section-resize-handle {
     flex-shrink: 0;
-    height: 6px;
-    margin-top: -3px;
+    height: 10px;
+    margin-top: -5px;
     cursor: row-resize;
     touch-action: none;
     z-index: 1;
     position: relative;
 
     &:hover,
-    &:active {
+    &:active,
+    &.is-dragging {
         &::after {
             content: '';
             position: absolute;
-            inset: 2px 0;
+            inset: 4px 0;
             border-radius: 2px;
             background: var(--accent-color);
             opacity: 0.4;

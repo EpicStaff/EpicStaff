@@ -30,10 +30,10 @@ import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.co
 const SIDEBAR_STORAGE_KEY = 'agents';
 /**
  * Matches .explorer__section-body--fill's CSS min-height — the floor a resize drag must never push
- * the filling section below. 168 = 6 full tree rows (tree-node.component.scss: .row min-height 28px),
- * so the filling section never bottoms out mid-row (100px only fit ~3.5 rows, cutting the 4th item off).
+ * the filling section below. 84 = 3 full tree rows (tree-node.component.scss: .row min-height 28px),
+ * so the filling section never bottoms out mid-row.
  */
-const FILL_BODY_MIN_HEIGHT = 168;
+const FILL_BODY_MIN_HEIGHT = 84;
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -72,6 +72,8 @@ export class ExplorerComponent {
     private readonly sectionHeightSignals = new Map<ExplorerSectionId, Signal<number | null>>();
 
     protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
+    /** Same floor as the fill body's CSS min-height, so a manual drag can't cut a tree row off either. */
+    protected readonly sectionMinHeight = FILL_BODY_MIN_HEIGHT;
     protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
 
     @HostBinding('style.width.px')
@@ -231,7 +233,7 @@ export class ExplorerComponent {
     private sectionHeightSignal(sectionId: ExplorerSectionId): Signal<number | null> {
         let sig = this.sectionHeightSignals.get(sectionId);
         if (!sig) {
-            sig = this.sectionHeightService.getHeight(this.sectionHeightKey(sectionId));
+            sig = this.sectionHeightService.getHeight(this.sectionHeightKey(sectionId), this.sectionMinHeight);
             this.sectionHeightSignals.set(sectionId, sig);
         }
         return sig;
