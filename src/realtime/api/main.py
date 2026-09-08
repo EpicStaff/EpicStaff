@@ -93,7 +93,7 @@ async def get_channel_config(channel_token: str) -> dict:
     now = asyncio.get_event_loop().time()
     cached = _channel_cache.get(channel_token)
     if cached and (now - cached[1]) < _CHANNEL_TTL:
-        logger.debug(f"[channel_config] cache hit for token={channel_token}")
+        logger.debug("[channel_config] cache hit")
         return cached[0]
 
     # Dedicated by-token lookup action (RealtimeChannelViewSet.lookup_by_token) —
@@ -111,7 +111,7 @@ async def get_channel_config(channel_token: str) -> dict:
                 timeout=5.0,
             )
             logger.debug(
-                f"[channel_config] Django response: status={r.status_code} body={r.text[:300]}"
+                f"[channel_config] Django response: status={r.status_code}"
             )
             if r.is_success:
                 data = r.json()
@@ -126,7 +126,7 @@ async def get_channel_config(channel_token: str) -> dict:
                 return data
             else:
                 logger.warning(
-                    f"[channel_config] request failed: {r.status_code} {r.text}"
+                    f"[channel_config] request failed: status={r.status_code}"
                 )
     except Exception as e:
         logger.exception(f"[channel_config] exception fetching config: {e}")
@@ -171,9 +171,7 @@ async def redis_listener():
                     realtime_agent_chat_data.connection_key, realtime_agent_chat_data
                 )
 
-                logger.info(
-                    f"Saved connection: {realtime_agent_chat_data.connection_key}"
-                )
+                logger.info("Saved connection")
 
             except Exception as e:
                 logger.error(f"Error processing embedding: {e}")
@@ -254,8 +252,7 @@ async def root(
     ):
         logger.warning(
             f"WebSocket auth rejected: user {user_info.get('user_id')} has no "
-            f"membership in org {realtime_agent_chat_data.org_id} for "
-            f"connection_key={connection_key}"
+            f"membership in org {realtime_agent_chat_data.org_id}"
         )
         await websocket.close(code=1008)
         return
@@ -364,10 +361,8 @@ async def _twilio_voice_webhook(
 ) -> Response:
     """Shared logic for both old and new Twilio voice webhook handlers."""
     logger.info(
-        f"[voice_webhook] auth_token present={bool(auth_token)} voice_stream_url={voice_stream_url}"
+        f"[voice_webhook] auth_token present={bool(auth_token)} voice_stream_url configured"
     )
-    logger.debug(f"[voice_webhook] headers={dict(request.headers)}")
-
     if auth_token:
         signature = request.headers.get("X-Twilio-Signature", "")
         base_url = (base_url or "").rstrip("/")
@@ -386,7 +381,7 @@ async def _twilio_voice_webhook(
         url = f"{base_url}{path}{query}"
         form_data = dict(await request.form())
         logger.debug(
-            f"[voice_webhook] validating signature: url={url} form_data={form_data}"
+            f"[voice_webhook] validating signature: url=configured form_data_keys={list(form_data.keys())}"
         )
         valid = validate_twilio_signature(url, form_data, signature, auth_token)
         logger.info(f"[voice_webhook] signature valid={valid}")
@@ -417,7 +412,7 @@ async def _twilio_voice_webhook(
     </Stream>
   </Connect>
 </Response>"""
-    logger.info(f"[voice_webhook] returning TwiML with stream url={voice_stream_url}")
+    logger.info("[voice_webhook] returning TwiML with stream url configured")
     return Response(content=twiml, media_type="application/xml")
 
 
@@ -501,8 +496,7 @@ async def _voice_stream_handler(
         # mint and this consume).
         logger.warning(
             f"Voice stream WS rejected: missing/invalid/expired/reused stream_token "
-            f"(bound_key={stream_bound_key}, token_present={bool(effective_stream_token)}, "
-            f"token_source={token_source})"
+            f"(token_present={bool(effective_stream_token)}, token_source={token_source})"
         )
         await twilio_ws.close(code=1008)
         return
@@ -526,13 +520,11 @@ async def _voice_stream_handler(
                 timeout=10.0,
             )
             if resp.status_code >= 400:
-                logger.error(f"Init realtime failed: {resp.status_code} {resp.text}")
+                logger.error(f"Init realtime failed: status={resp.status_code}")
                 await twilio_ws.close()
                 return
             conn_key = resp.json().get("connection_key")
-            logger.info(
-                f"Init realtime response: status={resp.status_code} conn_key={conn_key}"
-            )
+            logger.info(f"Init realtime response: status={resp.status_code}")
         except Exception as e:
             logger.error(f"Failed to init realtime session: {e}")
             await twilio_ws.close()
@@ -547,7 +539,7 @@ async def _voice_stream_handler(
         await asyncio.sleep(0.1)
 
     if realtime_agent_chat_data is None:
-        logger.error(f"No agent data found for connection_key={conn_key}")
+        logger.error("No agent data found for connection_key")
         await twilio_ws.close()
         return
 
@@ -557,7 +549,7 @@ async def _voice_stream_handler(
     # AttributeError if it's ever missing.
     if getattr(realtime_agent_chat_data, "org_id", None) is None:
         logger.error(
-            f"Twilio voice stream rejected: connection_key={conn_key} has no "
+            "Twilio voice stream rejected: connection_key has no "
             "org_id on its RealtimeAgentChatData payload — refusing to start "
             "an unscoped realtime session."
         )
@@ -592,17 +584,17 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     Twilio calls this on incoming call (channel-token routing).
     Returns TwiML directing audio to /voice/{channel_token}/stream.
     """
-    logger.info(f"[voice/{channel_token}] POST received from {request.client.host}")
+    logger.info(f"[voice] POST received from {request.client.host}")
 
     agent_definition_id, channel = await _resolve_channel_agent(channel_token)
     logger.info(
-        f"[voice/{channel_token}] resolved agent_definition_id={agent_definition_id} "
+        f"[voice] resolved agent_definition_id={agent_definition_id} "
         f"channel_keys={list(channel.keys())}"
     )
 
     if not agent_definition_id:
         reason = _describe_missing_agent(channel)
-        logger.error(f"[voice/{channel_token}] {reason} — returning 404")
+        logger.error(f"[voice] {reason} — returning 404")
         raise HTTPException(
             status_code=404,
             detail=f"Channel not found or no agent assigned: {reason}",
@@ -615,7 +607,7 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     live_url = webhook_trigger.get("live_url") or ""
     ngrok_domain = ngrok_cfg.get("domain") or ""
     logger.info(
-        f"[voice/{channel_token}] twilio_cfg keys={list(twilio_cfg.keys())} ngrok_cfg={ngrok_cfg} live_url={live_url} ngrok_domain={ngrok_domain}"
+        f"[voice] twilio_cfg keys={list(twilio_cfg.keys())} ngrok_domain={ngrok_domain}"
     )
 
     if ngrok_domain:
@@ -633,7 +625,7 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
             else ""
         )
 
-    logger.info(f"[voice/{channel_token}] voice_stream_url={voice_stream_url}")
+    logger.info("[voice] voice_stream_url configured")
 
     if live_url:
         parsed_live = urlparse(live_url)
@@ -655,10 +647,7 @@ async def voice_stream_channel(
     """Twilio MediaStream WebSocket (channel-token routing)."""
     agent_definition_id, channel = await _resolve_channel_agent(channel_token)
     if not agent_definition_id:
-        logger.error(
-            f"No agent for channel token {channel_token}: "
-            f"{_describe_missing_agent(channel)}"
-        )
+        logger.error(f"No agent for channel: {_describe_missing_agent(channel)}")
         await twilio_ws.close(code=1008)
         return
     await _voice_stream_handler(
