@@ -564,15 +564,15 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_inactive_channel_returns_same_404_as_unknown_token(
         self, api_client, db, default_org, env_api_key
     ):
-        """Bug fix: an operator setting `is_active=False` as a containment
+        """Bug fix: an operator setting `is_enabled=False` as a containment
         action must actually stop the channel from resolving here -- it was
         previously a no-op since `filterset_fields` only applies to the
-        standard list endpoint, not this hand-built queryset. The inactive
+        standard list endpoint, not this hand-built queryset. The disabled
         channel must produce a response indistinguishable from an unknown
         token: same status, no body -- anything else would leak channel
         existence to a caller holding/guessing the token."""
         raw_key, _key = env_api_key
-        rc = _make_realtime_channel(db, default_org, is_active=False)
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
         api_client.credentials(HTTP_X_API_KEY=raw_key)
 
         inactive_response = api_client.get(self._url(), {"token": str(rc.token)})
@@ -939,12 +939,12 @@ class TestTwilioConfigureWebhookInputValidation:
     def test_rejects_inactive_channel_same_as_missing_token(
         self, auth_client, db, default_org
     ):
-        """Bug fix: an operator setting `is_active=False` as a containment
+        """Bug fix: an operator setting `is_enabled=False` as a containment
         action must actually stop this endpoint from reconfiguring the
         channel's Twilio webhook too -- same gap, same fix, and the same
         no-existence-leak treatment as the malformed/unknown-token case and
         `RealtimeChannelViewSet.lookup_by_token`."""
-        rc = _make_realtime_channel(db, default_org, is_active=False)
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
         trigger = _make_webhook_trigger_with_ngrok(
             default_org, path="cfg-inactive-channel"
         )
@@ -1142,16 +1142,16 @@ class TestRealtimeChannelLegacyAgentPointer:
 
 @pytest.mark.django_db
 class TestRealtimeChannelInactiveChannelStaysManageable:
-    """`RealtimeChannel.active_objects` (the is_active-filtered manager)
+    """`RealtimeChannel.enabled_objects` (the is_enabled-filtered manager)
     must only be used by inbound lookup paths (lookup_by_token,
     TwilioService.configure_webhook). The admin CRUD surface
     (RealtimeChannelViewSet) keeps using the plain, unfiltered `objects`
-    manager so an operator who deactivated a channel can still find it
-    through list/retrieve in order to reactivate it -- deactivating a
+    manager so an operator who disabled a channel can still find it
+    through list/retrieve in order to re-enable it -- disabling a
     channel must never make it disappear from normal management."""
 
     def test_inactive_channel_still_visible_in_list(self, auth_client, db, default_org):
-        rc = _make_realtime_channel(db, default_org, is_active=False)
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
 
         url = reverse("realtimechannel-list")
         response = auth_client.get(url)
@@ -1163,22 +1163,22 @@ class TestRealtimeChannelInactiveChannelStaysManageable:
     def test_inactive_channel_still_retrievable_by_id(
         self, auth_client, db, default_org
     ):
-        rc = _make_realtime_channel(db, default_org, is_active=False)
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
 
         url = reverse("realtimechannel-detail", args=[rc.pk])
         response = auth_client.get(url)
 
         assert response.status_code == 200, response.json()
-        assert response.json()["is_active"] is False
+        assert response.json()["is_enabled"] is False
 
     def test_inactive_channel_can_be_reactivated_via_patch(
         self, auth_client, db, default_org
     ):
-        rc = _make_realtime_channel(db, default_org, is_active=False)
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
 
         url = reverse("realtimechannel-detail", args=[rc.pk])
-        response = auth_client.patch(url, {"is_active": True}, format="json")
+        response = auth_client.patch(url, {"is_enabled": True}, format="json")
 
         assert response.status_code == 200, response.json()
         rc.refresh_from_db()
-        assert rc.is_active is True
+        assert rc.is_enabled is True

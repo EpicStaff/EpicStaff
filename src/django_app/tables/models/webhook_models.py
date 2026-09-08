@@ -6,8 +6,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 
 from tables.models.base_models import (
-    ActiveToggleFields,
-    DefaultBaseModel,
+    EnabledToggleFields,
     SoftDeleteFields,
     soft_delete_consistency_constraint,
 )
@@ -195,7 +194,7 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(OrgScopedModel, ActiveToggleFields, models.Model):
+class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 
@@ -207,8 +206,8 @@ class RealtimeChannel(OrgScopedModel, ActiveToggleFields, models.Model):
     detail model (e.g. WhatsAppChannel, TelegramChannel) following the
     same OneToOneField pattern as TwilioChannel.
 
-    `is_active` (and the `objects`/`active_objects` manager split) comes
-    from ActiveToggleFields -- see its docstring for why this is not
+    `is_enabled` (and the `objects`/`enabled_objects` manager split) comes
+    from EnabledToggleFields -- see its docstring for why this is not
     SoftDeleteFields.
     """
 

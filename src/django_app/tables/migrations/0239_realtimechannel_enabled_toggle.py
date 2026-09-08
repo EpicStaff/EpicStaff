@@ -10,6 +10,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RenameField(
+            model_name='realtimechannel',
+            old_name='is_active',
+            new_name='is_enabled',
+        ),
         migrations.AlterModelOptions(
             name='realtimechannel',
             options={'default_manager_name': 'objects'},

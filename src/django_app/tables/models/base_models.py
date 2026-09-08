@@ -144,39 +144,39 @@ class ActiveManager(models.Manager):
         )
 
 
-class ActiveToggleManager(models.Manager):
+class EnabledToggleManager(models.Manager):
     """
-    Manager for ActiveToggleFields models. Filters to is_active=True.
+    Manager for EnabledToggleFields models. Filters to is_enabled=True.
     """
 
     def get_queryset(self):
-        return super().get_queryset().filter(is_active=True)
+        return super().get_queryset().filter(is_enabled=True)
 
 
-class ActiveToggleFields(models.Model):
+class EnabledToggleFields(models.Model):
     """
-    Mixin for models with a reversible, operator-facing `is_active`
+    Mixin for models with a reversible, operator-facing `is_enabled`
     toggle -- e.g. RealtimeChannel, which an operator can switch off
     and back on at will.
 
     Deliberately separate from SoftDeleteFields: a soft-deleted row is
     meant to disappear from normal CRUD by default (SoftDeleteFields'
     `objects` is the filtered manager, `all_objects` the escape hatch).
-    An `is_active=False` row here is the opposite -- it MUST stay
+    An `is_enabled=False` row here is the opposite -- it MUST stay
     visible/manageable through ordinary CRUD (list/retrieve/update) so
     an operator can find and re-enable it. Only inbound lookup/routing
-    paths that must treat "inactive" exactly like "doesn't exist"
-    should use `active_objects`.
+    paths that must treat "disabled" exactly like "doesn't exist"
+    should use `enabled_objects`.
 
     `objects` therefore stays the plain, unfiltered default manager
     here (opposite of SoftDeleteFields' convention) -- do not swap the
     two without re-checking every CRUD viewset built on this mixin.
     """
 
-    is_active = models.BooleanField(default=True)
+    is_enabled = models.BooleanField(default=True)
 
     objects = models.Manager()
-    active_objects = ActiveToggleManager()
+    enabled_objects = EnabledToggleManager()
 
     class Meta:
         abstract = True

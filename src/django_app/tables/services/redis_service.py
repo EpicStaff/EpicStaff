@@ -152,7 +152,7 @@ class RedisService(metaclass=SingletonMeta):
 
         `realtime`'s `get_channel_config()` caches that lookup for
         `_CHANNEL_TTL` seconds (60s), so without this, an operator flipping
-        `RealtimeChannel.is_active` off (or deleting the channel) would still
+        `RealtimeChannel.is_enabled` off (or deleting the channel) would still
         have inbound calls answered for up to a minute.
         """
         message = json.dumps({"token": str(token)})
