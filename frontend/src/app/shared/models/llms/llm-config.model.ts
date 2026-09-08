@@ -15,7 +15,6 @@ export interface GetLlmConfigRequest {
     seed: number | null;
     timeout: number | null;
     is_visible: boolean;
-    headers?: Record<string, string>;
     extra_headers?: Record<string, string>;
     tags: Tag[];
 }
@@ -34,7 +33,6 @@ export interface CreateLLMConfigRequest {
     seed?: number | null;
     timeout?: number | null;
     is_visible?: boolean;
-    headers?: Record<string, string>;
     extra_headers?: Record<string, string>;
     tags?: Tag[];
 }
@@ -54,7 +52,6 @@ export interface UpdateLLMConfigRequest {
     seed?: number | null;
     timeout?: number | null;
     is_visible?: boolean;
-    headers?: Record<string, string>;
     extra_headers?: Record<string, string>;
     tags?: Tag[];
 }

@@ -8,10 +8,11 @@
 }
 
 <div class="kv-list">
-    <div class="kv-list__input-row">
+    <div class="kv-list__row">
         <input
             class="kv-list__input"
             type="text"
+            [class.kv-list__input--error]="isDuplicateName()"
             [placeholder]="namePlaceholder()"
             [ngModel]="draftName()"
             (ngModelChange)="draftName.set($event)"
@@ -22,78 +23,93 @@
             class="kv-list__input"
             type="text"
             [placeholder]="valuePlaceholder()"
-            [ngModel]="draftValue()"
+            [ngModel]="displayValue(draftValue())"
             (ngModelChange)="draftValue.set($event)"
             (keydown)="handleKeydown($event)"
+            (keydown.escape)="closeSuggestions()"
+            (focus)="onValueFocus($event, 'draft')"
             [disabled]="isDisabled()"
         />
-        @if (editingIndex() !== null) {
+        <button
+            type="button"
+            class="kv-list__add-btn"
+            matTooltip="Add"
+            matTooltipPosition="above"
+            (click)="confirm()"
+            [disabled]="isDisabled() || !draftName().trim() || isDuplicateName()"
+        >
+            <i class="ti ti-plus"></i>
+        </button>
+    </div>
+
+    @if (isDuplicateName()) {
+        <div class="kv-list__error-message">A header with this name already exists.</div>
+    }
+
+    @for (item of items(); track $index; let i = $index) {
+        <div class="kv-list__row">
+            <input
+                class="kv-list__input"
+                type="text"
+                [class.kv-list__input--error]="isRowDuplicate(i)"
+                [ngModel]="item.name"
+                (ngModelChange)="updateName(i, $event)"
+                (blur)="onNameBlur(i)"
+                [disabled]="isDisabled()"
+            />
+            <div class="kv-list__value-wrapper">
+                <input
+                    class="kv-list__input"
+                    type="text"
+                    [class.kv-list__input--has-badge]="isSecretValue(item.value)"
+                    [ngModel]="displayValue(item.value)"
+                    (ngModelChange)="updateValue(i, $event)"
+                    (keydown.escape)="closeSuggestions()"
+                    (focus)="onValueFocus($event, i)"
+                    [disabled]="isDisabled()"
+                />
+                @if (isSecretValue(item.value)) {
+                    <app-svg-icon
+                        class="kv-list__secret-badge"
+                        icon="secret-reference"
+                        width="15px"
+                        height="12px"
+                        ariaLabel="This value references a secret"
+                    />
+                }
+            </div>
             <button
                 type="button"
-                class="kv-list__action-btn kv-list__action-btn--confirm"
-                matTooltip="Save"
+                class="kv-list__remove-btn"
+                matTooltip="Remove"
                 matTooltipPosition="above"
-                (click)="confirm()"
-                [disabled]="isDisabled() || !draftName().trim()"
-            >
-                <i class="ti ti-check"></i>
-            </button>
-            <button
-                type="button"
-                class="kv-list__action-btn kv-list__action-btn--cancel"
-                matTooltip="Cancel"
-                matTooltipPosition="above"
-                (click)="cancelEdit()"
+                (click)="removeCard(i)"
                 [disabled]="isDisabled()"
             >
                 <i class="ti ti-x"></i>
             </button>
-        } @else {
+        </div>
+        @if (isRowDuplicate(i)) {
+            <div class="kv-list__error-message">A header with this name already exists.</div>
+        }
+    }
+</div>
+
+<ng-template #suggestionsTemplate>
+    <div
+        class="kv-list__suggestions"
+        (mousedown)="$event.preventDefault()"
+    >
+        @for (item of activeSuggestions(); track item.value) {
             <button
                 type="button"
-                class="kv-list__action-btn kv-list__action-btn--add"
-                matTooltip="Add"
-                matTooltipPosition="above"
-                (click)="confirm()"
-                [disabled]="isDisabled() || !draftName().trim()"
+                class="kv-list__suggestion-item"
+                (click)="selectSuggestion(item)"
             >
-                <i class="ti ti-plus"></i>
+                {{ item.name }}
             </button>
+        } @empty {
+            <div class="kv-list__suggestions-empty">No secrets found</div>
         }
     </div>
-
-    @if (items().length) {
-        <div class="kv-list__cards">
-            @for (item of items(); track item.name + $index; let i = $index) {
-                <div
-                    class="kv-list__card"
-                    [class.kv-list__card--editing]="editingIndex() === i"
-                    (click)="editCard(i)"
-                >
-                    <div class="kv-list__card-content">
-                        <span class="kv-list__card-name">{{ item.name }}</span>
-                        <span class="kv-list__card-value">{{ item.value }}</span>
-                    </div>
-                    <button
-                        type="button"
-                        class="kv-list__remove-btn"
-                        matTooltip="Remove"
-                        matTooltipPosition="above"
-                        (click)="removeCard(i); $event.stopPropagation()"
-                        [disabled]="isDisabled()"
-                    >
-                        <i class="ti ti-x"></i>
-                    </button>
-                </div>
-            }
-        </div>
-    }
-
-    <app-json-editor
-        [jsonData]="jsonText()"
-        (jsonChange)="onJsonChange($event)"
-        [editorHeight]="120"
-        [editorOptions]="editorOptions"
-        [showHeader]="false"
-    />
-</div>
+</ng-template>
