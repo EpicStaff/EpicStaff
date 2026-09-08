@@ -76,8 +76,8 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
             .warning-count {
                 color: var(--gray-400);
-                font-size: 0.875rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
             }
 
             .collapsible-content {
@@ -103,7 +103,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             h3 {
                 color: var(--gray-100);
                 font-size: 1rem;
-                font-weight: 600;
+                font-weight: 500;
                 margin: 0;
             }
 
@@ -123,8 +123,8 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
             .warning-bullet {
                 color: #f56a00;
-                font-weight: 600;
-                font-size: 0.875rem;
+                font-weight: var(--text-body-medium-weight);
+                font-size: var(--text-body-medium-size);
                 flex-shrink: 0;
             }
 

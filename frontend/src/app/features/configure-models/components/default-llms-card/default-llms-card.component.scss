@@ -46,7 +46,7 @@
     }
 
     &__title {
-        font-size: 16px;
+        font-size: 1rem;
         font-weight: 500;
         color: var(--configure-models-dialog-inactive-color, #685fff);
     }
@@ -84,7 +84,7 @@
             background 0.2s ease;
 
         i {
-            font-size: 18px;
+            font-size: 1.125rem;
             line-height: 1;
         }
 
@@ -99,8 +99,8 @@
 
     &__description {
         margin: 0;
-        font-size: 12px;
-        font-weight: 400;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
         line-height: 1;
         color: rgba(217, 217, 222, 0.6);
     }

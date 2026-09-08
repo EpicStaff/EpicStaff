@@ -153,7 +153,7 @@ import {
             h3 {
                 color: var(--gray-100);
                 font-size: 1.1rem;
-                font-weight: 600;
+                font-weight: 500;
                 margin: 0;
             }
 
@@ -241,7 +241,7 @@ import {
             .item-index {
                 background-color: #00bfa5;
                 color: var(--gray-900);
-                font-weight: 600;
+                font-weight: 500;
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
                 font-size: 0.85rem;

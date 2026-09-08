@@ -17,10 +17,9 @@
     }
 
     &__title {
-        font-family: Inter, sans-serif;
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 1;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
         letter-spacing: 0;
         color: var(--color-text-primary);
         margin: 0;
@@ -84,9 +83,8 @@
         align-items: center;
         gap: 8px;
         flex-shrink: 0;
-        font-family: Inter, sans-serif;
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
     }
 
     &__selected-label {
@@ -148,8 +146,8 @@
         padding: 0 14px;
         border: 1px solid var(--accent-color);
         border-radius: 0.375rem;
-        font-size: 12px;
-        font-weight: 400;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
         color: var(--accent-color);
         background: transparent;
         cursor: pointer;
@@ -277,8 +275,8 @@
         flex-shrink: 0;
         margin-left: auto;
         padding-left: 1rem;
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         color: var(--color-text-primary);
         opacity: 0.16;
         white-space: nowrap;
@@ -288,8 +286,8 @@
         flex-shrink: 0;
         margin-left: auto;
         padding-left: 1rem;
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         color: rgba(217, 217, 222, 0.16);
         white-space: nowrap;
     }

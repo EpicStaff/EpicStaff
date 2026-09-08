@@ -88,8 +88,8 @@ header {
             padding: 0 0.75rem;
             height: 32px;
             border-radius: 6px;
-            font-size: 14px;
-            font-weight: 400;
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
             cursor: pointer;
             transition:
                 padding 0.2s ease-in-out,
@@ -137,9 +137,9 @@ header {
             gap: 0.5rem;
 
             .esc-label {
-                font-size: 0.75rem;
+                font-size: var(--text-body-small-large-size);
                 color: #666;
-                font-weight: 500;
+                font-weight: var(--text-body-small-large-weight);
                 padding: 0.15rem 0.3rem;
                 border: 1px solid #444;
                 border-radius: 4px;

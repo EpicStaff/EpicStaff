@@ -12,8 +12,8 @@
         margin-bottom: 1rem;
         width: 100%;
         padding-right: 1.875rem;
-        font-size: 0.875rem;
-        font-weight: 130;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         min-width: 0;
 
         &--count {
@@ -33,7 +33,7 @@
         justify-content: space-between;
         column-gap: 1rem;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 0.75rem;
 
         &--selected {
             background-color: var(--color-ks-line);

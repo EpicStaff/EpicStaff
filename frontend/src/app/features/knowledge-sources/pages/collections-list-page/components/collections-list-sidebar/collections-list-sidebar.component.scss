@@ -13,9 +13,9 @@
     }
 
     &__header-label {
-        font-weight: bold;
+        font-weight: var(--text-h2-weight);
         color: var(--color-ks-text);
-        font-size: 1.25rem;
+        font-size: var(--text-h2-size);
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -23,7 +23,7 @@
     }
 
     &__header-count {
-        font-weight: normal;
+        font-weight: 400;
         color: var(--color-ks-secondary);
     }
 

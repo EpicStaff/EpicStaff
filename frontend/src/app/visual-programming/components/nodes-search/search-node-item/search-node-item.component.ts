@@ -92,7 +92,7 @@ import {
                     transition: all 0.2s ease;
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                         transition: all 0.2s ease;
                     }
                 }
@@ -107,7 +107,7 @@ import {
 
                     .node-name {
                         color: var(--white, #fff);
-                        font-size: 13px;
+                        font-size: 0.8125rem;
                         font-weight: 500;
                         overflow: hidden;
                         text-overflow: ellipsis;
@@ -121,7 +121,7 @@ import {
 
                         .node-description {
                             color: var(--gray-400, #b4b4b4);
-                            font-size: 11px;
+                            font-size: 0.6875rem;
                             line-height: 1.3;
                             overflow: hidden;
                             text-overflow: ellipsis;
@@ -143,7 +143,7 @@ import {
                     border-radius: 4px;
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                     }
                 }
             }

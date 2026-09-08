@@ -5,7 +5,7 @@
     label {
         display: block;
         margin-bottom: 8px;
-        font-size: 14px;
+        font-size: 0.875rem;
         color: rgba(255, 255, 255, 0.7);
     }
 
@@ -19,7 +19,7 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 6px;
         color: #ededed;
-        font-size: 14px;
+        font-size: 0.875rem;
         cursor: pointer;
         transition: all 0.2s ease;
 
@@ -60,7 +60,7 @@
         .dropdown-item {
             padding: 10px 12px;
             color: #ededed;
-            font-size: 14px;
+            font-size: 0.875rem;
             cursor: pointer;
             transition: background-color 0.2s ease;
 

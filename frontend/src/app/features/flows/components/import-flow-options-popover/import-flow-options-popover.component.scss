@@ -13,9 +13,9 @@
 
 .popover__header {
     padding: 0.75rem 1rem;
-    color: var(--color-text-primary);
-    font-size: 0.875rem;
-    font-weight: 600;
+    color: var(--text-secondary-60);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 

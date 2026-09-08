@@ -41,7 +41,7 @@
     }
 
     &__icon {
-        font-size: 15px;
+        font-size: 0.9375rem;
         color: var(--color-input-text-placeholder);
         flex-shrink: 0;
         pointer-events: none;
@@ -64,7 +64,7 @@
         outline: none;
         color: var(--color-text-primary);
         font-size: 0.875rem;
-        line-height: 130%;
+        line-height: var(--text-body-line-height);
         padding: 0;
         cursor: pointer;
 
@@ -113,9 +113,9 @@
     &__option {
         padding: 0.5rem 1rem;
         text-align: center;
-        font-size: 0.875rem;
-        font-weight: 200;
-        line-height: 130%;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         cursor: pointer;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -147,7 +147,7 @@
 
     &__error {
         color: #ef4444;
-        font-size: 12px;
+        font-size: 0.75rem;
         margin-top: 4px;
         line-height: 1.4;
     }

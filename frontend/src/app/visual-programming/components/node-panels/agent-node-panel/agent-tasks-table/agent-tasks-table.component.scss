@@ -48,8 +48,8 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         height: 40px;
         border-bottom: 4px solid var(--color-flow-card-bg, #2b2d30);
         color: var(--color-text-primary, #d9d9de);
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
     }
 
     &:not(&--header) {

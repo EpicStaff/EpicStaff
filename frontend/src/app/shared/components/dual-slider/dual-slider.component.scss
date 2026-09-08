@@ -53,9 +53,8 @@
         .value {
             min-width: 2.5rem;
             text-align: center;
-            font-family: 'Inter', sans-serif;
-            font-weight: 400;
-            font-size: 0.625rem;
+            font-weight: var(--text-caption-weight);
+            font-size: var(--text-caption-size);
             color: #ffffff;
         }
     }
