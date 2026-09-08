@@ -56,6 +56,14 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
+        "code": ResourceType.API_KEYS.value,
+        "label": "API Keys",
+        "group": "admin",
+        "description": "Members' personal API keys — view and revoke",
+        "applicable_actions": ["read", "delete"],
+        "platform_actions": [],
+    },
+    {
         "code": ResourceType.FLOWS.value,
         "label": "Flows",
         "group": "workspace",
@@ -120,9 +128,9 @@ RESOURCE_TYPE_METADATA = [
     },
     {
         "code": ResourceType.SECRETS.value,
-        "label": "API Keys / Secrets",
+        "label": "Secrets",
         "group": "config",
-        "description": "Provider API keys, credentials, sensitive config",
+        "description": "Provider credentials and sensitive configuration",
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
@@ -132,7 +140,7 @@ RESOURCE_TYPE_METADATA = [
         "group": "config",
         "description": "Voice model configurations and settings",
         "applicable_actions": ["create", "read", "update", "delete"],
-    }
+    },
 ]
 
 
@@ -161,6 +169,9 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("roles", "read"),),
         "update": (("roles", "read"),),
         "delete": (("roles", "read"),),
+    },
+    ResourceType.API_KEYS.value: {
+        "delete": (("api_keys", "read"),),
     },
     ResourceType.FLOWS.value: {
         "read": (("projects", "read"), ("llm_configs", "read")),

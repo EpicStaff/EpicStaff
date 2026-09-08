@@ -5,6 +5,9 @@ from django.db import models
 
 class ResourceType(models.TextChoices):
     ORGANIZATIONS = "organizations", "Organizations"
+    ROLES = "roles", "Roles"
+    MEMBERSHIPS = "memberships", "Members"
+    API_KEYS = "api_keys", "API Keys"
     FLOWS = "flows", "Flows"
     AGENTS = "agents", "Agents"
     TOOLS = "tools", "Tools"
@@ -13,8 +16,6 @@ class ResourceType(models.TextChoices):
     PROJECTS = "projects", "Projects"
     LLM_CONFIGS = "llm_configs", "LLM Configs"
     SECRETS = "secrets", "Secrets"
-    MEMBERSHIPS = "memberships", "Members"
-    ROLES = "roles", "Roles"
     VOICE = "voice", "Voice"
     SURFACES = "surfaces", "Surfaces"
 
