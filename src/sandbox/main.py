@@ -7,6 +7,8 @@ from src.shared.models import CodeTaskData
 from services.storage_credential_manager import StorageCredentialManager
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+import isolation
+import landlock
 from secret_scrubber import MASK_SECRET_ENV_VAR, masking_enabled
 from utils.logger import logger
 
@@ -70,9 +72,30 @@ def log_secret_masking_state():
         )
 
 
+def log_isolation_state():
+    """Announce the Landlock filesystem-jail state once per process."""
+    abi = landlock.abi_version()
+    if abi >= 1:
+        logger.info("Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi)
+    elif isolation.isolation_required():
+        logger.warning(
+            "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
+            "{} is not false: executions will be refused until this is resolved.",
+            isolation.REQUIRE_ISOLATION_ENV_VAR,
+        )
+    else:
+        logger.warning(
+            "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
+            "{}=false: executions will run UNCONFINED. Do not use this in "
+            "production.",
+            isolation.REQUIRE_ISOLATION_ENV_VAR,
+        )
+
+
 async def init():
     sweep_output_path()
     log_secret_masking_state()
+    log_isolation_state()
     await redis_service.connect()
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
+from dataclasses import asdict
 import hashlib
 import json
 import os
@@ -10,11 +11,18 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import settings
+
+from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
+from jail import build_jail
+from landlock import abi_version
+
 from secret_scrubber import masking_enabled, scrub
 from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
 from utils.environment import build_base_env
 from utils.logger import logger
+
+LAUNCHER_PATH = Path(__file__).parent / "launcher.py"
 
 try:
     _SANDBOX_PW = pwd.getpwnam("sandboxuser")
@@ -344,7 +352,10 @@ except Exception:
         logger.info("Executing code using {}...", python_executable)
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
-        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
+        env["TMPDIR"] = context["tmp_path"]
+        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get(
+            "CONTAINER_SAVEFILES_PATH", "."
+        )
         if context.get("use_storage"):
             env["STORAGE_ENDPOINT"] = settings.STORAGE_ENDPOINT
             env["STORAGE_BUCKET_NAME"] = settings.STORAGE_BUCKET_NAME
@@ -358,12 +369,49 @@ except Exception:
             env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
 
         drop_kwargs = _privilege_drop_kwargs()
+
+        isolation_abi = abi_version()
+        argv = [str(python_executable), str(temp_code_path)]
+        if isolation_abi < 1:
+            if isolation_required():
+                logger.error(
+                    "Sandbox isolation unavailable (kernel lacks Landlock); "
+                    "refusing to execute {}.",
+                    context["execution_id"],
+                )
+                return CodeResultData(
+                    execution_id=context["execution_id"],
+                    stderr=(
+                        "Sandbox isolation unavailable (kernel lacks Landlock); "
+                        "refusing to execute."
+                    ),
+                    stdout="",
+                    returncode=1,
+                )
+            logger.warning(
+                "Sandbox isolation unavailable (kernel lacks Landlock); "
+                "executing {} UNCONFINED because {}=false.",
+                context["execution_id"],
+                REQUIRE_ISOLATION_ENV_VAR,
+            )
+        else:
+            # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
+            # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
+            # ExecuteCodeHandler only receives "python_executable" when driven directly,
+            # without CreateVenvHandler ahead of it (as the unit tests do).
+            jail = build_jail(
+                exec_dir=Path(context["result_file_path"]).parent,
+                venv_path=Path(python_executable).parent.parent,
+                savefiles_root=Path(context["work_dir"]),
+            )
+            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(asdict(jail)), *argv]
+
         process = await asyncio.create_subprocess_exec(
-            str(python_executable),
-            str(temp_code_path),
+            *argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            cwd=context["work_dir"],
             **drop_kwargs,
         )
         stdout, stderr = await process.communicate()
@@ -458,14 +506,17 @@ class DynamicVenvExecutorChain:
         os.makedirs(self.base_venv_path, exist_ok=True)
         home_path = output_path / "home"
         os.makedirs(home_path, exist_ok=True)
+        tmp_path = output_path / "tmp"
+        os.makedirs(tmp_path, exist_ok=True)
 
         if _can_drop_privileges():
-            """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and 
+            """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and
             HOME state into.
             """
             try:
                 os.chown(output_path, SANDBOX_UID, SANDBOX_GID)
                 os.chown(home_path, SANDBOX_UID, SANDBOX_GID)
+                os.chown(tmp_path, SANDBOX_UID, SANDBOX_GID)
             except OSError as chown_error:
                 logger.error(
                     "Failed to chown execution dirs (EPERM?): {}",
@@ -489,6 +540,8 @@ class DynamicVenvExecutorChain:
             "execution_id": execution_id,
             "global_kwargs": global_kwargs,
             "home_path": str(home_path),
+            "tmp_path": str(tmp_path),
+            "work_dir": os.environ.get("CONTAINER_SAVEFILES_PATH", "."),
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
@@ -503,9 +556,10 @@ class DynamicVenvExecutorChain:
                         storage_org_prefix, storage_allowed_paths
                     ),
                 )
-                temp_access_key, temp_secret_key = (
-                    await self.storage_credential_manager.create(policy)
-                )
+                (
+                    temp_access_key,
+                    temp_secret_key,
+                ) = await self.storage_credential_manager.create(policy)
             except Exception as e:
                 logger.error("Failed to provision scoped storage credentials: {}", e)
                 return CodeResultData(
@@ -527,7 +581,9 @@ class DynamicVenvExecutorChain:
         return result
 
     @staticmethod
-    def _scoped_folders(org_prefix: str | None, allowed_paths: list[str] | None) -> set[str]:
+    def _scoped_folders(
+        org_prefix: str | None, allowed_paths: list[str] | None
+    ) -> set[str]:
         if not org_prefix:
             raise ValueError("storage_org_prefix is required when use_storage is set")
         if not allowed_paths:
