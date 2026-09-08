@@ -5,16 +5,18 @@ import psycopg2
 from psycopg2 import OperationalError
 from loguru import logger
 
+from django_app.settings import env
+
 
 class Command(BaseCommand):
     help = "Wait for Postgres database to be ready before starting the app."
 
     def handle(self, *args, **options):
-        db_user = os.getenv("DB_USER")
-        db_password = os.getenv("POSTGRES_PASSWORD")
-        db_host = os.getenv("DB_HOST_NAME")
-        db_port = os.getenv("DB_PORT")
-        db_name = os.getenv("DB_NAME")
+        db_user = env.str("DJANGO_DB_USER")
+        db_password = env.str("DJANGO_DB_PASSWORD")
+        db_host = env.str("DB_HOST")
+        db_port = env.int("DB_PORT")
+        db_name = env.str("DB_NAME")
 
         for attempt in range(1, 151):
             try:

@@ -64,7 +64,7 @@
                     border: 1px solid var(--transparent-white-8);
                     border-radius: 4px;
                     color: var(--accent-color);
-                    font-size: 10px;
+                    font-size: 0.625rem;
                     white-space: nowrap;
 
                     .chip-item {
@@ -120,8 +120,8 @@
                 gap: 4px;
 
                 .card-name {
-                    font-size: 0.875rem;
-                    font-weight: 500;
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
                     color: var(--text);
                     overflow: hidden;
                     text-overflow: ellipsis;

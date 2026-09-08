@@ -476,8 +476,112 @@ class TestWebhookTriggerStrategy:
         WebhookTrigger.objects.create(path="other-org-webhook", org=other_org)
 
         strategy = _get_strategy(EntityType.WEBHOOK_TRIGGER)
-        scoped = WebhookTrigger.objects.filter(
-            strategy.get_org_scope_q(default_org.id)
-        )
+        scoped = WebhookTrigger.objects.filter(strategy.get_org_scope_q(default_org.id))
 
         assert list(scoped) == [own]
+
+
+# ---- provider model strategies: per-org name uniquification ----
+
+
+@pytest.fixture
+def org_a_ie(db):
+    return Organization.objects.create(name="IE Org A")
+
+
+@pytest.fixture
+def org_b_ie(db):
+    return Organization.objects.create(name="IE Org B")
+
+
+@pytest.mark.django_db
+def test_llm_model_import_does_not_rename_around_another_orgs_name(org_a_ie, org_b_ie):
+    """Uniquification must be scoped to the target org: org A owning 'shared-name'
+    must not force org B's import to become 'shared-name (1)'."""
+    from tables.import_export.strategies.llm_models import LLMModelStrategy
+    from tables.models import Provider
+    from tables.models.llm_models import LLMModel
+
+    provider = Provider.objects.create(name="openai")
+    LLMModel.objects.create(
+        name="shared-name", llm_provider=provider, is_custom=True, org=org_a_ie
+    )
+
+    created = LLMModelStrategy().create_entity(
+        {
+            "name": "shared-name",
+            "provider_name": "openai",
+            "tags": [],
+            "is_visible": True,
+        },
+        IDMapper(),
+        org_id=org_b_ie.id,
+    )
+
+    assert created.name == "shared-name"
+    assert created.org_id == org_b_ie.id
+
+
+@pytest.mark.django_db
+def test_llm_model_import_still_uniquifies_within_the_target_org(org_a_ie):
+    from tables.import_export.strategies.llm_models import LLMModelStrategy
+    from tables.models import Provider
+    from tables.models.llm_models import LLMModel
+
+    provider = Provider.objects.create(name="openai")
+    LLMModel.objects.create(
+        name="taken", llm_provider=provider, is_custom=True, org=org_a_ie
+    )
+
+    created = LLMModelStrategy().create_entity(
+        {"name": "taken", "provider_name": "openai", "tags": [], "is_visible": True},
+        IDMapper(),
+        org_id=org_a_ie.id,
+    )
+
+    assert created.name != "taken"
+    assert created.org_id == org_a_ie.id
+
+
+@pytest.mark.django_db
+def test_llm_model_import_without_an_org_falls_back_to_the_default_org(default_org):
+    """ImportService declares org_id as optional, and org=NULL + is_custom=True
+    would be invisible to every org and immutable under the write lockdown."""
+    from tables.import_export.strategies.llm_models import LLMModelStrategy
+    from tables.models import Provider
+
+    Provider.objects.create(name="openai")
+
+    created = LLMModelStrategy().create_entity(
+        {"name": "no-org", "provider_name": "openai", "tags": [], "is_visible": True},
+        IDMapper(),
+    )
+
+    assert created.org_id == default_org.id
+    assert created.is_custom is True
+
+
+@pytest.mark.django_db
+def test_llm_model_import_cannot_mint_a_predefined_row(org_a_ie):
+    """LLMModelImportSerializer excludes only llm_provider and created_by, so a
+    crafted payload can otherwise set predefined=True."""
+    from tables.import_export.strategies.llm_models import LLMModelStrategy
+    from tables.models import Provider
+
+    Provider.objects.create(name="openai")
+
+    created = LLMModelStrategy().create_entity(
+        {
+            "name": "sneaky",
+            "provider_name": "openai",
+            "tags": [],
+            "is_visible": True,
+            "predefined": True,
+        },
+        IDMapper(),
+        org_id=org_a_ie.id,
+    )
+
+    assert created.predefined is False
+    assert created.is_custom is True
+    assert created.org_id == org_a_ie.id

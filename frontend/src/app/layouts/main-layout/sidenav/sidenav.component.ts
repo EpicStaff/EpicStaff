@@ -147,6 +147,7 @@ export class LeftSidebarComponent implements AfterViewInit {
         // avoiding CORS failures and hardcoded URLs.
         // this.apiBaseUrl = `${window.location.origin}/api/`;
 
+        // Comment on the comment above:
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;

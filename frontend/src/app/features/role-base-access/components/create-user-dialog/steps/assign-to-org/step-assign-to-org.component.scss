@@ -28,7 +28,7 @@
 
             .count {
                 color: var(--purple-primary);
-                font-weight: 600;
+                font-weight: 500;
             }
         }
     }
@@ -44,8 +44,8 @@ app-select.row-unselected {
     gap: 10px;
 
     .org-name {
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--text);
     }
 }

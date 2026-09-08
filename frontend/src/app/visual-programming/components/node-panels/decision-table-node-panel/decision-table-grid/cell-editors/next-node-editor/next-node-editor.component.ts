@@ -78,8 +78,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
                 align-items: center;
                 cursor: pointer;
                 flex-shrink: 0;
-                font-size: 14px;
-                font-family: Inter, sans-serif;
+                font-size: 0.875rem;
                 color: var(--color-text-primary);
                 white-space: nowrap;
                 overflow: hidden;
@@ -95,8 +94,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
             .nne-empty {
                 padding: 12px 0;
                 text-align: center;
-                font-size: 13px;
-                font-family: Inter, sans-serif;
+                font-size: 0.8125rem;
                 color: rgba(217, 217, 222, 0.6);
             }
             .nne-clear {
@@ -110,8 +108,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
                 border: 1px solid var(--accent-color);
                 border-radius: 6px;
                 color: var(--accent-color);
-                font-size: 13px;
-                font-family: Inter, sans-serif;
+                font-size: 0.8125rem;
                 cursor: pointer;
                 box-shadow: none;
                 transition: background 0.15s;
