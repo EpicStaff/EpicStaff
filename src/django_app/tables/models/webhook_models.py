@@ -1,7 +1,7 @@
 import uuid
 from typing import Protocol
 
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 
@@ -251,6 +251,23 @@ class RealtimeChannel(OrgScopedModel, models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.channel_type})"
+
+    def save(self, *args, **kwargs) -> None:
+        super().save(*args, **kwargs)
+        token = self.token
+        transaction.on_commit(lambda: self._invalidate_realtime_channel_cache(token))
+
+    def delete(self, *args, **kwargs):
+        token = self.token
+        result = super().delete(*args, **kwargs)
+        transaction.on_commit(lambda: self._invalidate_realtime_channel_cache(token))
+        return result
+
+    @staticmethod
+    def _invalidate_realtime_channel_cache(token) -> None:
+        from tables.services.redis_service import RedisService
+
+        RedisService().publish_channel_invalidation(token)
 
     @property
     def webhook_token(self) -> str:

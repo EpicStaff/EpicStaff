@@ -1,8 +1,7 @@
-"""Coverage for `webhook_signals.realtime_channel_post_save_handler` /
-`realtime_channel_post_delete_handler` -- publishing to
-`realtime_channels:invalidate` so `realtime`'s per-channel config cache
-(`_channel_cache`, TTL 60s) doesn't keep serving a channel Django just
-changed (e.g. `is_active` toggled off) or removed entirely."""
+"""Coverage for `RealtimeChannel.save()` / `RealtimeChannel.delete()` --
+publishing to `realtime_channels:invalidate` so `realtime`'s per-channel
+config cache (`_channel_cache`, TTL 60s) doesn't keep serving a channel
+Django just changed (e.g. `is_active` toggled off) or removed entirely."""
 
 from unittest import mock
 
@@ -18,12 +17,12 @@ def org(db):
 
 
 @pytest.mark.django_db
-class TestRealtimeChannelInvalidationSignal:
+class TestRealtimeChannelInvalidation:
     def test_create_publishes_invalidation_with_new_channels_token(
         self, org, django_capture_on_commit_callbacks
     ):
         with mock.patch(
-            "tables.signals.webhook_signals.RedisService"
+            "tables.services.redis_service.RedisService"
         ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
             channel = RealtimeChannel.objects.create(name="Voice line", org=org)
 
@@ -38,7 +37,7 @@ class TestRealtimeChannelInvalidationSignal:
         channel = RealtimeChannel.objects.create(name="Voice line", org=org)
 
         with mock.patch(
-            "tables.signals.webhook_signals.RedisService"
+            "tables.services.redis_service.RedisService"
         ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
             channel.is_active = False
             channel.save()
@@ -54,7 +53,7 @@ class TestRealtimeChannelInvalidationSignal:
         token = channel.token
 
         with mock.patch(
-            "tables.signals.webhook_signals.RedisService"
+            "tables.services.redis_service.RedisService"
         ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
             channel.delete()
 
