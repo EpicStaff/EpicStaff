@@ -27,6 +27,8 @@ class PythonCodeTool(OrgScopedModel, models.Model):
     labels = models.ManyToManyField(
         "Label", blank=True, related_name="python_code_tools"
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

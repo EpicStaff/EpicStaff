@@ -174,8 +174,10 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "built_in",
             "use_storage",
             "labels",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "built_in"]
+        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.

@@ -12,7 +12,9 @@ import { ToolKind } from '../tool-card/tool-card.model';
  * or MCP tools). One instance is provided per route; the unified
  * `ToolsListComponent` calls only into these methods so it stays kind-agnostic.
  */
-export interface ToolsListPort<T extends { id: number; name: string; labels: number[]; is_favorite: boolean }> {
+export interface ToolsListPort<
+    T extends { id: number; name: string; labels: number[]; is_favorite: boolean; updated_at?: string },
+> {
     // discriminators / labels
     readonly kind: ToolKind;
     readonly entityLabel: string;

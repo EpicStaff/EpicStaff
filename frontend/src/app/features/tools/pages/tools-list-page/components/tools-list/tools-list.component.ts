@@ -52,7 +52,11 @@ interface Tool {
     name: string;
     labels: number[];
     is_favorite: boolean;
+    updated_at?: string;
 }
+
+/** Max chips shown in the "Last modified" strip; extras are clipped visually. */
+const RECENT_TOOLS_MAX = 8;
 
 @Component({
     selector: 'app-tools-list',
@@ -110,6 +114,19 @@ export class ToolsListComponent implements OnInit {
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
     });
+
+    public readonly recentTools = computed<{ id: number; name: string }[]>(() =>
+        this.allTools()
+            .filter((t) => !this.port.isBuiltIn(t) && !!t.updated_at)
+            .sort((a, b) => new Date(b.updated_at!).getTime() - new Date(a.updated_at!).getTime())
+            .slice(0, RECENT_TOOLS_MAX)
+            .map((t) => ({ id: t.id, name: t.name }))
+    );
+
+    public onRecentToolClick(id: number): void {
+        const tool = this.findToolById(id);
+        if (tool) this.onConfigure(tool);
+    }
 
     constructor() {
         effect(() => {

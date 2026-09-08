@@ -26,6 +26,8 @@ export interface GetPythonCodeToolRequest {
     use_storage?: boolean;
     is_favorite: boolean;
     labels: number[];
+    created_at: string;
+    updated_at: string;
 }
 
 export interface CreatePythonCodeToolRequest {
