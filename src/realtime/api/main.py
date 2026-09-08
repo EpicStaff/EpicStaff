@@ -110,9 +110,7 @@ async def get_channel_config(channel_token: str) -> dict:
                 headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
                 timeout=5.0,
             )
-            logger.debug(
-                f"[channel_config] Django response: status={r.status_code}"
-            )
+            logger.debug(f"[channel_config] Django response: status={r.status_code}")
             if r.is_success:
                 data = r.json()
                 if not isinstance(data, dict):
@@ -157,9 +155,7 @@ async def redis_listener():
     await redis_service.connect()
     logger.info("redis_listener: connected to Redis")
 
-    pubsub = await redis_service.async_subscribe(
-        config.REALTIME_AGENTS_SCHEMA_CHANNEL
-    )
+    pubsub = await redis_service.async_subscribe(config.REALTIME_AGENTS_SCHEMA_CHANNEL)
     logger.info(f"Subscribed to channel '{config.REALTIME_AGENTS_SCHEMA_CHANNEL}'")
 
     async for message in pubsub.listen():
@@ -617,12 +613,9 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         parsed_live = urlparse(live_url)
         voice_stream_url = f"wss://{parsed_live.netloc}/voice/{channel_token}/stream"
     else:
-        voice_stream_url = (
-            config.VOICE_STREAM_URL.replace(
-                "/voice/stream", f"/voice/{channel_token}/stream"
-            )
-            if config.VOICE_STREAM_URL
-            else ""
+        raise HTTPException(
+            status_code=503,
+            detail="No tunnel domain configured for this channel's webhook_trigger.",
         )
 
     logger.info("[voice] voice_stream_url configured")
