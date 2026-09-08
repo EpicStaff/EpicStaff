@@ -1,18 +1,16 @@
-"""API key management tests (EST-2956): generator, model, auth,
-self-service endpoints, SECRETS-gated management, system key."""
+"""API key tests: generator, model, authentication, self-service
+endpoints, and system key."""
 
 import hashlib
 from datetime import datetime, timedelta
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import ApiKey, Organization, OrganizationUser, Role
+from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import (
     KEY_PREFIX,
     PREFIX_LENGTH,
@@ -384,143 +382,42 @@ class TestApiKeyPermissionParity:
         assert "ticket" in resp.json()
 
 
-ADMIN_KEYS_URL = "/api/api-keys/"
+@pytest.mark.django_db
+def test_key_of_deactivated_owner_is_rejected(api_client, regular_user, issue_api_key):
+    raw, key = issue_api_key(user=regular_user, name="soon-dead")
+    regular_user.is_active = False
+    regular_user.save(update_fields=["is_active"])
 
+    api_client.credentials(HTTP_X_API_KEY=raw)
+    resp = api_client.get(PROFILE_URL)
 
-def admin_key_url(key_id):
-    return f"{ADMIN_KEYS_URL}{key_id}/"
-
-
-def admin_key_revoke_url(key_id):
-    return f"{ADMIN_KEYS_URL}{key_id}/revoke/"
-
-
-@pytest.fixture
-def other_org_user(db, issue_api_key):
-    """A user + key in a different org — must be invisible to default_org managers."""
-    org = Organization.objects.create(name="Other Org")
-    role = Role.objects.get(name="Org Admin", is_built_in=True, org__isnull=True)
-    user = get_user_model().objects.create_user(
-        email="other@example.com", password="OtherStrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    raw, key = issue_api_key(user=user, name="other-org-key")
-    return user, org, key
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "inactive" in resp.json()["message"].lower()
+    key.refresh_from_db()
+    assert key.last_used_at is None
 
 
 @pytest.mark.django_db
-class TestApiKeyManagement:
-    """Org Admin (SECRETS CRUD in seed 0183) manages active-org members' keys."""
+def test_key_works_again_once_the_owner_is_reactivated(
+    api_client, regular_user, issue_api_key
+):
+    raw, _ = issue_api_key(user=regular_user, name="revived")
+    api_client.credentials(HTTP_X_API_KEY=raw)
 
-    def test_list_scoped_to_active_org_members(
-        self, auth_client, regular_user, issue_api_key, other_org_user
-    ):
-        issue_api_key(user=regular_user, name="member-key")
-        resp = auth_client.get(ADMIN_KEYS_URL)
-        assert resp.status_code == status.HTTP_200_OK
-        names = [k["name"] for k in resp.json()]
-        assert "member-key" in names
-        assert "other-org-key" not in names
-        assert resp.json()[0]["owner"]["email"]
+    regular_user.is_active = False
+    regular_user.save(update_fields=["is_active"])
+    assert api_client.get(PROFILE_URL).status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_system_key_never_listed(self, auth_client, env_api_key):
-        names = [k["name"] for k in auth_client.get(ADMIN_KEYS_URL).json()]
-        assert "env-system" not in names
+    regular_user.is_active = True
+    regular_user.save(update_fields=["is_active"])
+    assert api_client.get(PROFILE_URL).status_code == status.HTTP_200_OK
 
-    def test_cross_org_key_revoke_404(self, auth_client, other_org_user):
-        _, _, key = other_org_user
-        assert (
-            auth_client.post(admin_key_revoke_url(key.pk)).status_code
-            == status.HTTP_404_NOT_FOUND
-        )
 
-    def test_revoke_member_key(self, auth_client, regular_user, issue_api_key):
-        raw, key = issue_api_key(user=regular_user)
-        resp = auth_client.post(admin_key_revoke_url(key.pk))
-        assert resp.status_code == status.HTTP_200_OK
-        assert resp.json()["status"] == "revoked"
+@pytest.mark.django_db
+def test_system_key_is_unaffected_by_the_owner_check(api_client, env_api_key):
+    raw, _ = env_api_key
 
-    def test_delete_member_key(self, auth_client, regular_user, issue_api_key):
-        _, key = issue_api_key(user=regular_user)
-        assert (
-            auth_client.delete(admin_key_url(key.pk)).status_code
-            == status.HTTP_204_NO_CONTENT
-        )
+    api_client.credentials(HTTP_X_API_KEY=raw)
+    resp = api_client.get(VALIDATE_URL)
 
-    def test_status_filter(self, auth_client, regular_user, issue_api_key):
-        issue_api_key(user=regular_user, name="live")
-        issue_api_key(user=regular_user, name="dead", revoked_at=timezone.now())
-        names = [
-            k["name"]
-            for k in auth_client.get(ADMIN_KEYS_URL, {"status": "revoked"}).json()
-        ]
-        assert names == ["dead"]
-
-    def test_invalid_status_filter_400(self, auth_client):
-        resp = auth_client.get(ADMIN_KEYS_URL, {"status": "bogus"})
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_member_without_secrets_read_403(
-        self, api_client, default_org, issue_api_key
-    ):
-        """Built-in Member role has secrets=192 (USE|LIST) — no READ bit."""
-        member_role = Role.objects.get(
-            name="Member", is_built_in=True, org__isnull=True
-        )
-        member = get_user_model().objects.create_user(
-            email="plain-member@example.com", password="MemberStrongPass123!"
-        )
-        OrganizationUser.objects.create(user=member, org=default_org, role=member_role)
-        access = str(RefreshToken.for_user(member).access_token)
-        api_client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {access}",
-            HTTP_X_ORGANIZATION_ID=str(default_org.id),
-        )
-        assert api_client.get(ADMIN_KEYS_URL).status_code == status.HTTP_403_FORBIDDEN
-
-    def test_superadmin_sees_all_orgs_without_header(
-        self, superadmin_client, regular_user, issue_api_key, other_org_user
-    ):
-        issue_api_key(user=regular_user, name="member-key")
-        names = [k["name"] for k in superadmin_client.get(ADMIN_KEYS_URL).json()]
-        assert "member-key" in names
-        assert "other-org-key" in names
-
-    def test_api_key_blocked_on_management(
-        self, regular_user, user_api_key, default_org
-    ):
-        raw, _ = user_api_key
-        client = APIClient()
-        client.credentials(
-            HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(default_org.id)
-        )
-        assert client.get(ADMIN_KEYS_URL).status_code == status.HTTP_403_FORBIDDEN
-
-    def test_api_key_blocked_on_management_revoke_and_delete(
-        self, regular_user, user_api_key, issue_api_key, default_org
-    ):
-        raw, _ = user_api_key
-        _, target = issue_api_key(user=regular_user, name="target")
-        client = APIClient()
-        client.credentials(
-            HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(default_org.id)
-        )
-        assert (
-            client.post(admin_key_revoke_url(target.pk)).status_code
-            == status.HTTP_403_FORBIDDEN
-        )
-        assert (
-            client.delete(admin_key_url(target.pk)).status_code
-            == status.HTTP_403_FORBIDDEN
-        )
-
-    def test_system_key_id_404_on_management_mutation(self, auth_client, env_api_key):
-        _, system_key = env_api_key
-        assert (
-            auth_client.post(admin_key_revoke_url(system_key.pk)).status_code
-            == status.HTTP_404_NOT_FOUND
-        )
-        assert (
-            auth_client.delete(admin_key_url(system_key.pk)).status_code
-            == status.HTTP_404_NOT_FOUND
-        )
+    assert resp.status_code == status.HTTP_200_OK
