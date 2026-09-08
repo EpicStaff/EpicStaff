@@ -36,7 +36,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 from django.conf import settings
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError
+from tables.clients.errors import ClientError, ClientResourceNotFoundError
 
 from rest_framework.decorators import action
 from rest_framework import viewsets, mixins
@@ -1094,11 +1094,11 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(
-                    strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index"
-                )
-        except ClientError:
+                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+        except ClientResourceNotFoundError:
             pass
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

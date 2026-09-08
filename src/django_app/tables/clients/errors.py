@@ -30,3 +30,9 @@ class ClientValidationError(ClientError):
     """Target service rejected the request with a 4xx status."""
 
     status_code = 400
+
+
+class ClientResourceNotFoundError(ClientError):
+    """Target service responded 404 — the referenced resource or operation does not exist."""
+
+    status_code = 404

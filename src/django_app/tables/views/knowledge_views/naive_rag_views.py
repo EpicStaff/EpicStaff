@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError
+from tables.clients.errors import ClientError, ClientResourceNotFoundError
 
 from rest_framework.permissions import IsAuthenticated
 
@@ -89,7 +89,6 @@ _DOC_CONFIG_ORG_PATH = "naive_rag__base_rag_type__source_collection__org_id"
 _CHUNK_ORG_PATH = (
     "naive_rag_document_config__naive_rag__base_rag_type__source_collection__org_id"
 )
-
 
 class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     """
@@ -591,7 +590,6 @@ class NaiveRagChunkViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
 class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        # Validate the config exists in the active org (404) + verb gate.
         config = self.get_in_active_org_or_404(
             NaiveRagDocumentConfig,
             document_config_id,
@@ -648,13 +646,11 @@ class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(
-                    strategy=RAGStrategy.NAIVE,
-                    rag_id=naive_rag_id,
-                    operation="prechunk",
-                )
-        except ClientError:
+                client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
+        except ClientResourceNotFoundError:
             pass
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -678,7 +674,6 @@ class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET)
     def get(self, request, naive_rag_id: int, document_config_id: int):
-        # Validate the config exists in the active org (404) + verb gate.
         config = (
             NaiveRagDocumentConfig.objects.filter(
                 pk=document_config_id,
@@ -727,7 +722,7 @@ class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        chunks = config.preview_chunks.all()[offset : offset + limit]
+        chunks = config.preview_chunks.all()[offset:offset+limit]
         chunks = NaiveRagPreviewChunkSerializer(chunks, many=True).data
 
         return Response(
