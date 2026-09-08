@@ -2,8 +2,22 @@ from django.utils.functional import SimpleLazyObject
 from rest_framework import serializers
 
 from tables.models import Secret
-from tables.serializers.org_scoped_fields import OrgScopedUniqueTogetherValidator
+from tables.serializers.org_scoped_fields import (
+    OrgScopedUniqueTogetherValidator,
+    resolve_active_org_id,
+)
+from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.secrets import secret_service, secret_usage_service
+
+_permission_resolver = PermissionResolver()
+
+
+def _effective_for(*, context):
+    """The requesting user's resolved permissions in the active org."""
+    request = context["request"]
+    return _permission_resolver.resolve(
+        user=request.user, org_id=resolve_active_org_id(request)
+    )
 
 
 class SecretUsageCountListSerializer(serializers.ListSerializer):
@@ -11,8 +25,9 @@ class SecretUsageCountListSerializer(serializers.ListSerializer):
 
     def to_representation(self, data):
         org_id = self.context["view"].get_active_org_id()
+        effective = _effective_for(context=self.context)
         self.context["usage_counts"] = SimpleLazyObject(
-            lambda: secret_usage_service.counts(org_id=org_id)
+            lambda: secret_usage_service.counts(org_id=org_id, effective=effective)
         )
         return super().to_representation(data)
 
@@ -58,12 +73,19 @@ class SecretSerializer(serializers.ModelSerializer):
         text = validated_data.pop("value")
         return secret_service.create(text=text, **validated_data)
 
-    def get_usage_count(self, secret) -> int:
-        """Distinct resources referencing this secret."""
+    def get_usage_count(self, secret) -> dict:
+        """Readable and hidden counts of resources referencing this secret."""
         counts = self.context.get("usage_counts")
-        if counts is not None:
-            return counts[secret.pk]
-        return secret_usage_service.count_for(secret=secret)
+        if counts is None:
+            counts = {
+                secret.pk: secret_usage_service.count_for(
+                    secret=secret, effective=_effective_for(context=self.context)
+                )
+            }
+        return {
+            "readable": counts[secret.pk].readable,
+            "hidden": counts[secret.pk].hidden,
+        }
 
 
 class SecretNameSerializer(serializers.ModelSerializer):

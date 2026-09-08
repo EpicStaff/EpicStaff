@@ -2515,7 +2515,12 @@ class SecretViewSet(
     def usage(self, request, pk=None):
         """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
-        return Response(secret_usage_service.summary(secret=secret))
+        effective = PermissionResolver().resolve(
+            user=request.user, org_id=self.get_active_org_id()
+        )
+        return Response(
+            secret_usage_service.summary(secret=secret, effective=effective)
+        )
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):

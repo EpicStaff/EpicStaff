@@ -53,6 +53,7 @@ from tables.services.secrets.usage_sources import (
     CATEGORY_TOOLS,
     HITS_ASSEMBLERS,
     NODE_TYPE_TELEGRAM_TRIGGER,
+    READABLE_ALWAYS,
     SHAPE_EDGE,
     SHAPE_NAMED,
     SHAPE_NODE,
@@ -116,7 +117,7 @@ def _hits(*, source, org_id, secret_ids):
     """
     shape = source.detail_shape
     rows = getattr(source, SHAPE_PROJECTIONS[shape])(
-        org_id=org_id, secret_ids=secret_ids
+        org_id=org_id, secret_ids=secret_ids, readability=READABLE_ALWAYS
     )
     return HITS_ASSEMBLERS[shape](rows=rows)
 
@@ -613,12 +614,14 @@ class TestCountPairs:
             )
 
         pairs = list(
-            _source(model=PythonNode).count_pairs(org_id=org.id, secret_ids=ids)
+            _source(model=PythonNode).count_pairs(
+                org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
+            )
         )
 
         assert len(pairs) == 2
-        assert {key for _, key in pairs} == {f"flows:{graph.pk}"}
-        assert {secret_id for secret_id, _ in pairs} == {secret.pk}
+        assert {key for _, key, _ in pairs} == {f"flows:{graph.pk}"}
+        assert {secret_id for secret_id, _, _ in pairs} == {secret.pk}
 
     def test_a_named_key_carries_its_category_and_type(self, org, secret, ids):
         """The prefix is what keeps same-named resources distinct — the category
@@ -642,14 +645,14 @@ class TestCountPairs:
 
         config_keys = [
             key
-            for _, key in _source(model=LLMConfig).count_pairs(
-                org_id=org.id, secret_ids=ids
+            for _, key, _ in _source(model=LLMConfig).count_pairs(
+                org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
             )
         ]
         tool_keys = [
             key
-            for _, key in _source(model=McpTool).count_pairs(
-                org_id=org.id, secret_ids=ids
+            for _, key, _ in _source(model=McpTool).count_pairs(
+                org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
             )
         ]
 
@@ -661,11 +664,13 @@ class TestCountPairs:
         """The union in counts() requires it: differing column counts or types make
         the combined query a hard error rather than a wrong number."""
         for source in USAGE_SOURCES:
-            pairs = source.count_pairs(org_id=org.id, secret_ids=ids)
+            pairs = source.count_pairs(
+                org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
+            )
             assert (
                 len(pairs.query.values_select or ())
                 + len(pairs.query.annotation_select)
-                == 2
+                == 3
             ), source.model.__name__
 
     def test_the_whole_registry_unions_without_error(self, org, secret, ids):
@@ -673,7 +678,9 @@ class TestCountPairs:
         compiled: mixed CharField/TextField name columns raise at compile time and
         an incompatible union raises at execution time."""
         first, *rest = [
-            source.count_pairs(org_id=org.id, secret_ids=ids)
+            source.count_pairs(
+                org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
+            )
             for source in USAGE_SOURCES
         ]
 
@@ -740,7 +747,7 @@ class TestDetailShapes:
         """Differing column counts within a group make the union a hard error."""
         for source in (s for s in USAGE_SOURCES if s.detail_shape == shape):
             rows = getattr(source, SHAPE_PROJECTIONS[shape])(
-                org_id=org.id, secret_ids=ids
+                org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
             )
             projected = len(rows.query.values_select) + len(
                 rows.query.annotation_select
@@ -753,7 +760,9 @@ class TestDetailShapes:
         for shape in (SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE):
             sources = [s for s in USAGE_SOURCES if s.detail_shape == shape]
             first, *rest = [
-                getattr(source, SHAPE_PROJECTIONS[shape])(org_id=org.id, secret_ids=ids)
+                getattr(source, SHAPE_PROJECTIONS[shape])(
+                    org_id=org.id, secret_ids=ids, readability=READABLE_ALWAYS
+                )
                 for source in sources
             ]
             rows = first.union(*rest) if rest else first
@@ -780,3 +789,35 @@ def test_registry_covers_every_declared_source():
         if source.secret_path.endswith("__secrets__id")
     ]
     assert len(derived) == len(PYTHON_CODE_SITES)
+
+
+def test_every_source_declares_readable_resource_types():
+    """A source registered without a visibility decision is a bug, not a default."""
+    from tables.services.secrets.usage_sources import USAGE_SOURCES
+
+    missing = [
+        source.model.__name__
+        for source in USAGE_SOURCES
+        if not source.rbac_resource_types
+    ]
+    assert missing == []
+
+
+def test_only_webhook_sources_are_row_level():
+    """Row-level resolution is confined to the two sources that need it."""
+    from tables.models.webhook_models import NgrokWebhookConfig, WebhookTriggerAuth
+    from tables.services.secrets.usage_sources import USAGE_SOURCES
+
+    row_level = {source.model for source in USAGE_SOURCES if source.conditional_paths}
+    assert row_level == {NgrokWebhookConfig, WebhookTriggerAuth}
+
+
+def test_conditional_paths_cover_flows_and_voice():
+    """Both webhook sources reach flows via two node models and voice via Twilio."""
+    from tables.services.secrets.usage_sources import USAGE_SOURCES
+
+    for source in USAGE_SOURCES:
+        if not source.conditional_paths:
+            continue
+        granted = sorted(path.resource_type for path in source.conditional_paths)
+        assert granted == ["flows", "flows", "voice"], source.model.__name__
