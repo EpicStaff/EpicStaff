@@ -1138,3 +1138,47 @@ class TestRealtimeChannelLegacyAgentPointer:
         assert response.status_code == 200, response.json()
         results = response.json()["results"]
         assert [row["id"] for row in results] == [matching_channel.pk]
+
+
+@pytest.mark.django_db
+class TestRealtimeChannelInactiveChannelStaysManageable:
+    """`RealtimeChannel.active_objects` (the is_active-filtered manager)
+    must only be used by inbound lookup paths (lookup_by_token,
+    TwilioService.configure_webhook). The admin CRUD surface
+    (RealtimeChannelViewSet) keeps using the plain, unfiltered `objects`
+    manager so an operator who deactivated a channel can still find it
+    through list/retrieve in order to reactivate it -- deactivating a
+    channel must never make it disappear from normal management."""
+
+    def test_inactive_channel_still_visible_in_list(self, auth_client, db, default_org):
+        rc = _make_realtime_channel(db, default_org, is_active=False)
+
+        url = reverse("realtimechannel-list")
+        response = auth_client.get(url)
+
+        assert response.status_code == 200, response.json()
+        ids = [row["id"] for row in response.json()["results"]]
+        assert rc.pk in ids
+
+    def test_inactive_channel_still_retrievable_by_id(
+        self, auth_client, db, default_org
+    ):
+        rc = _make_realtime_channel(db, default_org, is_active=False)
+
+        url = reverse("realtimechannel-detail", args=[rc.pk])
+        response = auth_client.get(url)
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["is_active"] is False
+
+    def test_inactive_channel_can_be_reactivated_via_patch(
+        self, auth_client, db, default_org
+    ):
+        rc = _make_realtime_channel(db, default_org, is_active=False)
+
+        url = reverse("realtimechannel-detail", args=[rc.pk])
+        response = auth_client.patch(url, {"is_active": True}, format="json")
+
+        assert response.status_code == 200, response.json()
+        rc.refresh_from_db()
+        assert rc.is_active is True

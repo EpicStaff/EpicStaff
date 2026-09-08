@@ -1667,11 +1667,11 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
         channel = (
-            RealtimeChannel.objects.select_related(
+            RealtimeChannel.active_objects.select_related(
                 "twilio__webhook_trigger__ngrok",
                 "twilio__webhook_trigger__localhost",
             )
-            .filter(token=token, is_active=True)
+            .filter(token=token)
             .first()
         )
         if channel is None:
