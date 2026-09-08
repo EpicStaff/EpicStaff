@@ -18,11 +18,15 @@ from tables.exceptions import (
     NoGraphRagForCollectionException,
     NoNaiveRagForCollectionException,
 )
+from tables.models import SourceCollection
 from tables.models.llm_models import LLMConfig
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.search_config_serializers import (
     GraphRagSuggestInputSerializer,
     NaiveRagSuggestInputSerializer,
 )
+from tables.services.rbac.permission_assert import assert_org_permission
+from tables.views.mixins import OrgScopedServiceViewSetMixin
 from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
@@ -98,7 +102,7 @@ def _build_response(
     return Response(payload.model_dump(), status=status.HTTP_200_OK)
 
 
-class NaiveRagSuggestParamsView(APIView):
+class NaiveRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
     serializer_class = NaiveRagSuggestInputSerializer
 
     @extend_schema(**NAIVE_RAG_SUGGEST_PARAMS_POST)
@@ -112,6 +116,14 @@ class NaiveRagSuggestParamsView(APIView):
                 {"error": "Request body must be a JSON object."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        self.get_in_active_org_or_404(SourceCollection, req.knowledge_collection_id)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.READ,
+        )
 
         try:
             ctx, llm_name, warning, is_trusted = _resolve_llm_ctx(req.llm_config_id)
@@ -130,14 +142,11 @@ class NaiveRagSuggestParamsView(APIView):
         ) as exc:
             return Response({"error": str(exc)}, status=exc.status_code)
         except Exception:
-            # No 5xx on the wire: log the traceback and defer to the project's
-            # custom_exception_handler, which envelopes unexpected errors without
-            # emitting a 500 in production.
             logger.exception("Unexpected error in NaiveRagSuggestParamsView")
             raise
 
 
-class GraphRagSuggestParamsView(APIView):
+class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
     serializer_class = GraphRagSuggestInputSerializer
 
     @extend_schema(**GRAPH_RAG_SUGGEST_PARAMS_POST)
@@ -151,6 +160,14 @@ class GraphRagSuggestParamsView(APIView):
                 {"error": "Request body must be a JSON object."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        self.get_in_active_org_or_404(SourceCollection, req.knowledge_collection_id)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.READ,
+        )
 
         try:
             strategy = get_graph_strategy(req.search_method)
