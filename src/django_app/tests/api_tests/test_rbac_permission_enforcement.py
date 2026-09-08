@@ -9,7 +9,7 @@ from tables.models.rbac_models import (
     Role,
     RolePermission,
 )
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission
 
 
 # ---- shared fixtures ----
@@ -289,3 +289,33 @@ def test_permissions_me_org_admin(auth_client, org_admin_user, org_acme):
     assert "export" in body["permissions"]["flows"]
     # Org Admin now holds organizations READ|UPDATE (rename/manage own org).
     assert body["permissions"]["organizations"] == ["read", "update"]
+
+
+# ---- Built-in seed: api_keys ----
+
+
+@pytest.mark.django_db
+def test_org_admin_seed_grants_api_keys_read_and_delete(role_org_admin):
+    row = RolePermission.objects.get(role=role_org_admin, resource_type="api_keys")
+
+    assert row.permissions == int(Permission.READ | Permission.DELETE)
+
+
+@pytest.mark.django_db
+def test_member_and_viewer_seeds_grant_no_api_keys(role_member, role_viewer):
+    assert not RolePermission.objects.filter(
+        role__in=[role_member, role_viewer], resource_type="api_keys"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_secrets_seeds_are_untouched(role_org_admin, role_member):
+    org_admin_secrets = RolePermission.objects.get(
+        role=role_org_admin, resource_type="secrets"
+    )
+    member_secrets = RolePermission.objects.get(
+        role=role_member, resource_type="secrets"
+    )
+
+    assert org_admin_secrets.permissions == 207
+    assert member_secrets.permissions == 192

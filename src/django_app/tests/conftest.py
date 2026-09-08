@@ -94,6 +94,11 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
             "tables.migrations.0210_alter_rolepermission_resource_type"
         )
         rename_module.rename_users_to_memberships(django_apps, None)
+        # 0212 grants Org Admin api_keys=READ|DELETE; flush wipes it, so replay it here too.
+        api_keys_perm_module = import_module(
+            "tables.migrations.0212_alter_rolepermission_resource_type"
+        )
+        api_keys_perm_module.seed_org_admin_api_keys_perm(django_apps, None)
 
 
 @pytest.fixture(autouse=True)
@@ -119,6 +124,7 @@ def heal_builtin_roles(request):
         return
     if not Role.objects.filter(is_built_in=True).exists():
         seed_builtin_roles_and_permissions()
+
 
 @pytest.fixture(autouse=True)
 def clear_default_models_cache():
