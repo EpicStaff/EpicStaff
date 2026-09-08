@@ -17,7 +17,7 @@
     .section-title-no-tabs {
         font-size: 14px;
         font-weight: 700;
-        color: var(--color-ks-text);
+        color: var(--fog-200);
         margin: 0 0 0.5rem;
         text-transform: uppercase;
         letter-spacing: 0;
@@ -27,7 +27,7 @@
         margin-top: 13px;
         font-weight: 400;
         font-size: 14px;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
         font-size: 14px;
         text-align: left;
     }
@@ -58,10 +58,10 @@
     max-width: 100%;
     overflow-x: auto;
     box-shadow:
-        0px 2px 3px 0px #0000004d,
-        0px 6px 10px 4px #00000026;
+        0px 2px 3px 0px var(--black-alpha-30),
+        0px 6px 10px 4px var(--black-alpha-15);
     &:hover {
-        background: #313438;
+        background: var(--graphite-690);
     }
 
     scrollbar-width: none;
@@ -91,17 +91,17 @@
 .loading,
 .error {
     font-size: 1.1rem;
-    color: #b0b8c1;
+    color: var(--slate-400);
     margin-top: 2rem;
 }
 
 .error {
-    color: #d32f2f;
+    color: var(--scarlet-700);
 }
 
 .retry-button {
     background: var(--accent-color);
-    color: white;
+    color: var(--white);
     border: none;
     padding: 0.5rem 1rem;
     border-radius: 6px;

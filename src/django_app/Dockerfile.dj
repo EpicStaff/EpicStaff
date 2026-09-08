@@ -1,7 +1,13 @@
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
+# Wheels only. Installing from an sdist runs setup.py / a PEP 517 backend at
+# install time; a wheel does not. psycopg2 publishes no Linux wheel, so it is
+# the one audited exception -- a service that gains psycopg2 without adding it
+# here will fail the build rather than silently regain source execution.
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_INSTALLER_ONLY_BINARY=":all:" \
+    POETRY_INSTALLER_NO_BINARY="psycopg2" \
     POETRY_NO_INTERACTION=1 \
     POETRY_CACHE_DIR=/tmp/poetry_cache \
     POETRY_REQUESTS_TIMEOUT=100 \

@@ -1,4 +1,3 @@
-from loguru import logger
 from collections import Counter
 
 import jsonschema
@@ -6,23 +5,21 @@ from django.db import transaction
 from rest_framework import serializers
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.models.crew_models import Crew
-from tables.models.llm_models import LLMConfig
-from tables.serializers.model_serializers.crew_serializers import (
-    CrewSerializer,
-)
 from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CrewNode,
     Edge,
     FileExtractorNode,
     Graph,
+    KnowledgeNode,
     PythonNode,
     SubGraphNode,
     TaskNode,
 )
+from tables.models.knowledge_models import SourceCollection
+from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
+from tables.services.rag_assignment_service import SearchConfigService
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -30,7 +27,6 @@ from tables.serializers.base_serializer import (
 from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
-    resolve_active_org_id,
 )
 from agents.models.agent_models import AgentDefinition
 from agents.models.surface_models import Surface
@@ -116,47 +112,6 @@ def validate_output_schema(value):
     return value
 
 
-class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
-    """
-    DEPRECATED: CrewNodeSerializer is deprecated. Use AgentNodeSerializer or
-    TaskNodeSerializer instead. Exists only for backward compatibility with
-    existing CrewNode rows.
-    """
-
-    crew = CrewSerializer(read_only=True)
-    crew_id = serializers.IntegerField(write_only=True)
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta:
-        model = CrewNode
-        fields = "__all__"
-        read_only_fields = ["crew"]
-
-    def validate_crew_id(self, value):
-        # Org isolation: the referenced crew must be in the caller's active org.
-        # Out-of-org and non-existent ids are rejected identically (no leak).
-        request = self.context.get("request")
-        if request is None:
-            # No request in context => org scope cannot be applied. Deny (fail-safe)
-            # instead of allowing any crew, and log so the missing context surfaces.
-            logger.warning(
-                "CrewNodeSerializer.validate_crew_id was resolved without a request "
-                "in the serializer context; rejecting crew_id because org scope "
-                "cannot be applied. Construct the serializer with the request in "
-                "its context."
-            )
-            raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
-        crews = Crew.objects.only("id").filter(org_id=resolve_active_org_id(request))
-        if not crews.filter(id=value).exists():
-            raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
-        return value
-
-    def update(self, instance, validated_data):
-        if "crew_id" in validated_data:
-            instance.crew_id = validated_data["crew_id"]
-        return super().update(instance, validated_data)
-
-
 class PythonNodeSerializer(
     ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
 ):
@@ -176,6 +131,73 @@ class FileExtractorNodeSerializer(
     class Meta:
         model = FileExtractorNode
         fields = "__all__"
+
+
+class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    """Plain node serializer (no search configs). Base for bulk-save, which
+    persists the config blocks separately via its saveable.
+
+    rag_type ("naive"/"graph") and rag_id are stored verbatim as the FE sends them
+    from /available-rags — no resolution here. RAG validation lives in
+    KnowledgeNodeValidator, invoked by the viewset and the bulk-save saveable."""
+
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+    source_collection = OrgScopedPrimaryKeyRelatedField(
+        queryset=SourceCollection.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = KnowledgeNode
+        fields = "__all__"
+        extra_kwargs = {
+            "search_method": {"write_only": True},
+        }
+
+
+class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
+    """Adds the nested read-back of node-bound search configs (mirror of
+    AgentReadSerializer.search_configs). Used for list/retrieve and inside
+    GraphSerializer.knowledge_node_list."""
+
+    search_configs = serializers.SerializerMethodField()
+
+    def get_search_configs(self, node: KnowledgeNode) -> dict | None:
+        return SearchConfigService.get_node_search_configs(node)
+
+
+class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
+    """Accepts a partial nested `search_configs` block and merges it into the
+    node-bound config rows (mirror of AgentWriteSerializer). Only provided
+    fields are touched — the FE may send just what changed."""
+
+    search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        graph = (attrs.get("search_configs") or {}).get("graph") or {}
+        if graph.get("search_method") and not attrs.get("search_method"):
+            attrs["search_method"] = graph["search_method"]
+        return super().validate(attrs)
+
+    def create(self, validated_data):
+        search_configs_data = validated_data.pop("search_configs", None)
+        node = super().create(validated_data)
+        if search_configs_data:
+            SearchConfigService.apply_node_search_configs(node, search_configs_data)
+        return node
+
+    def update(self, instance, validated_data):
+        search_configs_data = validated_data.pop("search_configs", None)
+        node = super().update(instance, validated_data)
+        if search_configs_data:
+            SearchConfigService.apply_node_search_configs(node, search_configs_data)
+            node.refresh_from_db()
+        return node
+
+    def to_representation(self, instance):
+        """Return the persisted nested config (read format), not the raw input."""
+        data = super().to_representation(instance)
+        data["search_configs"] = SearchConfigService.get_node_search_configs(instance)
+        return data
 
 
 class AudioTranscriptionNodeSerializer(

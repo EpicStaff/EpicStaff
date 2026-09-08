@@ -12,6 +12,7 @@ from agents.models.agent_models import (
 )
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
+from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.python_models import PythonCodeTool
@@ -49,7 +50,15 @@ class RealtimeSurfaceService:
     ) -> RealtimeAgentSurfaceResolution:
         combined_surface = self._build_combined_surface(agent_definition)
 
-        tools = self._resolve_python_tools(combined_surface["python_tools"])
+        storage_allowed_paths, storage_org_prefix = self._resolve_storage_grants(
+            combined_surface["storage_items"]
+        )
+        tools = self._resolve_python_tools(
+            combined_surface["python_tools"],
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            org_id=agent_definition.organization_id,
+        )
         self._warn_on_mcp_tools(combined_surface["mcp_tools"])
 
         (
@@ -90,7 +99,11 @@ class RealtimeSurfaceService:
         return SurfaceCombineService.combine(surface_dicts)
 
     def _resolve_python_tools(
-        self, python_tool_entries: list[dict]
+        self,
+        python_tool_entries: list[dict],
+        storage_allowed_paths: list[str],
+        storage_org_prefix: str | None,
+        org_id: int | None,
     ) -> list[BaseToolData]:
         allowed_tool_ids = [
             entry["python_tool"]
@@ -98,9 +111,46 @@ class RealtimeSurfaceService:
             if entry["mode"] == "allow"
         ]
         return [
-            self.converter_service.convert_tool_to_base_tool_pydantic(python_tool)
+            self.converter_service.convert_tool_to_base_tool_pydantic(
+                python_tool,
+                storage_allowed_paths_override=storage_allowed_paths,
+                storage_org_prefix_override=storage_org_prefix,
+                org_id_override=org_id,
+            )
             for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids)
         ]
+
+    def _resolve_storage_grants(
+        self, storage_item_entries: list[dict]
+    ) -> tuple[list[str], str | None]:
+        """Resolve allowed storage paths + org prefix from the agent-definition's
+        own surface, mirroring the inclusion rule in
+        `base_node_payload_service.BaseNodePayloadService._build_s3_pool`: a
+        `StorageFile` qualifies if it has any ALLOW flag among
+        can_list/can_view/can_edit/can_delete.
+        """
+        allowed_file_ids = [
+            entry["storage_file"]
+            for entry in storage_item_entries
+            if "allow"
+            in (
+                entry.get("can_list", "unset"),
+                entry.get("can_view", "unset"),
+                entry.get("can_edit", "unset"),
+                entry.get("can_delete", "unset"),
+            )
+        ]
+        if not allowed_file_ids:
+            return [], None
+
+        storage_files = list(StorageFile.objects.filter(pk__in=allowed_file_ids))
+        if not storage_files:
+            return [], None
+
+        allowed_paths = [storage_file.path for storage_file in storage_files]
+        org_id = storage_files[0].org_id
+        storage_org_prefix = f"org_{org_id}" if org_id is not None else None
+        return allowed_paths, storage_org_prefix
 
     def _warn_on_mcp_tools(self, mcp_tool_entries: list[dict]) -> None:
         for entry in mcp_tool_entries:

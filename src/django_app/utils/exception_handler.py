@@ -7,16 +7,7 @@ from django.http import Http404, JsonResponse
 
 
 def custom_exception_handler(exc, context):
-    """
-    Custom exception handler for API.
-
-    This function handles exceptions raised during the processing of API requests.
-    - If the exception is an instance of `APIException`, it customizes the response data
-      to include `status_code`, `code`, and a detailed error message.
-
-    - If `DEBUG` is enabled, the default behavior of `exception_handler` is used.
-
-    """
+    """Render every exception as the project's `{status_code, code, message}` envelope."""
 
     # DRF's own `exception_handler()` converts Django's `Http404`/
     # `PermissionDenied` into `NotFound`/`PermissionDenied` APIExceptions,

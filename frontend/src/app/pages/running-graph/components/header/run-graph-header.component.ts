@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
-import { Component, HostListener, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, Input } from '@angular/core';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
@@ -17,9 +16,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
 
 @Component({
     selector: 'app-running-graph-header',
-    standalone: true,
     imports: [
-        CommonModule,
         RouterModule,
         MatButtonModule,
         MatBadgeModule,
@@ -73,12 +70,13 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     (click)="toggleMemoriesSidebar()"
                 >
                     <span class="btn-label">Memories</span>
-                    <span
-                        class="memories-badge"
-                        matBadge="{{ memoriesCount }}"
-                        matBadgeColor="accent"
-                        *ngIf="memoriesCount > 0"
-                    ></span>
+                    @if (memoriesCount > 0) {
+                        <span
+                            class="memories-badge"
+                            matBadge="{{ memoriesCount }}"
+                            matBadgeColor="accent"
+                        ></span>
+                    }
                 </button>
             </div>
         </div>
@@ -91,6 +89,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
             (deleteMemoryEvent)="handleDeleteMemory($event)"
         ></app-memories-sidebar>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .header {
@@ -119,7 +118,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     .flows-prefix,
                     .flow-name,
                     .slash {
-                        font-size: 24px;
+                        font-size: 1.5rem;
                         font-weight: 400;
                         letter-spacing: -0.02em;
                         line-height: 1;
@@ -238,15 +237,15 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     }
 
                     mat-icon {
-                        font-size: 18px;
+                        font-size: 1.125rem;
                         width: 18px;
                         height: 18px;
                         margin-top: 2px;
                     }
 
                     span {
-                        font-size: 14px;
-                        font-weight: 400;
+                        font-size: var(--text-body-size);
+                        font-weight: var(--text-body-weight);
                     }
                 }
 

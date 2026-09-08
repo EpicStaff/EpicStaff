@@ -11,7 +11,6 @@ from dotdict import DotDict
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
-from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from services.graph.graph_builder import SessionGraphBuilder
 from services.run_python_code_service import RunPythonCodeService
@@ -21,11 +20,6 @@ from models.graph_models import GraphMessage
 from settings import DEFAULT_TOKEN_BUDGET
 
 from src.shared.models import SessionData, StopSessionMessage
-from src.crew.services.graph.shared_variables import (
-    SharedVariables,
-    SharedVariableScope,
-    cleanup_session,
-)
 
 # Reserved key smuggled through SessionData.initial_state (a pre-existing
 # free-form dict[str, Any] field) to carry an optional per-run token-budget
@@ -41,11 +35,12 @@ def _extract_finish_token_total(message_data: dict) -> int:
 
     Mirrors the extraction logic in
     tables/services/redis_pubsub.py::_calculate_subgraph_token_usage so both
-    sides agree on where token usage lives in a "finish" message: CrewNode
-    (services/graph/nodes/crew_node.py) embeds it as output["token_usage"].
+    sides agree on where token usage lives in a "finish" message: AgentNode
+    (services/graph/nodes/agent_node.py) and TaskNode
+    (services/graph/nodes/task_node.py) embed it as output["token_usage"].
     Subgraph finish messages are re-streamed through the same parent
     graph.astream() custom-stream (see subgraphs/subgraph_node.py
-    _execute_subgraph -> writer(data)), so nested crew nodes' finish
+    _execute_subgraph -> writer(data)), so nested agent/task nodes' finish
     messages surface here too and are counted the same way.
     """
     if not isinstance(message_data, dict):
@@ -74,11 +69,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     def __init__(
         self,
         redis_service: RedisService,
-        crew_parser_service: CrewParserService,
         python_code_executor_service: RunPythonCodeService,
         session_schema_channel: str,
         session_timeout_channel: str,
-        crewai_output_channel: str,
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         agent_task_service: AgentTaskService | None = None,
@@ -89,20 +82,16 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         Args:
             redis_service (RedisService): The service responsible for Redis operations.
-            crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             session_schema_channel (str): The Redis channel for listening to session schema messages.
-            crewai_output_channel (str): The Redis channel for publishing CrewAI output messages.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice.
         """
 
         self.redis_service = redis_service
-        self.crew_parser_service = crew_parser_service
         self.python_code_executor_service = python_code_executor_service
         self.session_schema_channel = session_schema_channel
         self.session_timeout_channel = session_timeout_channel
-        self.crewai_output_channel = crewai_output_channel
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
@@ -141,9 +130,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_graph_builder = SessionGraphBuilder(
                 session_id=session_id,
                 redis_service=self.redis_service,
-                crew_parser_service=self.crew_parser_service,
                 python_code_executor_service=self.python_code_executor_service,
-                crewai_output_channel=self.crewai_output_channel,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
                 agent_task_service=self.agent_task_service,
@@ -151,20 +138,12 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
 
-            shared_vars = SharedVariables(
-                session_id=session_id,
-                redis_service=self.redis_service,
-            )
-
             state = {
                 "state_history": [],
                 "variables": DotDict(initial_state),
                 "system_variables": {"nodes": {}},
                 "execution_counts": {},
             }
-
-            # Add shared variables to state
-            state["variables"]["shared"] = shared_vars
 
             await self.redis_service.aupdate_session_status(
                 session_id=session_id,
@@ -180,41 +159,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "values":
                     final_state = chunk
                 elif stream_mode == "custom":
-                    # Clean SharedVariable objects from chunk before serialization
-                    import dataclasses
-
-                    def deep_clean(obj):
-                        if isinstance(obj, (SharedVariables, SharedVariableScope)):
-                            return None
-                        elif isinstance(obj, dict):
-                            cleaned = {}
-                            for k, v in obj.items():
-                                if k == "shared" and isinstance(
-                                    v, (SharedVariables, SharedVariableScope)
-                                ):
-                                    continue
-                                cleaned_v = deep_clean(v)
-                                if cleaned_v is not None or not isinstance(
-                                    v, (SharedVariables, SharedVariableScope)
-                                ):
-                                    cleaned[k] = cleaned_v
-                            return cleaned
-                        elif isinstance(obj, (list, tuple)):
-                            return [deep_clean(item) for item in obj]
-                        elif dataclasses.is_dataclass(obj) and not isinstance(
-                            obj, type
-                        ):
-                            cleaned_fields = {}
-                            for field in dataclasses.fields(obj):
-                                value = getattr(obj, field.name)
-                                cleaned_fields[field.name] = deep_clean(value)
-                            return dataclasses.replace(obj, **cleaned_fields)
-                        else:
-                            return obj
-
                     try:
-                        cleaned_chunk = deep_clean(chunk)
-                        data = asdict(cleaned_chunk)
+                        data = asdict(chunk)
                     except Exception as e:
                         logger.error(
                             f"Error during chunk cleaning/serialization: {e}",
@@ -265,20 +211,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             end_node_result = session_graph_builder.end_node_result
 
-            def _clean_result(obj):
-                if isinstance(obj, (SharedVariables, SharedVariableScope)):
-                    return None
-                elif isinstance(obj, dict):
-                    return {
-                        k: _clean_result(v)
-                        for k, v in obj.items()
-                        if not isinstance(v, (SharedVariables, SharedVariableScope))
-                    }
-                elif isinstance(obj, (list, tuple)):
-                    return [_clean_result(i) for i in obj]
-                return obj
-
-            end_node_result = _clean_result(end_node_result)
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",
@@ -300,8 +232,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 variables=final_state["variables"].model_dump(),
             )
 
-            # Cleanup shared variables
-            await cleanup_session(session_id, self.redis_service, status="completed")
             await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:

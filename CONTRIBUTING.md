@@ -17,6 +17,8 @@ This project and everyone participating in it is governed by the [EpicStaff Code
 There are many ways to contribute, and not all of them involve writing code.
 
 * **Reporting Bugs:** If you find a bug, please use our issue template to provide as much detail as possible.
+  If the bug is a **security vulnerability**, do not open a public issue — follow our
+  [Security Policy](SECURITY.md) instead.
 * **Improving Documentation:** If you notice something is unclear, you can submit a pull request with your improvements.
 
 ## Using Our Templates: Issues and Pull Requests

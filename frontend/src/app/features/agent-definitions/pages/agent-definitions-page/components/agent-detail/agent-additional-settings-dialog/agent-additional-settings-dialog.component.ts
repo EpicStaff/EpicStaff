@@ -5,6 +5,10 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ButtonComponent, IconButtonComponent, SelectItem, TabButtonComponent } from '@shared/components';
 import { FullLLMConfigService, RealtimeVoice, RealtimeVoicesService } from '@shared/services';
 
+import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/elevenlabs-realtime-config-storage.service';
+import { GeminiRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/gemini-realtime-config-storage.service';
+import { OpenAIRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/openai-realtime-config-storage.service';
+import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.model';
 import {
     AdvancedTabComponent,
     ExecutionTabComponent,
@@ -13,11 +17,7 @@ import {
     Tab,
     TabId,
     VoiceTabComponent,
-} from '../../../../../../../shared/components/create-agent-form-dialog/tabs';
-import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/elevenlabs-realtime-config-storage.service';
-import { GeminiRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/gemini-realtime-config-storage.service';
-import { OpenAIRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/openai-realtime-config-storage.service';
-import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.model';
+} from './tabs';
 
 export interface AgentAdditionalSettingsData {
     fcm_llm_config: number | null;

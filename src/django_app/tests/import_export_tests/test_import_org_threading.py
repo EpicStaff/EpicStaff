@@ -1,6 +1,7 @@
 import pytest
 
-from tables.models import Agent, Graph
+from agents.models import AgentDefinition
+from tables.models import Graph
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
@@ -26,11 +27,12 @@ class TestImportOrgThreading:
         new_graph_id = id_mapper.get_created_ids(EntityType.GRAPH)[0]
         assert Graph.objects.get(id=new_graph_id).org_id == default_org.id
 
-    def test_import_data_creates_agent_in_org(
-        self, rich_seeded_db, export_service, default_org
+    def test_import_data_creates_agent_definition_in_org(
+        self, exportable_agent_definition, export_service, default_org
     ):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         service = ImportService(entity_registry)
         id_mapper, _ = service.import_data(
@@ -40,5 +42,8 @@ class TestImportOrgThreading:
             org_id=default_org.id,
         )
 
-        new_agent_id = id_mapper.get_created_ids(EntityType.AGENT)[0]
-        assert Agent.objects.get(id=new_agent_id).org_id == default_org.id
+        new_definition_id = id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
+        assert (
+            AgentDefinition.objects.get(id=new_definition_id).organization_id
+            == default_org.id
+        )

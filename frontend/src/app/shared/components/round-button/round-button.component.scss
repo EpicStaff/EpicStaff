@@ -29,7 +29,7 @@
     &--active {
         background: var(--active-color, var(--accent-color, #685fff));
         border-color: var(--active-color, var(--accent-color, #685fff));
-        color: #fff;
+        color: var(--white);
         font-weight: 600;
     }
 
@@ -39,7 +39,7 @@
         bottom: calc(100% + 6px);
         left: 50%;
         transform: translateX(-50%);
-        background: #1e1e22;
+        background: var(--graphite-880);
         color: var(--color-text-primary);
         font-size: 0.6875rem;
         font-weight: 400;

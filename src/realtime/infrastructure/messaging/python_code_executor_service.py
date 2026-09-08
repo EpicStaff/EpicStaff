@@ -3,6 +3,7 @@ import asyncio
 from typing import Any
 
 from loguru import logger
+
 from utils.singleton_meta import SingletonMeta
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService

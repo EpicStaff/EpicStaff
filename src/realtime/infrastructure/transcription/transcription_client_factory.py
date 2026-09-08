@@ -36,4 +36,5 @@ class TranscriptionClientFactory(ITranscriptionClientFactory):
             buffer=buffer,
             org_id=config.org_id,
             user_id=config.user_id,
+            base_url=config.rt_base_url,
         )

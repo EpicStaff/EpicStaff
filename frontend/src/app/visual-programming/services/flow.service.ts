@@ -455,10 +455,11 @@ export class FlowService {
             return;
         }
 
-        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table;
-        if (!tableData) {
-            return;
-        }
+        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table ?? {
+            condition_groups: [],
+            default_next_node: null,
+            next_error_node: null,
+        };
 
         const targetNode = this.nodes().find((node) => node.id === connection.targetNodeId);
         if (!targetNode) {
@@ -536,10 +537,11 @@ export class FlowService {
             return;
         }
 
-        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table;
-        if (!tableData) {
-            return;
-        }
+        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table ?? {
+            condition_groups: [],
+            default_next_node: null,
+            next_error_node: null,
+        };
 
         const sourceRole = this.extractPortRole(sourcePortId);
         if (!sourceRole) {

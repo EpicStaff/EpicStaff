@@ -1,7 +1,5 @@
 import time
-import secrets
 
-from django.db.models import Q
 from loguru import logger
 
 from django_app.settings import (
@@ -9,21 +7,35 @@ from django_app.settings import (
     TUNNEL_URLS_HASH_KEY,
 )
 from tables.models.graph_models import WebhookTriggerNode
+from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
+    LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
     TunnelConfig,
     WebhookTrigger,
-    WebhookNodeAuth,
-    WebhookAuthScheme,
+    WebhookTriggerAuth,
+    WebhookTriggerAuthKind,
 )
 from src.shared.models import WebhookConfigData
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
+from tables.services.secrets import secret_resolver, SecretResolutionError
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from tables.validators.telegram_secret_token_validator import (
+    validate_telegram_secret_token,
+)
 from utils.singleton_meta import SingletonMeta
+
+USER_SETTABLE_AUTH_KINDS = (
+    WebhookTriggerAuthKind.WEBHOOK,
+    WebhookTriggerAuthKind.TELEGRAM,
+    WebhookTriggerAuthKind.TWILIO,
+)
+
+AUTH_SECRET_MIN_LENGTH = 32
 
 
 class WebhookTriggerService(metaclass=SingletonMeta):
@@ -117,26 +129,12 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         path: str,
         payload: dict,
         config_id: str | None = None,
-        node_id: int | None = None,
-        unauthenticated_only: bool = False,
     ) -> None:
-        """`node_id`, when set, restricts dispatch to that single node --
-        used by `RedisPubSub.webhook_events_handler` when the inbound
-        request matched a credential scoped to one specific node (see
-        `WebhookEventData.auth_principal`). 
-        """
         filters = self.get_trigger_filters(path, config_id)
         if filters is None:
             return
-        if node_id is not None:
-            filters["id"] = node_id
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
-        if unauthenticated_only:
-            webhook_trigger_node_list = webhook_trigger_node_list.filter(
-                Q(webhook_node_auth__isnull=True)
-                | Q(webhook_node_auth__enabled=False)
-            )
 
         for webhook_trigger_node in webhook_trigger_node_list:
             # Persistent-variable merging is owned by run_session.
@@ -147,27 +145,34 @@ class WebhookTriggerService(metaclass=SingletonMeta):
             )
 
     def register_webhooks(self) -> bool:
+        ngrok_configs, localhost_configs = [], []
+        for config in NgrokWebhookConfig.objects.select_related(
+            "trigger", "trigger__auth", "trigger__auth__secret"
+        ).all():
+            try:
+                ngrok_configs.append(
+                    self.converter_service.convert_ngrok_webhook_config_to_pydantic(
+                        config
+                    )
+                )
+            except SecretResolutionError as e:
+                logger.error(f"Error converting Ngrok webhook config: {e}")
+
+        for config in LocalhostWebhookConfig.objects.select_related(
+            "trigger", "trigger__auth", "trigger__auth__secret"
+        ).all():
+            try:
+                localhost_configs.append(
+                    self.converter_service.convert_localhost_webhook_config_to_pydantic(
+                        config
+                    )
+                )
+            except SecretResolutionError as e:
+                logger.error(f"Error converting Localhost webhook config: {e}")
+            
         data = WebhookConfigData(
-            ngrok_configs=[
-                self.converter_service.convert_ngrok_webhook_config_to_pydantic(config)
-                for config in NgrokWebhookConfig.objects.select_related("trigger")
-                .prefetch_related(
-                    "trigger__telegram_trigger_nodes__webhook_node_auth",
-                    "trigger__webhook_trigger_nodes__webhook_node_auth",
-                )
-                .all()
-            ],
-            localhost_configs=[
-                self.converter_service.convert_localhost_webhook_config_to_pydantic(
-                    config
-                )
-                for config in LocalhostWebhookConfig.objects.select_related("trigger")
-                .prefetch_related(
-                    "trigger__telegram_trigger_nodes__webhook_node_auth",
-                    "trigger__webhook_trigger_nodes__webhook_node_auth",
-                )
-                .all()
-            ],
+            ngrok_configs=ngrok_configs,
+            localhost_configs=localhost_configs,
         )
 
         redis_client = self.redis_service.redis_client
@@ -252,68 +257,92 @@ class WebhookTriggerService(metaclass=SingletonMeta):
             time.sleep(interval)
         return None
 
-    def ensure_webhook_auth(
-        self, webhook_trigger_node: WebhookTriggerNode, enabled: bool = True
-    ) -> WebhookNodeAuth:
-        """Idempotently ensures a `WebhookNodeAuth` row exists for this node.
-
-        - Row missing: created with the given `enabled` state and a fresh
-          `signing_secret`.
-        - Row exists: the `signing_secret` is preserved (only backfilled if
-          somehow empty); `enabled` is only ever flipped True->stays/False->True
-          here -- this method never disables an existing row (that's
-          `disable_webhook_auth`'s job) so re-enabling never rotates the
-          secret an external caller may already have configured.
+    def set_trigger_auth_secret(
+        self,
+        trigger: WebhookTrigger,
+        secret: Secret | None,
+        kind: str = WebhookTriggerAuthKind.WEBHOOK,
+    ) -> WebhookTriggerAuth:
+        """Create/update this trigger's user-settable auth strategy --
+        `kind=webhook` (`EPICSTAFF_API_KEY`), `kind=telegram`
+        (`X-Telegram-Bot-Api-Secret-Token`), or `kind=twilio`.
         """
-        raw_secret = secrets.token_hex(32)
+        if kind not in USER_SETTABLE_AUTH_KINDS:
+            raise ValueError(
+                f"kind='{kind}' auth is not user-settable via this endpoint."
+            )
 
-        node_auth, created = WebhookNodeAuth.objects.get_or_create(
-            webhook_trigger_node=webhook_trigger_node,
+        if (
+            kind in (WebhookTriggerAuthKind.TELEGRAM, WebhookTriggerAuthKind.TWILIO)
+            and trigger.provider_type in LOCAL_ONLY_PROVIDERS
+        ):
+            provider_name = (
+                "Telegram" if kind == WebhookTriggerAuthKind.TELEGRAM else "Twilio"
+            )
+            raise ValueError(
+                f"Localhost webhook provider is not reachable by {provider_name}. "
+                "Use ngrok or a publicly accessible provider."
+            )
+
+        if (
+            kind == WebhookTriggerAuthKind.WEBHOOK
+            and trigger.telegram_trigger_nodes.exists()
+        ):
+            raise ValueError(
+                "This trigger is attached to a Telegram trigger node and "
+                "cannot use kind='webhook' auth; use kind='telegram' instead."
+            )
+        if (
+            kind == WebhookTriggerAuthKind.TELEGRAM
+            and trigger.webhook_trigger_nodes.exists()
+        ):
+            raise ValueError(
+                "This trigger is attached to a webhook trigger node and "
+                "cannot use kind='telegram' auth; use kind='webhook' instead."
+            )
+        if kind == WebhookTriggerAuthKind.TWILIO and (
+            trigger.webhook_trigger_nodes.exists()
+            or trigger.telegram_trigger_nodes.exists()
+        ):
+            raise ValueError(
+                "This trigger already has a webhook or Telegram trigger node "
+                "attached and cannot be reserved for kind='twilio' auth."
+            )
+        if kind == WebhookTriggerAuthKind.TWILIO and secret is not None:
+            raise ValueError(
+                "kind='twilio' is a bare reservation and does not accept a "
+                "secret directly; it is filled in once a TwilioChannel "
+                "claims this trigger."
+            )
+
+        existing = getattr(trigger, "auth", None)
+        if existing is not None and existing.kind != kind:
+            raise ValueError(
+                "This webhook trigger's auth is already configured for "
+                f"kind='{existing.kind}' and cannot be overwritten with a "
+                f"kind='{kind}' secret."
+            )
+
+        if secret is not None:
+            plaintext = secret_resolver.resolve(
+                secret_id=secret.pk,
+                org_id=trigger.org_id,
+                context="Plaintext secret for webhook trigger auth",
+            )
+            if len(plaintext) < AUTH_SECRET_MIN_LENGTH:
+                raise ValueError(
+                    f"The provided secret must be at least {AUTH_SECRET_MIN_LENGTH} characters long."
+                )
+
+            if kind == WebhookTriggerAuthKind.TELEGRAM:
+                validate_telegram_secret_token(plaintext)
+
+        auth, _ = WebhookTriggerAuth.objects.update_or_create(
+            trigger=trigger,
             defaults={
-                "enabled": enabled,
-                "scheme": WebhookAuthScheme.HMAC_SHA256,
-                "header_name": "X-Webhook-Signature",
-                "timestamp_header_name": "X-Webhook-Timestamp",
-                "signing_secret": raw_secret,
+                "kind": kind,
+                "secret": secret,
             },
         )
-
-        update_fields = []
-        if not created and not node_auth.signing_secret:
-            node_auth.signing_secret = raw_secret
-            update_fields.append("signing_secret")
-        if not created and enabled and not node_auth.enabled:
-            node_auth.enabled = True
-            update_fields.append("enabled")
-        if update_fields:
-            node_auth.save(update_fields=update_fields)
-
-        return node_auth
-
-    def disable_webhook_auth(
-        self, webhook_trigger_node: WebhookTriggerNode
-    ) -> WebhookNodeAuth | None:
-        """Soft-disable: flips `enabled=False` on the existing row without
-        deleting it, so a later re-enable (`ensure_webhook_auth`) reuses the
-        same `signing_secret` instead of forcing external callers to
-        reconfigure their signature verification. Returns `None` when no row
-        exists yet -- nothing to disable.
-        """
-        node_auth = WebhookNodeAuth.objects.filter(
-            webhook_trigger_node=webhook_trigger_node
-        ).first()
-        if node_auth is None:
-            return None
-        if node_auth.enabled:
-            node_auth.enabled = False
-            node_auth.save(update_fields=["enabled"])
-        return node_auth
-
-    def sync_webhook_auth(
-        self, webhook_trigger_node: WebhookTriggerNode, enabled: bool
-    ) -> WebhookNodeAuth | None:
-        """Single entry point for the client-controlled `{"enabled": bool}`
-        toggle on `WebhookTriggerNodeSerializer.webhook_node_auth`."""
-        if enabled:
-            return self.ensure_webhook_auth(webhook_trigger_node, enabled=True)
-        return self.disable_webhook_auth(webhook_trigger_node)
+        trigger._state.fields_cache.pop("auth", None)
+        return auth

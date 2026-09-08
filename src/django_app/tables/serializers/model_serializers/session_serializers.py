@@ -56,15 +56,6 @@ class SessionSerializer(serializers.ModelSerializer):
             "trigger",
         ]
 
-    def to_representation(self, instance):
-        """Remove 'shared' proxy from variables for UI display"""
-        data = super().to_representation(instance)
-        if data.get("variables") and isinstance(data["variables"], dict):
-            data["variables"] = {
-                k: v for k, v in data["variables"].items() if k != "shared"
-            }
-        return data
-
 
 class SessionLightSerializer(serializers.ModelSerializer):
     has_output_files = serializers.BooleanField(read_only=True)

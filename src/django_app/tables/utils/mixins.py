@@ -41,17 +41,16 @@ def _malloc_trim_and_log() -> None:
         logger.warning(f"malloc_trim failed: {e}")
 
 
-_TRIM_INTERVAL_SECONDS = int(os.environ.get("MALLOC_TRIM_INTERVAL_SECONDS", "60"))
 _trim_task_started = False
 
 
 async def _periodic_malloc_trim() -> None:
     logger.info(
-        f"Periodic malloc_trim task started (interval={_TRIM_INTERVAL_SECONDS}s)"
+        f"Periodic malloc_trim task started (interval={settings.MALLOC_TRIM_INTERVAL}s)"
     )
     while True:
         try:
-            await asyncio.sleep(_TRIM_INTERVAL_SECONDS)
+            await asyncio.sleep(settings.MALLOC_TRIM_INTERVAL)
             await asyncio.to_thread(_malloc_trim_and_log)
         except asyncio.CancelledError:
             logger.info("Periodic malloc_trim task cancelled")
@@ -101,7 +100,6 @@ session_status_channel_name = os.environ.get(
 graph_messages_channel_name = os.environ.get(
     "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
 )
-memory_updates_channel_name = os.environ.get("MEMORY_UPDATE_CHANNEL", "memory:update")
 
 
 class SSEMixin(View, ABC):
@@ -194,7 +192,6 @@ class SSEMixin(View, ABC):
             channels = [
                 session_status_channel_name,
                 graph_messages_channel_name,
-                memory_updates_channel_name,
             ]
             pubsub = redis_service.async_redis_client.pubsub()
             await pubsub.subscribe(*channels)

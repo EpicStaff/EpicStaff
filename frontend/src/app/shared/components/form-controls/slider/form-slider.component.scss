@@ -7,7 +7,7 @@
         align-items: center;
         font-size: 0.875rem;
         margin-bottom: 0.5rem;
-        color: #aaa;
+        color: var(--gray-450);
     }
 
     input[type='range'] {
@@ -18,9 +18,9 @@
         border-radius: 3px;
         background: linear-gradient(
             to right,
-            rgba(104, 95, 255, 0.3) 0%,
-            rgba(104, 95, 255, 0.8) 50%,
-            rgba(104, 95, 255, 1) 100%
+            var(--purple-alpha-30) 0%,
+            var(--purple-alpha-80) 50%,
+            var(--purple-500) 100%
         );
         outline: none;
         cursor: pointer;
@@ -34,7 +34,7 @@
             border-radius: 50%;
             background: var(--accent-color, #685fff);
             cursor: pointer;
-            box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 2px var(--black-alpha-30);
         }
 
         &::-moz-range-thumb {
@@ -43,7 +43,7 @@
             border-radius: 50%;
             background: var(--accent-color, #685fff);
             cursor: pointer;
-            box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 2px var(--black-alpha-30);
             border: none;
         }
     }
@@ -70,7 +70,7 @@
                 transform: translateX(-50%);
                 color: var(--accent-color, #685fff);
                 font-weight: 600;
-                background-color: rgba(104, 95, 255, 0.1);
+                background-color: var(--purple-alpha-10);
                 padding: 2px 6px;
                 border-radius: 4px;
                 font-size: 0.8rem;

@@ -16,40 +16,41 @@
             size="1rem"
         ></app-svg-icon>
     </button>
-    <div
-        class="context-menu"
-        *ngIf="isMenuOpen()"
-        (mouseenter)="onMenuEnter()"
-        (mouseleave)="onMenuLeave()"
-    >
-        <app-flow-menu-item
-            label="View Sessions"
-            (itemClick)="onActionClick($event, 'viewSessions')"
-        ></app-flow-menu-item>
-        <app-flow-menu-item
-            label="Run"
-            (itemClick)="onActionClick($event, 'run')"
-        ></app-flow-menu-item>
-        <app-flow-menu-item
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
-            label="Edit"
-            (itemClick)="onActionClick($event, 'rename')"
-        ></app-flow-menu-item>
-        <app-flow-menu-item
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
-            label="Copy"
-            (itemClick)="onActionClick($event, 'copy')"
-        ></app-flow-menu-item>
-        <app-flow-menu-item
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
-            label="Export"
-            (itemClick)="onActionClick($event, 'export')"
-        ></app-flow-menu-item>
-        <app-flow-menu-item
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
-            label="Delete"
-            [isDelete]="true"
-            (itemClick)="onActionClick($event, 'delete')"
-        ></app-flow-menu-item>
-    </div>
+    @if (isMenuOpen()) {
+        <div
+            class="context-menu"
+            (mouseenter)="onMenuEnter()"
+            (mouseleave)="onMenuLeave()"
+        >
+            <app-flow-menu-item
+                label="View Sessions"
+                (itemClick)="onActionClick($event, 'viewSessions')"
+            ></app-flow-menu-item>
+            <app-flow-menu-item
+                label="Run"
+                (itemClick)="onActionClick($event, 'run')"
+            ></app-flow-menu-item>
+            <app-flow-menu-item
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                label="Edit"
+                (itemClick)="onActionClick($event, 'rename')"
+            ></app-flow-menu-item>
+            <app-flow-menu-item
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
+                label="Copy"
+                (itemClick)="onActionClick($event, 'copy')"
+            ></app-flow-menu-item>
+            <app-flow-menu-item
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                label="Export"
+                (itemClick)="onActionClick($event, 'export')"
+            ></app-flow-menu-item>
+            <app-flow-menu-item
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                label="Delete"
+                [isDelete]="true"
+                (itemClick)="onActionClick($event, 'delete')"
+            ></app-flow-menu-item>
+        </div>
+    }
 </div>

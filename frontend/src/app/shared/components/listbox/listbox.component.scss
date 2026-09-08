@@ -25,7 +25,7 @@
         width: 40px;
         border-radius: 8px;
         background-color: var(--accent-color);
-        color: #ffffff;
+        color: var(--white);
         cursor: pointer;
 
         &:hover {
@@ -34,7 +34,7 @@
     }
 
     &__remove-btn {
-        color: #ffffff;
+        color: var(--white);
         cursor: pointer;
         position: absolute;
         right: 0;

@@ -1,17 +1,3 @@
-@use 'sass:color';
-
-$bg-dark: #121212;
-$bg-card: #1e1e1e;
-$bg-input: #2d2d2d;
-$bg-item: #2a2a2a;
-$bg-item-hover: #333333;
-$accent-blue: #4f46e5;
-$accent-hover: #6366f1;
-$text-primary: #f5f5f5;
-$text-secondary: #a0a0a0;
-$text-tertiary: #777777;
-$border-color: rgba(255, 255, 255, 0.1);
-$shadow-color: rgba(0, 0, 0, 0.5);
 $transition-default: all 0.2s ease;
 
 @keyframes fadeIn {
@@ -24,13 +10,13 @@ $transition-default: all 0.2s ease;
 }
 
 .agent-list-container {
-    background-color: $bg-card;
+    background-color: var(--graphite-875);
     border-radius: 8px;
     width: 400px;
-    color: $text-primary;
+    color: var(--gray-105);
     font-family: 'Inter', sans-serif;
-    box-shadow: 0 10px 40px $shadow-color;
-    border: 1px solid $border-color;
+    box-shadow: 0 10px 40px var(--black-alpha-50);
+    border: 1px solid var(--white-alpha-10);
     animation: fadeIn 0.3s ease;
     max-height: 450px;
     display: flex;
@@ -47,20 +33,20 @@ $transition-default: all 0.2s ease;
             flex: 1;
             padding: 7px 14px;
             border-radius: 6px;
-            background-color: $bg-input;
-            color: $text-primary;
+            background-color: var(--graphite-720);
+            color: var(--gray-105);
             font-size: 13px;
-            border: 1px solid $border-color;
+            border: 1px solid var(--white-alpha-10);
             transition: $transition-default;
             outline: none;
 
             &::placeholder {
-                color: $text-tertiary;
+                color: var(--gray-550);
             }
 
             &:focus {
-                border-color: $accent-blue;
-                box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
+                border-color: var(--indigo-600);
+                box-shadow: 0 0 0 2px var(--indigo-600-alpha-15);
             }
         }
 
@@ -69,8 +55,8 @@ $transition-default: all 0.2s ease;
             align-items: center;
             gap: 8px;
             padding: 8px 12px;
-            background-color: $bg-input;
-            color: $text-secondary;
+            background-color: var(--graphite-720);
+            color: var(--gray-490);
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
@@ -83,8 +69,8 @@ $transition-default: all 0.2s ease;
             }
 
             &:hover {
-                background-color: color.adjust($bg-input, $lightness: 5%);
-                color: $text-primary;
+                background-color: color-mix(in srgb, var(--graphite-720) 95%, var(--white));
+                color: var(--gray-105);
             }
         }
     }
@@ -109,7 +95,7 @@ $transition-default: all 0.2s ease;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                color: $text-secondary;
+                color: var(--gray-490);
 
                 app-svg-icon {
                     margin-bottom: 8px;
@@ -128,7 +114,7 @@ $transition-default: all 0.2s ease;
             align-items: center;
             padding: 10px 12px;
             border-radius: 6px;
-            background-color: $bg-item;
+            background-color: var(--graphite-780);
             margin-bottom: 8px;
             transition: $transition-default;
             cursor: pointer;
@@ -137,21 +123,21 @@ $transition-default: all 0.2s ease;
 
             &:focus {
                 outline: none;
-                border-color: $accent-blue;
+                border-color: var(--indigo-600);
             }
 
             &:hover {
-                background-color: $bg-item-hover;
+                background-color: var(--graphite-640);
             }
 
             &.selected {
-                background-color: rgba($accent-blue, 0.15);
-                border-color: $accent-blue;
-                box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
+                background-color: var(--indigo-600-alpha-15);
+                border-color: var(--indigo-600);
+                box-shadow: 0 0 0 1px var(--indigo-600-alpha-40);
 
                 .select-button {
-                    background-color: $accent-blue;
-                    color: white;
+                    background-color: var(--indigo-600);
+                    color: var(--white);
                 }
             }
 
@@ -163,9 +149,9 @@ $transition-default: all 0.2s ease;
                 height: 28px;
                 border-radius: 6px;
                 margin-right: 12px;
-                background-color: rgba($accent-blue, 0.1);
-                color: $accent-blue;
-                border: 1px solid rgba($accent-blue, 0.2);
+                background-color: var(--indigo-600-alpha-10);
+                color: var(--indigo-600);
+                border: 1px solid var(--indigo-600-alpha-20);
             }
 
             .item-content {
@@ -177,7 +163,7 @@ $transition-default: all 0.2s ease;
                     flex-direction: column;
                     font-size: 13px;
                     font-weight: 500;
-                    color: $text-primary;
+                    color: var(--gray-105);
                     line-height: 1.2;
 
                     .agent-name {
@@ -188,7 +174,7 @@ $transition-default: all 0.2s ease;
 
                     .agent-role {
                         margin-top: 3px;
-                        color: $text-secondary;
+                        color: var(--gray-490);
                         font-size: 12px;
                         font-weight: normal;
                     }
@@ -202,8 +188,8 @@ $transition-default: all 0.2s ease;
                 min-width: 26px;
                 height: 26px;
                 padding: 0;
-                background-color: $bg-input;
-                color: $text-secondary;
+                background-color: var(--graphite-720);
+                color: var(--gray-490);
                 border-radius: 4px;
                 cursor: pointer;
                 font-size: 14px;
@@ -216,8 +202,8 @@ $transition-default: all 0.2s ease;
                 }
 
                 &:hover {
-                    background-color: $accent-blue;
-                    color: white;
+                    background-color: var(--indigo-600);
+                    color: var(--white);
                 }
             }
         }

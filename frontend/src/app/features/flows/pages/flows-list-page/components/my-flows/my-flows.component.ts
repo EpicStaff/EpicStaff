@@ -1,5 +1,4 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     AfterViewChecked,
@@ -36,11 +35,10 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
 
 @Component({
     selector: 'app-my-flows',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './my-flows.component.html',
     styleUrls: ['./my-flows.component.scss'],
-    imports: [CommonModule, FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
+    imports: [FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);
@@ -214,7 +212,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             default:
-                console.log(`Action '${action}' not implemented for flow:`, flow.id);
+                console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
     }
 

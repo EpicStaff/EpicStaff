@@ -20,10 +20,18 @@ class EmbeddingModel(OrgScopedModel, models.Model):
     )
 
     class Meta(OrgScopedModel.Meta):
-        unique_together = (
-            "name",
-            "embedding_provider",
-        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "embedding_provider"],
+                name="unique_embeddingmodel_name_provider_per_org",
+            ),
+            # Postgres treats NULLs as distinct — see LLMModel.
+            models.UniqueConstraint(
+                fields=["name", "embedding_provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_embeddingmodel_name_provider_builtin",
+            ),
+        ]
 
 
 class EmbeddingConfig(OrgScopedModel, models.Model):

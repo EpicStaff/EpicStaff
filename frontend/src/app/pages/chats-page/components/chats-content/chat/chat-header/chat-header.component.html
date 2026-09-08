@@ -1,61 +1,57 @@
-<div
-    class="chat-header"
-    *ngIf="vm"
->
-    <div class="agent-info">
-        <div>
-            <h3>{{ vm.title }}</h3>
-            <div
-                class="model-info"
-                *ngIf="vm.modelName; else noModel"
-            >
-                {{ vm.modelName }}
-                <ng-container *ngIf="vm.customName">({{ vm.customName }})</ng-container>
+@if (vm) {
+    <div class="chat-header">
+        <div class="agent-info">
+            <div>
+                <h3>{{ vm.title }}</h3>
+                @if (vm.modelName) {
+                    <div class="model-info">
+                        {{ vm.modelName }}
+                        @if (vm.customName) {
+                            ({{ vm.customName }})
+                        }
+                    </div>
+                } @else {
+                    <div class="model-info">Realtime Model not specified</div>
+                }
             </div>
-            <ng-template #noModel>
-                <div class="model-info">Realtime Model not specified</div>
-            </ng-template>
+            @if (consoleService.isConversationConnected()) {
+                <app-tiny-audio-visualizer></app-tiny-audio-visualizer>
+            }
         </div>
-        <ng-container *ngIf="consoleService.isConversationConnected()">
-            <app-tiny-audio-visualizer></app-tiny-audio-visualizer>
-        </ng-container>
-    </div>
-
-    <div class="communication-controls">
-        <!-- <div class="toggle-container">
-              <button
-                class="toggle-btn"
-                [class.active]="communicationType === 'text'"
-                (click)="toggleCommunicationType('text')"
-              >
-                Text
-              </button>
-              <button
-                class="toggle-btn"
-                [class.active]="communicationType === 'audio'"
-                (click)="toggleCommunicationType('audio')"
-              >
-                Audio
-              </button>
-            </div> -->
-
-        <!-- <div class="voice-selector">
-              <div class="voice-select-wrapper">
-                <i class="voice-icon">
-                  <i class="ti ti-volume"></i>
-                </i>
-                <select [(ngModel)]="selectedVoice" (change)="onVoiceChange($event)">
-                  <option *ngFor="let voice of voices" [value]="voice">
-                    {{ voice }}
-                  </option>
-                </select>
-              </div>
-            </div> -->
-
-        <!-- <div class="settings-container">
-      <button class="settings-btn" (click)="openSettings($event)">
-        <i class="ti ti-settings"></i>
+        <div class="communication-controls">
+            <!-- <div class="toggle-container">
+      <button
+        class="toggle-btn"
+        [class.active]="communicationType === 'text'"
+        (click)="toggleCommunicationType('text')"
+        >
+        Text
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="communicationType === 'audio'"
+        (click)="toggleCommunicationType('audio')"
+        >
+        Audio
       </button>
     </div> -->
+            <!-- <div class="voice-selector">
+    <div class="voice-select-wrapper">
+      <i class="voice-icon">
+        <i class="ti ti-volume"></i>
+      </i>
+      <select [(ngModel)]="selectedVoice" (change)="onVoiceChange($event)">
+        <option *ngFor="let voice of voices" [value]="voice">
+          {{ voice }}
+        </option>
+      </select>
     </div>
-</div>
+  </div> -->
+            <!-- <div class="settings-container">
+  <button class="settings-btn" (click)="openSettings($event)">
+    <i class="ti ti-settings"></i>
+  </button>
+</div> -->
+        </div>
+    </div>
+}

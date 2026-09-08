@@ -15,6 +15,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from .base_models import Base
+from .mixins import SoftDeleteColumnsMixin
 
 
 class LLMModel(Base):
@@ -146,7 +147,7 @@ class GraphRagIndexConfig(Base):
         )
 
 
-class GraphRag(Base):
+class GraphRag(SoftDeleteColumnsMixin, Base):
     """
     Graph RAG implementation configuration.
 
@@ -205,7 +206,7 @@ class GraphRag(Base):
         return f"GraphRag {self.graph_rag_id}"
 
 
-class GraphRagDocument(Base):
+class GraphRagDocument(SoftDeleteColumnsMixin, Base):
     """
     Link table connecting GraphRag to specific documents.
 

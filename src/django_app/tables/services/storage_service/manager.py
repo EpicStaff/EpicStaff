@@ -20,6 +20,7 @@ from tables.services.storage_service.dataclasses import (
     UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
+from tables.services.storage_service.path_utils import sanitize_storage_path
 
 from tables.models import OrganizationUser, StorageFile
 
@@ -78,7 +79,8 @@ class StorageManager:
 
     def _build_storage_key(self, org_id: int, relative_path: str) -> str:
         """Return the full storage key for a relative path inside an org."""
-        return f"org_{org_id}/{relative_path.lstrip('/')}"
+        safe_path = sanitize_storage_path(relative_path, allow_empty=True)
+        return f"org_{org_id}/{safe_path}"
 
     def _strip_org_prefix(self, org_id: int, storage_key: str) -> str:
         """Convert a full storage key back to a relative path by removing the org prefix."""

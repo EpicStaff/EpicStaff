@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
-import { expandCollapseAnimation } from '@shared/animations';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -13,11 +12,10 @@ import {
 
 @Component({
     selector: 'app-extracted-chunks-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     templateUrl: './extracted-chunks-message.component.html',
     styleUrls: ['./extracted-chunks-message.component.scss'],
-    animations: [expandCollapseAnimation],
+    changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class ExtractedChunksMessageComponent {
     @Input() message!: GraphMessage;

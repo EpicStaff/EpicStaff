@@ -13,13 +13,13 @@
     &__title {
         margin: 0;
         font-size: 20px;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--configure-models-dialog-active-color);
     }
 
     &__subtitle {
         margin: 0;
         font-size: 14px;
-        color: var(--color-text-secondary, #9aa0a6);
+        color: var(--color-text-secondary);
     }
 
     &__section {
@@ -30,7 +30,7 @@
 
     &__section-title {
         font-size: 18px;
-        color: var(--color-text-secondary, #9aa0a6);
+        color: var(--color-text-secondary);
     }
 
     &__grid {

@@ -15,12 +15,12 @@
     }
 
     &:hover {
-        background: rgba(255, 255, 255, 0.06);
+        background: var(--white-alpha-6);
         color: var(--color-text-primary);
     }
 
     &.delete:hover {
-        color: #ff6b6b;
-        background: rgba(255, 107, 107, 0.1);
+        color: var(--red-400);
+        background: var(--red-400-alpha-10);
     }
 }

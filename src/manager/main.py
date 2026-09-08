@@ -12,17 +12,22 @@ from services.session_timeout_service import SessionTimeoutService
 from services.schedule_service import ScheduleService
 from helpers.logger import logger
 
+import settings
 
-redis_service = RedisService()
+
+redis_service = RedisService(
+    settings.REDIS_HOST,
+    settings.REDIS_PORT,
+    settings.REDIS_USER,
+    settings.REDIS_PASSWORD,
+)
 
 session_repository = SessionRepository(AsyncSessionLocal)
 
 session_timeout_service = SessionTimeoutService(
     redis_service=redis_service,
-    session_schema_channel=os.environ.get("SESSION_SCHEMA_CHANNEL", "sessions:schema"),
-    session_timeout_channel=os.environ.get(
-        "SESSION_TIMEOUT_CHANNEL", "sessions:timeout"
-    ),
+    session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
+    session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
     session_repository=session_repository,
 )
 

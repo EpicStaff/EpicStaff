@@ -127,6 +127,7 @@
                         formControlName="max_tokens"
                         [min]="500"
                         [max]="2147483647"
+                        [stepSize]="100"
                         label="Max Tokens"
                         tooltipText="Maximum tokens the model may generate in a single response"
                         [alwaysShowSteps]="true"
@@ -138,6 +139,7 @@
                         formControlName="timeout"
                         [min]="1"
                         [max]="600"
+                        [stepSize]="DEFAULT_STEP_SIZE"
                         label="Timeout (seconds)"
                         tooltipText="How long to wait for the model to respond"
                         [alwaysShowSteps]="true"
@@ -152,6 +154,7 @@
                     <app-input-number
                         formControlName="seed"
                         placeholder="random"
+                        [stepSize]="DEFAULT_STEP_SIZE"
                         label="Seed"
                         tooltipText="Fixed seed for reproducible outputs. Leave empty for random."
                         [alwaysShowSteps]="true"
@@ -196,12 +199,11 @@
                 class="form"
                 [formGroup]="openaiForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -280,12 +282,11 @@
                 class="form"
                 [formGroup]="elevenLabsForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -339,12 +340,11 @@
                 class="form"
                 [formGroup]="geminiForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"

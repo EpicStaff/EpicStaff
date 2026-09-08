@@ -69,9 +69,8 @@
     &__chunk-preview {
         border-right: 1px solid var(--color-divider-subtle);
         padding-left: 0.625rem;
-        flex-grow: 1;
-        flex-shrink: 0;
-        min-width: 500px;
+        flex: 1 1 auto;
+        min-width: 380px;
     }
 
     &__chunk-preview-button {
@@ -80,7 +79,7 @@
     }
 
     &__document-config {
-        width: 550px;
-        flex-shrink: 0;
+        flex: 0 1 550px;
+        min-width: 470px;
     }
 }

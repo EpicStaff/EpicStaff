@@ -256,6 +256,7 @@ async def test_agent_result_payload_key_set_includes_tasks():
     payload = json.loads(published[0]["payload"])
     assert set(payload.keys()) == {
         "final_text",
+        "structured_output",
         "tool_invocations",
         "iterations",
         "stop_reason",

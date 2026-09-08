@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FullLLMConfig, FullRealtimeConfig } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
@@ -7,8 +6,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-llm-model-item',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div
             class="model-item"
@@ -23,12 +21,9 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             />
             <div class="model-text">
                 <span class="model-name">{{ config.modelDetails?.name || 'Unknown Model' }}</span>
-                <span
-                    *ngIf="config.custom_name"
-                    class="custom-name"
-                >
-                    ({{ config.custom_name }})
-                </span>
+                @if (config.custom_name) {
+                    <span class="custom-name"> ({{ config.custom_name }}) </span>
+                }
             </div>
         </div>
     `,

@@ -1,99 +1,56 @@
-from pathlib import Path
 import sys
-from functools import lru_cache
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+from src.shared import humanize
+from src.shared.envtools import Env
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+_is_debug = "--debug" in sys.argv
 
-class Settings(BaseSettings):
-    REALTIME_PORT: int = 8050
-    REALTIME_WORKERS: int = 1
-    REALTIME_RELOAD: bool = False
-    REALTIME_DEBUG_MODE: bool = False
+env = Env()
+if not env.bool("RUN_IN_DOCKER", False):
+    env.read_env(BASE_DIR / '../.env')
 
-    # --- Redis ---
-    REDIS_HOST: str
-    REDIS_PORT: int
-    REDIS_PASSWORD: str
+HOST = env.str("REALTIME_HOST")
+REALTIME_PORT = env.int("REALTIME_PORT")
+REALTIME_WORKERS = env.int("REALTIME_SGI_WORKERS")
 
-    # --- Redis Channels (Pub/Sub) ---
-    KNOWLEDGE_SEARCH_GET_CHANNEL: str = "knowledge:search:get"
-    KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: str = "knowledge:search:response"
-    REALTIME_AGENTS_SCHEMA_CHANNEL: str = "realtime_agents:schema"
+REALTIME_DEBUG_MODE: bool = _is_debug
+REALTIME_RELOAD: bool = _is_debug
 
-    CONNECTION_KEY_TTL_SECONDS: int = 300
+REDIS_HOST = env.str("REDIS_HOST")
+REDIS_PORT = env.int("REDIS_PORT")
+REDIS_PASSWORD = env.str("REDIS_PASSWORD")
 
-    # --- Twilio Media Stream WS auth (per-call single-use token) ---
-    STREAM_TOKEN_TTL_SECONDS: int = 120
-    MAX_CALL_DURATION_SECONDS: int = 1800
+KNOWLEDGE_SEARCH_GET_CHANNEL = env.str("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
+KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = env.str("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")
+REALTIME_AGENTS_SCHEMA_CHANNEL = env.str("REALTIME_AGENTS_SCHEMA_CHANNEL")
 
-    # --- Django Auth ---
-    DJANGO_AUTH_URL: str
-    DJANGO_API_KEY: str
-    DJANGO_AUTH_TIMEOUT: int = 5
+CONNECTION_KEY_TTL_SECONDS = humanize.to_time("5m")
+STREAM_TOKEN_TTL_SECONDS = humanize.to_time("2m")
+MAX_CALL_DURATION_SECONDS = humanize.to_time("30m")
 
-    # --- Database (PostgreSQL) ---
-    DB_HOST_NAME: str
-    DB_PORT: int = 5432
-    DB_NAME: str = "crew"
-    DB_REALTIME_USER: str
-    DB_REALTIME_PASSWORD: str
+DJANGO_HOST = env.str("DJANGO_HOST")
+DJANGO_PORT = env.int("DJANGO_PORT")
+DJANGO_AUTH_URL = env.str("DJANGO_AUTH_URL")
+DJANGO_API_KEY = env.str("DJANGO_API_KEY")
+DJANGO_AUTH_TIMEOUT = env.time("DJANGO_AUTH_TIMEOUT")
+DJANGO_CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS")
 
-    # --- Twilio ---
-    TWILIO_ACCOUNT_SID: str = ""
-    TWILIO_AUTH_TOKEN: str = ""
-    VOICE_AGENT_ID: int = 0
-    VOICE_STREAM_URL: str = ""
+DB_HOST_NAME = env.str("DB_HOST")
+DB_PORT = env.int("DB_PORT")
+DB_NAME = env.str("DB_NAME")
+DB_USER = env.str("REALTIME_DB_USER")
+DB_PASSWORD = env.str("REALTIME_DB_PASSWORD")
 
-    # --- Django (for init-realtime HTTP call) ---
-    DJANGO_HOST: str = "django_app"
-    DJANGO_PORT: int = 8000
+TWILIO_ACCOUNT_SID = env.str("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = env.str("TWILIO_AUTH_TOKEN")
+TWILIO_VOICE_AGENT_ID = env.str("TWILIO_VOICE_AGENT_ID")
+VOICE_STREAM_URL = env.str("TWILIO_VOICE_STREAM_URL")
 
-    # --- CORS ---
-    CORS_ALLOWED_ORIGINS: str = ""
+DJANGO_API_BASE_URL = f"http://{DJANGO_HOST}:{DJANGO_PORT}/api"
 
-    @property
-    def cors_allowed_origins_list(self) -> list[str]:
-        return [
-            origin.strip()
-            for origin in self.CORS_ALLOWED_ORIGINS.split(",")
-            if origin.strip()
-        ]
+INIT_API_URL = f"{DJANGO_API_BASE_URL}/init-realtime/"
 
-    @property
-    def DJANGO_API_BASE_URL(self) -> str:
-        return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api"
-
-    @property
-    def INIT_API_URL(self) -> str:
-        return f"{self.DJANGO_API_BASE_URL}/init-realtime/"
-
-    @property
-    def DATABASE_URL(self) -> str:
-        db_url = (
-            f"postgresql+asyncpg://{self.DB_REALTIME_USER}:{self.DB_REALTIME_PASSWORD}@"
-            f"{self.DB_HOST_NAME}:{self.DB_PORT}/{self.DB_NAME}"
-        )
-        return db_url
-
-    model_config = SettingsConfigDict(
-        env_file=BASE_DIR.parent / ".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        # env_prefix="REALTIME_",
-    )
-
-
-@lru_cache
-def get_settings():
-    is_debug = "--debug" in sys.argv
-
-    env_file = BASE_DIR.parent / (".debug.env" if is_debug else ".env")
-
-    return Settings(
-        _env_file=env_file, REALTIME_RELOAD=is_debug, REALTIME_DEBUG_MODE=is_debug
-    )
-
-
-settings = get_settings()
+DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST_NAME}:{DB_PORT}/{DB_NAME}"

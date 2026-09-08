@@ -11,6 +11,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
 
 
@@ -41,7 +42,8 @@ class S3StorageBackend(AbstractStorageBackend):
 
     def _full_path(self, path: str) -> str:
         """Prepend the organization prefix to a caller-provided path."""
-        return self.organization_prefix + path.lstrip("/")
+        safe_path = sanitize_storage_path(path, allow_empty=True)
+        return self.organization_prefix + safe_path
 
     def _strip_prefix(self, full_key: str) -> str:
         """Remove the organization prefix from an S3 key."""
@@ -396,6 +398,8 @@ class S3StorageBackend(AbstractStorageBackend):
 
     def exists(self, path: str) -> bool:
         full_path = self._full_path(path)
+        if path.endswith("/") and not full_path.endswith("/"):
+            full_path += "/"
         try:
             self.client.head_object(Bucket=self.bucket_name, Key=full_path)
             return True
@@ -542,7 +546,8 @@ class S3StorageBackend(AbstractStorageBackend):
                 stem = stem[: -len(ext)]
                 break
 
-        folder_key = prefix.rstrip("/") + "/" + stem
+        safe_stem = sanitize_storage_path(stem, allow_empty=False)
+        folder_key = f"{prefix.rstrip('/')}/{safe_stem}" if prefix else safe_stem
         full_folder_key = self._full_path(folder_key)
         unique_full_key = self._unique_key(full_folder_key, is_folder=True)
         unique_folder_path = self._strip_prefix(unique_full_key)

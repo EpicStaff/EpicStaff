@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
@@ -172,4 +173,5 @@ export class LlmModelConfigDialogComponent implements OnInit {
     }
 
     protected readonly ModelTypes = ModelTypes;
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
 }

@@ -1,12 +1,12 @@
 .container {
-    background-color: var(--color-background-body, #212325);
+    background-color: var(--color-background-body);
     border-radius: 12px;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--white-alpha-90);
     min-width: 400px;
     width: 500px;
     max-width: 500px;
     height: 90vh;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 8px 24px var(--black-alpha-60);
     overflow: hidden;
 
     form {
@@ -20,7 +20,7 @@
         justify-content: space-between;
         align-items: center;
         padding: 1rem 1.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid var(--white-alpha-10);
 
         .title {
             margin: 0;
@@ -35,7 +35,7 @@
         .close-btn {
             background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.6);
+            color: var(--white-alpha-60);
             cursor: pointer;
             padding: 8px;
             display: flex;
@@ -45,8 +45,8 @@
             margin-left: 10px;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.9);
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
             }
         }
     }
@@ -76,7 +76,7 @@
             h3 {
                 margin: 0;
                 font-size: 14px;
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 font-weight: 400;
             }
 
@@ -86,20 +86,20 @@
                 .input-field {
                     width: 100%;
                     padding: 10px 12px;
-                    background-color: rgba(30, 30, 30, 0.6);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    background-color: var(--color-backdrop);
+                    border: 1px solid var(--white-alpha-10);
                     border-radius: 6px;
-                    color: white;
+                    color: var(--white);
                     font-size: 14px;
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
-                        color: rgba(255, 255, 255, 0.4);
+                        color: var(--white-alpha-40);
                     }
 
                     &:focus {
                         outline: none;
-                        border-color: var(--accent-color, #685fff);
+                        border-color: var(--accent-color);
                     }
 
                     &.textarea {
@@ -112,7 +112,7 @@
     }
 
     .dialog-footer {
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid var(--white-alpha-10);
         padding: 1rem 1.5rem;
         display: flex;
         justify-content: flex-end;
@@ -128,25 +128,25 @@
             border: none;
 
             &.close {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.9);
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
 
                 &:hover {
-                    background-color: rgba(255, 255, 255, 0.15);
+                    background-color: var(--white-alpha-15);
                 }
             }
 
             &.create {
-                background-color: var(--accent-color, #685fff);
-                color: white;
+                background-color: var(--accent-color);
+                color: var(--white);
 
                 &:hover {
-                    background-color: #7a70ff;
+                    background-color: var(--purple-400);
                 }
 
                 &:disabled,
                 &.disabled {
-                    background-color: rgba(104, 95, 255, 0.5);
+                    background-color: var(--purple-alpha-50);
                     cursor: not-allowed;
                 }
             }

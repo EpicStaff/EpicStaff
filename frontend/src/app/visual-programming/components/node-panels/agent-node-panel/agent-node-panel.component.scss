@@ -73,7 +73,7 @@
         margin: 0;
 
         .required {
-            color: var(--color-required-asterisk, var(--accent-color));
+            color: var(--color-required-asterisk);
             margin-left: 2px;
         }
     }
@@ -180,23 +180,23 @@
     height: 40px;
     padding: 0 0.75rem;
     background: transparent;
-    border: 1px dashed var(--transparent-white-8, rgba(217, 217, 222, 0.08));
+    border: 1px dashed var(--fog-alpha-8);
     border-radius: 10px;
-    color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+    color: var(--fog-alpha-60);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
 
     &:hover {
-        border-color: rgba(217, 217, 222, 0.16);
+        border-color: var(--fog-alpha-16);
         color: var(--color-text-primary);
     }
 }
 
 .task-error {
     font-size: 0.75rem;
-    color: #ff6b6b;
+    color: var(--red-400);
 }
 
 .icon-button {
@@ -209,7 +209,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--color-text-secondary, #d9d9d999);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition:
         background-color 0.15s ease,
@@ -231,7 +231,7 @@
     border: 1px solid var(--color-divider-subtle);
     border-radius: 8px;
     overflow: hidden;
-    background: var(--color-input-background, #1e1e1e);
+    background: var(--color-input-background);
 
     &__header {
         display: flex;
@@ -265,7 +265,7 @@
 
     &__subtitle {
         font-size: 0.75rem;
-        color: var(--text-secondary-60);
+        color: var(--fog-alpha-60);
         white-space: nowrap;
     }
 
@@ -280,7 +280,7 @@
         min-height: 0;
         display: flex;
         flex-direction: column;
-        background: var(--color-background-body, #212325);
+        background: var(--color-background-body);
     }
 
     app-json-editor {
@@ -305,7 +305,7 @@
         justify-content: center;
         text-align: center;
         padding: 1rem;
-        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        color: var(--fog-alpha-60);
         font-size: 0.875rem;
     }
 
@@ -326,7 +326,7 @@
     flex: 1;
     min-height: 0;
     display: flex;
-    background: var(--color-background-body, #212325) !important;
+    background: var(--color-background-body) !important;
     border: none !important;
 }
 
@@ -335,7 +335,7 @@
 }
 
 ::ng-deep .main-editor-pane__textarea .vht-backdrop {
-    background: var(--color-background-body, #212325);
+    background: var(--color-background-body);
 }
 
 ::ng-deep .main-editor-pane__textarea .vht-textarea {

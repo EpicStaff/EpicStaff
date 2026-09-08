@@ -1,7 +1,7 @@
 .process-selector {
     display: flex;
     width: 100%;
-    background-color: var(--color-nodes-input-bg);
+    background-color: var(--color-nodes-background);
     border-radius: 8px;
     padding: 0;
     gap: 0.25rem;
@@ -15,20 +15,20 @@
     justify-content: center;
     padding: 0.5rem 0.4rem;
     border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     cursor: pointer;
     color: var(--color-text-primary);
     transition: all 0.2s ease;
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.05);
+        background-color: var(--white-alpha-5);
     }
 
     &.active {
         background-color: var(--accent-color);
-        color: #202020;
-        box-shadow: 0 2px 8px rgba(104, 95, 255, 0.3);
+        color: var(--gray-810);
+        box-shadow: 0 2px 8px var(--purple-alpha-30);
     }
 
     .option-icon {

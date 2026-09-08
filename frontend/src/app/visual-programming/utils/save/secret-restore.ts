@@ -52,12 +52,12 @@ function restoreNodeSecretIds(
                     table: {
                         ...table,
                         pre_computation:
-                            preIds !== undefined
-                                ? { ...table?.pre_computation, secret_ids: preIds }
+                            preIds !== undefined && table?.pre_computation
+                                ? { ...table.pre_computation, secret_ids: preIds }
                                 : table?.pre_computation,
                         post_computation:
-                            postIds !== undefined
-                                ? { ...table?.post_computation, secret_ids: postIds }
+                            postIds !== undefined && table?.post_computation
+                                ? { ...table.post_computation, secret_ids: postIds }
                                 : table?.post_computation,
                     },
                 },
@@ -112,12 +112,14 @@ function mergeNodeSecretIds(node: NodeModel, savedByBackendId: Map<number, NodeM
                     ...cdtNode.data,
                     table: {
                         ...table,
-                        pre_computation: savedPre
-                            ? { ...table?.pre_computation, secret_ids: savedPre }
-                            : table?.pre_computation,
-                        post_computation: savedPost
-                            ? { ...table?.post_computation, secret_ids: savedPost }
-                            : table?.post_computation,
+                        pre_computation:
+                            savedPre && table?.pre_computation
+                                ? { ...table.pre_computation, secret_ids: savedPre }
+                                : table?.pre_computation,
+                        post_computation:
+                            savedPost && table?.post_computation
+                                ? { ...table.post_computation, secret_ids: savedPost }
+                                : table?.post_computation,
                     },
                 },
             };

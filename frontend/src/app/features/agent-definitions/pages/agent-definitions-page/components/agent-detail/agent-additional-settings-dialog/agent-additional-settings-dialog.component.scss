@@ -3,15 +3,14 @@
     flex-direction: column;
     background-color: var(--color-modals-background);
     color: var(--color-text-primary);
-    font-family: 'Inter', sans-serif;
     border-radius: 12px;
     overflow: hidden;
     width: 590px;
     max-width: 90vw;
     height: min(720px, 90vh);
     box-shadow:
-        0 12px 28px rgba(0, 0, 0, 0.4),
-        0 4px 8px rgba(0, 0, 0, 0.2);
+        0 12px 28px var(--black-alpha-40),
+        0 4px 8px var(--black-alpha-20);
 }
 
 .header {
@@ -24,9 +23,9 @@
     .dialog-title {
         margin: 0;
         padding: 0;
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 130%;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
         letter-spacing: 0;
         color: var(--color-text-primary, #d9d9de);
         white-space: nowrap;

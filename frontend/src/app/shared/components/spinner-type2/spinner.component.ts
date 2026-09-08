@@ -4,7 +4,6 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-spinner2',
-    standalone: true,
     imports: [AppSvgIconComponent],
     template: `
         <div

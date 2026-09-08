@@ -37,7 +37,7 @@ export class OrgCardComponent {
                 })
             )
             .subscribe(() => {
-                this.router.navigateByUrl('/projects/my');
+                this.router.navigateByUrl('/agents');
             });
     }
 }

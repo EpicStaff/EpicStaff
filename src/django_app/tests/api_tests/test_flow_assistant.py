@@ -292,7 +292,7 @@ def test_subflow_tool_overview_only(graph, db):
     assert result["name"] == "Child Flow"
     assert result["description"] == "A child subflow."
     # Must NOT contain node lists or edge lists
-    assert "crew_node_list" not in result
+    assert "agent_node_list" not in result
     assert "edges" not in result
     assert "nodes" not in result
 
@@ -1772,7 +1772,6 @@ def test_get_session_detail_redacts_message_bodies(db):
 @pytest.mark.django_db
 def test_get_node_knowledge_sources_metadata_only(graph, db):
     """Agent's knowledge_collection must appear as metadata — no document content."""
-    from tables.models.crew_models import Agent
     from tables.models.knowledge_models.collection_models import (
         SourceCollection,
         DocumentMetadata,
@@ -1802,78 +1801,6 @@ def test_get_node_knowledge_sources_metadata_only(graph, db):
     assert "content" not in result_str
 
 
-# ── Phase D: Crew summary in get_node ────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_get_node_crew_includes_crew_summary(graph, db):
-    """get_node for CrewNode must return crew_summary with agents/tasks, no backstory."""
-    from tables.models.crew_models import Agent, Crew, Task
-    from tables.models.graph_models import CrewNode
-    from tables.services.flow_assistant import get_node
-
-    BACKSTORY_TEXT = "TOPSECRET_BACKSTORY_CONTENT_XYZ"
-
-    agent_1 = Agent.objects.create(
-        role="Data Analyst",
-        goal="Analyse data accurately",
-        backstory=BACKSTORY_TEXT,
-    )
-    agent_2 = Agent.objects.create(
-        role="Report Writer",
-        goal="Write clear reports",
-        backstory="Another backstory that should not leak",
-    )
-    crew = Crew.objects.create(name="Analytics Crew", description="Runs analytics jobs")
-    crew.agents.set([agent_1, agent_2])
-
-    Task.objects.create(
-        crew=crew,
-        name="data_ingestion",
-        instructions="Load the data from the source system",
-        expected_output="Clean dataframe",
-        order=0,
-    )
-
-    crew_node = CrewNode.objects.create(
-        graph=graph, node_name="analytics_crew", crew=crew
-    )
-
-    result = get_node(graph.pk, str(crew_node.pk))
-    assert result.get("type") == "crew"
-    assert (
-        "crew_summary" in result
-    ), "crew_summary missing from CrewNode get_node response"
-
-    summary = result["crew_summary"]
-    assert summary is not None
-    assert summary["name"] == "Analytics Crew"
-    assert summary["agent_count"] == 2
-    assert summary["task_count"] == 1
-
-    # Agents list must include role and goal, but NOT backstory.
-    agents = summary["agents"]
-    assert len(agents) == 2
-    agent_roles = [a["role"] for a in agents]
-    assert "Data Analyst" in agent_roles
-    assert "Report Writer" in agent_roles
-    for agent_entry in agents:
-        assert (
-            "backstory" not in agent_entry
-        ), "backstory must not appear in crew_summary agents"
-
-    # Backstory text must not appear anywhere in the result.
-    result_str = str(result)
-    assert (
-        BACKSTORY_TEXT not in result_str
-    ), "backstory content must not leak in get_node response"
-
-    # Tasks list must include name and description snippet.
-    tasks = summary["tasks"]
-    assert len(tasks) == 1
-    assert tasks[0]["name"] == "data_ingestion"
-
-
 # ── system_prompt build smoke test ───────────────────────────────────────────
 
 
@@ -1899,8 +1826,8 @@ def test_build_system_prompt_file_load_and_substitution():
         today_iso="2026-05-18",
         yesterday_iso="2026-05-17",
         tomorrow_iso="2026-05-19",
-        node_summary="  - crew: 1\n  - end: 1",
-        nodes_section='Nodes in this flow:\n  - id=1 type=crew name="intake"',
+        node_summary="  - agent: 1\n  - end: 1",
+        nodes_section='Nodes in this flow:\n  - id=1 type=agent name="intake"',
         subflow_summary="  (none)",
     )
 

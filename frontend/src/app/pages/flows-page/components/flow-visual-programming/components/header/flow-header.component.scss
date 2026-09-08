@@ -32,7 +32,7 @@
             overflow: hidden;
 
             .flows-prefix {
-                color: rgba(255, 255, 255, 0.6);
+                color: var(--white-alpha-60);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -53,13 +53,13 @@
                 }
 
                 &:hover {
-                    color: rgba(255, 255, 255, 0.9);
+                    color: var(--white-alpha-90);
                 }
             }
         }
 
         .slash {
-            color: #999;
+            color: var(--gray-595);
             margin: 0 0.5rem;
             font-size: 24px;
             font-weight: 400;
@@ -157,7 +157,7 @@
             border: none;
 
             &:hover {
-                background-color: rgba(154, 115, 175, 0.1);
+                background-color: var(--mauve-alpha-10);
             }
         }
 
@@ -169,7 +169,7 @@
             border: 1px solid var(--accent-color);
 
             &:hover {
-                background-color: rgba(154, 115, 175, 0.1);
+                background-color: var(--mauve-alpha-10);
             }
         }
 
@@ -229,7 +229,7 @@
                 cursor: pointer;
 
                 &:hover:not(:disabled) {
-                    background-color: rgba(154, 115, 175, 0.1);
+                    background-color: var(--mauve-alpha-10);
                 }
             }
 
@@ -245,14 +245,14 @@
                 cursor: pointer;
 
                 &:hover:not(:disabled) {
-                    background-color: rgba(154, 115, 175, 0.1);
+                    background-color: var(--mauve-alpha-10);
                 }
             }
         }
 
         .run-button {
             background-color: var(--accent-color);
-            color: white;
+            color: var(--white);
             border: 1px solid var(--accent-color);
 
             &:active {
@@ -294,7 +294,7 @@
         color 0.15s ease;
 
     &:hover {
-        color: var(--color-ks-text);
+        color: var(--fog-200);
     }
 }
 .unsaved-indicator {
@@ -303,20 +303,20 @@
     align-self: center;
     gap: 6px;
     margin-left: 8px;
-    color: #685fff;
+    color: var(--accent-color);
     font-size: 14px;
     white-space: nowrap;
 
     i {
         font-size: 10px;
         margin-right: 6px;
-        color: #685fff;
+        color: var(--accent-color);
     }
 
     .unsaved-text {
         font-size: 12px;
         font-weight: 500;
-        color: #685fff;
+        color: var(--accent-color);
     }
 
     &.unsaved-indicator--icon-only .unsaved-text {

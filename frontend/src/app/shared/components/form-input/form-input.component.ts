@@ -1,6 +1,6 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     Component,
     ElementRef,
     EventEmitter,
@@ -17,8 +17,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
-    standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
+    imports: [FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -124,7 +123,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     border: 1px solid var(--color-input-border);
                     border-radius: 6px;
                     color: var(--color-text-primary);
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
@@ -166,13 +165,13 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                     }
                 }
 
                 .error-message {
                     color: #ef4444;
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     margin-top: 4px;
                     line-height: 1.4;
                 }
@@ -183,12 +182,13 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     background-color: rgba(104, 95, 255, 0.1);
                     border-radius: 6px;
                     border-left: 3px solid #685fff;
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     color: #ffffffb3;
                 }
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

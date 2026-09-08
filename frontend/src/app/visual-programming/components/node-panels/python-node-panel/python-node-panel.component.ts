@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -6,12 +5,10 @@ import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/se
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
@@ -36,22 +33,18 @@ import { PythonTerminalComponent, TerminalStatus } from './python-terminal/pytho
 import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-log.model';
 
 @Component({
-    standalone: true,
     selector: 'app-python-node-panel',
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
         InputMapComponent,
         CodeEditorComponent,
-        CommonModule,
         PythonTerminalComponent,
         NodeStorageSectionComponent,
         AppSvgIconComponent,
-        HelpTooltipComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -117,27 +110,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
-
-                            <div
-                                class="stream-config-section"
-                                formGroupName="stream_config"
-                            >
-                                <span class="section-label">Streaming to EpicChat</span>
-                                <div class="checkbox-list">
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="execution_status"
-                                            [style.accent-color]="activeColor"
-                                        />
-                                        <span>Execution status</span>
-                                        <app-help-tooltip
-                                            size="18px"
-                                            text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
-                                        />
-                                    </label>
-                                </div>
-                            </div>
 
                             <app-node-storage-section
                                 [useStorage]="useStorage()"
@@ -414,40 +386,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 @include mixins.secondary-button;
             }
 
-            .section-label {
-                font-size: 0.75rem;
-                color: #d9d9d999;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }
-
-            .stream-config-section {
-                display: flex;
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            .checkbox-list {
-                display: flex;
-                flex-direction: column;
-                gap: 0.35rem;
-            }
-
-            .checkbox-item {
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                font-size: 0.85rem;
-                color: #d4d4d4;
-                cursor: pointer;
-
-                input[type='checkbox'] {
-                    width: 16px;
-                    height: 16px;
-                    cursor: pointer;
-                }
-            }
-
             .panel-header {
                 display: flex;
                 justify-content: flex-end;
@@ -677,7 +615,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     initializeForm(): FormGroup {
         this.terminalLogs.set([]);
-        const sc = this.node().stream_config;
 
         this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
@@ -687,9 +624,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             libraries: [this.node().data.libraries?.join(', ') || ''],
-            stream_config: this.fb.group({
-                execution_status: [sc?.['execution_status'] ?? true],
-            }),
             test_input: this.fb.array([]),
         });
 
@@ -744,7 +678,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
             },
-            stream_config: this.form.value.stream_config || {},
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };
     }

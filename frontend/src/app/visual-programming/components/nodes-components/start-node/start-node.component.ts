@@ -5,7 +5,6 @@ import { StartNodeModel } from '../../../core/models/node.model';
 
 @Component({
     selector: 'app-start-node',
-    standalone: true,
     imports: [AppSvgIconComponent],
     template: `
         <div class="start-node">
@@ -23,7 +22,7 @@ import { StartNodeModel } from '../../../core/models/node.model';
                 display: flex;
                 align-items: center;
                 gap: 1rem;
-                font-size: 16px;
+                font-size: 1rem;
                 font-weight: 500;
                 letter-spacing: 0.5px;
 

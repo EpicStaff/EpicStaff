@@ -99,6 +99,7 @@ class RealtimeAgentClientFactory:
             turn_detection_mode=TurnDetectionMode.SERVER_VAD,
             org_id=config.org_id,
             user_id=config.user_id,
+            base_url=config.rt_base_url,
         )
         client.is_twilio = is_twilio
         return client

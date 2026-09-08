@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, Inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Inject } from '@angular/core';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
@@ -20,9 +20,9 @@ export interface ConfirmationDialogData {
 
 @Component({
     selector: 'app-confirmation-dialog',
-    standalone: true,
     imports: [CommonModule, DialogModule, IconButtonComponent, AppSvgIconComponent],
     templateUrl: './confirmation-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./confirmation-dialog.component.scss'],
 })
 export class ConfirmationDialogComponent {

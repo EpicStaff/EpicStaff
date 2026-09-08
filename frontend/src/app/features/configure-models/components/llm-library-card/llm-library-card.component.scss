@@ -4,7 +4,7 @@
 
 .llm-card {
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--white-alpha-8);
     border-radius: 12px;
     padding: 14px 16px;
     display: flex;
@@ -15,7 +15,7 @@
     transition: border-color 0.2s ease;
 
     &:hover {
-        border-color: rgba(255, 255, 255, 0.16);
+        border-color: var(--white-alpha-16);
     }
 
     &__top {
@@ -31,7 +31,7 @@
         white-space: nowrap;
         font-size: 11px;
         font-weight: 500;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
     }
 
     &__actions {
@@ -44,9 +44,9 @@
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        border: 1px solid rgba(104, 95, 255, 0.4);
+        border: 1px solid var(--purple-alpha-40);
         background: transparent;
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--configure-models-dialog-inactive-color);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -62,15 +62,15 @@
         }
 
         &:hover {
-            background: rgba(104, 95, 255, 0.12);
-            border-color: rgba(104, 95, 255, 0.7);
+            background: var(--purple-alpha-12);
+            border-color: var(--purple-alpha-70);
         }
 
         &--delete {
             &:hover {
-                background: rgba(255, 80, 80, 0.12);
-                border-color: rgba(255, 80, 80, 0.5);
-                color: #ff5050;
+                background: var(--red-440-alpha-12);
+                border-color: var(--red-440-alpha-50);
+                color: var(--red-440);
             }
         }
     }
@@ -78,7 +78,7 @@
     &__name {
         font-size: 15px;
         font-weight: 600;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--configure-models-dialog-active-color);
         word-break: break-word;
     }
 
@@ -91,7 +91,7 @@
     &__tag {
         font-size: 11px;
         font-weight: 500;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
     }
 
     &__bottom {
@@ -107,7 +107,7 @@
         align-items: center;
         gap: 4px;
         font-size: 12px;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
 
         i {
             font-size: 14px;
@@ -120,15 +120,15 @@
         gap: 4px;
         font-size: 12px;
         font-weight: 500;
-        color: var(--color-ks-status-processing);
+        color: var(--orange-500);
     }
 
     &__usage {
         font-size: 12px;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
 
         &--active {
-            color: var(--configure-models-dialog-inactive-color, #685fff);
+            color: var(--configure-models-dialog-inactive-color);
             font-weight: 500;
             cursor: pointer;
 

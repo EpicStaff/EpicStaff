@@ -2,10 +2,10 @@
     background-color: var(--color-modals-background);
     border: 1px solid var(--color-divider-subtle);
     border-radius: 12px;
-    color: #fff;
+    color: var(--white);
     width: 95vw;
     height: 95vh;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 8px 24px var(--black-alpha-60);
     overflow: hidden;
 
     form {
@@ -29,7 +29,7 @@
             font-size: 20px;
             line-height: 100%;
             font-weight: 500;
-            color: #fff;
+            color: var(--white);
             letter-spacing: 0;
         }
 
@@ -58,7 +58,7 @@
 
             &--confirm {
                 background-color: var(--accent-color);
-                color: var(--color-text);
+                color: var(--color-text-primary);
             }
 
             &:hover:not(:disabled) {
@@ -115,14 +115,14 @@
         &__label {
             font-size: 13px;
             font-weight: 500;
-            color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+            color: var(--color-text-secondary);
         }
 
         &__value {
             margin: 0;
             font-size: 14px;
             line-height: 1.4;
-            color: #fff;
+            color: var(--white);
             word-break: break-word;
         }
     }
@@ -132,7 +132,7 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
-        background-color: #1b1b1b;
+        background-color: var(--gray-830);
         border-left: 1px solid var(--color-divider-subtle);
         overflow: hidden;
     }
@@ -156,10 +156,10 @@
         font-size: 14px;
         line-height: 130%;
         font-weight: 700;
-        color: #fff;
+        color: var(--white);
 
         .python-icon {
-            color: #ffdd57;
+            color: var(--gold-475);
         }
     }
 
@@ -179,7 +179,7 @@
             background: transparent;
             border: 1px solid transparent;
             border-radius: 6px;
-            color: #d4d4dc;
+            color: var(--gray-213);
             cursor: pointer;
             transition:
                 background-color 0.2s ease,
@@ -187,8 +187,8 @@
                 color 0.2s ease;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.06);
-                color: #fff;
+                background-color: var(--white-alpha-6);
+                color: var(--white);
             }
 
             &:focus-visible {
@@ -222,7 +222,7 @@
                 font-size: 14px;
                 line-height: 18px;
                 font-weight: 500;
-                color: #d4d4dc;
+                color: var(--gray-213);
                 display: inline-flex;
                 align-items: center;
 
@@ -237,7 +237,7 @@
     .error-message {
         margin: 0;
         font-size: 12px;
-        color: #ff5c5c;
+        color: var(--red-427);
     }
 
     .parameters-section {
@@ -258,9 +258,9 @@
     .parameters-issue-label {
         font-size: 12px;
         font-weight: 500;
-        color: #ff6b6b;
-        background: rgba(255, 85, 85, 0.1);
-        border: 1px solid rgba(255, 85, 85, 0.4);
+        color: var(--red-400);
+        background: var(--red-460-alpha-10);
+        border: 1px solid var(--red-460-alpha-40);
         border-radius: 6px;
         padding: 4px 10px;
         line-height: 1.2;
@@ -285,7 +285,7 @@
 
         &:hover {
             background: var(--accent-color);
-            color: #fff;
+            color: var(--white);
         }
     }
 
@@ -297,7 +297,7 @@
         font-size: 14px;
         line-height: 18px;
         font-weight: 500;
-        color: #d4d4dc;
+        color: var(--gray-213);
 
         app-toggle-switch {
             display: inline-flex;
@@ -311,7 +311,7 @@
 
     .editor-card {
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--white-alpha-8);
         border-radius: 8px;
         background-color: transparent;
         flex-shrink: 0;
@@ -330,7 +330,7 @@
     }
 
     .editor-card.has-inline .editor-card-header {
-        border-bottom-color: rgba(255, 255, 255, 0.08);
+        border-bottom-color: var(--white-alpha-8);
     }
 
     .editor-card-title {
@@ -338,20 +338,20 @@
         align-items: center;
         min-width: 0;
         gap: 8px;
-        color: #fff;
+        color: var(--white);
         font-size: 14px;
         line-height: 18px;
         font-weight: 600;
 
         small {
-            color: #9b9ba6;
+            color: var(--gray-609);
             font-size: 13px;
             font-weight: 400;
             margin-left: 4px;
         }
 
         .python-icon {
-            color: #ffdd57;
+            color: var(--gold-475);
         }
     }
 
@@ -371,7 +371,7 @@
             border: 1px solid transparent;
             border-radius: 6px;
             background: transparent;
-            color: #d4d4dc;
+            color: var(--gray-213);
             cursor: pointer;
             transition:
                 background-color 0.2s ease,
@@ -379,14 +379,14 @@
                 color 0.2s ease;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.06);
-                color: #fff;
+                background-color: var(--white-alpha-6);
+                color: var(--white);
             }
 
             &.active {
-                background-color: rgba(104, 95, 255, 0.9);
+                background-color: var(--purple-alpha-90);
                 border-color: var(--accent-color);
-                color: #fff;
+                color: var(--white);
             }
 
             &:focus-visible {
@@ -400,7 +400,7 @@
         height: 320px;
         display: flex;
         flex-direction: column;
-        background-color: #171719;
+        background-color: var(--graphite-1008);
         flex-shrink: 0;
 
         > app-code-editor,

@@ -75,6 +75,11 @@ export class InputNumberComponent implements ControlValueAccessor {
         const current = Number(this.value()) || 0;
         let next = current + this.stepSize() * direction;
 
+        const min = this.min();
+        const max = this.max();
+        if (min !== null && next < min) next = min;
+        if (max !== null && next > max) next = max;
+
         this.updateValue(next);
     }
 

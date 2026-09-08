@@ -12,6 +12,7 @@ from infrastructure.transcription.event_handlers.transcription_server_event_hand
 
 from domain.ports.i_transcription_client import ITranscriptionClient
 from domain.services.chat_buffer import ChatSummarizedBuffer
+from utils.openai_endpoints import derive_realtime_ws_url
 
 
 class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
@@ -27,6 +28,7 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
         connection_model: str = "gpt-realtime-1.5",
         org_id: int | None = None,
         user_id: int | None = None,
+        base_url: str | None = None,
     ):
         self.api_key = api_key
         self.connection_key = connection_key
@@ -38,7 +40,7 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
         self.ws = None
         self.language = language
         self.voice_recognition_prompt = voice_recognition_prompt
-        self.base_url = "wss://api.openai.com/v1/realtime"
+        self.base_url = derive_realtime_ws_url(base_url)
         self.turn_detection_mode = "server_vad"
 
         self.buffer = buffer

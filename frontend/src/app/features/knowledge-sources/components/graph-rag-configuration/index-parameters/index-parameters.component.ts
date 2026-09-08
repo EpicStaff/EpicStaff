@@ -10,6 +10,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
 import { GraphRagFileType, GraphRagIndexConfig } from '../../../models/graph-rag.model';
@@ -31,6 +32,8 @@ import { GraphRagFileType, GraphRagIndexConfig } from '../../../models/graph-rag
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppGraphRagParametersComponent implements OnInit {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
 

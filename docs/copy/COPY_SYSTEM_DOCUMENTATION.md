@@ -142,7 +142,7 @@ The graph copy service dispatches node creation through `NODE_COPY_HANDLERS` —
 
    - If the node owns a `PythonCode` object, duplicate it with `copy_python_code(node.python_code)`.
    - If the node has nested child objects (like `TelegramTriggerNodeField`), iterate and clone them inside the handler.
-   - If the node holds a **reference** to another entity (like `CrewNode → crew`), pass the same FK — do not clone the referenced entity.
+   - If the node holds a **reference** to another entity (like `SubGraphNode → subgraph`), pass the same FK — do not clone the referenced entity.
 
 2. **Register the handler** in `NODE_COPY_HANDLERS`:
 

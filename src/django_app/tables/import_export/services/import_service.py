@@ -2,6 +2,7 @@ from typing import List
 from collections import defaultdict
 
 from django.db import transaction
+from loguru import logger
 from rest_framework.exceptions import PermissionDenied
 
 from tables.import_export.id_mapper import IDMapper
@@ -36,6 +37,14 @@ class ImportService:
             ordered_types = self._resolve_import_order(export_data)
 
             for entity_type in ordered_types:
+                if not self.registry.has_strategy(entity_type):
+                    logger.warning(
+                        "Skipping unsupported entity type {} during import "
+                        "(no longer supported)",
+                        entity_type,
+                    )
+                    continue
+
                 entities = export_data.get(entity_type, [])
                 strategy = self.registry.get_strategy(entity_type)
 

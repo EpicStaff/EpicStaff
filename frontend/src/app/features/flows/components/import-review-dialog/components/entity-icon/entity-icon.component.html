@@ -1,0 +1,21 @@
+@if (getSpriteIcon(entityType()); as spriteIcon) {
+    <app-svg-icon
+        [icon]="spriteIcon"
+        [size]="size()"
+        [style.color]="color()"
+    ></app-svg-icon>
+} @else if (isInlineSvgIcon(entityType())) {
+    <div
+        class="entity-icon-inline"
+        [innerHTML]="inlineSvg"
+        [style.color]="color()"
+        [style.width]="size()"
+        [style.height]="size()"
+    ></div>
+} @else {
+    <app-icon
+        [icon]="iconPath"
+        [size]="size()"
+        [style.color]="color()"
+    ></app-icon>
+}

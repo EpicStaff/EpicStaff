@@ -19,6 +19,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
 import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentDtoRequest } from '../../../models/naive-rag-document.model';
@@ -41,6 +42,8 @@ import { DocFieldChange, TableDocument } from './configuration-table.interface';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConfigurationTableComponent {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     fileTypeSelectItems: SelectItem[] = FILE_TYPES.map((t) => ({ name: t, value: t }));
     chunkStrategySelectItems: SelectItem[] = CHUNK_STRATEGIES_SELECT_ITEMS;
 

@@ -1,6 +1,6 @@
 .container {
-    background: var(--color-background-body, #212325);
-    border: 1px solid var(--color-ks-line, #2b2d30);
+    background: var(--color-background-body);
+    border: 1px solid var(--graphite-700);
     border-radius: 10px;
     color: var(--color-text-primary);
     min-width: 400px;
@@ -48,7 +48,7 @@
                 color 0.15s;
 
             &:hover {
-                background: var(--color-surface-2, #2b2d30);
+                background: var(--graphite-750);
                 color: var(--color-text-primary);
             }
         }
@@ -87,8 +87,8 @@
                 .input-field {
                     width: 100%;
                     padding: 9px 12px;
-                    background: var(--color-surface-2, #2b2d30);
-                    border: 1px solid var(--color-ks-line, #3a3c40);
+                    background: var(--graphite-750);
+                    border: 1px solid var(--graphite-700);
                     border-radius: 6px;
                     color: var(--color-text-primary);
                     font-size: 14px;
@@ -101,7 +101,7 @@
 
                     &:focus {
                         outline: none;
-                        border-color: var(--color-primary, #685fff);
+                        border-color: var(--accent-color);
                     }
                 }
             }
@@ -125,20 +125,20 @@
             border: none;
 
             &.close {
-                background: var(--color-surface-2, #2b2d30);
+                background: var(--graphite-750);
                 color: var(--color-text-primary);
 
                 &:hover {
-                    background: var(--color-surface-3, #35373b);
+                    background: var(--graphite-745);
                 }
             }
 
             &.create {
-                background: var(--color-primary, #685fff);
-                color: #fff;
+                background: var(--accent-color);
+                color: var(--white);
 
                 &:hover {
-                    background: #7a70ff;
+                    background: var(--purple-400);
                 }
 
                 &:disabled,

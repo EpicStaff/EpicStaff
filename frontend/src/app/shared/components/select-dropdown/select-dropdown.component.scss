@@ -19,7 +19,7 @@
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
     border-radius: 10px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+    box-shadow: 0 6px 16px var(--black-alpha-24);
     box-sizing: border-box;
 }
 
@@ -31,8 +31,8 @@
     height: 40px;
     padding: 0 16px;
     margin-bottom: 16px;
-    background-color: #2b2d30;
-    border: 1px solid #d9d9de29;
+    background-color: var(--graphite-750);
+    border: 1px solid var(--fog-alpha-16);
     border-radius: 4px;
     color: var(--color-text-secondary);
     flex-shrink: 0;
@@ -143,8 +143,8 @@
     height: 40px;
     flex-shrink: 0;
     padding: 0 16px;
-    background-color: #2b2d30;
-    border: 1px solid #d9d9de29;
+    background-color: var(--graphite-750);
+    border: 1px solid var(--fog-alpha-16);
     border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
@@ -171,7 +171,7 @@
         cursor: not-allowed;
 
         &:hover {
-            background-color: #2b2d30;
+            background-color: var(--graphite-750);
         }
     }
 }
@@ -181,8 +181,8 @@
 
     &:checked,
     &:indeterminate {
-        background-color: #d9d9de;
-        border-color: #d9d9de;
+        background-color: var(--fog-200);
+        border-color: var(--fog-200);
     }
 
     &:checked::after {
@@ -195,7 +195,7 @@
 }
 
 .select-dropdown__row:hover ::ng-deep app-checkbox input[type='checkbox']:not(:checked):not(:indeterminate) {
-    border-color: #d9d9de;
+    border-color: var(--fog-200);
 }
 
 .select-dropdown__check {
@@ -279,10 +279,10 @@
 }
 
 .select-dropdown__clear ::ng-deep .btn {
-    border: 1px solid #685fff;
+    border: 1px solid var(--accent-color);
 }
 
 .select-dropdown__clear--empty ::ng-deep .btn {
-    border: 1px solid #685fff66;
-    color: #685fff66;
+    border: 1px solid var(--purple-alpha-40);
+    color: var(--purple-alpha-40);
 }

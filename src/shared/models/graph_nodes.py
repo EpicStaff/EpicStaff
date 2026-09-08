@@ -4,19 +4,11 @@ from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .agent_service import CollectionSpec, S3FileSpec
-from .agents import CrewData
 from .ai_providers import LLMData
+from .knowledge import RagSearchConfig
+from .tools import PythonCodeData
 from .surfaces import CombinedSurfaceData
-from .tools import BaseToolData, PythonCodeData
-
-
-class CrewNodeData(BaseModel):
-    node_name: str
-    crew: CrewData
-    input_map: dict[str, Any]
-    output_variable_path: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
+from .tools import BaseToolData
 
 
 class PythonNodeData(BaseModel):
@@ -24,6 +16,20 @@ class PythonNodeData(BaseModel):
     python_code: PythonCodeData
     input_map: dict[str, Any]
     output_variable_path: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeNodeData(BaseModel):
+    node_name: str
+    collection_id: int | None = None
+    rag_type_id: str | None = None
+    query: str
+    rag_search_config: RagSearchConfig | None = None
+    input_map: dict[str, Any]
+    output_variable_path: str | None = None
+    embedder_api_key: str | None = None
+    embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -250,9 +256,9 @@ class SubGraphNodeData(BaseModel):
 class GraphData(BaseModel):
     graph_id: int | None = None
     name: str
-    crew_node_list: list[CrewNodeData] = []
     webhook_trigger_node_data_list: list[WebhookTriggerNodeData] = []
     python_node_list: list[PythonNodeData] = []
+    knowledge_node_list: list[KnowledgeNodeData] = []
     file_extractor_node_list: list[FileExtractorNodeData] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []

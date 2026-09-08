@@ -5,7 +5,6 @@ export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.TASK]: 'ti ti-circle-check',
     [NodeType.TOOL]: 'ti ti-tools',
     [NodeType.LLM]: 'ti ti-brain',
-    [NodeType.PROJECT]: 'ti ti-folder',
     [NodeType.PYTHON]: 'ti ti-brand-python',
     [NodeType.EDGE]: 'ti ti-route-alt-left',
     [NodeType.START]: 'ti ti-filled ti-player-play',
@@ -19,6 +18,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.SUBGRAPH]: 'ti ti-hierarchy-2',
     [NodeType.AUDIO_TO_TEXT]: 'ti ti-music',
     [NodeType.SCHEDULE_TRIGGER]: 'ti ti-calendar',
+    [NodeType.KNOWLEDGE_RETRIEVER]: 'ti ti-books',
 };
 
 export const NODE_COLORS: Record<NodeType, string> = {
@@ -26,7 +26,6 @@ export const NODE_COLORS: Record<NodeType, string> = {
     [NodeType.TASK]: '#2aba6b',
     [NodeType.TOOL]: '#9f6a00',
     [NodeType.LLM]: '#e0575b',
-    [NodeType.PROJECT]: '#5672cd',
     [NodeType.PYTHON]: '#ffcf3f',
     [NodeType.EDGE]: '#8e5cd9',
     [NodeType.START]: '#d3d3d3',
@@ -40,4 +39,5 @@ export const NODE_COLORS: Record<NodeType, string> = {
     [NodeType.SUBGRAPH]: '#00bfa5',
     [NodeType.AUDIO_TO_TEXT]: '#ff7be9ff',
     [NodeType.SCHEDULE_TRIGGER]: '#FF5C00',
+    [NodeType.KNOWLEDGE_RETRIEVER]: '#D9D9DE',
 };

@@ -76,7 +76,7 @@
         .title {
             font-size: 15px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--white);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -88,19 +88,19 @@
             font-size: 11px;
             padding: 2px 6px;
             border-radius: 10px;
-            background: rgba(255, 107, 107, 0.15);
-            color: #ffb3b3;
-            border: 1px solid rgba(255, 107, 107, 0.6);
+            background: var(--red-400-alpha-15);
+            color: var(--red-405);
+            border: 1px solid var(--red-400-alpha-60);
             white-space: nowrap;
         }
     }
 
     &.is-blocked-llm {
-        border-color: rgba(255, 107, 107, 0.8);
-        background-color: rgba(255, 107, 107, 0.05);
+        border-color: var(--red-400-alpha-80);
+        background-color: var(--red-400-alpha-5);
 
         .decision-table__header .title {
-            color: #ffb3b3;
+            color: var(--red-405);
         }
     }
 
@@ -124,11 +124,11 @@
         }
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.02);
+            background-color: var(--white-alpha-2);
         }
 
         .group-name {
-            color: #ffffff;
+            color: var(--white);
             font-size: 13px;
             font-weight: 500;
             overflow: hidden;
@@ -140,7 +140,7 @@
                 margin-left: 6px;
                 font-size: 11px;
                 font-weight: 400;
-                color: rgba(255, 255, 255, 0.55);
+                color: var(--white-alpha-55);
             }
         }
 
@@ -189,16 +189,16 @@
     &__empty {
         padding: 1rem;
         text-align: center;
-        color: #999;
+        color: var(--gray-595);
         font-size: 13px;
     }
 }
 
 :host-context(.f-selected) .decision-table {
     border-color: var(--vp-selected-node-border-color);
-    box-shadow: 0 0 0 2px rgba(104, 95, 255, 0.25);
+    box-shadow: 0 0 0 2px var(--purple-alpha-25);
 }
 
 :host-context(.f-selected) .decision-table .group-name .group-status {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--white-alpha-70);
 }

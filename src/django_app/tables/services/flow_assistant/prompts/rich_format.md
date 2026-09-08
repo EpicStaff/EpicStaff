@@ -18,7 +18,7 @@ Minimal — just rows, columns auto-detected:
   {"ef_tables": [{"rows": [{"name": "Alice", "score": 95}, {"name": "Bob", "score": 72}]}]}
 
 With options:
-  {"ef_tables": [{"columns": [{"key": "name", "title": "Name"}, {"key": "type", "title": "Type"}], "rows": [{"name": "customer_intake", "type": "crew"}], "isEditable": false, "isSortable": true}]}
+  {"ef_tables": [{"columns": [{"key": "name", "title": "Name"}, {"key": "type", "title": "Type"}], "rows": [{"name": "customer_intake", "type": "task"}], "isEditable": false, "isSortable": true}]}
 
 Column options: `key`, `title`, `type` ("text" | "number" | "boolean" | "date"), `visible`, `editable`.
 Table options: `id`, `isEditable` (default true), `isSortable` (default true), `defaultSortField`, `rowsSelectionType` ("edit" | "select" | "multiSelect").
@@ -46,8 +46,13 @@ Interactive elements displayed with the message.
 | sendButtonTextWithParams | Like sendAction but also sends params as context extras. |
 | link                     | Opens params.url in browser. |
 | openFlow                 | Navigates to a flow. Requires params: {"flowId": "<id>"}. |
-| openNode                 | Opens a node panel. Requires params: {"flowId": "<id>", "nodeId": "<uuid>"}. |
+| openNode                 | Navigates to a flow (node panel not wired up yet — see note below). Requires params: {"flowId": "<id>", "nodeId": "<numeric node id>"}. |
 | refreshCache             | Reloads the page to pick up flow/node changes. |
+
+`nodeId` for `openNode` is the node's **numeric backend ID** — the `id` field
+returned by `get_flow_overview` / `get_node`, not a uuid. `openNode` currently
+just navigates to the flow; it does not open the node panel yet. Emit it where
+useful, but don't tell the user a panel will open.
 
 ### Prompt suggestions
 Add 2–3 prompt chips when there are natural follow-up questions.
@@ -71,15 +76,15 @@ Right (user POV — natural as a user message):
   "message": "This flow has **3 nodes**:",
   "ef_tables": [{
     "rows": [
-      {"id": 1, "type": "crew", "name": "customer_intake"},
-      {"id": 2, "type": "llm", "name": "summarize"},
+      {"id": 1, "type": "task", "name": "customer_intake"},
+      {"id": 2, "type": "agent", "name": "summarize"},
       {"id": 3, "type": "end", "name": "end"}
     ],
     "isEditable": false,
     "isSortable": true
   }],
   "action_message": [
-    {"type": "button", "action": "openNode", "text": "Open customer_intake", "params": {"flowId": "55", "nodeId": "<uuid>"}},
+    {"type": "button", "action": "openNode", "text": "Open customer_intake", "params": {"flowId": "55", "nodeId": "1"}},
     {"type": "prompt", "text": "Tell me about the summarize node"},
     {"type": "prompt", "text": "What subflows are used here?"}
   ]

@@ -1,36 +1,28 @@
-// Variables
-$bg-item: #2a2a2a;
-$bg-item-hover: #333333;
-$accent-blue: #4f46e5;
-$text-primary: #f5f5f5;
-$text-secondary: #a0a0a0;
-$border-color: rgba(255, 255, 255, 0.1);
-
 .mcp-tool-item {
     display: flex;
     align-items: center;
     padding: 10px 12px;
-    background-color: $bg-item;
+    background-color: var(--graphite-780);
     border-radius: 4px;
     margin-bottom: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
-    border: 1px solid #404040;
+    border: 1px solid var(--gray-405);
     gap: 12px;
 
     &:focus {
         outline: none;
-        border-color: $accent-blue;
+        border-color: var(--indigo-600);
     }
 
     &:hover {
-        background-color: $bg-item-hover;
+        background-color: var(--graphite-640);
     }
 
     &.selected-tool {
-        background-color: rgba($accent-blue, 0.15);
-        border-color: $accent-blue;
-        box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
+        background-color: var(--indigo-600-alpha-15);
+        border-color: var(--indigo-600);
+        box-shadow: 0 0 0 1px var(--indigo-600-alpha-40);
     }
 
     app-svg-icon {
@@ -38,7 +30,7 @@ $border-color: rgba(255, 255, 255, 0.1);
         height: 20px;
         font-size: 16px;
         flex-shrink: 0;
-        color: $text-primary;
+        color: var(--gray-105);
         margin-right: 8px;
     }
 
@@ -46,7 +38,7 @@ $border-color: rgba(255, 255, 255, 0.1);
         flex: 1;
         font-size: 13px;
         font-weight: 500;
-        color: $text-primary;
+        color: var(--gray-105);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -56,7 +48,7 @@ $border-color: rgba(255, 255, 255, 0.1);
 
     .tool-description {
         font-size: 12px;
-        color: $text-secondary;
+        color: var(--gray-490);
         margin-right: 8px;
         white-space: nowrap;
         overflow: hidden;
@@ -68,8 +60,8 @@ $border-color: rgba(255, 255, 255, 0.1);
         -webkit-appearance: none;
         width: 16px;
         height: 16px;
-        background-color: rgba(255, 255, 255, 0.1);
-        border: 1px solid $border-color;
+        background-color: var(--white-alpha-10);
+        border: 1px solid var(--white-alpha-10);
         border-radius: 4px;
         cursor: pointer;
         display: flex;
@@ -79,19 +71,19 @@ $border-color: rgba(255, 255, 255, 0.1);
         flex-shrink: 0;
 
         &:checked {
-            background-color: $accent-blue;
-            border-color: $accent-blue;
+            background-color: var(--indigo-600);
+            border-color: var(--indigo-600);
 
             &::after {
                 content: '✓';
-                color: white;
+                color: var(--white);
                 font-size: 10px;
             }
         }
 
         &:hover:not(:checked) {
-            background-color: rgba($accent-blue, 0.8);
-            color: white;
+            background-color: var(--indigo-600-alpha-80);
+            color: var(--white);
         }
     }
 }

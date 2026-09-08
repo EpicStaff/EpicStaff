@@ -17,7 +17,7 @@ from tables.services.rbac.ticket_service import TicketService
 
 def make_ws_service():
     return TicketService(
-        prefix="rbac:ws_ticket:", ttl_seconds=settings.GRAPH_WS_TICKET_TTL_SECONDS
+        prefix="rbac:ws_ticket:", ttl_seconds=settings.GRAPH_WS_TICKET_TTL
     )
 
 
@@ -120,7 +120,7 @@ def test_ttl_matches_setting(fake_redis):
     ttl = fake_redis.ttl(service._key(token))
 
     assert ttl > 0
-    assert ttl <= settings.GRAPH_WS_TICKET_TTL_SECONDS
+    assert ttl <= settings.GRAPH_WS_TICKET_TTL
 
 
 # ---------------------------------------------------------------------------

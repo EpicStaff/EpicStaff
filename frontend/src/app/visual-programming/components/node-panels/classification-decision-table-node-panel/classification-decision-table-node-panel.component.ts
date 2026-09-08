@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -61,7 +60,6 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         ReactiveFormsModule,
         FormsModule,
         CustomInputComponent,
-        CommonModule,
         ClassificationDecisionTableGridComponent,
         LlmModelSelectorComponent,
         InputMapComponent,

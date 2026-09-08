@@ -24,6 +24,8 @@ class RouteTool:
 def main(file_path: str):
     try:
         full_path = RouteTool().construct_savepath(frompath=file_path)
+        if not RouteTool.is_path_has_permission(full_path):
+            return f"Error: path {file_path} is outside the allowed directory."
         os.makedirs(full_path.parent, exist_ok=True)
         with open(full_path, "x"):
             pass

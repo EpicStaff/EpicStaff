@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -24,9 +23,7 @@ import { GraphMessagesComponent } from '../graph-messages/graph-messages.compone
 
 @Component({
     selector: 'app-flow-messages-panel',
-    standalone: true,
     imports: [
-        CommonModule,
         FormsModule,
         MatSelectModule,
         MatSelectModule,

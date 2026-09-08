@@ -10,11 +10,11 @@
     min-width: 0;
 
     &:hover {
-        background-color: var(--color-ks-hover-row, rgba(255, 255, 255, 0.04));
+        background-color: var(--graphite-650);
     }
 
     &.active {
-        background-color: color-mix(in srgb, var(--accent-color, #685fff) 18%, transparent);
+        background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
     }
 
     .agent-role {

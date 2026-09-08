@@ -2,12 +2,12 @@ import { AgentNode } from '../../../pages/flows-page/components/flow-visual-prog
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
 import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
 import { Edge } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
 import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
 import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
 import { GraphNote } from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
+import { GetKnowledgeRetrieverNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/knowledge-retriever-node.model';
 import { GetLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
 import { PythonNode } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
 import {
@@ -48,7 +48,6 @@ export interface GetGraphLightRequest {
 export interface GraphDto extends GetGraphLightRequest {
     save_version: number;
     start_node_list: StartNode[];
-    crew_node_list: CrewNode[];
     python_node_list: PythonNode[];
     task_node_list: TaskNode[];
     agent_node_list?: AgentNode[];
@@ -66,6 +65,7 @@ export interface GraphDto extends GetGraphLightRequest {
     audio_transcription_node_list: GetAudioToTextNodeRequest[];
     graph_note_list: GraphNote[];
     schedule_trigger_node_list: GetScheduleTriggerNodeRequest[];
+    knowledge_node_list: GetKnowledgeRetrieverNodeRequest[];
 }
 
 export interface CreateGraphDtoRequest {
@@ -75,7 +75,6 @@ export interface CreateGraphDtoRequest {
     metadata?: Record<string, unknown>;
     tags?: string[];
     start_node_list?: StartNode[];
-    crew_node_list?: CrewNode[];
     python_node_list?: PythonNode[];
     edge_list?: Edge[];
     conditional_edge_list?: ConditionalEdge[];
@@ -87,6 +86,7 @@ export interface CreateGraphDtoRequest {
     subgraph_node_list?: SubGraphNode[];
     decision_table_node_list?: GetDecisionTableNodeRequest[];
     schedule_trigger_node_list?: CreateScheduleTriggerNodeRequest[];
+    knowledge_node_list?: GetKnowledgeRetrieverNodeRequest[];
 }
 
 export interface UpdateGraphDtoRequest {

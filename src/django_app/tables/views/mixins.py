@@ -8,11 +8,13 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
 from tables.serializers.serializers import (
+    InspectImportRequestSerializer,
     ToolUsageDetailSerializer,
     ToolUsageSerializer,
 )
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permissions import IsSuperadmin
+from tables.services.rbac.rbac_exceptions import BuiltInModelImmutableError
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
 
 
@@ -170,6 +172,22 @@ class OrgScopedHybridViewSetMixin(OrgScopedResolverMixin):
         )
 
 
+class BuiltInWriteProtectedMixin:
+    """Blocks updates and deletes on shared built-in rows (org IS NULL) of a hybrid registry."""
+
+    def _assert_not_built_in(self, instance) -> None:
+        if instance.org_id is None:
+            raise BuiltInModelImmutableError()
+
+    def perform_update(self, serializer):
+        self._assert_not_built_in(serializer.instance)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        self._assert_not_built_in(instance)
+        super().perform_destroy(instance)
+
+
 class OrgScopedQuerysetMixin(OrgScopedResolverMixin):
     """For resources whose org scope does not fit the standard mixins above.
 
@@ -278,3 +296,14 @@ class SuperadminWriteMixin:
         if getattr(self, "action", None) in self.superadmin_write_actions:
             return [IsAuthenticated(), IsSuperadmin()]
         return [IsAuthenticated()]
+
+
+class InspectActionMixin:
+    """Adds a ``inspect_import`` action to an import-capable ViewSet."""
+
+    @action(detail=False, methods=["post"], url_path="import/inspect")
+    def inspect_import(self, request):
+        serializer = InspectImportRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = self.import_export_service.inspect_entity(serializer.validated_data["file"], org_id=self.get_active_org_id())
+        return Response(result, status=status.HTTP_200_OK)

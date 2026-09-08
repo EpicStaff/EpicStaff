@@ -40,8 +40,8 @@
 }
 
 .explorer__title {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     color: var(--color-text-secondary);
     min-width: 0;
     white-space: nowrap;
@@ -50,8 +50,8 @@
 }
 
 .explorer__count {
-    font-size: 0.875rem;
-    font-weight: 400;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
     color: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
     flex-shrink: 0;
 }

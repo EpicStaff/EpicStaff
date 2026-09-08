@@ -14,6 +14,7 @@ from tables.models.graph_models import ConditionalEdge, TelegramTriggerNode
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     TwilioChannel,
+    WebhookTriggerAuth,
 )
 from tables.serializers.org_scoped_fields import org_visible_queryset
 
@@ -51,6 +52,7 @@ RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
 RESOURCE_TYPE_PYTHON_CODE_TOOL = "python_code_tool"
 RESOURCE_TYPE_TWILIO_CHANNEL = "twilio_channel"
 RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG = "ngrok_webhook_config"
+RESOURCE_TYPE_WEBHOOK_TRIGGER_AUTH = "webhook_trigger_auth"
 
 # The three column shapes the sources fall into. Sources sharing a shape share
 # a column list, so the detail path unions each group as-is instead of padding every
@@ -111,17 +113,13 @@ class UsageSource:
     no-op -- every existing entry omits this and behaves exactly as before.
     Needed when one model's secret FK is shared by more than one conceptual
     site and each site's `UsageSource` entry must exclude the rows the other
-    entry already covers (e.g. `WebhookNodeAuth`, which attaches via one of two
-    nullable node FKs -- the Telegram entry excludes rows where the webhook FK
-    is set, and vice versa)."""
+    entry already covers."""
     graph_path: str = "graph"
     """ORM path from `model` to its owning `Graph`, for flow (SHAPE_NODE/
     SHAPE_EDGE) sources only. Defaults to `"graph"`, which is correct for every
     existing flow-node model (the FK is direct) -- every existing entry omits
     this and behaves exactly as before. Overridden by sources whose model
-    reaches `Graph` only through a nested relation (e.g. `WebhookNodeAuth`,
-    which has no `graph` field of its own -- only
-    `telegram_trigger_node__graph` / `webhook_trigger_node__graph`)."""
+    reaches `Graph` only through a nested relation."""
 
     def count_pairs(self, *, org_id: int, secret_ids: set[int]):
         """(secret_id, resource_key) as a queryset, for the union in counts()."""
@@ -405,15 +403,14 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         name_field="name",
         resource_type=RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG,
     ),
-    # NOTE: WebhookNodeAuth is intentionally NOT registered here. It stores its
-    # auth secret directly on the row (`secret_hash` for static_header,
-    # `signing_secret` for hmac_sha256) rather than referencing a `Secret` row
-    # via FK, so there is nothing for the Secret-deletion-usage registry to
-    # check -- deleting a `Secret` can never affect a `WebhookNodeAuth` row.
-    # An earlier, abandoned design used a `Secret` FK (`secret_id`) here; two
-    # stale entries referencing that removed field used to live in this tuple
-    # and crashed every usage-check query with
-    # `FieldError: Cannot resolve keyword 'secret_id' into field`.
+    UsageSource(
+        model=WebhookTriggerAuth,
+        secret_path="secret_id",
+        category=CATEGORY_CHANNELS,
+        org_path="trigger__org_id",
+        name_field="trigger__path",
+        resource_type=RESOURCE_TYPE_WEBHOOK_TRIGGER_AUTH,
+    ),
     # --- declaration-declared: PythonCode.secrets IS the allow-list ---
     *(_from_python_code_site(site=site) for site in PYTHON_CODE_SITES),
 )

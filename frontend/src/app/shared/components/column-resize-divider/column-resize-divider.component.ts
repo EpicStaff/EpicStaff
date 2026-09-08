@@ -22,7 +22,6 @@ const KEYBOARD_STEP = 16;
  * from the value written back here (see `createColumnWidthState`).
  */
 @Component({
-    standalone: true,
     selector: 'app-column-resize-divider',
     imports: [AppSvgIconComponent],
     template: `<app-svg-icon

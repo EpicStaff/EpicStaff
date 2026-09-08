@@ -98,8 +98,6 @@ export class CreateLlmModelModalComponent implements OnInit {
                   api_version: value.apiVersion?.trim() || null,
                   llm_provider: this.provider.id,
                   is_visible: !!value.isVisible,
-                  is_custom: true,
-                  predefined: false,
               });
 
         request$.pipe(finalize(() => this.isSubmitting.set(false))).subscribe({
@@ -122,7 +120,12 @@ export class CreateLlmModelModalComponent implements OnInit {
         }
 
         if (payload && typeof payload === 'object') {
-            const entries = Object.entries(payload as Record<string, unknown>);
+            const errorPayload = payload as Record<string, unknown>;
+            if (errorPayload['code'] === 'built_in_model_immutable') {
+                return 'This model is a shared built-in and cannot be edited or deleted.';
+            }
+
+            const entries = Object.entries(errorPayload);
             if (entries.length > 0) {
                 const [field, value] = entries[0];
                 const normalized = Array.isArray(value) ? value[0] : value;

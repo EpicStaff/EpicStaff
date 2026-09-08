@@ -23,7 +23,7 @@
     }
 
     &:hover {
-        color: #ffffff;
+        color: var(--white);
     }
 
     &.active {
@@ -33,7 +33,7 @@
 
     &.disabled,
     &:disabled {
-        color: #666;
+        color: var(--color-text-muted);
         cursor: not-allowed;
         opacity: 0.6;
         border-bottom: 2px solid transparent;

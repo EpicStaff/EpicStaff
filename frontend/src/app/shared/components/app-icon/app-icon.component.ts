@@ -4,7 +4,6 @@ import { InlineSvgDirective } from '../../../core/directives/inline-svg.directiv
 
 @Component({
     selector: 'app-icon',
-    standalone: true,
     imports: [InlineSvgDirective],
     template: `
         <span

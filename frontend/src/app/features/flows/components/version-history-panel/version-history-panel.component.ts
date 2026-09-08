@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     DestroyRef,
@@ -32,6 +33,7 @@ import { FlowsApiService } from '../../services/flows-api.service';
     selector: 'app-version-history-panel',
     imports: [IconButtonComponent, CommonModule, FormsModule, SpinnerComponent],
     templateUrl: './version-history-panel.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './version-history-panel.component.scss',
 })
 export class VersionHistoryPanelComponent implements OnInit {

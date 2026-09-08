@@ -3,6 +3,7 @@ import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 
+import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { McpToolDialogComponent } from '../../../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../models/mcp-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
@@ -75,6 +76,9 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
     }
     public importFile(file: File): Observable<unknown> {
         return this.service.importMcpTool(file);
+    }
+    public inspectFile(file: File): Observable<InspectResult> {
+        return this.service.inspectMcpTool(file);
     }
     public getBulkUsage(ids: number[]): Observable<GetBulkToolUsageItem[]> {
         return this.service.getBulkUsageDetailById(ids);

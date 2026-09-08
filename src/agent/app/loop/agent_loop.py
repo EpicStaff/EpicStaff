@@ -281,8 +281,9 @@ class DefaultAgentLoop(AgentLoop):
             max_tool_calls = context.agent.max_tool_calls
             max_failures = context.agent.max_consecutive_failures
             failure_limit_hit = False
+            budget_exhausted = False
 
-            for index, (call_id, name, args_str) in enumerate(complete_calls):
+            for call_id, name, args_str in complete_calls:
                 await emitter.on_tool_call(
                     {"id": call_id, "name": name, "arguments": args_str}
                 )
@@ -295,12 +296,16 @@ class DefaultAgentLoop(AgentLoop):
                         is_error=True,
                     )
 
-                elif max_tool_calls is not None and index >= max_tool_calls:
+                elif (
+                    max_tool_calls is not None
+                    and state.tool_invocations >= max_tool_calls
+                ):
+                    budget_exhausted = True
                     result = ToolResult(
                         tool_call_id=call_id,
                         content=(
-                            f"Tool call limit reached: at most {max_tool_calls} tool "
-                            "call(s) may be executed per turn; this call was not executed."
+                            f"Tool call budget exhausted: at most {max_tool_calls} tool "
+                            "call(s) may be executed for this task; this call was not executed."
                         ),
                         is_error=True,
                     )
@@ -342,8 +347,32 @@ class DefaultAgentLoop(AgentLoop):
 
             if failure_limit_hit:
                 assert max_failures is not None
-                return await self._finalize_after_failures(
-                    context, emitter, state, max_failures
+                return await self._finalize_without_tools(
+                    context,
+                    emitter,
+                    state,
+                    reason=(
+                        f"Tool execution has been stopped because {max_failures} consecutive "
+                        "tool calls failed. Do not attempt any further tool calls. "
+                        "Summarize what you tried, what failed and why, and give the "
+                        "best answer you can from the information gathered so far."
+                    ),
+                    stop_reason=StopReason.MAX_CONSECUTIVE_FAILURES.value,
+                )
+
+            if budget_exhausted:
+                assert max_tool_calls is not None
+                return await self._finalize_without_tools(
+                    context,
+                    emitter,
+                    state,
+                    reason=(
+                        f"Tool execution has been stopped because the budget of "
+                        f"{max_tool_calls} tool calls for this task is exhausted. "
+                        "Do not attempt any further tool calls. Summarize what you "
+                        "found and give the best answer you can from what you have."
+                    ),
+                    stop_reason=StopReason.MAX_TOOL_CALLS_REACHED.value,
                 )
 
             decision = stop.should_stop(state.iterations, chunks, complete_calls)
@@ -415,30 +444,23 @@ class DefaultAgentLoop(AgentLoop):
                 is_error=True,
             )
 
-    async def _finalize_after_failures(
+    async def _finalize_without_tools(
         self,
         context: AgentContext,
         emitter: Emitter,
         state: _RunState,
-        limit: int,
+        *,
+        reason: str,
+        stop_reason: str,
     ) -> LoopResult:
-        """Ask the model to summarize progress after hitting the consecutive-failure limit.
+        """Ask the model to summarize progress after tool execution is cut off.
 
         Runs one final streamed LLM call with no tools available so the model
         cannot attempt further tool calls; the result is a graceful stop, not
-        a failure.
+        a failure. Used both when the consecutive-failure limit trips and when
+        the run-wide tool-call budget is exhausted.
         """
-        context.append_message(
-            {
-                "role": "user",
-                "content": (
-                    f"Tool execution has been stopped because {limit} consecutive "
-                    "tool calls failed. Do not attempt any further tool calls. "
-                    "Summarize what you tried, what failed and why, and give the "
-                    "best answer you can from the information gathered so far."
-                ),
-            }
-        )
+        context.append_message({"role": "user", "content": reason})
 
         model_config = _build_model_config(context)
         model_config.pop("tool_choice", None)
@@ -473,6 +495,6 @@ class DefaultAgentLoop(AgentLoop):
             final_text=state.final_text,
             tool_invocations=state.tool_invocations,
             iterations=state.iterations,
-            stop_reason=StopReason.MAX_CONSECUTIVE_FAILURES.value,
+            stop_reason=stop_reason,
             token_usage=state.usage.to_token_usage(),
         )

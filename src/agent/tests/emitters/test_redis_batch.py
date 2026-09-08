@@ -201,6 +201,7 @@ async def test_on_final_serializes_populated_task_summaries():
             "name": "task_a",
             "order": 0,
             "final_text": "A done",
+            "structured_output": None,
             "token_usage": {
                 "prompt_tokens": 2,
                 "completion_tokens": 1,
@@ -216,6 +217,7 @@ async def test_on_final_serializes_populated_task_summaries():
             "name": "task_b",
             "order": 1,
             "final_text": "B done",
+            "structured_output": None,
             "token_usage": {
                 "prompt_tokens": 5,
                 "completion_tokens": 4,
@@ -228,3 +230,33 @@ async def test_on_final_serializes_populated_task_summaries():
             "stop_reason": "completed",
         },
     ]
+
+
+# ---------------------------------------------------------------------------
+# on_final includes structured_output in published payload
+# ---------------------------------------------------------------------------
+
+
+async def test_on_final_includes_structured_output_when_schema_enforced():
+    emitter, published = _make_emitter()
+    result = LoopResult(
+        final_text='{"a": 1}',
+        structured_output={"a": 1},
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="schema_satisfied",
+        token_usage=TokenUsage(),
+    )
+
+    await emitter.on_final(result)
+
+    payload = _decode_payload(published[0])
+    assert payload["structured_output"] == {"a": 1}
+
+
+async def test_on_final_structured_output_is_none_without_schema():
+    emitter, published = _make_emitter()
+    await emitter.on_final(_make_loop_result())
+
+    payload = _decode_payload(published[0])
+    assert payload["structured_output"] is None
