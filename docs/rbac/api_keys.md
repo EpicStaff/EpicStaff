@@ -235,6 +235,12 @@ of organizations **its owner** belongs to:
   at least one organization the owner belongs to.
 - A caller may **revoke or delete** a key if they hold `api_keys`
   `DELETE` in at least one organization the owner belongs to.
+- A key the caller can neither read nor retire anywhere in that set is
+  **not visible**: revoke and delete answer `404 api_key_not_found`, the
+  same as an unknown id, rather than a `403` that would confirm the key
+  exists. A `403` is returned only when the caller holds `api_keys`
+  `READ` in a shared organization — they can see the key in their list —
+  but not `DELETE`.
 
 A superadmin bypasses both checks and sees and retires every `USER` key,
 including keys owned by other superadmins. Nobody else can see or reach a
@@ -290,9 +296,11 @@ caller's view.
 
 Same semantics as self-service revoke/delete (idempotent revoke, hard
 delete), authorized by the ownership-derived scope above. An id that
-doesn't exist, is the SYSTEM key, or belongs to an owner who shares no
-organization with the caller returns `404 api_key_not_found` — the same
-non-enumerating 404 as self-service.
+doesn't exist, is the SYSTEM key, belongs to an owner who shares no
+organization with the caller, or belongs to an owner whose shared
+organizations grant the caller neither `api_keys` `READ` nor `DELETE`,
+returns `404 api_key_not_found` — the same non-enumerating 404 as
+self-service.
 
 ### Cross-org revocation caveat
 
@@ -402,9 +410,9 @@ keys:
 |---|---|---|
 | `api_key_limit_exceeded` | 400 | Self-service create, at 5 active keys |
 | `invalid` | 400 | Self-service create (bad `name`/`expires_in_days`); management `?status=`/`?user=` filters |
-| `api_key_not_found` | 404 | Self-service revoke/delete on a foreign/unknown id; management revoke/delete on an id whose owner shares no organization with the caller, an unknown id, a SYSTEM key's id, or a superadmin-owned key seen by a non-superadmin |
+| `api_key_not_found` | 404 | Self-service revoke/delete on a foreign/unknown id; management revoke/delete on an unknown id, a SYSTEM key's id, a superadmin-owned key seen by a non-superadmin, or a key the caller cannot see — its owner shares no organization with them, or the shared organizations grant neither `api_keys` `READ` nor `DELETE` |
 | `authentication_failed` | 401 | Any request authenticating with a raw key that doesn't match a non-revoked key (`"Invalid API key"`), matches an expired one (`"API key has expired"`), or matches a key whose owner's account is deactivated (`"API key owner is inactive"`) |
-| `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint), the `api_keys` door gate, or a forbidden `?org_ids=` entry on the management list |
+| `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint), the `api_keys` door gate, a forbidden `?org_ids=` entry on the management list, or a revoke/delete on a key the caller can **see** (holds `api_keys` `READ` in a shared organization) but not retire |
 | `org_membership_required` | 403 | Caller (JWT or API key) sends `X-Organization-Id` pointing to an org they are not a member of — applies to ordinary org-scoped endpoints; the admin API-key surface has no header and never raises this |
 | `org_context_required` | 400 | `X-Organization-Id` missing or not an integer on a header-required endpoint; on the admin API-key list, a non-integer `?org_ids=` value |
 | `not_authenticated` | 401 | No credential supplied at all |

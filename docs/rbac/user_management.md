@@ -33,8 +33,13 @@ list spans organizations.
 | DELETE | `/api/admin/memberships/{id}/` | `MEMBERSHIPS.DELETE` in the row's org | Remove a member |
 
 The door gate is coarse — it passes if you hold the action in at least one org.
-The precise per-org check runs behind it; a membership in an org you can't access
-is **404**, indistinguishable from one that doesn't exist.
+The precise per-org check runs behind it, and it answers two questions in order:
+**can you see this membership**, and **may you perform this action on it**. A
+membership you cannot see is **404**, indistinguishable from one that doesn't
+exist — that covers both an org you don't belong to and an org where you hold
+neither `MEMBERSHIPS.READ` nor the action you're attempting. Only once the row is
+visible does a missing permission surface as **403**, so a 403 never confirms a
+membership id the list won't show you.
 
 ### Membership row shape
 
@@ -225,9 +230,9 @@ organization members" above.
 | `user_not_active` | 400 | Target account is deactivated |
 | `invalid_role_assignment` | 400 | Global Superadmin role, or a custom role from another org |
 | `cannot_modify_self_membership` | 403 | You cannot change or remove your own membership |
-| `membership_not_found` | 404 | No such membership, or it is in an org you cannot access |
+| `membership_not_found` | 404 | No such membership, or one you cannot see (an org you don't belong to, or one where you hold neither `MEMBERSHIPS.READ` nor the attempted action) |
 | `organization_not_found` | 404 | No such organization, or you cannot access it |
 | `email_already_exists` | 400 | An account with that email exists |
 | `last_superadmin` | 400 | At least one active superadmin must remain |
-| `permission_denied` | 403 | You lack the required `MEMBERSHIPS` permission |
+| `permission_denied` | 403 | You can see the membership but lack the required `MEMBERSHIPS` action (one you cannot see is a 404 instead) |
 | `invalid` | 400 | Field validation, or a bad list filter |

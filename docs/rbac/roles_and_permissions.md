@@ -404,6 +404,9 @@ none.
 A role that exists but sits in an org the caller cannot READ responds
 `404 role_not_found` — identical to a genuinely missing id, so the
 caller cannot probe for the existence of roles in orgs they can't see.
+`PATCH` and `DELETE` answer the same way for the same role, so the
+write endpoints never confirm an id this one denies (see
+"Visibility vs. permission" below).
 
 **Errors:** `404 role_not_found`.
 
@@ -457,9 +460,12 @@ when `permissions` is included. Built-in roles always reject with
 `403 built_in_role_immutable` before any other check runs.
 **Header:** none.
 
+A custom role the caller cannot see answers `404 role_not_found`, not
+`403` — see "Visibility vs. permission" below.
+
 **Errors:** `403 built_in_role_immutable`, `400` (field validation),
 `400 role_name_conflict`, `403 permission_denied`,
-`403 permission_escalation_denied`.
+`403 permission_escalation_denied`, `404 role_not_found`.
 
 ---
 
@@ -470,7 +476,9 @@ reassigned to the built-in **Viewer** role first — deleting a role
 never evicts a member from the organization.
 
 **Auth:** DELETE on ROLES in the role's own org. Built-in roles always
-reject with `403 built_in_role_immutable`. **Header:** none.
+reject with `403 built_in_role_immutable`. A custom role the caller
+cannot see answers `404 role_not_found` — see "Visibility vs.
+permission" below. **Header:** none.
 
 **`?dry_run=true`** — preview only, no mutation:
 
@@ -496,6 +504,64 @@ reject with `403 built_in_role_immutable`. **Header:** none.
 
 ---
 
+
+## Visibility vs. permission (404 vs. 403)
+
+Every role endpoint answers two separate questions in order, and the
+distinction is what decides the status code:
+
+1. **Can the caller see this role at all?** If not → `404
+   role_not_found`.
+2. **May they perform this action on it?** If not → `403
+   permission_denied`.
+
+A custom role is **visible** to a caller who is a member of its
+organization and holds, in that organization, either `roles` `read`
+**or** the action they are attempting. Everything else — a missing id,
+a non-integer id, a role in an organization the caller does not belong
+to, and a role in an organization where the caller holds no relevant
+`roles` permission — is `404 role_not_found`, indistinguishable by
+design.
+
+The practical consequences:
+
+| Caller, relative to the role's organization | `GET` | `PATCH` / `DELETE` |
+|---|---|---|
+| Not a member | 404 | 404 |
+| Member, no `roles` permission at all | 404 | 404 |
+| Member with `read`, without `update`/`delete` | 200 | 403 |
+| Member with `update`/`delete`, without `read` | 404 | 200 |
+| Member with both | 200 | 200 |
+| Superadmin | 200 | 200 |
+
+The property that matters: **a 403 is only ever returned for a role the
+caller can already see.** A write endpoint therefore never confirms an
+id that `GET` reports as missing, which is what the first two rows
+guarantee.
+
+The fourth row is the one place `GET` and the write endpoints differ,
+and it is deliberate. A role granting `delete` without `read` is a
+valid grant, and it must be able to delete — being told the target
+does not exist would make the permission unusable. So visibility is
+"read **or** the action" rather than "read", and a caller in that
+position can change a role they cannot fetch. Nothing is disclosed:
+they already hold the permission to change it. If you want such a role
+to be able to read back what it wrote, grant `read` alongside — which
+is exactly what the catalog's `recommended_with` suggests for every
+write action.
+
+Built-in roles are visible to every caller who clears the door gate,
+so `PATCH`/`DELETE` on one always answers `403
+built_in_role_immutable` — that check runs before any organization
+check.
+
+The same rule applies on `/api/admin/memberships/`,
+`/api/admin/organizations/` and `/api/admin/api-keys/`; see
+[user_management.md](user_management.md),
+[organization_management.md](organization_management.md) and
+[api_keys.md](api_keys.md).
+
+---
 
 ## Built-in immutability
 
@@ -556,9 +622,12 @@ and redirect to the org picker.
 }
 ```
 
-Caller is a member (or, for the roles door gate, any authenticated
-non-member) but does not hold the required (resource_type, action)
-tuple anywhere it is required.
+Caller does not hold the required (resource_type, action) tuple where
+it is required. On a detail route this means the caller can **see** the
+role — they hold `roles` `read` in its org — but lacks the action; a
+role they cannot see answers `404 role_not_found` instead. The roles
+door gate also raises this for a caller holding the action in no
+organization at all, and `?org_ids=` raises it for a forbidden org id.
 
 ### `403 permission_escalation_denied`
 
@@ -600,8 +669,10 @@ overwritten.
 ```
 
 Returned for a genuinely missing role id, a non-integer id, and a role
-that exists but sits in an org the caller cannot READ — the three
-cases are indistinguishable by design.
+the caller cannot see — a role in an org they do not belong to, or one
+in an org where they hold neither `roles` `read` nor the action they
+are attempting. All of these are indistinguishable by design; see
+"Visibility vs. permission".
 
 ### `404 organization_not_found`
 

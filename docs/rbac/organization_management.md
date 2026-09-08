@@ -64,15 +64,19 @@ hold `ORGANIZATIONS.READ`.
 
 Read one org's settings. Requires `ORGANIZATIONS.READ` in that org (or
 superadmin). An org you can't access → **404 `organization_not_found`** (no
-existence leak).
+existence leak) — both an org you don't belong to and one where you hold no
+`ORGANIZATIONS.READ`.
 
 ## PATCH `/api/admin/organizations/{id}/`
 
 Rename / edit settings. Requires `ORGANIZATIONS.UPDATE` in that org (or
 superadmin). Body: `{"name": "Acme International"}` (only `name` today; the
 payload is shaped to accept future settings). No-op if the name is unchanged.
-An org you're not a member of → **404** (no existence leak); a member lacking
-`ORGANIZATIONS.UPDATE` → **403**.
+An org you cannot see → **404** (no existence leak): one you're not a member of,
+or one where you hold neither `ORGANIZATIONS.READ` nor `ORGANIZATIONS.UPDATE`. A
+member who can see the org (holds `ORGANIZATIONS.READ`) but lacks
+`ORGANIZATIONS.UPDATE` → **403**, so a 403 never confirms an org the list won't
+show you.
 
 - `400 organization_name_conflict` — case-insensitive duplicate.
 - `400 invalid` — empty / whitespace-only / wrong type.
