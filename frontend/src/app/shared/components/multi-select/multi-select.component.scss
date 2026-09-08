@@ -54,11 +54,6 @@
             outline: none;
             border-color: rgba(104, 95, 255, 0.5);
         }
-
-        &:disabled {
-            cursor: default;
-            opacity: 0.5;
-        }
     }
 
     &__list {
@@ -156,7 +151,7 @@
         color: var(--color-ks-text);
         transition: border-color 0.2s ease;
 
-        &:hover {
+        &:hover:not(&--readonly) {
             background: var(--color-ks-hover-row);
         }
 
@@ -167,10 +162,6 @@
 
         &--readonly {
             cursor: default;
-
-            &:hover {
-                background: var(--color-ks-line);
-            }
         }
 
         &--checkbox-left {

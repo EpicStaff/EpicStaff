@@ -77,8 +77,9 @@ export class SecretsSectionComponent implements OnInit {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
-    public readonly canReadSecretUsage = computed(() =>
-        this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read)
+    public readonly canReadSecrets = computed(() => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read));
+    public readonly canDeleteSecrets = computed(() =>
+        this.permissionsService.can(ResourceCode.Secrets, ActionCode.Delete)
     );
 
     public readonly searchTerm = signal<string>('');
@@ -111,7 +112,7 @@ export class SecretsSectionComponent implements OnInit {
             // No "deactivated" concept exists on the Secret model yet — always empty until it does.
             secrets = [];
         } else if (usedByFilter === 'unused') {
-            secrets = secrets.filter((secret) => secret.usage_count === 0);
+            secrets = secrets.filter((secret) => secret.usage_count.readable === 0 && secret.usage_count.hidden === 0);
         }
 
         return secrets.map(
@@ -119,7 +120,8 @@ export class SecretsSectionComponent implements OnInit {
                 id: secret.id,
                 name: secret.name,
                 preview: this.secretsStorageService.maskTail(secret.tail),
-                usedByCount: secret.usage_count,
+                usedByReadable: secret.usage_count.readable,
+                usedByHidden: secret.usage_count.hidden,
                 updatedLabel: getRelativeTime(new Date(secret.updated_at)),
             })
         );
@@ -137,10 +139,11 @@ export class SecretsSectionComponent implements OnInit {
             headerBadgeCount: this.usedByFilter() !== null ? this.secrets().length : 0,
         },
         { key: 'updated', label: 'UPDATED', width: '128px' },
-        { key: 'actions', label: 'ACTIONS', width: '96px' },
+        ...(this.canDeleteSecrets() ? [{ key: 'actions', label: 'ACTIONS', width: '96px' }] : []),
     ]);
 
     ngOnInit(): void {
+        if (!this.canReadSecrets()) return;
         // Force a refresh on every mount — usage_count/usages can change from a flow or tool
         // editor visited between mounts, and the cached secrets list has no other invalidation
         // hook to know that happened.
@@ -178,16 +181,14 @@ export class SecretsSectionComponent implements OnInit {
 
     public onDeleteSecret(row: TableRow): void {
         const name = row['name'] as string;
-        const usedByCount = row['usedByCount'] as number;
+        const caution = this.deleteUsageCaution(row['usedByReadable'], row['usedByHidden']);
 
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secret',
                 message: `You're about to delete <strong>${name}</strong>. This action can't be undone.`,
-                caution: usedByCount
-                    ? `This secret is still referenced by <strong>${usedByCount} resources</strong>. They'll fall back to their <strong>NULL</strong> value once it's removed.`
-                    : undefined,
-                cautionTitle: usedByCount ? 'Caution' : undefined,
+                caution,
+                cautionTitle: caution ? 'Caution' : undefined,
                 confirmText: 'Delete',
                 cancelText: 'Cancel',
                 type: 'danger',
@@ -212,7 +213,7 @@ export class SecretsSectionComponent implements OnInit {
         const rows = this.selectedRows();
         if (!rows.length) return;
 
-        const referencedCount = rows.filter((row) => (row['usedByCount'] as number) > 0).length;
+        const referencedCount = rows.filter((row) => this.usedByDisplay(row) !== 'unused').length;
 
         this.confirmationDialogService
             .confirm({
@@ -252,13 +253,35 @@ export class SecretsSectionComponent implements OnInit {
         this.usedByFilter.set(value as UsedByFilter);
     }
 
-    public onOpenUsage(row: TableRow): void {
-        const id = row['id'] as number;
-        const name = row['name'] as string;
+    // 'unknown' covers a row whose usage counts aren't valid numbers (e.g. usage_count is still
+    // the old plain-number shape) — treated like 'hidden' rather than 'unused' so a caller never
+    // reads a secret as safe to delete just because its usage couldn't be determined.
+    public usedByDisplay(row: TableRow): 'clickable' | 'hidden' | 'unknown' | 'unused' {
+        const readable = row['usedByReadable'];
+        const hidden = row['usedByHidden'];
+        if (typeof readable !== 'number' || typeof hidden !== 'number') return 'unknown';
+        if (readable > 0) return 'clickable';
+        if (hidden > 0) return 'hidden';
+        return 'unused';
+    }
 
+    public onOpenUsage(row: TableRow): void {
         this.dialog.open(SecretUsageDialogComponent, {
             ...SETTINGS_DIALOG_SIZE,
-            data: { secretId: id, secretName: name },
+            data: { secretId: row['id'] as number, secretName: row['name'] as string },
         });
+    }
+
+    private deleteUsageCaution(readable: unknown, hidden: unknown): string | undefined {
+        if (typeof readable !== 'number' || typeof hidden !== 'number') {
+            return "This secret's usage couldn't be determined. Deleting it may still break something that depends on it.";
+        }
+        if (readable === 0 && hidden === 0) return undefined;
+
+        const parts: string[] = [];
+        if (readable > 0) parts.push(`<strong>${readable} resources</strong> you can see`);
+        if (hidden > 0) parts.push(`<strong>${hidden} resources</strong> you don't have permission to view`);
+
+        return `This secret is still referenced by ${parts.join(' and ')}. They'll fall back to their <strong>NULL</strong> value once it's removed.`;
     }
 }

@@ -40,7 +40,6 @@
                 [value]="search()"
                 (input)="search.set($any($event.target).value)"
                 [placeholder]="searchPlaceholder()"
-                [disabled]="readonlyView()"
             />
         }
 

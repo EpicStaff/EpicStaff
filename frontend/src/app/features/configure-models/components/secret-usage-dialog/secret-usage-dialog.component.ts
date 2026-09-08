@@ -123,6 +123,14 @@ export class SecretUsageDialogComponent implements OnInit {
             });
     }
 
+    public hiddenUsageTooltip(hiddenTotal: number): string {
+        return `${hiddenTotal} more use${hiddenTotal === 1 ? '' : 's'} you don't have permission to view.`;
+    }
+
+    public readableCount(summary: SecretUsageSummary): number {
+        return summary.categories.reduce((sum, category) => sum + category.items.length, 0);
+    }
+
     public toggleFlow(flowName: string): void {
         this.expandedFlowName.set(this.expandedFlowName() === flowName ? null : flowName);
     }
