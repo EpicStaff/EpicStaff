@@ -274,15 +274,15 @@ import {
             h3 {
                 color: var(--gray-100);
                 font-size: 1.1rem;
-                font-weight: 600;
+                font-weight: 500;
                 margin: 0;
             }
 
             .badge {
-                font-size: 0.75rem;
+                font-size: var(--text-body-small-large-size);
                 padding: 2px 10px;
                 border-radius: 12px;
-                font-weight: 500;
+                font-weight: var(--text-body-small-large-weight);
             }
 
             .badge.matched {

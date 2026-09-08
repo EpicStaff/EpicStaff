@@ -9,8 +9,8 @@
 
 .header {
     color: var(--gray-100);
-    font-size: 1.25rem;
-    font-weight: 600;
+    font-size: var(--text-h3-size);
+    font-weight: var(--text-h3-weight);
     letter-spacing: 0.01em;
 }
 

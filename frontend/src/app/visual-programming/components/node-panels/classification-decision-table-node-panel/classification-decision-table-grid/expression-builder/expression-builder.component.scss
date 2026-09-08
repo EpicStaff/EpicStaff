@@ -1,13 +1,3 @@
-// ── Design tokens ──────────────────────────────────────────────────────────────
-$accent: var(--accent-color);
-$accent-light: #a89fff;
-$accent-bg: rgba(104, 95, 255, 0.15);
-$bg: #1f1f23;
-$bg-input: #27272b;
-$text: #d4d4d4;
-$text-muted: #737373;
-$divider: rgba(255, 255, 255, 0.08);
-$border: $accent;
 $radius: 8px;
 
 // ── Container ──────────────────────────────────────────────────────────────────
@@ -15,8 +5,8 @@ $radius: 8px;
     position: relative;
     display: flex;
     flex-direction: column;
-    background: $bg;
-    border: 1px solid $border;
+    background: var(--graphite-838);
+    border: 1px solid var(--accent-color);
 
     // Standard radius on three corners; top-left is 0 (anchor corner).
     border-radius: 0 $radius $radius $radius;
@@ -36,7 +26,7 @@ $radius: 8px;
         left: 0;
         width: 40px;
         height: 2px;
-        background: $accent;
+        background: var(--accent-color);
         pointer-events: none;
         z-index: 1;
     }
@@ -48,7 +38,7 @@ $radius: 8px;
         left: 0;
         width: 2px;
         height: 40px;
-        background: $accent;
+        background: var(--accent-color);
         pointer-events: none;
         z-index: 1;
     }
@@ -76,7 +66,7 @@ $radius: 8px;
     flex-wrap: wrap;
     gap: 4px;
     padding: 8px 10px;
-    border-bottom: 1px solid $divider;
+    border-bottom: 1px solid var(--white-alpha-8);
     flex-shrink: 0;
     min-height: 36px;
     align-items: center;
@@ -93,7 +83,7 @@ $radius: 8px;
     font-weight: 500;
     line-height: 1.6;
     cursor: pointer;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     background: transparent;
     transition:
         background 0.15s ease,
@@ -102,27 +92,27 @@ $radius: 8px;
     user-select: none;
 
     &:focus-visible {
-        outline: 1px solid $accent;
+        outline: 1px solid var(--accent-color);
         outline-offset: 1px;
     }
 
     // Primary — purple accent text (@ token)
     &--primary {
-        color: $accent;
+        color: var(--accent-color);
         font-weight: 600;
 
         &:hover {
-            background: rgba(104, 95, 255, 0.12);
+            background: var(--purple-alpha-12);
         }
     }
 
     // Logical & keyword — cyan-blue text
     &--logical,
     &--keyword {
-        color: var(--color-ks-status-blue);
+        color: var(--sky-500);
 
         &:hover {
-            background: rgba(72, 203, 255, 0.12);
+            background: var(--sky-alpha-12);
         }
     }
 
@@ -131,18 +121,18 @@ $radius: 8px;
         color: var(--color-text-primary);
 
         &:hover {
-            background: rgba(217, 217, 222, 0.08);
+            background: var(--fog-alpha-8);
         }
     }
 
     // Math — cyan-blue text, fixed square-ish width
     &--math {
-        color: var(--color-ks-status-blue);
+        color: var(--sky-500);
         width: 28px;
         padding: 2px 0;
 
         &:hover {
-            background: rgba(72, 203, 255, 0.12);
+            background: var(--sky-alpha-12);
         }
     }
 }
@@ -183,7 +173,7 @@ $radius: 8px;
     font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
     font-size: 13px;
     line-height: 1.5;
-    color: #6a9955;
+    color: var(--green-490);
     user-select: none;
 }
 
@@ -199,7 +189,7 @@ $radius: 8px;
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #6a9955;
+    color: var(--green-490);
     font-size: 14px;
     line-height: 1;
     padding: 0 2px;
@@ -220,15 +210,15 @@ $radius: 8px;
     outline: none;
     resize: none;
     padding: 12px;
-    color: $text;
-    caret-color: $accent-light;
+    color: var(--gray-212);
+    caret-color: var(--purple-440);
     font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
     font-size: 13px;
     line-height: 1.5;
     box-sizing: border-box;
 
     &::placeholder {
-        color: $text-muted;
+        color: var(--gray-573);
     }
 
     // Remove default browser styles.
@@ -240,8 +230,8 @@ $radius: 8px;
 .eb-mention-dropdown {
     position: absolute;
     z-index: 200;
-    background: #212325;
-    border: 1px solid #2b2d30;
+    background: var(--graphite-900);
+    border: 1px solid var(--graphite-750);
     border-radius: 4px;
     min-width: 180px;
     max-width: 260px;
@@ -249,8 +239,8 @@ $radius: 8px;
     overflow-y: auto;
     padding: 2px 0;
     box-shadow:
-        0px 2px 3px 0px #0000004d,
-        0px 6px 10px 4px #00000026;
+        0px 2px 3px 0px var(--black-alpha-30),
+        0px 6px 10px 4px var(--black-alpha-15);
 }
 
 .eb-mention-item {
@@ -258,23 +248,23 @@ $radius: 8px;
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: 13px;
     line-height: 1.4;
-    color: $text;
+    color: var(--gray-212);
     cursor: pointer;
 
     &:not(:last-child) {
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
     }
 
     &:hover {
-        background: rgba(255, 255, 255, 0.06);
-        color: $text;
+        background: var(--white-alpha-6);
+        color: var(--gray-212);
     }
 }
 
 // ── Divider ───────────────────────────────────────────────────────────────────
 .eb-divider {
     width: 1px;
-    background: $divider;
+    background: var(--white-alpha-8);
     flex-shrink: 0;
 }
 
@@ -293,13 +283,13 @@ $radius: 8px;
     gap: 6px;
     margin: 8px;
     padding: 6px 8px;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     border-radius: 4px;
     background: transparent;
 }
 
 .eb-search-icon {
-    color: rgba(217, 217, 222, 0.6);
+    color: var(--fog-alpha-60);
     font-size: 14px;
     flex-shrink: 0;
 }
@@ -313,7 +303,7 @@ $radius: 8px;
     font-size: 13px;
 
     &::placeholder {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
     }
 }
 
@@ -334,7 +324,7 @@ $radius: 8px;
     color: var(--color-text-primary);
     cursor: pointer;
     background: transparent;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     border-radius: 4px;
     transition: background 0.1s;
     white-space: nowrap;
@@ -342,7 +332,7 @@ $radius: 8px;
     text-overflow: ellipsis;
 
     &:hover {
-        background: rgba(217, 217, 222, 0.06);
+        background: var(--fog-alpha-6);
     }
 }
 
@@ -353,12 +343,12 @@ $radius: 8px;
     flex-wrap: wrap;
     gap: 6px;
     padding: 8px 10px;
-    border-top: 1px solid $divider;
+    border-top: 1px solid var(--white-alpha-8);
 }
 
 .eb-templates-label {
     font-size: 11px;
-    color: $text-muted;
+    color: var(--gray-573);
     margin-right: 2px;
     white-space: nowrap;
 }
@@ -368,9 +358,9 @@ $radius: 8px;
     padding: 4px 12px;
     font-size: 13px;
     font-weight: 500;
-    color: #d4d4d4;
-    background: #27272b;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--gray-212);
+    background: var(--graphite-800);
+    border: 1px solid var(--white-alpha-12);
     border-radius: 4px;
     cursor: pointer;
     transition:
@@ -380,13 +370,13 @@ $radius: 8px;
     user-select: none;
 
     &:focus-visible {
-        outline: 1px solid $accent;
+        outline: 1px solid var(--accent-color);
         outline-offset: 1px;
     }
 
     &:hover:not(:disabled) {
-        background: #33333a;
-        border-color: rgba(255, 255, 255, 0.2);
+        background: var(--graphite-638);
+        border-color: var(--white-alpha-20);
     }
 
     &:disabled {

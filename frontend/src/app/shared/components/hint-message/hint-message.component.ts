@@ -17,10 +17,9 @@ import { Component } from '@angular/core';
                 border-left: 3px solid var(--accent-color);
                 border-radius: 4px;
                 background: var(--color-ghost-btn-hover);
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                font-size: 14px;
-                line-height: 130%;
+                font-weight: var(--text-body-weight);
+                font-size: var(--text-body-size);
+                line-height: var(--text-body-line-height);
                 letter-spacing: 0;
                 color: var(--accent-color);
 

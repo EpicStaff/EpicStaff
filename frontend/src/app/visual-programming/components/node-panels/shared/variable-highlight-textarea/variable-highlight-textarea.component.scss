@@ -87,7 +87,7 @@
     }
 
     &::selection {
-        background-color: rgba(104, 95, 255, 0.3);
+        background-color: var(--purple-alpha-30);
         color: transparent;
     }
 

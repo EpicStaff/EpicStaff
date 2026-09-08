@@ -17,9 +17,8 @@
     }
 
     &__title {
-        font-family: Inter, sans-serif;
-        font-size: 18px;
-        font-weight: 500;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
         line-height: 1;
         color: var(--color-text-primary);
         margin: 0;
@@ -131,7 +130,7 @@
         }
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
         }
     }
 
@@ -144,7 +143,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         padding: 0;
         flex-shrink: 0;
         transition: transform 0.15s;
@@ -161,7 +160,7 @@
     }
 
     &__file-icon {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
     }
 
@@ -175,7 +174,7 @@
 
     &__node-spinner {
         font-size: 0.75rem;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
     }
 }
