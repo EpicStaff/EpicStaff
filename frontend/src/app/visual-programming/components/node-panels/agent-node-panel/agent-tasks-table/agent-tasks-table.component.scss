@@ -7,8 +7,8 @@ $col-delete: 28px;
 $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
 
 .att {
-    background: var(--color-background-body, #212325);
-    border: 1px solid var(--color-flow-card-bg, #2b2d30);
+    background: var(--color-background-body);
+    border: 1px solid var(--color-flow-card-bg);
     border-radius: 10px;
     overflow: hidden;
 }
@@ -21,16 +21,16 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     }
 
     &::-webkit-scrollbar-track {
-        background: var(--color-flow-card-bg, #2b2d30);
+        background: var(--color-flow-card-bg);
         border-radius: 3px;
     }
 
     &::-webkit-scrollbar-thumb {
-        background: var(--transparent-white-8, rgba(217, 217, 222, 0.08));
+        background: var(--fog-alpha-8);
         border-radius: 3px;
 
         &:hover {
-            background: var(--color-scrollbar-thumb-hover, rgba(217, 217, 227, 0.24));
+            background: var(--color-scrollbar-thumb-hover);
         }
     }
 }
@@ -46,27 +46,27 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
 
     &--header {
         height: 40px;
-        border-bottom: 4px solid var(--color-flow-card-bg, #2b2d30);
-        color: var(--color-text-primary, #d9d9de);
+        border-bottom: 4px solid var(--color-flow-card-bg);
+        color: var(--color-text-primary);
         font-size: 0.875rem;
         font-weight: 500;
     }
 
     &:not(&--header) {
         height: 96px;
-        border-bottom: 1px solid var(--color-flow-card-bg, #2b2d30);
+        border-bottom: 1px solid var(--color-flow-card-bg);
     }
 
     &--even {
-        background: rgba(21, 21, 21, 0.28);
+        background: var(--color-ks-transparent-black-28);
     }
 
     &.cdk-drag-preview {
         box-shadow:
-            0 5px 5px -3px rgba(0, 0, 0, 0.2),
-            0 8px 10px 1px rgba(0, 0, 0, 0.14),
-            0 3px 14px 2px rgba(0, 0, 0, 0.12);
-        background: var(--color-background-body, #212325);
+            0 5px 5px -3px var(--black-alpha-20),
+            0 8px 10px 1px var(--black-alpha-14),
+            0 3px 14px 2px var(--black-alpha-12);
+        background: var(--color-background-body);
     }
 
     &.cdk-drag-placeholder {
@@ -83,8 +83,8 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     display: flex;
     align-items: center;
     padding: 4px;
-    border-right: 1px solid var(--color-flow-card-bg, #2b2d30);
-    color: var(--color-text-primary, #d9d9de);
+    border-right: 1px solid var(--color-flow-card-bg);
+    color: var(--color-text-primary);
     font-size: 0.75rem;
     min-width: 0;
 
@@ -118,7 +118,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     }
 
     &--selected {
-        box-shadow: inset 0 0 0 1px var(--accent-color, #685fff);
+        box-shadow: inset 0 0 0 1px var(--accent-color);
         border-radius: 4px;
     }
 
@@ -128,7 +128,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         cursor: pointer;
 
         &:hover {
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--white-alpha-3-flat);
         }
     }
 
@@ -145,7 +145,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
 }
 
 .required {
-    color: var(--accent-color, #685fff);
+    color: var(--accent-color);
     margin-left: 2px;
 }
 
@@ -155,13 +155,13 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     justify-content: center;
     background: transparent;
     border: none;
-    color: var(--accent-color, #685fff);
+    color: var(--accent-color);
     cursor: pointer;
     padding: 0.2rem;
     border-radius: 4px;
 
     &:hover {
-        background: var(--color-ghost-btn-hover, rgba(104, 95, 255, 0.12));
+        background: var(--color-ghost-btn-hover);
     }
 }
 
@@ -169,13 +169,13 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(217, 217, 222, 0.4);
+    color: var(--fog-alpha-40);
     cursor: grab;
 }
 
 .att-row-number {
     font-size: 0.75rem;
-    color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+    color: var(--fog-alpha-60);
 }
 
 .att-input,
@@ -186,13 +186,13 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     border: none;
     outline: none;
     resize: none;
-    color: var(--color-text-primary, #d9d9de);
+    color: var(--color-text-primary);
     font-size: 0.75rem;
     font-family: inherit;
     padding: 4px;
 
     &::placeholder {
-        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        color: var(--fog-alpha-60);
     }
 }
 
@@ -207,7 +207,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     font-size: 0.75rem;
 
     &.att-textarea--invalid {
-        outline: 1px solid rgba(255, 107, 107, 0.6);
+        outline: 1px solid var(--red-400-alpha-60);
         border-radius: 4px;
     }
 }
@@ -249,10 +249,10 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
 ::ng-deep .att-textarea-highlight .vht-textarea {
     height: 100%;
     resize: none !important;
-    color: var(--color-text-primary, #d9d9de);
+    color: var(--color-text-primary);
 
     &::placeholder {
-        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        color: var(--fog-alpha-60);
     }
 }
 
@@ -268,16 +268,16 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     top: 0.6rem;
     right: 0.5rem;
     z-index: 2;
-    color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+    color: var(--fog-alpha-60);
     cursor: pointer;
 
     &:hover {
-        color: var(--color-text-primary, #d9d9de);
+        color: var(--color-text-primary);
     }
 }
 
 .att-context-placeholder {
-    color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+    color: var(--fog-alpha-60);
     font-size: 0.75rem;
 }
 
@@ -298,7 +298,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     gap: 0.5rem;
     padding: 0.3rem 0.5rem;
     background: transparent;
-    border: 1px solid var(--color-flow-card-bg, #2b2d30);
+    border: 1px solid var(--color-flow-card-bg);
     border-radius: 4px;
     font-size: 0.75rem;
     flex-shrink: 0;
@@ -307,12 +307,12 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: var(--color-text-primary, #d9d9de);
+        color: var(--color-text-primary);
     }
 
     &__order {
         flex-shrink: 0;
-        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        color: var(--fog-alpha-60);
         font-weight: 400;
     }
 }
@@ -323,21 +323,21 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     justify-content: center;
     background: transparent;
     border: none;
-    color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+    color: var(--fog-alpha-60);
     cursor: pointer;
     padding: 0.2rem;
     border-radius: 4px;
 
     &:hover {
-        color: var(--color-ks-status-failed, #ff6b6b);
-        background: rgba(255, 107, 107, 0.1);
+        color: var(--red-600);
+        background: var(--red-400-alpha-10);
     }
 }
 
 .att-empty {
     padding: 1.5rem 1rem;
     text-align: center;
-    color: rgba(217, 217, 222, 0.5);
+    color: var(--fog-alpha-50);
     font-size: 0.8125rem;
 }
 
@@ -346,10 +346,10 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     flex-direction: column;
     width: 320px;
     max-height: 400px;
-    background: var(--color-background-body, #212325);
-    border: 1px solid var(--color-flow-card-bg, #2b2d30);
+    background: var(--color-background-body);
+    border: 1px solid var(--color-flow-card-bg);
     border-radius: 10px;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 12px 28px var(--black-alpha-40);
     overflow: hidden;
 
     &__header {
@@ -366,7 +366,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     }
 
     &__search-icon {
-        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        color: var(--fog-alpha-60);
         flex-shrink: 0;
     }
 
@@ -376,11 +376,11 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         background: transparent;
         border: none;
         outline: none;
-        color: var(--color-text-primary, #d9d9de);
+        color: var(--color-text-primary);
         font-size: 0.8125rem;
 
         &::placeholder {
-            color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+            color: var(--fog-alpha-60);
         }
     }
 
@@ -395,17 +395,17 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         display: flex;
         align-items: center;
         padding: 0.65rem 0.75rem;
-        border-bottom: 1px solid var(--color-flow-card-bg, #2b2d30);
+        border-bottom: 1px solid var(--color-flow-card-bg);
         cursor: pointer;
         transition: background-color 0.15s ease;
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.05);
+            background-color: var(--white-alpha-5);
         }
 
         &.selected {
-            background-color: rgba(104, 95, 255, 0.1);
-            border-left: 3px solid var(--accent-color, #685fff);
+            background-color: var(--purple-alpha-10);
+            border-left: 3px solid var(--accent-color);
         }
 
         &:last-child {
@@ -416,7 +416,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     &__order {
         min-width: 24px;
         font-size: 0.75rem;
-        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        color: var(--fog-alpha-60);
         text-align: center;
         margin-right: 0.5rem;
     }
@@ -425,7 +425,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         flex: 1;
         font-weight: 500;
         font-size: 0.8125rem;
-        color: var(--color-text-primary, #d9d9de);
+        color: var(--color-text-primary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -443,7 +443,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     &__empty {
         padding: 1rem;
         text-align: center;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
         font-style: italic;
         font-size: 0.8125rem;
     }
@@ -454,7 +454,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         justify-content: space-between;
         gap: 0.5rem;
         padding: 0.75rem;
-        border-top: 1px solid var(--color-flow-card-bg, #2b2d30);
+        border-top: 1px solid var(--color-flow-card-bg);
         flex-shrink: 0;
     }
 
@@ -472,12 +472,12 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     background-color: transparent;
     appearance: none;
     -webkit-appearance: none;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--white-alpha-50);
     border-radius: 3px;
 
     &:checked {
         background-color: transparent;
-        border-color: var(--accent-color, #685fff);
+        border-color: var(--accent-color);
     }
 
     &:focus {
@@ -491,7 +491,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     top: 2px;
     width: 5px;
     height: 10px;
-    border: solid var(--accent-color, #685fff);
+    border: solid var(--accent-color);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
     pointer-events: none;
@@ -512,24 +512,24 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
 
     &--outline {
         background: transparent;
-        color: var(--accent-color, #685fff);
-        border-color: var(--accent-color, #685fff);
+        color: var(--accent-color);
+        border-color: var(--accent-color);
 
         &:hover {
-            background: var(--color-ghost-btn-hover, rgba(104, 95, 255, 0.08));
-            border-color: var(--accent-color-hover, #574fd6);
-            color: var(--accent-color-hover, #574fd6);
+            background: var(--color-ghost-btn-hover);
+            border-color: var(--accent-color-hover);
+            color: var(--accent-color-hover);
         }
     }
 
     &--primary {
-        background: var(--accent-color, #685fff);
-        border-color: var(--accent-color, #685fff);
-        color: #fff;
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: var(--white);
 
         &:hover {
-            background: var(--accent-color-hover, #574fd6);
-            border-color: var(--accent-color-hover, #574fd6);
+            background: var(--accent-color-hover);
+            border-color: var(--accent-color-hover);
         }
     }
 }

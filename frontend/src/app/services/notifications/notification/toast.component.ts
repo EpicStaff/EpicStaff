@@ -135,7 +135,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             }
 
             .toast-message {
-                font-size: 14px;
+                font-size: 0.875rem;
                 color: #e0e0e0;
                 display: -webkit-box;
                 -webkit-line-clamp: 3;

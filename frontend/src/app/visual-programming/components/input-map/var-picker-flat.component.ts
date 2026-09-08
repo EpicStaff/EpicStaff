@@ -118,7 +118,7 @@ export interface PickerItem {
             .vpf-tag {
                 flex-shrink: 0;
                 font-size: 0.68rem;
-                font-weight: 600;
+                font-weight: 500;
                 padding: 1px 5px;
                 border-radius: 3px;
                 background: rgba(104, 95, 255, 0.25);
