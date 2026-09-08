@@ -113,6 +113,7 @@ from tables.views.flow_assistant_views import (
     FlowAssistantStreamView,
 )
 
+from tables.views.api_key_admin_views import ApiKeyAdminViewSet
 from tables.views.organization_admin_views import OrganizationAdminViewSet
 from tables.views.role_admin_views import RoleAdminViewSet
 from tables.views.membership_admin_views import MembershipAdminViewSet
@@ -202,6 +203,7 @@ admin_router.register(
 )
 admin_router.register(r"users", UserAdminViewSet, basename="admin-user")
 admin_router.register(r"roles", RoleAdminViewSet, basename="admin-role")
+admin_router.register(r"api-keys", ApiKeyAdminViewSet, basename="admin-api-key")
 
 urlpatterns = [
     path(

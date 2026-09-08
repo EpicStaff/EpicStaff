@@ -32,7 +32,6 @@ from tables.views.auth_views import (
     WsTicketView,
 )
 from tables.views.api_key_views import (
-    ApiKeyManagementViewSet,
     ProfileApiKeyDetailView,
     ProfileApiKeyRevokeView,
     ProfileApiKeysView,
@@ -115,21 +114,6 @@ urlpatterns = [
         "api/profile/api-keys/<int:key_id>/revoke/",
         ProfileApiKeyRevokeView.as_view(),
         name="profile_api_key_revoke",
-    ),
-    path(
-        "api/api-keys/",
-        ApiKeyManagementViewSet.as_view({"get": "list"}),
-        name="api_keys_management",
-    ),
-    path(
-        "api/api-keys/<int:pk>/",
-        ApiKeyManagementViewSet.as_view({"delete": "destroy"}),
-        name="api_keys_management_detail",
-    ),
-    path(
-        "api/api-keys/<int:pk>/revoke/",
-        ApiKeyManagementViewSet.as_view({"post": "revoke"}),
-        name="api_keys_management_revoke",
     ),
     path(
         "api/permissions/catalog/",

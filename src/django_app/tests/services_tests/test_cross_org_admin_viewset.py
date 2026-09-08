@@ -32,3 +32,23 @@ def test_parse_org_ids_parses_and_defaults():
 def test_parse_org_ids_rejects_non_integer():
     with pytest.raises(OrgContextRequiredError):
         _V.parse_org_ids("1,abc")
+
+
+def test_cross_org_surfaces_share_one_paginator():
+    from tables.views.cross_org_admin import CrossOrgAdminPagination
+    from tables.views.membership_admin_views import MembershipAdminViewSet
+    from tables.views.organization_admin_views import OrganizationAdminViewSet
+    from tables.views.role_admin_views import RoleAdminViewSet
+
+    assert CrossOrgAdminPagination.page_size == 50
+    assert CrossOrgAdminPagination.max_page_size == 200
+    assert CrossOrgAdminPagination.page_size_query_param == "page_size"
+    for viewset in (RoleAdminViewSet, MembershipAdminViewSet, OrganizationAdminViewSet):
+        assert viewset.pagination_class is CrossOrgAdminPagination
+
+
+def test_api_key_admin_viewset_has_empty_superadmin_actions():
+    """DenyApiKeyAuth is dropped for any action later added to this set."""
+    from tables.views.api_key_admin_views import ApiKeyAdminViewSet
+
+    assert ApiKeyAdminViewSet.superadmin_actions == frozenset()
