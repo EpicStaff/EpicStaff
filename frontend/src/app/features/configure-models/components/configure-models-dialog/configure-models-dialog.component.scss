@@ -1,6 +1,6 @@
 ::ng-deep :root {
-    --configure-models-dialog-active-color: #d9d9de;
-    --configure-models-dialog-inactive-color: #685fff;
+    --configure-models-dialog-active-color: var(--fog-200);
+    --configure-models-dialog-inactive-color: var(--accent-color);
 }
 
 .configure-models-dialog {
@@ -29,16 +29,16 @@
     }
 
     &__title-icon {
-        font-size: 20px;
+        font-size: 1.25rem;
         line-height: 1;
         color: var(--configure-models-dialog-active-color);
     }
 
     &__title {
         letter-spacing: 0.2px;
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 1;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
         color: var(--configure-models-dialog-active-color);
     }
 
@@ -63,9 +63,9 @@
         background: transparent;
         border: none;
         color: var(--configure-models-dialog-inactive-color);
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 1;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
         padding: 0 8px;
         cursor: pointer;
         display: inline-flex;
@@ -96,16 +96,16 @@
     &__tab + &__tab::before {
         content: '/';
         margin-right: 10px;
-        color: var(--color-text-secondary, var(--color-text-primary));
+        color: var(--color-text-secondary);
         user-select: none;
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 1;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
         pointer-events: none;
     }
 
     &__tab-icon {
-        font-size: 20px;
+        font-size: 1.25rem;
         line-height: 1;
         color: inherit;
     }

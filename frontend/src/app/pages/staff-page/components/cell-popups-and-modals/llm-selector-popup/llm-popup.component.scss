@@ -1,0 +1,225 @@
+$transition-default: all 0.2s ease;
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes dot-animation {
+    0% {
+        transform: scale(0.5);
+        opacity: 0.5;
+    }
+    50% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0.5);
+        opacity: 0.5;
+    }
+}
+
+.llm-list-container {
+    background-color: var(--graphite-875);
+    border-radius: 8px;
+    width: 480px;
+    color: var(--gray-105);
+    box-shadow: 0 10px 40px var(--black-alpha-50);
+    border: 1px solid var(--white-alpha-10);
+    animation: fadeIn 0.3s ease;
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+
+    .header {
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        padding-bottom: 0px;
+
+        .list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 8px;
+
+            input {
+                flex: 1;
+                padding: 7px 14px;
+                border-radius: 6px;
+                background-color: var(--graphite-720);
+                color: var(--gray-105);
+                font-size: 13px;
+                border: 1px solid var(--white-alpha-10);
+                transition: $transition-default;
+                outline: none;
+
+                &::placeholder {
+                    color: var(--gray-550);
+                }
+
+                &:focus {
+                    border-color: var(--indigo-600);
+                    box-shadow: 0 0 0 2px var(--indigo-600-alpha-15);
+                }
+            }
+
+            .filter-button {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                background-color: var(--graphite-720);
+                color: var(--gray-490);
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                transition: $transition-default;
+                border: none;
+
+                i {
+                    font-size: 14px;
+                    width: 14px;
+                    height: 14px;
+                    margin-bottom: 2px;
+                }
+
+                &:hover {
+                    background-color: color-mix(in srgb, var(--graphite-720) 95%, var(--white));
+                    color: var(--gray-105);
+                }
+            }
+        }
+    }
+
+    .menu-header {
+        display: flex;
+        justify-content: flex-end;
+        padding: 0;
+        margin-bottom: 8px;
+        border-bottom: 1px solid var(--white-alpha-10);
+        gap: 10px;
+
+        .menu-tabs {
+            display: flex;
+            justify-content: flex-start;
+            gap: 10px;
+
+            button {
+                background: transparent;
+                border: none;
+                color: var(--gray-490);
+                font-size: 13px;
+                padding: 8px 16px;
+                cursor: pointer;
+                position: relative;
+                transition: color 0.2s;
+                font-weight: 500;
+                border-bottom: 2px solid transparent;
+                border-radius: 4px 4px 0 0;
+                margin-bottom: -1px;
+
+                &:hover {
+                    color: var(--gray-105);
+                }
+
+                &.active {
+                    color: var(--indigo-600);
+                    border-bottom: 2px solid var(--indigo-600);
+                }
+            }
+        }
+    }
+    // Body Section - Match LLM popup structure
+    .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    // List wrapper for scrolling
+    .llm-list-wrapper {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    // Loading spinner
+    .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100px;
+        width: 100%;
+    }
+
+    .dots {
+        display: flex;
+        gap: 6px;
+    }
+
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--indigo-600);
+        animation: dot-animation 1.5s infinite ease-in-out;
+    }
+
+    .dot:nth-child(1) {
+        animation-delay: 0s;
+    }
+
+    .dot:nth-child(2) {
+        animation-delay: 0.3s;
+    }
+
+    .dot:nth-child(3) {
+        animation-delay: 0.6s;
+    }
+
+    .llms-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+
+        .no-results {
+            padding: 20px 0;
+
+            .empty-state {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                color: var(--gray-490);
+
+                i {
+                    font-size: 24px;
+                    margin-bottom: 8px;
+                    opacity: 0.7;
+                }
+
+                p {
+                    font-size: 13px;
+                    text-align: center;
+                }
+            }
+        }
+    }
+
+    .footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: 12px;
+        border-top: 1px solid var(--white-alpha-10);
+        gap: 8px;
+    }
+}
