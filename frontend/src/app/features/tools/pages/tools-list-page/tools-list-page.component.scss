@@ -15,7 +15,6 @@
         top: 0;
         z-index: 5;
         width: 100%;
-        padding: 2rem 2.5rem 0;
         box-sizing: border-box;
         background-color: var(--color-background-body);
         border-bottom: 1px solid var(--color-divider-subtle);
@@ -24,7 +23,9 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 1rem;
+            padding: 1.75rem 3.75rem 1rem 2.5rem;
+            height: 80px;
+            border-bottom: 1px solid var(--color-divider-subtle);
 
             .header-titles {
                 display: flex;
@@ -63,6 +64,7 @@
         justify-content: space-between;
         margin-bottom: 0;
         background: transparent;
+        padding: 0 3.75rem 0 2.75rem;
 
         .tabs-left {
             display: flex;
@@ -108,7 +110,7 @@
                 align-items: center;
                 gap: 16px;
                 min-height: 40px;
-                padding: 6px 40px;
+                padding: 0 3.75rem 0 2.75rem;
                 border-bottom: 1px solid var(--color-divider-subtle);
                 flex-shrink: 0;
                 position: sticky;
