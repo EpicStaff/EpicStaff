@@ -1,14 +1,8 @@
 import { CustomFilterCondition as SharedCustomFilterCondition } from '@shared/models';
 
-export type ToolSortOrder =
-    | 'default'
-    | 'name_asc'
-    | 'name_desc'
-    | 'used_in_agent_surface'
-    | 'used_in_shared_surface'
-    | 'used_in_inline'
-    | 'most_used'
-    | 'unused_first';
+export type ToolSortOrder = 'default' | 'last_modified' | 'name_asc' | 'name_desc' | 'most_used' | 'unused_first';
+
+export type UsageBucket = 'agent_surface' | 'shared_surface' | 'inline';
 
 export type CustomFilterScope = 'tool_name' | 'label_name';
 
@@ -17,6 +11,10 @@ export type CustomFilterCondition = SharedCustomFilterCondition<CustomFilterScop
 
 export interface ToolsFilterState {
     showFavoriteOnly: boolean;
+    sourceBuiltIn: boolean;
+    sourceCustom: boolean;
+    usageBuckets: readonly UsageBucket[];
+    unusedOnly: boolean;
     sortOrder: ToolSortOrder;
     includedToolIds: number[] | null; // null = all
     includedLabelIds: number[] | null; // null = all
@@ -25,6 +23,10 @@ export interface ToolsFilterState {
 
 export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
     showFavoriteOnly: false,
+    sourceBuiltIn: false,
+    sourceCustom: false,
+    usageBuckets: [],
+    unusedOnly: false,
     sortOrder: 'default',
     includedToolIds: null,
     includedLabelIds: null,
@@ -32,10 +34,4 @@ export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
 };
 
 /** Sort orders that require per-tool usage counts to compute. */
-export const USAGE_DEPENDENT_SORTS: readonly ToolSortOrder[] = [
-    'used_in_agent_surface',
-    'used_in_shared_surface',
-    'used_in_inline',
-    'most_used',
-    'unused_first',
-];
+export const USAGE_DEPENDENT_SORTS: readonly ToolSortOrder[] = ['most_used', 'unused_first'];

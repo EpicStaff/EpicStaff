@@ -33,6 +33,7 @@ import { filter } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { EMPTY_TOOLS_FILTER, ToolSortOrder } from '../../models/tool-filter.model';
 import { ToolsLabelsStorageService } from '../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
 import { ToolsViewStorageService } from '../../services/tools-view-storage.service';
@@ -40,10 +41,8 @@ import {
     ToolsBulkAction,
     ToolsBulkActionsMenuComponent,
 } from './components/tools-bulk-actions-menu/tools-bulk-actions-menu.component';
-import {
-    ToolsFilterMenuAction,
-    ToolsFilterMenuComponent,
-} from './components/tools-filter-menu/tools-filter-menu.component';
+import { ToolsFilterDraft, ToolsFilterMenuComponent } from './components/tools-filter-menu/tools-filter-menu.component';
+import { TOOLS_SORT_MENU_ITEMS, ToolsSortMenuComponent } from './components/tools-sort-menu/tools-sort-menu.component';
 
 @Component({
     selector: 'app-tools-list-page',
@@ -61,6 +60,7 @@ import {
         OverlayModule,
         LabelSidebarComponent,
         ToolsFilterMenuComponent,
+        ToolsSortMenuComponent,
         ToolsBulkActionsMenuComponent,
         ToggleSwitchComponent,
         SearchComponent,
@@ -80,7 +80,15 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
 
     public showSidebar = signal<boolean>(true);
     public filterMenuOpen = signal<boolean>(false);
+    public sortMenuOpen = signal<boolean>(false);
     public bulkMenuOpen = signal<boolean>(false);
+
+    /** Tracks the active tab (Custom / MCP). Drives Source-filter visibility. */
+    private readonly _currentTab = signal<'custom' | 'mcp' | null>(null);
+    public readonly showSourceFilter = computed<boolean>(() => this._currentTab() === 'custom');
+
+    /** Sort orders surfaced by the Sort dropdown (vs filter-side `used_in_*`). */
+    private readonly sortDropdownOrders: readonly ToolSortOrder[] = TOOLS_SORT_MENU_ITEMS.map((i) => i.value);
 
     private readonly isMouseOnBulkButton = signal<boolean>(false);
     private readonly isMouseOnBulkMenu = signal<boolean>(false);
@@ -173,6 +181,34 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         return [...union].filter((id) => !common.has(id));
     });
 
+    public readonly activeSort = computed<ToolSortOrder>(() => {
+        const order = this.viewState.filter().sortOrder;
+        return this.sortDropdownOrders.includes(order) ? order : 'default';
+    });
+
+    public readonly sortTriggerLabel = computed<string>(() => {
+        const order = this.activeSort();
+        if (order === 'default') return 'Sort';
+        return TOOLS_SORT_MENU_ITEMS.find((i) => i.value === order)?.label ?? 'Sort';
+    });
+
+    public readonly includeExcludeIsSet = computed<boolean>(() => {
+        const f = this.viewState.filter();
+        return f.includedToolIds !== null || f.includedLabelIds !== null;
+    });
+    public readonly customFilterIsSet = computed<boolean>(() => this.viewState.filter().customFilter !== null);
+
+    public readonly activeFilterCount = computed<number>(() => {
+        const f = this.viewState.filter();
+        let n = 0;
+        if (f.showFavoriteOnly) n++;
+        if (this.showSourceFilter() && f.sourceBuiltIn !== f.sourceCustom) n++;
+        if (f.usageBuckets.length > 0 || f.unusedOnly) n++;
+        if (this.includeExcludeIsSet()) n++;
+        if (this.customFilterIsSet()) n++;
+        return n;
+    });
+
     public readonly activeLabelFilterDisplay = computed(() => {
         const filter = this.labelsStorage.activeLabelFilter();
         if (filter === 'all') return 'all';
@@ -182,19 +218,19 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     });
 
     public ngOnInit(): void {
-        // Clear selection whenever the active tab changes (Custom <-> MCP).
-        let prevTab = this.currentTab();
+        // Seed and track the active tab (Custom <-> MCP).
+        this._currentTab.set(this.readTabFromUrl());
         this.router.events
             .pipe(
                 filter((e): e is NavigationEnd => e instanceof NavigationEnd),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe(() => {
-                const nextTab = this.currentTab();
-                if (nextTab !== prevTab) {
+                const nextTab = this.readTabFromUrl();
+                if (nextTab !== this._currentTab()) {
                     this.viewState.setSelectMode(false);
                     this.viewState.clearSelection();
-                    prevTab = nextTab;
+                    this._currentTab.set(nextTab);
                 }
             });
     }
@@ -207,7 +243,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.viewState.resetFilter();
     }
 
-    private currentTab(): 'custom' | 'mcp' | null {
+    private readTabFromUrl(): 'custom' | 'mcp' | null {
         const url = this.router.url;
         if (url.includes('/mcp')) return 'mcp';
         if (url.includes('/custom')) return 'custom';
@@ -240,45 +276,69 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.filterMenuOpen.set(false);
     }
 
-    public onFilterMenuAction(action: ToolsFilterMenuAction): void {
-        this.closeFilterMenu();
-        switch (action) {
-            case 'show_favorite':
-                this.viewState.patchFilter({ showFavoriteOnly: !this.viewState.filter().showFavoriteOnly });
-                return;
-            case 'sort_asc':
-                this.viewState.patchFilter({ sortOrder: 'name_asc' });
-                return;
-            case 'sort_desc':
-                this.viewState.patchFilter({ sortOrder: 'name_desc' });
-                return;
-            case 'used_in_agent_surface':
-                this.viewState.patchFilter({ sortOrder: 'used_in_agent_surface' });
-                return;
-            case 'used_in_shared_surface':
-                this.viewState.patchFilter({ sortOrder: 'used_in_shared_surface' });
-                return;
-            case 'used_in_inline':
-                this.viewState.patchFilter({ sortOrder: 'used_in_inline' });
-                return;
-            case 'most_used':
-                this.viewState.patchFilter({ sortOrder: 'most_used' });
-                return;
-            case 'unused_first':
-                this.viewState.patchFilter({ sortOrder: 'unused_first' });
-                return;
-            case 'include_exclude':
-                // The active child list owns its tools; it opens the dialog.
-                this.viewState.dispatch({ kind: 'open-include-exclude', initialTab: 'primary' });
-                return;
-            case 'custom_filter':
-                this.openCustomFilterDialog();
-                return;
-        }
+    public toggleSortMenu(): void {
+        this.sortMenuOpen.update((v) => !v);
     }
 
-    public clearAllFilters(): void {
-        this.viewState.resetFilter();
+    public closeSortMenu(): void {
+        this.sortMenuOpen.set(false);
+    }
+
+    public onSortMenuAction(sort: ToolSortOrder): void {
+        this.closeSortMenu();
+        // Re-selecting the active sort toggles back to default.
+        const next = this.viewState.filter().sortOrder === sort ? 'default' : sort;
+        this.viewState.patchFilter({ sortOrder: next });
+    }
+
+    /** Applies checkbox-side draft from the filter menu and closes it. */
+    public onFilterSave(draft: ToolsFilterDraft): void {
+        this.closeFilterMenu();
+        this.viewState.patchFilter({
+            showFavoriteOnly: draft.showFavoriteOnly,
+            sourceBuiltIn: draft.sourceBuiltIn,
+            sourceCustom: draft.sourceCustom,
+            usageBuckets: draft.usageBuckets,
+            unusedOnly: draft.unusedOnly,
+        });
+    }
+
+    public onFilterCancel(): void {
+        this.closeFilterMenu();
+    }
+
+    /** Filter menu emitted Clear: reset every filter-side field (including
+     *  Include/Exclude and Custom filter which live outside the local draft). */
+    public onFilterClear(): void {
+        this.clearAllFilters();
+    }
+
+    public onOpenIncludeExclude(): void {
+        this.closeFilterMenu();
+        this.viewState.dispatch({ kind: 'open-include-exclude', initialTab: 'primary' });
+    }
+
+    public onOpenCustomFilter(): void {
+        this.closeFilterMenu();
+        this.openCustomFilterDialog();
+    }
+
+    /** Clears filter-side state only; sort-dropdown selections
+     *  (name/most used/unused first/last modified) are preserved. */
+    public clearAllFilters(event?: MouseEvent): void {
+        // Prevent this from also opening the Filter dropdown when the X is
+        // nested inside the trigger button.
+        event?.stopPropagation();
+        this.viewState.patchFilter({
+            showFavoriteOnly: EMPTY_TOOLS_FILTER.showFavoriteOnly,
+            sourceBuiltIn: EMPTY_TOOLS_FILTER.sourceBuiltIn,
+            sourceCustom: EMPTY_TOOLS_FILTER.sourceCustom,
+            usageBuckets: EMPTY_TOOLS_FILTER.usageBuckets,
+            unusedOnly: EMPTY_TOOLS_FILTER.unusedOnly,
+            includedToolIds: EMPTY_TOOLS_FILTER.includedToolIds,
+            includedLabelIds: EMPTY_TOOLS_FILTER.includedLabelIds,
+            customFilter: EMPTY_TOOLS_FILTER.customFilter,
+        });
     }
 
     private openCustomFilterDialog(): void {

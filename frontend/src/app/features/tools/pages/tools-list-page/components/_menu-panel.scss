@@ -30,6 +30,11 @@
         background: var(--transparent-white-8);
     }
 
+    &.is-active {
+        background: var(--transparent-white-8);
+        color: var(--color-accent);
+    }
+
     .label {
         flex: 1;
     }

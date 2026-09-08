@@ -97,6 +97,7 @@ export class ToolsListComponent implements OnInit {
             ),
             searchTerm: this.searchTerm().trim().toLowerCase(),
             usage,
+            applySourceFilter: this.port.kind === 'custom',
         };
 
         return this.allTools()

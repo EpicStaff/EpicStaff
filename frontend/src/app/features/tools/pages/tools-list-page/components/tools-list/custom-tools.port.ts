@@ -29,6 +29,8 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
         labelIdsOf: (t) => t.labels ?? [],
         favoriteOf: (t) => t.is_favorite,
         searchableTextOf: (t) => [t.name, t.description],
+        updatedAtOf: (t) => t.updated_at,
+        builtInOf: (t) => t.built_in,
     };
 
     public readonly createdEvent$: Observable<GetPythonCodeToolRequest> = this.events.customToolCreated$;

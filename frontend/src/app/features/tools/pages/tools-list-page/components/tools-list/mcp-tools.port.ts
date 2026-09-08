@@ -29,6 +29,7 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
         labelIdsOf: (t) => t.labels ?? [],
         favoriteOf: (t) => t.is_favorite,
         searchableTextOf: (t) => [t.name, t.tool_name, t.transport],
+        updatedAtOf: (t) => t.updated_at,
     };
 
     public readonly createdEvent$: Observable<GetMcpToolRequest> = this.events.mcpToolCreated$;

@@ -215,7 +215,7 @@
         align-items: center;
         gap: 0.75rem;
         height: 28px;
-        padding: 0 0.75rem;
+        padding: 0 0.5rem;
         background: transparent;
         border: 1px solid var(--color-input-border);
         border-radius: 4px;
@@ -239,25 +239,31 @@
         }
     }
 
-    .filter-clear {
-        display: inline-flex;
-        flex-shrink: 0;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        background: transparent;
-        border: 1px solid var(--color-input-border);
-        border-radius: 4px;
-        color: var(--color-text-secondary);
-        cursor: pointer;
-        transition:
-            color 0.15s,
-            border-color 0.15s;
+    .filter-trigger {
+        gap: 0.5rem;
 
-        &:hover {
+        .filter-count {
+            margin-left: 0.25rem;
             color: var(--accent-color);
-            border-color: var(--accent-color);
+            font-weight: 500;
+        }
+
+        .filter-clear-inline {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
+            width: 28px;
+            margin-right: -0.5rem;
+            color: var(--accent-color);
+            border-left: 1px solid var(--color-divider-subtle);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+
+            &:hover {
+                background: var(--transparent-white-8);
+            }
         }
     }
 
