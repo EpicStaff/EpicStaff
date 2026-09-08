@@ -18,7 +18,8 @@ from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 _FORBIDDEN_403 = OpenApiResponse(
     description=(
-        "Caller lacks the required MEMBERSHIPS permission (permission_denied), a "
+        "Caller lacks the required MEMBERSHIPS permission on a row they can "
+        "see (permission_denied — a row they cannot see is a 404), a "
         "forbidden ?org_ids= entry, or an attempt to modify one's own "
         "membership (cannot_modify_self_membership)."
     )
@@ -26,8 +27,10 @@ _FORBIDDEN_403 = OpenApiResponse(
 
 _NOT_FOUND_404 = OpenApiResponse(
     description=(
-        "Membership not found, or in an org the caller cannot access "
-        "(membership_not_found — no existence leak)."
+        "Membership not found, or one the caller cannot see — an org they "
+        "are not a member of, or one where they hold neither MEMBERSHIPS "
+        "read nor the attempted action (membership_not_found — no "
+        "existence leak)."
     )
 )
 

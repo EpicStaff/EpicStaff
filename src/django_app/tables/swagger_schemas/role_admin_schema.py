@@ -32,7 +32,8 @@ _FORBIDDEN_403 = OpenApiResponse(
 
 _WRITE_FORBIDDEN_403 = OpenApiResponse(
     description=(
-        "permission_denied (no ROLES permission in the role's org), "
+        "permission_denied (the caller can see the role but lacks this "
+        "action on ROLES in its org — a role they cannot see is a 404), "
         "permission_escalation_denied (granting a bit the caller doesn't "
         "hold), or built_in_role_immutable (target is a built-in role)."
     )
@@ -40,8 +41,9 @@ _WRITE_FORBIDDEN_403 = OpenApiResponse(
 
 _NOT_FOUND_404 = OpenApiResponse(
     description=(
-        "Role not found, or a custom role in an org the caller cannot read "
-        "(role_not_found — no existence leak)."
+        "Role not found, or a custom role the caller cannot see — an org "
+        "they are not a member of, or one where they hold neither ROLES "
+        "read nor the attempted action (role_not_found — no existence leak)."
     )
 )
 
