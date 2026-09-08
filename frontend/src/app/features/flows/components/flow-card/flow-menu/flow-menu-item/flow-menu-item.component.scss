@@ -12,11 +12,11 @@
     user-select: none;
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--white-alpha-8);
     }
 
     &:active {
-        background-color: rgba(255, 255, 255, 0.12);
+        background-color: var(--white-alpha-12);
     }
 
     &.delete-action {

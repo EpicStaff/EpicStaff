@@ -11,12 +11,12 @@
     display: flex;
     flex-direction: column;
     padding: 0;
-    background-color: #212325;
-    border: 1px solid #2b2d30;
+    background-color: var(--graphite-900);
+    border: 1px solid var(--graphite-750);
     border-radius: 8px;
     box-shadow:
-        0 2px 3px rgba(0, 0, 0, 0.3),
-        0 6px 10px rgba(0, 0, 0, 0.15);
+        0 2px 3px var(--black-alpha-30),
+        0 6px 10px var(--black-alpha-15);
     overflow: hidden;
 
     &__item {

@@ -14,7 +14,7 @@
     transition: color 0.15s;
 
     &:hover {
-        color: var(--accent-color, #5e9eff);
+        color: var(--accent-color);
     }
 
     &--active {

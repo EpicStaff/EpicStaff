@@ -46,7 +46,7 @@
     }
 
     &:hover:not(.active) {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--white-alpha-5);
     }
 
     &.active {
@@ -96,7 +96,7 @@
         padding: 0;
 
         &--active {
-            color: #fff;
+            color: var(--white);
         }
 
         &:not(&--active):hover {

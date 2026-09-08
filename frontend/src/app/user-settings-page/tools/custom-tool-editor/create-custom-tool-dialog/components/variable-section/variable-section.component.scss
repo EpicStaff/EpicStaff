@@ -51,7 +51,7 @@
     box-sizing: border-box;
 
     &:hover {
-        background: rgba(104, 95, 255, 0.15);
+        background: var(--purple-alpha-15);
     }
 
     &:focus-visible {

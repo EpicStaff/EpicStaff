@@ -12,14 +12,14 @@
 
     &__title {
         margin: 0;
-        font-size: 1.25rem;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        font-size: 20px;
+        color: var(--configure-models-dialog-active-color);
     }
 
     &__subtitle {
         margin: 0;
-        font-size: 0.875rem;
-        color: var(--color-text-secondary, #9aa0a6);
+        font-size: 14px;
+        color: var(--color-text-secondary);
     }
 
     &__section {
@@ -29,8 +29,8 @@
     }
 
     &__section-title {
-        font-size: 1.125rem;
-        color: var(--color-text-secondary, #9aa0a6);
+        font-size: 18px;
+        color: var(--color-text-secondary);
     }
 
     &__grid {

@@ -46,14 +46,14 @@
     &.active {
         background: var(--accent-color);
         border-color: var(--accent-color);
-        color: #fff;
+        color: var(--white);
         pointer-events: none;
     }
 
     &.nav {
         background: var(--accent-color);
         border-color: var(--accent-color);
-        color: #fff;
+        color: var(--white);
 
         svg {
             display: block;

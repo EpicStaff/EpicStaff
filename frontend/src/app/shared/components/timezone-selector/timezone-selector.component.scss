@@ -70,7 +70,7 @@
     border: 1px solid var(--color-input-border);
     background-color: var(--color-input-background);
     color: var(--color-text-primary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    box-shadow: 0 8px 24px var(--black-alpha-24);
     max-height: 280px;
     overflow: hidden;
     display: flex;

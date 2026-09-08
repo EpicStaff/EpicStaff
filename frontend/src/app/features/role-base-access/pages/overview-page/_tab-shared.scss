@@ -60,7 +60,7 @@
         &.open {
             background: var(--purple-primary);
             border-color: var(--purple-primary);
-            color: #fff;
+            color: var(--white);
         }
     }
 
@@ -68,7 +68,7 @@
         background: var(--color-input-background);
         border: 1px solid var(--color-input-border);
         border-radius: 8px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        box-shadow: 0 8px 24px var(--black-alpha-24);
         overflow: hidden;
         min-width: 120px;
     }

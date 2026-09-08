@@ -54,8 +54,8 @@
     border: 1px solid var(--color-input-border);
     border-radius: 8px;
     box-shadow:
-        0px 6px 10px rgba(0, 0, 0, 0.2),
-        0px 2px 3px rgba(0, 0, 0, 0.3);
+        0px 6px 10px var(--black-alpha-20),
+        0px 2px 3px var(--black-alpha-30);
 
     &.open-upward {
         top: auto;

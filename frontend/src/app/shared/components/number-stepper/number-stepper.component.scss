@@ -5,7 +5,7 @@
         display: flex;
         align-items: center;
         background: var(--color-input-background, #27272b);
-        border: 1px solid rgba(217, 217, 222, 0.16);
+        border: 1px solid var(--fog-alpha-16);
         border-radius: 0.375rem;
         overflow: hidden;
         transition: border-color 0.2s ease;
@@ -15,7 +15,7 @@
         }
 
         &--error {
-            border-color: #ef4444 !important;
+            border-color: var(--crimson-500) !important;
         }
 
         // Size variants
@@ -81,6 +81,7 @@
         border: none;
         color: var(--color-text-primary, #d9d9de);
         text-align: center;
+        font-family: 'Inter', sans-serif;
         outline: none;
 
         // Hide native number input spinners
@@ -93,7 +94,7 @@
         -moz-appearance: textfield;
 
         &::placeholder {
-            color: rgba(217, 217, 222, 0.4);
+            color: var(--fog-alpha-40);
         }
 
         &:disabled {
@@ -113,8 +114,8 @@
         }
 
         &--lg {
-            font-size: var(--text-body-size);
-            font-weight: var(--text-body-weight);
+            font-size: 0.875rem;
+            font-weight: 400;
             padding: 0 0.75rem;
         }
     }
@@ -122,6 +123,7 @@
     &__error {
         margin-top: 0.25rem;
         font-size: 0.75rem;
-        color: #ef4444;
+        color: var(--crimson-500);
+        font-family: 'Inter', sans-serif;
     }
 }

@@ -20,7 +20,7 @@
 
 .awaiting-connection {
     margin: 0 auto;
-    color: #d1d1d1;
+    color: var(--gray-210);
 }
 
 .chat-messages {
@@ -62,7 +62,7 @@
             .message-content {
                 background-color: var(--accent-color);
                 border-radius: 12px 12px 0 12px;
-                color: white;
+                color: var(--white);
             }
 
             .timestamp {
@@ -74,7 +74,7 @@
             align-self: flex-start;
 
             .message-content {
-                background-color: #151515;
+                background-color: var(--graphite-970);
                 border-radius: 12px 12px 12px 0;
             }
         }
@@ -167,7 +167,7 @@
         .tool-response-content {
             margin-top: 0.5rem;
             padding: 0.5rem;
-            background-color: rgba(0, 0, 0, 0.1);
+            background-color: var(--black-alpha-10);
             border-radius: 4px;
             font-family: monospace;
             white-space: pre-wrap;
