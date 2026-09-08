@@ -1,4 +1,3 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
@@ -76,13 +75,6 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
         LoadingSpinnerComponent,
         ButtonComponent,
         HelpTooltipComponent,
-    ],
-    animations: [
-        trigger('collapseExpand', [
-            state('expanded', style({ height: '*', opacity: 1, overflow: 'hidden' })),
-            state('collapsed', style({ height: '0', opacity: 0, overflow: 'hidden' })),
-            transition('expanded <=> collapsed', animate('200ms ease')),
-        ]),
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -1,4 +1,4 @@
-import { NgClass, NgIf } from '@angular/common';
+import { NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -21,8 +21,7 @@ import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component
 
 @Component({
     selector: 'app-flow-menu',
-    standalone: true,
-    imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
+    imports: [NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './flow-menu.component.html',
     styleUrls: ['./flow-menu.component.scss'],

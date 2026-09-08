@@ -192,6 +192,7 @@ from tables.services.copy_services import (
     PythonCodeToolCopyService,
 )
 from tables.views.mixins import (
+    BuiltInWriteProtectedMixin,
     CopyActionMixin,
     InspectActionMixin,
     OrgScopedChildViewSetMixin,
@@ -395,7 +396,9 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
 
 
 class LLMModelReadWriteViewSet(
-    OrgScopedHybridViewSetMixin, BasePredefinedRestrictedViewSet
+    OrgScopedHybridViewSetMixin,
+    BuiltInWriteProtectedMixin,
+    BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
@@ -411,7 +414,9 @@ class LLMModelReadWriteViewSet(
 
 
 class EmbeddingModelReadWriteViewSet(
-    OrgScopedHybridViewSetMixin, BasePredefinedRestrictedViewSet
+    OrgScopedHybridViewSetMixin,
+    BuiltInWriteProtectedMixin,
+    BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
@@ -1451,7 +1456,9 @@ class MemoryViewSet(
     filterset_class = MemoryFilter
 
 
-class RealtimeModelViewSet(OrgScopedHybridViewSetMixin, viewsets.ModelViewSet):
+class RealtimeModelViewSet(
+    OrgScopedHybridViewSetMixin, BuiltInWriteProtectedMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
@@ -1486,7 +1493,7 @@ class RealtimeConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
 
 class RealtimeTranscriptionModelViewSet(
-    OrgScopedHybridViewSetMixin, viewsets.ModelViewSet
+    OrgScopedHybridViewSetMixin, BuiltInWriteProtectedMixin, viewsets.ModelViewSet
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS

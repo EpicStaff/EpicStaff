@@ -1,4 +1,3 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -40,16 +39,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 
 const MIN_INTERVAL_SECONDS = 60;
 
-const panelFadeSlide = trigger('panelFadeSlide', [
-    transition(':enter', [
-        style({ opacity: 0, transform: 'translateY(-4px)' }),
-        animate('200ms ease-out', style({ opacity: 1, transform: 'translateY(0)' })),
-    ]),
-    transition(':leave', [animate('150ms ease-in', style({ opacity: 0, transform: 'translateY(-4px)' }))]),
-]);
-
 @Component({
-    standalone: true,
     selector: 'app-schedule-trigger-node-panel',
     imports: [
         ReactiveFormsModule,
@@ -67,7 +57,6 @@ const panelFadeSlide = trigger('panelFadeSlide', [
     templateUrl: 'schedule-trigger-node-panel.component.html',
     styleUrls: ['schedule-trigger-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [panelFadeSlide],
 })
 export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTriggerNodeModel> {
     public override readonly isExpanded = input<boolean>(false);

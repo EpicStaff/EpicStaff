@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -26,8 +25,7 @@ interface FlowRenameData {
 
 @Component({
     selector: 'app-flow-rename-dialog',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ButtonComponent, LabelDropdownComponent],
+    imports: [FormsModule, ButtonComponent, LabelDropdownComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dialog-container">

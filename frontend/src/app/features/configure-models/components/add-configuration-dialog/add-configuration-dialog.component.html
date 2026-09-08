@@ -49,13 +49,21 @@
                     <app-validation-errors [control]="llmForm.get('model')!" />
                 </div>
                 <div>
-                    <app-custom-input
-                        formControlName="api_key"
+                    <app-select
+                        formControlName="api_key_secret_id"
                         label="API Key"
-                        placeholder="Enter provider's API key"
+                        variant="boxed"
                         tooltipText="Your secret API key from the provider's dashboard"
-                        type="password"
+                        placeholder="Select a secret"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
                     />
+                    @if (!llmForm.get('api_key_secret_id')?.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
                 </div>
                 <div>
                     <app-custom-input
@@ -199,12 +207,11 @@
                 class="form"
                 [formGroup]="openaiForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -283,12 +290,11 @@
                 class="form"
                 [formGroup]="elevenLabsForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -342,12 +348,11 @@
                 class="form"
                 [formGroup]="geminiForm"
             >
-                <div
-                    *ngIf="errorMessage()"
-                    class="error"
-                >
-                    <p>{{ errorMessage() }}</p>
-                </div>
+                @if (errorMessage()) {
+                    <div class="error">
+                        <p>{{ errorMessage() }}</p>
+                    </div>
+                }
                 <div>
                     <app-custom-input
                         label="Name"

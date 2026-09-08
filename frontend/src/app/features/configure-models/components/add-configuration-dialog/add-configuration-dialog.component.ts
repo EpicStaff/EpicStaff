@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -38,7 +37,6 @@ export type ConfigTab = 'llm' | 'realtime';
     styleUrls: ['./add-configuration-dialog.component.scss'],
     imports: [
         ReactiveFormsModule,
-        NgIf,
         IconButtonComponent,
         HelpTooltipComponent,
         ButtonComponent,
@@ -121,7 +119,7 @@ export class AddConfigurationDialogComponent implements OnInit {
 
         this.llmForm = this.fb.group({
             custom_name: ['', [Validators.required]],
-            api_key: [''],
+            api_key_secret_id: [null as number | null],
             model: [null, [Validators.required]],
             temperature: [0.5, [Validators.min(0), Validators.max(1)]],
             top_p: [1, [Validators.min(0.1)]],

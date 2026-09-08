@@ -1,6 +1,6 @@
 <div
-    class="item-details"
-    [@collapseExpand]="expanded() ? 'expanded' : 'collapsed'"
+    class="item-details grid-collapsible"
+    [class.expanded]="expanded()"
 >
     <div class="item-details-grid">
         @for (entry of fields(); track entry.label) {
