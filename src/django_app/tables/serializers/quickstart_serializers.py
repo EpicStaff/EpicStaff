@@ -11,9 +11,12 @@ from tables.serializers.model_serializers.llm_serializers import (
 from tables.models.provider import Provider
 from tables.models.secret_models import Secret
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
 
 
-class QuickstartSerializer(serializers.Serializer):
+class QuickstartSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    secret_reference_fields = ("api_key_secret_id",)
+
     provider = serializers.CharField()
     # Exactly one credential form. `api_key` is the cold start (no secrets exist
     # yet); `api_key_secret_id` reuses one the caller already owns.
@@ -28,6 +31,8 @@ class QuickstartSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
+
         has_api_key = bool(attrs.get("api_key"))
         has_secret = attrs.get("api_key_secret_id") is not None
 
