@@ -1,7 +1,12 @@
 from django.db import models
 
+from tables.models.base_models import (
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 
-class FlowAssistant(models.Model):
+
+class FlowAssistant(SoftDeleteFields, models.Model):
     graph = models.OneToOneField(
         "Graph",
         on_delete=models.CASCADE,
@@ -18,12 +23,15 @@ class FlowAssistant(models.Model):
 
     class Meta:
         db_table = "tables_flowassistant"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
         return f"FlowAssistant(graph_id={self.graph_id})"
 
 
-class FlowAssistantConversation(models.Model):
+class FlowAssistantConversation(SoftDeleteFields, models.Model):
     flow_assistant = models.ForeignKey(
         FlowAssistant,
         on_delete=models.CASCADE,
@@ -49,6 +57,9 @@ class FlowAssistantConversation(models.Model):
     class Meta:
         db_table = "tables_flowassistantconversation"
         ordering = ["-started_at"]
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
         return f"FlowAssistantConversation(id={self.pk}, org_user_id={self.organization_user_id})"
@@ -90,7 +101,7 @@ class FlowAssistantConversation(models.Model):
         return result
 
 
-class FlowAssistantMessage(models.Model):
+class FlowAssistantMessage(SoftDeleteFields, models.Model):
     ROLE_SYSTEM = "system"
     ROLE_USER = "user"
     ROLE_ASSISTANT = "assistant"
@@ -128,6 +139,9 @@ class FlowAssistantMessage(models.Model):
         db_table = "tables_flowassistantmessage"
         ordering = ["message_index"]
         unique_together = [("conversation", "message_index")]
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         indexes = [
             models.Index(
                 fields=["conversation", "message_index"],
