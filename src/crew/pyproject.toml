@@ -14,12 +14,15 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
 langgraph = "^0.5.4"
-pyyaml = "6.0.2"
+pyyaml = "==6.0.3"
 python-dotenv = "==1.2.2"
-datamodel-code-generator = "0.26.0"
+datamodel-code-generator = "==0.64.0"
 redis = "==5.3.1"
 loguru = "0.7.2"
-litellm = "1.75.7"
+litellm = "==1.85.1"
+# Pinned to the 0.3 line: 0.3.81+ closes CVE-2025-68664, while 1.x is a
+# breaking LangChain release this orchestrator has not been moved to.
+langchain-core = "==0.3.86"
 
 [tool.poetry.group.dotdict.dependencies]
 dotdict = { path = "../shared/dotdict" }
@@ -27,7 +30,7 @@ dotdict = { path = "../shared/dotdict" }
 [tool.poetry.group.dev.dependencies]
 watchfiles = "^0.22.0"
 pytest = "^8.3.2"
-black = "^25.9.0"
+black = "==26.3.1"
 flake8 = "^7.1.1"
 mypy = "^1.11.1"
 pre-commit = "^3.8.0"
