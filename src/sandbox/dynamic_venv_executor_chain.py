@@ -16,7 +16,7 @@ from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
 
-from secret_scrubber import masking_enabled, scrub
+from secret_scrubber import scrub
 from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
 from utils.environment import build_base_env
@@ -420,7 +420,7 @@ except Exception:
         returncode = process.returncode
 
         secrets = context.get("secrets") or {}
-        mask_secrets = masking_enabled()
+        mask_secrets = settings.MASK_SECRET
         if mask_secrets:
             stderr = scrub(text=stderr, secrets=secrets)
             stdout = scrub(text=stdout, secrets=secrets)
