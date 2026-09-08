@@ -19,17 +19,19 @@
             (keydown)="handleKeydown($event)"
             [disabled]="isDisabled()"
         />
-        <input
-            class="kv-list__input"
-            type="text"
-            [placeholder]="valuePlaceholder()"
-            [ngModel]="displayValue(draftValue())"
-            (ngModelChange)="draftValue.set($event)"
-            (keydown)="handleKeydown($event)"
-            (keydown.escape)="closeSuggestions()"
-            (focus)="onValueFocus($event, 'draft')"
-            [disabled]="isDisabled()"
-        />
+        <div class="kv-list__value-wrapper">
+            <input
+                class="kv-list__input"
+                type="text"
+                [placeholder]="valuePlaceholder()"
+                [ngModel]="displayValue(draftValue())"
+                (ngModelChange)="draftValue.set($event)"
+                (keydown)="handleKeydown($event)"
+                (keydown.escape)="closeSuggestions()"
+                (focus)="onValueFocus($event, 'draft')"
+                [disabled]="isDisabled()"
+            />
+        </div>
         <button
             type="button"
             class="kv-list__add-btn"
