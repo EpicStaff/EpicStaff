@@ -62,7 +62,7 @@
         &--add,
         &--confirm {
             background-color: var(--accent-color, #685fff);
-            color: #fff;
+            color: var(--white);
 
             &:hover:not(:disabled) {
                 opacity: 0.85;
@@ -74,7 +74,7 @@
             color: var(--color-input-text-placeholder);
 
             &:hover:not(:disabled) {
-                background-color: rgba(255, 255, 255, 0.08);
+                background-color: var(--white-alpha-8);
                 color: var(--color-text-primary);
             }
         }
@@ -111,7 +111,7 @@
         }
 
         &--editing {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
             border-left: 2px solid var(--accent-color, #685fff);
         }
     }
@@ -162,7 +162,7 @@
 
         &:hover:not(:disabled) {
             color: var(--color-text-primary);
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: var(--white-alpha-8);
         }
 
         &:disabled {

@@ -1,28 +1,22 @@
-:root {
-    --color-text: #ffffff;
-    --color-text-subtle: rgba(255, 255, 255, 0.7);
-    --color-nodes-sidepanel-bg: #1e1e1e;
-}
-
 .dialog-container {
-    background: var(--color-nodes-sidepanel-bg);
+    background: var(--graphite-875);
     border-radius: 8px;
     padding: 24px;
     min-width: 320px;
     max-width: 100%;
-    color: var(--color-text);
+    color: var(--white);
     display: flex;
     flex-direction: column;
     gap: 16px;
+    font-family: 'Inter', sans-serif;
 }
 
 .dialog-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin: -24px -24px 0 -24px;
-    padding: 24px 24px 16px 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--white-alpha-10);
+    padding-bottom: 16px;
 }
 
 .close-button {
@@ -31,10 +25,10 @@
 }
 
 .dialog-title {
-    font-size: var(--text-h4-size);
-    font-weight: var(--text-h4-weight);
+    font-size: 1.125rem;
+    font-weight: 500;
     margin: 0;
-    color: var(--color-text);
+    color: var(--white);
 }
 
 .dialog-message {
@@ -49,25 +43,25 @@
 
 ::ng-deep .dialog-message strong {
     color: var(--color-text-primary);
-    font-weight: 500;
+    font-weight: 600;
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
 }
 
 .caution-block {
-    border-left: 2px solid var(--color-error);
-    padding: 8px 16px;
-    border-radius: 10px;
+    border-left: 3px solid var(--color-error);
+    padding: 8px 12px;
+    border-radius: 4px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
 }
 
 .caution-title {
     color: var(--color-error);
-    font-size: var(--text-body-medium-size);
-    font-weight: var(--text-body-medium-weight);
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
 .dialog-container.warning .caution-block {
@@ -93,8 +87,8 @@
 }
 
 ::ng-deep .caution-message strong {
-    color: var(--color-text);
-    font-weight: 500;
+    color: var(--white);
+    font-weight: 600;
 }
 
 ::ng-deep .caution-message details {
@@ -127,8 +121,9 @@
     height: 40px;
     padding: 0 24px;
     border-radius: 8px;
-    font-size: var(--text-body-medium-size);
-    font-weight: var(--text-body-medium-weight);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
     line-height: 1;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -138,17 +133,17 @@
     justify-content: center;
 
     &.cancel-button {
-        color: #d9d9de;
-        border: 1px solid #2b2d30;
+        color: var(--color-text-primary);
+        border: 1px solid var(--graphite-750);
 
         &:hover {
-            background: rgba(255, 255, 255, 0.04);
-            border-color: #3a3d40;
+            background: var(--white-alpha-4);
+            border-color: var(--graphite-660);
         }
     }
 
     &.confirm-button {
-        color: #ffffff;
+        color: var(--white);
         border: 1px solid var(--accent-color);
         background: var(--accent-color);
 
@@ -158,7 +153,7 @@
         }
 
         &.danger {
-            color: #d9d9de;
+            color: var(--color-text-primary);
             background: var(--color-error);
             border: none;
 
@@ -168,7 +163,7 @@
         }
 
         &.warning {
-            color: #ffffff;
+            color: var(--white);
             background: var(--accent-color);
             border-color: var(--accent-color);
 
@@ -179,7 +174,7 @@
         }
 
         &.info {
-            color: #ffffff;
+            color: var(--white);
             background: var(--accent-color);
             border-color: var(--accent-color);
 
@@ -217,7 +212,7 @@
 .dialog-icon {
     display: flex;
     align-items: center;
-    color: #2196f3;
+    color: var(--azure-500);
 }
 
 .dialog-container.danger .dialog-icon {
@@ -231,7 +226,6 @@
 }
 
 .dialog-container.warning .cancel-button {
-    color: var(--accent-color);
     border-color: var(--accent-color);
 }
 .dialog-container.danger .cancel-button {

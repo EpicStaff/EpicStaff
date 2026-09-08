@@ -1,8 +1,8 @@
 .copy-to-dialog {
     display: flex;
     flex-direction: column;
-    background-color: #212325;
-    border: 1px solid #2b2d30;
+    background-color: var(--graphite-900);
+    border: 1px solid var(--graphite-750);
     border-radius: 10px;
     width: min(520px, 90vw);
 
@@ -11,7 +11,7 @@
         align-items: center;
         justify-content: space-between;
         padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
 
@@ -69,8 +69,8 @@
         justify-content: space-between;
         padding: 0 0.75rem;
         height: 40px;
-        background-color: #2b2d30;
-        border: 1px solid rgba(217, 217, 222, 0.16);
+        background-color: var(--graphite-750);
+        border: 1px solid var(--fog-alpha-16);
         border-radius: 4px;
         cursor: pointer;
         min-width: 0;
@@ -79,13 +79,13 @@
 
         &:hover,
         &--open {
-            border-color: rgba(217, 217, 222, 0.4);
+            border-color: var(--fog-alpha-40);
         }
     }
 
     &__selector-text {
         font-size: 0.875rem;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -98,7 +98,7 @@
     }
 
     &__selector-chevron {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
         transition: transform 0.15s ease;
 
@@ -112,12 +112,12 @@
         top: calc(100% + 4px);
         left: 0;
         right: 0;
-        background-color: #212325;
-        border: 1px solid #2b2d30;
+        background-color: var(--graphite-900);
+        border: 1px solid var(--graphite-750);
         border-radius: 6px;
         box-shadow:
-            0 2px 8px rgba(0, 0, 0, 0.4),
-            0 8px 24px rgba(0, 0, 0, 0.2);
+            0 2px 8px var(--black-alpha-40),
+            0 8px 24px var(--black-alpha-20);
         z-index: 100;
         display: flex;
         flex-direction: column;
@@ -131,12 +131,12 @@
         gap: 0.5rem;
         padding: 0 0.75rem;
         height: 40px;
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
 
     &__search-icon {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
     }
 
@@ -149,7 +149,7 @@
         color: var(--color-text-primary);
 
         &::placeholder {
-            color: rgba(217, 217, 222, 0.6);
+            color: var(--color-text-secondary);
         }
     }
 
@@ -167,7 +167,7 @@
         justify-content: center;
         height: 80px;
         font-size: 0.875rem;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
     }
 
     &__node {
@@ -181,11 +181,11 @@
         flex-shrink: 0;
 
         &:hover:not(&--selected) {
-            background-color: rgba(217, 217, 222, 0.04);
+            background-color: var(--fog-alpha-4);
         }
 
         &--selected {
-            background-color: rgba(104, 95, 255, 0.1);
+            background-color: var(--purple-alpha-10);
         }
     }
 
@@ -200,7 +200,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         border-radius: 3px;
         transition: transform 0.15s ease;
 
@@ -213,7 +213,7 @@
         }
 
         &:hover {
-            background-color: rgba(217, 217, 222, 0.08);
+            background-color: var(--fog-alpha-8);
         }
     }
 
@@ -254,7 +254,7 @@
 
     &__node-spinner {
         font-size: 0.75rem;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
         flex-shrink: 0;
     }
 
@@ -264,7 +264,7 @@
         justify-content: flex-end;
         gap: 0.75rem;
         padding: 1rem 1.5rem;
-        border-top: 1px solid #2b2d30;
+        border-top: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
 
@@ -282,21 +282,21 @@
 
         &--cancel {
             background: transparent;
-            border: 1px solid #685fff;
-            color: #685fff;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
 
             &:hover {
-                background-color: rgba(104, 95, 255, 0.08);
+                background-color: var(--purple-alpha-8);
             }
         }
 
         &--confirm {
-            background: #685fff;
+            background: var(--accent-color);
             border: none;
-            color: #d9d9de;
+            color: var(--color-text-primary);
 
             &:hover:not(:disabled) {
-                background-color: rgba(104, 95, 255, 0.85);
+                background-color: var(--purple-alpha-85);
             }
 
             &:disabled {

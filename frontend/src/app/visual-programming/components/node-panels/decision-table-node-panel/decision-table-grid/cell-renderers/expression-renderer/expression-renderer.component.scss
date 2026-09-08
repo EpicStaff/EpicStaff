@@ -10,13 +10,13 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
-    color: #d9d9de;
+    color: var(--fog-200);
     width: 100%;
     height: 100%;
 
     ::ng-deep .variable {
-        background-color: rgba(104, 95, 255, 0.2);
-        color: #a5a5ff;
+        background-color: var(--purple-alpha-20);
+        color: var(--lavender-460);
         border-radius: 3px;
         padding: 0 2px;
         margin: 0 -2px;
@@ -24,7 +24,7 @@
     }
 
     ::ng-deep .keyword {
-        color: #c586c0;
+        color: var(--magenta-500);
         font-weight: bold;
         text-transform: uppercase;
     }

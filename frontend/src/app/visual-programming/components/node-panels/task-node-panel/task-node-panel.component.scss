@@ -79,7 +79,7 @@
         margin: 0;
 
         .required {
-            color: var(--color-required-asterisk, var(--accent-color));
+            color: var(--color-required-asterisk);
             margin-left: 2px;
         }
     }
@@ -185,7 +185,7 @@
 
 .task-error {
     font-size: 0.75rem;
-    color: #ff6b6b;
+    color: var(--red-400);
 }
 
 .output-schema-toggle {
@@ -219,7 +219,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--color-text-secondary, #d9d9d999);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition:
         background-color 0.15s ease,
@@ -256,7 +256,7 @@
     }
 
     &__action {
-        color: var(--text-secondary-60);
+        color: var(--fog-alpha-60);
         cursor: pointer;
     }
 }
@@ -266,7 +266,7 @@
 }
 
 ::ng-deep .editor-block__textarea .vht-field {
-    background: var(--color-background-body, #212325);
+    background: var(--color-background-body);
 }
 
 // Right (main) pane — holds whichever of Instructions / Output Schema is
@@ -283,7 +283,7 @@
     border: 1px solid var(--color-divider-subtle);
     border-radius: 8px;
     overflow: hidden;
-    background: var(--color-input-background, #1e1e1e);
+    background: var(--color-input-background);
 
     &__header {
         display: flex;
@@ -303,7 +303,7 @@
         gap: 0.5rem;
 
         .required {
-            color: var(--color-required-asterisk, var(--accent-color));
+            color: var(--color-required-asterisk);
             margin-left: 2px;
         }
     }
@@ -323,7 +323,7 @@
         min-height: 0;
         display: flex;
         flex-direction: column;
-        background: var(--color-background-body, #212325);
+        background: var(--color-background-body);
     }
 
     app-json-editor {
@@ -362,7 +362,7 @@
     flex: 1;
     min-height: 0;
     display: flex;
-    background: var(--color-background-body, #212325) !important;
+    background: var(--color-background-body) !important;
     border: none !important;
     box-shadow: none;
 }
@@ -372,7 +372,7 @@
 }
 
 ::ng-deep .main-editor-pane__textarea .vht-backdrop {
-    background: var(--color-background-body, #212325);
+    background: var(--color-background-body);
 }
 
 ::ng-deep .main-editor-pane__textarea .vht-textarea {

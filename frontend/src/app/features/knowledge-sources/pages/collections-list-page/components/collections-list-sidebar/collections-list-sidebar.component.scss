@@ -13,9 +13,9 @@
     }
 
     &__header-label {
-        font-weight: var(--text-h2-weight);
-        color: var(--color-ks-text);
-        font-size: var(--text-h2-size);
+        font-weight: bold;
+        color: var(--color-text-primary);
+        font-size: 1.25rem;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -23,8 +23,8 @@
     }
 
     &__header-count {
-        font-weight: 400;
-        color: var(--color-ks-secondary);
+        font-weight: normal;
+        color: var(--color-text-muted);
     }
 
     &__actions {
@@ -62,7 +62,7 @@
     &__empty {
         margin: 0.5rem 0 1rem 0;
         font-size: 1.125rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 }
 

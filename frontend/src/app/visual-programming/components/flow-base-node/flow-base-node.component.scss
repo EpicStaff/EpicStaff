@@ -2,7 +2,6 @@
 
 :host {
     position: relative;
-    background-color: red;
 
     background: var(--color-nodes-background);
 
@@ -18,8 +17,8 @@
 
     .node-name-label {
         background-color: var(--color-nodes-actionbar-bg);
-        color: #ccc;
-        font-size: 0.75rem;
+        color: var(--gray-204);
+        font-size: 12px;
         padding: 2px 6px;
         border-radius: 3px;
         white-space: nowrap;
@@ -74,30 +73,30 @@
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        background-color: #2a2a2a;
+        background-color: var(--graphite-780);
         transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 
         &:active:not(.disabled) {
             transform: scale(0.85);
-            background-color: #444;
+            background-color: var(--gray-440);
         }
 
         &:hover {
-            background-color: #3a3a3a;
+            background-color: var(--graphite-600);
         }
 
         &.edit-button i {
-            color: #aaa;
-            font-size: 1rem;
+            color: var(--gray-450);
+            font-size: 16px;
 
             &:hover {
-                color: #fff;
+                color: var(--white);
             }
         }
 
         &.toggle-button i {
-            color: var(--accent-color, #2196f3);
-            font-size: 1rem;
+            color: var(--accent-color);
+            font-size: 16px;
 
             &.disabled {
                 opacity: 0.5;
@@ -107,17 +106,17 @@
         }
 
         &.ungroup-button i {
-            color: var(--accent-color, #2196f3);
-            font-size: 1rem;
+            color: var(--accent-color);
+            font-size: 16px;
         }
 
         &.delete-button i {
-            color: #aaa;
-            font-size: 1rem;
+            color: var(--gray-450);
+            font-size: 16px;
         }
 
         &.delete-button:hover i {
-            color: #ff6b6b;
+            color: var(--red-400);
         }
     }
 
@@ -145,7 +144,7 @@
 
                 i {
                     color: var(--python-node-accent-color);
-                    font-size: 1.5625rem;
+                    font-size: 25px;
                 }
             }
 
@@ -153,7 +152,7 @@
                 display: flex;
                 align-items: center;
                 gap: 6px;
-                font-size: 1rem;
+                font-size: 16px;
                 font-weight: 500;
                 letter-spacing: 0.5px;
                 color: inherit;
@@ -167,18 +166,18 @@
                     width: 7px;
                     height: 7px;
                     border-radius: 50%;
-                    background-color: #22c55e;
+                    background-color: var(--green-480);
                 }
             }
 
             .blocked-badge {
                 margin-left: auto;
-                font-size: 0.6875rem;
+                font-size: 11px;
                 padding: 2px 6px;
                 border-radius: 10px;
-                background: rgba(255, 107, 107, 0.15);
-                color: #ffb3b3;
-                border: 1px solid rgba(255, 107, 107, 0.6);
+                background: var(--red-400-alpha-15);
+                color: var(--red-405);
+                border: 1px solid var(--red-400-alpha-60);
                 white-space: nowrap;
             }
 
@@ -187,7 +186,7 @@
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
-                font-size: 0.6875rem;
+                font-size: 11px;
                 padding: 2px 6px;
                 border-radius: 10px;
                 background: color-mix(in srgb, var(--color-error) 15%, transparent);
@@ -230,13 +229,13 @@
 
     &.is-blocked {
         .interactive-node-body {
-            border-color: rgba(255, 107, 107, 0.8);
-            background-color: rgba(255, 107, 107, 0.05);
+            border-color: var(--red-400-alpha-80);
+            background-color: var(--red-400-alpha-5);
             cursor: not-allowed;
         }
 
         .header .title {
-            color: #ffb3b3;
+            color: var(--red-405);
         }
     }
 

@@ -17,9 +17,10 @@
     }
 
     &__title {
-        font-size: var(--text-h3-size);
-        font-weight: var(--text-h3-weight);
-        line-height: var(--text-h3-line-height);
+        font-family: Inter, sans-serif;
+        font-size: 20px;
+        font-weight: 500;
+        line-height: 1;
         letter-spacing: 0;
         color: var(--color-text-primary);
         margin: 0;
@@ -63,7 +64,7 @@
             }
 
             &:not(:disabled):hover {
-                background-color: rgba(104, 95, 255, 0.85);
+                background-color: var(--purple-alpha-85);
             }
         }
     }
@@ -83,8 +84,9 @@
         align-items: center;
         gap: 8px;
         flex-shrink: 0;
-        font-size: var(--text-body-size);
-        font-weight: var(--text-body-weight);
+        font-family: Inter, sans-serif;
+        font-size: 14px;
+        font-weight: 400;
     }
 
     &__selected-label {
@@ -184,7 +186,7 @@
         }
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
         }
 
         &:hover .files-dialog__link-btn {
@@ -201,7 +203,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         padding: 0;
         flex-shrink: 0;
         transition: transform 0.15s;
@@ -224,7 +226,7 @@
         flex-shrink: 0;
         width: 16px;
         height: 16px;
-        border: 1px solid rgba(217, 217, 222, 1);
+        border: 1px solid var(--fog-200);
         border-radius: 4px;
         background: transparent;
         transition:
@@ -233,14 +235,14 @@
 
         &--checked,
         &--indeterminate {
-            background-color: rgba(217, 217, 222, 1);
-            border-color: rgba(217, 217, 222, 1);
+            background-color: var(--fog-200);
+            border-color: var(--fog-200);
             color: var(--color-background-body);
         }
     }
 
     &__file-icon {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
     }
 
@@ -256,9 +258,9 @@
         flex-shrink: 0;
         margin-left: auto;
         padding-left: 1rem;
-        font-size: var(--text-body-size);
-        font-weight: var(--text-body-weight);
-        color: rgba(217, 217, 222, 0.16);
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--fog-alpha-16);
         white-space: nowrap;
     }
 
@@ -279,7 +281,7 @@
         visibility: hidden;
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.15);
+            background-color: var(--purple-alpha-15);
         }
     }
 }

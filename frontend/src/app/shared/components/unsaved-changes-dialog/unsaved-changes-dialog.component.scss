@@ -104,7 +104,7 @@
 
     &.save-button {
         background: var(--accent-color);
-        color: white;
+        color: var(--white);
 
         &:hover:not(:disabled) {
             background: var(--accent-color-hover);
@@ -115,9 +115,9 @@
         }
 
         &.danger {
-            background: #f44336;
+            background: var(--scarlet-500);
             &:hover:not(:disabled) {
-                background: #d32f2f;
+                background: var(--scarlet-700);
             }
         }
 
@@ -169,10 +169,10 @@
 }
 
 .dialog-container.danger .dialog-icon {
-    color: #f44336;
+    color: var(--scarlet-500);
 }
 .dialog-container.warning .dialog-icon {
-    color: #ffb400;
+    color: var(--amber-450);
 }
 .dialog-container.info .dialog-icon {
     color: var(--accent-color);
@@ -180,21 +180,21 @@
 
 .button.save-button.info {
     background: var(--accent-color);
-    color: white;
+    color: var(--white);
 }
 .button.save-button.info:hover:not(:disabled) {
     background: var(--accent-color-hover);
 }
 .button.save-button.danger {
-    background: #f44336;
-    color: white;
+    background: var(--scarlet-500);
+    color: var(--white);
 }
 .button.save-button.danger:hover:not(:disabled) {
-    background: #d32f2f;
+    background: var(--scarlet-700);
 }
 .button.save-button.warning {
     background: var(--accent-color);
-    color: white;
+    color: var(--white);
 }
 .button.save-button.warning:hover:not(:disabled) {
     background: var(--accent-color-hover);

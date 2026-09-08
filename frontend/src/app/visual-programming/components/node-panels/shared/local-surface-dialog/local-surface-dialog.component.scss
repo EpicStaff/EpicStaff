@@ -64,7 +64,7 @@
 .local-surface-dialog__btn--confirm {
     background-color: var(--accent-color);
     border: none;
-    color: white;
+    color: var(--white);
 
     &:hover {
         opacity: 0.9;
