@@ -1,5 +1,11 @@
 export type AuditEventKind = 'session' | 'node' | 'event';
 export type AuditEventStatus = 'completed' | 'failed';
+export type AuditSessionRowStatus = AuditEventStatus | 'running';
+
+export const AUDIT_MESSAGE_TYPE = {
+    sessionStart: 'session_start',
+    sessionEnd: 'session_end',
+};
 
 export interface AuditSessionEvent {
     id: string;
@@ -7,7 +13,7 @@ export interface AuditSessionEvent {
     session_id: number;
     session_message_id: string | null;
     kind: AuditEventKind;
-    status: AuditEventStatus;
+    status: AuditEventStatus | null;
     name: string;
     flow_name: string;
     node_type: string;
@@ -40,4 +46,20 @@ export interface SessionSearchResponse {
     items: AuditSessionEvent[];
     next_cursor: string | null;
     partial: boolean;
+}
+
+export interface AuditSessionRow {
+    sessionId: number;
+    identityId: string;
+    name: string;
+    flowName: string;
+    runType: string;
+    status: AuditSessionRowStatus;
+    startTime: string | null;
+    endTime: string | null;
+    durationMs: number | null;
+    output: Record<string, unknown> | null;
+    error: string | null;
+    details: Record<string, unknown> | null;
+    children: AuditSessionEvent[];
 }
