@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import settings
-from secret_scrubber import masking_enabled, scrub
+from secret_scrubber import scrub
 from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
 from utils.environment import build_base_env
@@ -371,7 +371,7 @@ except Exception:
         returncode = process.returncode
 
         secrets = context.get("secrets") or {}
-        mask_secrets = masking_enabled()
+        mask_secrets = settings.MASK_SECRET
         if mask_secrets:
             stderr = scrub(text=stderr, secrets=secrets)
             stdout = scrub(text=stdout, secrets=secrets)

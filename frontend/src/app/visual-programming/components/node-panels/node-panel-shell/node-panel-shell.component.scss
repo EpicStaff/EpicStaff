@@ -13,7 +13,7 @@
     border: 1px solid var(--color-divider-subtle);
     display: flex;
     flex-direction: column;
-    color: #fff;
+    color: var(--white);
     overflow: visible;
     transition: width 0.3s ease;
     z-index: 10;
@@ -61,7 +61,7 @@ header {
         .expand-btn {
             background: none;
             border: none;
-            color: #ccc;
+            color: var(--gray-204);
             cursor: pointer;
             padding: 0.25rem;
             border-radius: 4px;
@@ -71,7 +71,7 @@ header {
             justify-content: center;
 
             &:hover:not(:disabled) {
-                background-color: rgba(255, 255, 255, 0.1);
+                background-color: var(--white-alpha-10);
             }
 
             &:disabled {
@@ -97,7 +97,7 @@ header {
                 background-color 0.2s ease-in-out,
                 opacity 0.2s ease-in-out;
             background-color: var(--accent-color);
-            color: white;
+            color: var(--white);
             border: 1px solid var(--accent-color);
             overflow: hidden;
             white-space: nowrap;
@@ -138,18 +138,18 @@ header {
 
             .esc-label {
                 font-size: 0.75rem;
-                color: #666;
+                color: var(--gray-605);
                 font-weight: 500;
                 padding: 0.15rem 0.3rem;
-                border: 1px solid #444;
+                border: 1px solid var(--gray-440);
                 border-radius: 4px;
-                background: #2a2a2a;
+                background: var(--graphite-780);
             }
 
             .close-btn {
                 background: none;
                 border: none;
-                color: #ccc;
+                color: var(--gray-204);
                 cursor: pointer;
                 padding: 0.25rem;
                 border-radius: 4px;
@@ -159,8 +159,8 @@ header {
                 justify-content: center;
 
                 &:hover {
-                    color: #fff;
-                    background-color: rgba(255, 255, 255, 0.1);
+                    color: var(--white);
+                    background-color: var(--white-alpha-10);
                 }
             }
         }

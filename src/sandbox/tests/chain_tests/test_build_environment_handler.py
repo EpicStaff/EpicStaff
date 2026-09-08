@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import settings
 
 from dynamic_venv_executor_chain import AbstractHandler, ExecuteCodeHandler
 from utils.environment import build_base_env
@@ -44,11 +45,6 @@ def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
     return ctx
 
 
-# ---------------------------------------------------------------------------
-# Shared fake-subprocess fixture used by all ExecuteCodeHandler tests
-# ---------------------------------------------------------------------------
-
-
 def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> None:
     """Monkeypatch asyncio.create_subprocess_exec to record env and fake success.
 
@@ -75,11 +71,6 @@ def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> No
         "create_subprocess_exec",
         _fake_create,
     )
-
-
-# ---------------------------------------------------------------------------
-# build_base_env — key set and literal values
-# ---------------------------------------------------------------------------
 
 
 def test_build_base_env_exact_key_set(tmp_path):
@@ -123,13 +114,7 @@ def test_build_base_env_path_ordering(tmp_path):
     assert env["PATH"] == expected
 
 
-# ---------------------------------------------------------------------------
-# SECURITY REGRESSION — build_base_env must not contain any sensitive key
-# ---------------------------------------------------------------------------
-
-
 def test_build_base_env_contains_no_sensitive_keys(tmp_path, monkeypatch):
-    """Regression: pip runs with base env only — no secrets must leak."""
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "root-ak-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "root-sk-must-not-leak")
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
@@ -147,14 +132,8 @@ def test_build_base_env_contains_no_sensitive_keys(tmp_path, monkeypatch):
     assert "ARBITRARY_SECRET" not in env
 
 
-# ---------------------------------------------------------------------------
-# ExecuteCodeHandler — base keys and HOME always present
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_execute_code_handler_base_keys_present(tmp_path, monkeypatch):
-    """Handler env must contain all base keys from build_base_env."""
     recorded: dict = {}
     context = _make_execute_context(tmp_path)
     _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
@@ -181,18 +160,12 @@ async def test_execute_code_handler_home_equals_home_path(tmp_path, monkeypatch)
     assert recorded["env"]["HOME"] == context["home_path"]
 
 
-# ---------------------------------------------------------------------------
-# ExecuteCodeHandler — use_storage=True injects scoped creds, not root creds
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
     tmp_path, monkeypatch
 ):
-    """Regression: scoped keys from context must win over root env keys."""
-    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     # Root credentials — must NOT appear in the subprocess env
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "ROOT-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "ROOT-must-not-leak")
@@ -213,6 +186,8 @@ async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
     assert env["STORAGE_BUCKET_NAME"] == "epicstaff"
     assert env["STORAGE_ACCESS_KEY"] == "scoped-ak"
     assert env["STORAGE_SECRET_KEY"] == "scoped-sk"
+    assert env["STORAGE_ACCESS_KEY"] != "ROOT-must-not-leak"
+    assert env["STORAGE_SECRET_KEY"] != "ROOT-must-not-leak"
 
 
 @pytest.mark.asyncio
@@ -254,11 +229,6 @@ async def test_execute_code_handler_use_storage_absent_omits_storage_vars(
     assert "STORAGE_ACCESS_KEY" not in env
     assert "STORAGE_SECRET_KEY" not in env
     assert "STORAGE_BUCKET_NAME" not in env
-
-
-# ---------------------------------------------------------------------------
-# ExecuteCodeHandler — storage_allowed_paths
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -313,11 +283,6 @@ async def test_execute_code_handler_storage_allowed_paths_missing_omits_key(
     assert "STORAGE_ALLOWED_PATHS" not in recorded["env"]
 
 
-# ---------------------------------------------------------------------------
-# ExecuteCodeHandler — storage_org_prefix
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_execute_code_handler_storage_org_prefix_present(tmp_path, monkeypatch):
     recorded: dict = {}
@@ -355,17 +320,10 @@ async def test_execute_code_handler_storage_org_prefix_missing_omits_key(
     assert "STORAGE_ORG_PREFIX" not in recorded["env"]
 
 
-# ---------------------------------------------------------------------------
-# SECURITY REGRESSION — EPICSTAFF_SECRETS concept is gone
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_execute_code_handler_epicstaff_secrets_never_injected(
+async def test_execute_code_handler_epicstaff_secrets_injected_as_json(
     tmp_path, monkeypatch
 ):
-    """Regression: even if a 'secrets' key exists in context, EPICSTAFF_SECRETS
-    must never appear in the subprocess env — the feature was removed."""
     recorded: dict = {}
     context = _make_execute_context(tmp_path)
     context["secrets"] = {"API_KEY": "abc123", "TOKEN": "xyz"}
@@ -373,17 +331,15 @@ async def test_execute_code_handler_epicstaff_secrets_never_injected(
 
     await ExecuteCodeHandler().handle(context)
 
-    assert "EPICSTAFF_SECRETS" not in recorded["env"]
-
-
-# ---------------------------------------------------------------------------
-# ExecuteCodeHandler — existing smoke-test (kept for non-regression)
-# ---------------------------------------------------------------------------
+    assert "EPICSTAFF_SECRETS" in recorded["env"]
+    assert json.loads(recorded["env"]["EPICSTAFF_SECRETS"]) == {
+        "API_KEY": "abc123",
+        "TOKEN": "xyz",
+    }
 
 
 @pytest.mark.asyncio
 async def test_execute_code_handler_uses_execution_env(tmp_path, monkeypatch):
-    """ExecuteCodeHandler must build env inline — not read context['env']."""
     recorded: dict = {}
 
     class FakeProcess:

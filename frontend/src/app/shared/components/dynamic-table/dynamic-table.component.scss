@@ -41,7 +41,7 @@
         color: var(--accent-color);
 
         &:hover:not(.disabled) {
-            background-color: rgba(104, 95, 255, 0.12);
+            background-color: var(--purple-alpha-12);
         }
 
         &.disabled {
@@ -107,7 +107,7 @@
         font-size: 12px;
         font-weight: 400;
         line-height: 130%;
-        color: rgba(217, 217, 222, 0.8);
+        color: var(--fog-alpha-80);
         border-bottom: 1px solid var(--color-divider-subtle);
         white-space: nowrap;
         user-select: none;
@@ -186,7 +186,7 @@
     &__col-drag-placeholder {
         min-width: 80px;
         height: 36px;
-        background-color: rgba(104, 95, 255, 0.1);
+        background-color: var(--purple-alpha-10);
         border: 1px dashed var(--accent-color, #685fff);
         border-radius: 4px;
     }
@@ -200,7 +200,7 @@
         }
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.03);
+            background-color: var(--white-alpha-3-flat);
         }
 
         &.cdk-drag-animating {
@@ -275,11 +275,11 @@
         font-size: 12px;
         font-weight: 400;
         line-height: 130%;
-        color: rgba(217, 217, 222, 0.8);
+        color: var(--fog-alpha-80);
         outline: none;
 
         &::placeholder {
-            color: rgba(217, 217, 222, 0.35);
+            color: var(--fog-alpha-35);
         }
     }
 
@@ -292,7 +292,7 @@
         background-position: right 8px center;
 
         option {
-            background-color: var(--color-surface, #1e1e2e);
+            background-color: var(--graphite-885);
             color: var(--color-text-primary);
         }
 
@@ -332,7 +332,7 @@
         transition: background-color 0.15s ease;
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.12);
+            background-color: var(--purple-alpha-12);
         }
 
         &--cell {
@@ -362,7 +362,7 @@
 
         &:hover {
             color: var(--color-text-primary);
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: var(--white-alpha-8);
         }
     }
 
@@ -398,10 +398,10 @@
 }
 
 .cdk-drag-preview {
-    background-color: var(--color-surface, #1e1e2e);
+    background-color: var(--graphite-885);
     border: 1px solid var(--accent-color, #685fff);
     border-radius: 4px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 16px var(--black-alpha-40);
     opacity: 0.9;
     display: table;
     width: auto !important;
@@ -420,7 +420,7 @@
 }
 
 .dt__row.cdk-drag-placeholder {
-    background-color: rgba(104, 95, 255, 0.07);
+    background-color: var(--purple-alpha-7);
     opacity: 1;
 
     td {

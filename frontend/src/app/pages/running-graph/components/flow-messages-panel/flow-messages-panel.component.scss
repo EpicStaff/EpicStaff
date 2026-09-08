@@ -43,7 +43,7 @@
         height: 28px;
         min-width: 28px;
         min-height: 28px;
-        border: 1px solid var(--color-ks-hover-row);
+        border: 1px solid var(--graphite-650);
         transition:
             border-color 0.2s ease,
             background-color 0.2s ease,
@@ -51,25 +51,25 @@
         background-color: transparent;
         border-radius: 4px;
         padding: 0;
-        color: var(--color-ks-transparent-text-60);
+        color: var(--fog-alpha-60);
         cursor: pointer;
 
         &:hover,
         &:focus {
-            background-color: var(--color-ks-line);
+            background-color: var(--graphite-700);
             color: var(--color-text-primary);
         }
 
         &:active,
         &[aria-pressed='true'] {
-            background-color: #685fff;
+            background-color: var(--accent-color);
             color: var(--color-text-primary);
-            border-color: #685fff;
+            border-color: var(--accent-color);
         }
 
         &:disabled,
         &[disabled] {
-            color: var(--color-ks-hover-row);
+            color: var(--graphite-650);
             background-color: transparent;
             cursor: not-allowed;
             opacity: 0.5;
@@ -111,7 +111,7 @@
         height: 28px;
         min-width: 28px;
         min-height: 28px;
-        border: 1px solid #685fff;
+        border: 1px solid var(--accent-color);
         transition:
             border-color 0.2s ease,
             background-color 0.2s ease,
@@ -119,20 +119,20 @@
         border-radius: 4px;
         padding: 0;
         cursor: pointer;
-        background-color: #685fff;
+        background-color: var(--accent-color);
         color: var(--color-text-primary);
 
         &:hover,
         &:focus {
-            background-color: var(--color-ks-line);
+            background-color: var(--graphite-700);
             color: var(--color-text-primary);
         }
 
         &:active,
         &[aria-pressed='true'] {
             background-color: transparent;
-            color: #685fff;
-            border-color: #685fff;
+            color: var(--accent-color);
+            border-color: var(--accent-color);
         }
 
         app-svg-icon {
@@ -165,16 +165,16 @@
     max-width: 200px;
     overflow: hidden;
     padding: 4px 8px;
-    border: 1px solid var(--color-ks-line);
+    border: 1px solid var(--graphite-700);
     border-radius: 4px;
-    background: #202022;
-    color: var(--color-text-primary, #fff);
+    background: var(--graphite-960);
+    color: var(--color-text-primary);
     cursor: pointer;
     font-size: 13px;
     transition: border-color 0.2s ease;
 
     &:hover {
-        background-color: #262629;
+        background-color: var(--graphite-955);
     }
 
     &__label {
@@ -202,35 +202,35 @@
     top: calc(100% + 4px);
     right: 0;
     min-width: 200px;
-    background: var(--color-ks-background, #212325);
-    border: 1px solid var(--color-ks-hover-row);
+    background: var(--graphite-900);
+    border: 1px solid var(--graphite-650);
     border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 24px var(--black-alpha-40);
     z-index: 100;
     overflow: hidden;
 
     &__search {
         padding: 8px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid var(--white-alpha-8);
     }
 
     &__input {
         width: 100%;
         padding: 6px 8px;
-        border: 1px solid var(--color-ks-hover-row);
+        border: 1px solid var(--graphite-650);
         border-radius: 4px;
         background: transparent;
-        color: var(--color-text-primary, #fff);
+        color: var(--color-text-primary);
         font-size: 13px;
         outline: none;
         box-sizing: border-box;
 
         &::placeholder {
-            color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.4));
+            color: var(--fog-alpha-60);
         }
 
         &:focus {
-            border-color: var(--db-primary-1, #6562f5);
+            border-color: var(--indigo-650);
         }
     }
 
@@ -248,7 +248,7 @@
         padding: 8px 12px;
         border: none;
         background: transparent;
-        color: var(--color-text-primary, #fff);
+        color: var(--color-text-primary);
         cursor: pointer;
         font-size: 13px;
         text-align: left;
@@ -256,11 +256,11 @@
         font-weight: 400;
 
         &:hover {
-            background: var(--color-ks-line);
+            background: var(--graphite-700);
         }
 
         &:active {
-            border-color: rgba(217, 217, 222, 0.28);
+            border-color: var(--fog-alpha-28);
         }
     }
 
@@ -270,7 +270,7 @@
 
     &__item-time {
         font-size: 10px;
-        color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.6));
+        color: var(--fog-alpha-60);
         flex-shrink: 0;
         margin-left: 12px;
     }
@@ -279,7 +279,7 @@
         padding: 12px;
         text-align: center;
         font-size: 12px;
-        color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.4));
+        color: var(--fog-alpha-40);
     }
 }
 
@@ -290,11 +290,11 @@
     transition: background-color 0.2s ease;
 
     &:hover {
-        background: #685fff;
+        background: var(--accent-color);
     }
 
     &:active {
-        background: #7d7aff;
+        background: var(--purple-450);
     }
 }
 
@@ -310,7 +310,7 @@
         justify-content: center;
         gap: 6px;
         height: 100%;
-        color: var(--color-ks-transparent-text-60, rgba(255, 255, 255, 0.4));
+        color: var(--fog-alpha-40);
         font-size: 13px;
         text-align: center;
     }
@@ -323,7 +323,7 @@
         height: 24px;
         border-radius: 4px;
         background-color: var(--accent-color);
-        color: white;
+        color: var(--white);
         font-size: 12px;
         font-weight: 400;
         vertical-align: middle;
