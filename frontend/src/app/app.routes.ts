@@ -313,7 +313,7 @@ export const routes: Routes = [
                                         (m) => m.ApiKeysTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.Secrets, ActionCode.Read] },
+                                data: { permission: [ResourceCode.ApiKeys, ActionCode.Read] },
                             },
                         ],
                     },

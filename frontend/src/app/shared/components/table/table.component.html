@@ -105,6 +105,7 @@
                                 <app-checkbox
                                     color="secondary"
                                     [checked]="isSelected(item)"
+                                    [disabled]="!rowSelectable()(item)"
                                     (changed)="toggleRow(item)"
                                 />
                             </div>

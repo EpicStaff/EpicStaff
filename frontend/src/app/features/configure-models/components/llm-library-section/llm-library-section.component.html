@@ -74,6 +74,7 @@
             </div>
         }
 
+        <!--        TODO refactor to use app-llm-library-card-->
         @for (provider of filteredVoiceProviders(); track provider.key) {
             <div class="section">
                 <div class="section-header">
@@ -89,6 +90,7 @@
                                     <span class="model">{{ c.model_name }}</span>
                                     <div class="actions">
                                         <button
+                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                                             type="button"
                                             class="action"
                                             title="Edit"
@@ -100,6 +102,7 @@
                                             ></i>
                                         </button>
                                         <button
+                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
                                             type="button"
                                             class="action delete"
                                             title="Delete"

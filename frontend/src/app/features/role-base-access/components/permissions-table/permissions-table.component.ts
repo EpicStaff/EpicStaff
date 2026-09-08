@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
 import { ActionCode, CatalogAction, CatalogResourceType, CatalogResponse, ResourceCode } from '@shared/models';
 
-import { ACTION_ICONS, GROUP_META, GroupMeta, RESOURCE_META } from '../../constants/permission-table.constant';
+import { ACTION_ICONS, GROUP_META, GroupMeta } from '../../constants/permission-table.constant';
 
 interface CatalogGroup {
     key: string;
@@ -71,8 +71,7 @@ export class PermissionsTableComponent {
             .map((g) => ({
                 ...g,
                 resources: g.resources.filter((r) => {
-                    const desc = RESOURCE_META[r.code]?.description ?? '';
-                    return r.label.toLowerCase().includes(term) || desc.toLowerCase().includes(term);
+                    return r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term);
                 }),
             }))
             .filter((g) => g.resources.length > 0);
@@ -311,10 +310,6 @@ export class PermissionsTableComponent {
         if (this.readonly()) return;
         const select = this.groupState(group) !== 'checked';
         this.groupToggle.emit({ groupKey: group.key, select });
-    }
-
-    resourceDescription(resourceCode: ResourceCode): string {
-        return RESOURCE_META[resourceCode]?.description ?? '';
     }
 
     actionLabel(action: CatalogAction): string {

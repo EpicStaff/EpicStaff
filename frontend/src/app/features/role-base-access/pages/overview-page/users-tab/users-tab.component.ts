@@ -109,18 +109,21 @@ export class UsersTabComponent implements OnInit {
      *    Hidden when the caller has no such membership overlap. */
     private readonly rowActions = computed<AppTableRowAction[]>(() => {
         const isSA = this.permissionsService.isSuperadmin;
+        const currentUserId = this.profileService.currentUserSignal()?.id;
         const editAction: AppTableRowAction = {
             icon: 'edit',
             tooltip: 'Edit user',
             onClick: (row) => this.onEditUser(row['id'] as number),
-            hidden: (row) => !isSA && this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0,
+            hidden: (row) =>
+                (!isSA && this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0) ||
+                currentUserId === row['id'],
         };
         if (isSA) {
             const deactivateAction: AppTableRowAction = {
                 icon: 'trash',
                 tooltip: 'Deactivate account',
                 variant: 'danger',
-                hidden: (row) => row['isActive'] !== true,
+                hidden: (row) => row['isActive'] !== true || currentUserId === row['id'],
                 onClick: (row) => this.onDeactivate(row),
             };
             const reactivateAction: AppTableRowAction = {
@@ -339,12 +342,10 @@ export class UsersTabComponent implements OnInit {
             )
             .subscribe({
                 next: (users) => {
-                    const currentUserId = this.profileService.currentUserSignal()?.id;
-                    const filtered = users.filter((u) => u.id !== currentUserId);
-                    this.aggregatedUsers.set(filtered);
-                    this.usersData.set(filtered.map((u) => this.mapToRow(u)));
-                    this.orgFilterItems.set(this.extractOrgFilterItems(filtered));
-                    this.roleFilterItems.set(this.extractRoleFilterItems(filtered));
+                    this.aggregatedUsers.set(users);
+                    this.usersData.set(users.map((u) => this.mapToRow(u)));
+                    this.orgFilterItems.set(this.extractOrgFilterItems(users));
+                    this.roleFilterItems.set(this.extractRoleFilterItems(users));
                 },
             });
     }

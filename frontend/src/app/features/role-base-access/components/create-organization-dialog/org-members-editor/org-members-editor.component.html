@@ -21,6 +21,7 @@
                 [columns]="columns"
                 [data]="filteredUsers()"
                 [selectable]="true"
+                [rowSelectable]="isRowEditable"
                 [initialSelectedIds]="selectionIds()"
                 rowId="id"
                 (selectionChange)="onSelection($event)"
@@ -45,14 +46,18 @@
                     appTableCell="role"
                     let-row
                 >
-                    <app-select
-                        [items]="roleItems()"
-                        [selectedValue]="row['role']"
-                        (selectedValueChange)="onRoleSelected(row, $event)"
-                        placeholder="Select role"
-                        [class.row-unselected]="!selectedUserIds().has(row['id'])"
-                        (click)="$event.stopPropagation()"
-                    />
+                    @if (row['isSelf']) {
+                        <span class="self-role">{{ row['roleName'] ?? '—' }}</span>
+                    } @else {
+                        <app-select
+                            [items]="roleItems()"
+                            [selectedValue]="row['role']"
+                            (selectedValueChange)="onRoleSelected(row, $event)"
+                            placeholder="Select role"
+                            [class.row-unselected]="!selectedUserIds().has(row['id'])"
+                            (click)="$event.stopPropagation()"
+                        />
+                    }
                 </ng-template>
 
                 <div tableEmpty>

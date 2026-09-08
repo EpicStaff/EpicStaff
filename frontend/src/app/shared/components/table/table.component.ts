@@ -44,6 +44,7 @@ export class AppTableComponent {
     rowId = input<string>('id');
     /** Show checkbox column for multi-selection */
     selectable = input<boolean>(false);
+    rowSelectable = input<(row: TableRow) => boolean>(() => true);
     /** Row IDs to pre-select on init */
     initialSelectedIds = input<unknown[]>([]);
     /**
@@ -115,18 +116,24 @@ export class AppTableComponent {
         );
     });
 
+    /** Rows currently visible AND selectable — the pool "select all" and `allSelected` operate on. */
+    private readonly selectablePool = computed<TableRow[]>(() => {
+        const predicate = this.rowSelectable();
+        return this.filteredData().filter((item) => predicate(item));
+    });
+
     readonly allSelected = computed(() => {
-        const data = this.filteredData();
-        if (!data.length) return false;
+        const pool = this.selectablePool();
+        if (!pool.length) return false;
         const ids = this.selectedIds();
-        return data.every((item) => ids.has(this.getRowId(item)));
+        return pool.every((item) => ids.has(this.getRowId(item)));
     });
 
     readonly indeterminate = computed(() => {
         const ids = this.selectedIds();
-        const data = this.filteredData();
-        const count = data.filter((item) => ids.has(this.getRowId(item))).length;
-        return count > 0 && count < data.length;
+        const pool = this.selectablePool();
+        const count = pool.filter((item) => ids.has(this.getRowId(item))).length;
+        return count > 0 && count < pool.length;
     });
 
     readonly selectedItems = computed<TableRow[]>(() => {
@@ -155,12 +162,13 @@ export class AppTableComponent {
         if (this.allSelected()) {
             this.selectedIds.set(new Set());
         } else {
-            this.selectedIds.set(new Set(this.filteredData().map((item) => this.getRowId(item))));
+            this.selectedIds.set(new Set(this.selectablePool().map((item) => this.getRowId(item))));
         }
         this.selectionChange.emit(this.selectedItems());
     }
 
     toggleRow(item: TableRow): void {
+        if (!this.rowSelectable()(item)) return;
         const ids = new Set(this.selectedIds());
         const id = this.getRowId(item);
         if (ids.has(id)) {

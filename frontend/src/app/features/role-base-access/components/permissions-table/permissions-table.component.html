@@ -150,7 +150,7 @@
                             </div>
                             <div class="resource-info">
                                 <span class="resource-name">{{ resource.label }}</span>
-                                <span class="resource-desc">{{ resourceDescription(resource.code) }}</span>
+                                <span class="resource-desc">{{ resource.description }}</span>
                             </div>
                             @for (action of catalog().actions; track action.code) {
                                 <div class="action-cell">

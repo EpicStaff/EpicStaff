@@ -288,6 +288,7 @@
             ></app-flow-export-import-button>
             @if (currentFlowId) {
                 <app-flow-files-button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                     [flowId]="currentFlowId"
                     [flowName]="flowName"
                 ></app-flow-files-button>

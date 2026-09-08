@@ -185,13 +185,12 @@ export class OrgMembersEditorComponent implements OnInit {
         source$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (users) => {
                 const currentUserId = this.profileService.currentUserSignal()?.id;
-                const filtered = users.filter((u) => u.id !== currentUserId);
-                this.usersTableData.set(filtered.map((u) => this.mapToRow(u)));
+                this.usersTableData.set(users.map((u) => this.mapToRow(u, u.id === currentUserId)));
 
                 if (this.isEditMode() && this.organizationId() !== null) {
                     this.originalMembershipByUserId.clear();
                     const preselected: number[] = [];
-                    for (const u of filtered) {
+                    for (const u of users) {
                         const m = this.membershipInThisOrg(u);
                         if (m) {
                             this.originalMembershipByUserId.set(u.id, { membershipId: m.id, roleId: m.role.id });
@@ -213,15 +212,20 @@ export class OrgMembersEditorComponent implements OnInit {
         return user.memberships.find((m) => m.organization.id === orgId);
     }
 
-    private mapToRow(user: AggregatedUser): TableRow {
+    private mapToRow(user: AggregatedUser, isSelf = false): TableRow {
+        const membership = this.membershipInThisOrg(user);
         return {
             id: user.id,
             name: user.displayName,
             avatar: user.avatarUrl,
             email: user.email,
-            role: this.membershipInThisOrg(user)?.role.id ?? null,
+            role: membership?.role.id ?? null,
+            roleName: membership?.role.name ?? null,
+            isSelf,
         };
     }
+
+    readonly isRowEditable = (row: TableRow) => !row['isSelf'];
 
     private getRemovedMembershipIds(): number[] {
         if (!this.isEditMode()) return [];

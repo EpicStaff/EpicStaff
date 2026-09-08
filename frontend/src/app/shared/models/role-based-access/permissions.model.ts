@@ -19,6 +19,7 @@ export enum ResourceCode {
     KnowledgeSources = 'knowledge_sources',
     Files = 'files',
     LlmConfigs = 'llm_configs',
+    ApiKeys = 'api_keys',
     Secrets = 'secrets',
     Voice = 'voice',
 }
