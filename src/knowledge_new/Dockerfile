@@ -53,4 +53,4 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 WORKDIR /app/src/knowledge
 
 # Run module
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD uvicorn main:app --host 0.0.0.0 --port ${KNOWLEDGE_PORT:?}
