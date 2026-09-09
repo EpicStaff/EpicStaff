@@ -51,6 +51,10 @@ class OrgStorageProvisioningService:
         `create_organization()`'s transaction; any failure here propagates
         so the whole organization-creation transaction rolls back -- an
         organization without provisioned storage is not a valid state.
+
+        Also called from `reactivate_organization()`: `deactivate_organization()`
+        removes the old MinIO user entirely (it cannot be un-removed), so
+        reactivation always provisions a fresh one.
         """
         access_key = _org_access_key(org.id)
         secret_key = secrets_module.token_urlsafe(32)

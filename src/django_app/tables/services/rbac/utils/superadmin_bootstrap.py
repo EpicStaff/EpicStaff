@@ -35,7 +35,7 @@ class SuperadminBootstrap:
     """Provisions a superadmin + default-org membership.
 
     Used by both FirstSetupService (initial bootstrap) and ResetUserService
-    (destructive reset, Bug 1 fix). The caller is responsible for the
+    (destructive reset). The caller is responsible for the
     surrounding `transaction.atomic()` and any pre-checks ("no users exist
     yet" for first-setup; the wipe for reset-user).
 
@@ -127,11 +127,11 @@ class SuperadminBootstrap:
         # 3. Truly empty system: create it with the resolved name, flagged.
         #    Delegated to OrganizationManagementService.create_organization()
         #    so the default org gets the same MinIO storage provisioning as
-        #    any other organization (finding #38) — a bare
-        #    Organization.objects.create() here would leave it without
-        #    storage credentials. The nested savepoint keeps a failed insert
-        #    from poisoning the caller's outer atomic block, so the refetch
-        #    below is actually reachable on a lost race.
+        #    any other organization — a bare Organization.objects.create()
+        #    here would leave it without storage credentials. The nested
+        #    savepoint keeps a failed insert from poisoning the caller's
+        #    outer atomic block, so the refetch below is actually reachable
+        #    on a lost race.
         try:
             with transaction.atomic():
                 org = OrganizationManagementService().create_organization(

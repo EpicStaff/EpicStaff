@@ -6,11 +6,6 @@ class StorageCredentialsConfig(AppConfig):
     name = "storage_credentials"
 
     def ready(self):
-        # Registers the custom /ht/ backend only -- no Redis I/O happens
-        # here. The actual issuer/reconciler process is a separate
-        # management command (run_storage_credential_issuer), started once
-        # from entrypoint.sh, not from this hook (which runs in every
-        # worker process).
         from health_check.plugins import plugin_dir
 
         from storage_credentials.health_checks import (

@@ -1,5 +1,6 @@
 from typing import Any
 import uuid
+from datetime import datetime
 from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.storage_credentials import publish_credential_scope
@@ -69,7 +70,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             context=f"PythonCode(id={python_code_id}).secrets",
         )
 
-        execution_id = str(uuid.uuid4())
+        execution_id = self.gen_execution_id()
         PythonCodeResult.objects.create(
             execution_id=execution_id,
             org_id=organization_id,
@@ -112,6 +113,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             channel, code_task_data.model_dump_json()
         )
         return execution_id
+
+    def gen_execution_id(self):
+        now = datetime.now()
+        short_uuid = str(uuid.uuid4())[:4]
+        formatted_time = now.strftime(
+            f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}"
+        )
+        return f"{formatted_time}@{short_uuid}"
 
     def save_execution_result(self, result: CodeResultData) -> bool:
         updated = PythonCodeResult.objects.filter(

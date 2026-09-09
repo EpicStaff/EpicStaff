@@ -1,11 +1,5 @@
 """Thin async gateway over `miniopy_async.MinioAdmin`.
 
-Ported from `sandbox/services/storage_credential_manager.py` (that file is
-deleted as part of this change -- see `.claude/storage-credentials-plan.md`
-section 6). The MinIO Admin API calls themselves were already correct and
-verified there; this class only adds the org-level user operations
-(`add_user`/`remove_user`/named-policy attach) that `sandbox` never needed.
-
 Policy attachment for a named (non-service-account) MinIO user is a two-step
 operation on this server version/client: `policy_add` registers the policy
 under a name, then `policy_set` attaches that name to the user. There is no
