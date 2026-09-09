@@ -1,6 +1,6 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { computeUniqueCopyName } from '@shared/utils';
+import { computeUniqueCopyName, computeUniqueName } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
@@ -213,6 +213,11 @@ export class AgentsPageStore {
             instructions_format: isDoc ? 'markdown' : 'text',
         };
         this.updateAgent(agentId, { metadata });
+    }
+
+    createAndOpenBootDoc(agentId: number): void {
+        this.setBootDoc(agentId, true);
+        this.selectAgentDoc(agentId, 'boot');
     }
 
     /**
@@ -649,17 +654,27 @@ export class AgentsPageStore {
         });
     }
 
-    saveNewAgent(body: CreateAgentDefinitionRequest): void {
-        const trimmed = (body.name ?? '').trim();
+    saveNewAgent(body: CreateAgentDefinitionRequest, openBootDoc = false): void {
+        let trimmed = (body.name ?? '').trim();
         if (!trimmed) {
-            this.toast.error('Agent name is required');
-            return;
+            if (!openBootDoc) {
+                this.toast.error('Agent name is required');
+                return;
+            }
+            trimmed = computeUniqueName(
+                'Untitled Agent',
+                this.agents().map((a) => a.name)
+            );
         }
         this.saving.set(true);
         this.agentsApi.create({ ...body, name: trimmed, instructions: body.instructions ?? '' }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
+                if (openBootDoc) {
+                    this.selectAgentDoc(created.id, 'boot');
+                } else {
+                    this.selectAgent(created.id);
+                }
                 this.saving.set(false);
                 this.toast.success('Agent created');
             },
