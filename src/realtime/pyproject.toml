@@ -35,7 +35,7 @@ dev = [
     "pytest-cov==4.1.0",
     "pytest==7.4.0",
 ]
-secfloor = [
+transitive-pins = [
     "anyio==4.14.2",
     "certifi==2026.7.22",
     "charset-normalizer==3.4.7",

@@ -358,7 +358,7 @@ dev = [
     { name = "pytest-django" },
     { name = "pytest-mock" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "aiohttp" },
     { name = "anyio" },
     { name = "certifi" },
@@ -410,7 +410,7 @@ dev = [
     { name = "pytest-django", specifier = "==4.11.1" },
     { name = "pytest-mock", specifier = "==3.15.1" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "aiohttp", specifier = "==3.14.3" },
     { name = "anyio", specifier = "==4.14.2" },
     { name = "certifi", specifier = "==2026.7.22" },

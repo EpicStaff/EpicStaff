@@ -28,7 +28,7 @@ tests = [
 dev = [
     "watchfiles==1.2.0",
 ]
-secfloor = [
+transitive-pins = [
     "anyio==4.14.2",
     "certifi==2026.7.22",
     "idna==3.18",

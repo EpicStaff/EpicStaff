@@ -447,17 +447,17 @@ dependencies = [
 dev = [
     { name = "watchfiles" },
 ]
-secfloor = [
+tests = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+transitive-pins = [
     { name = "anyio" },
     { name = "certifi" },
     { name = "idna" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
-]
-tests = [
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
 ]
 
 [package.metadata]
@@ -473,17 +473,17 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "watchfiles", specifier = "==1.2.0" }]
-secfloor = [
+tests = [
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "pytest", specifier = "==8.4.2" },
+    { name = "pytest-asyncio", specifier = "==0.25.3" },
+]
+transitive-pins = [
     { name = "anyio", specifier = "==4.14.2" },
     { name = "certifi", specifier = "==2026.7.22" },
     { name = "idna", specifier = "==3.18" },
     { name = "pyjwt", specifier = "==2.13.0" },
     { name = "python-dotenv", specifier = "==1.2.2" },
-]
-tests = [
-    { name = "httpx", specifier = "==0.28.1" },
-    { name = "pytest", specifier = "==8.4.2" },
-    { name = "pytest-asyncio", specifier = "==0.25.3" },
 ]
 
 [[package]]

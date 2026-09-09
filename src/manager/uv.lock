@@ -164,7 +164,7 @@ dependencies = [
 dev = [
     { name = "watchfiles" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "anyio" },
     { name = "idna" },
     { name = "pyjwt" },
@@ -183,7 +183,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "watchfiles", specifier = "==0.22.0" }]
-secfloor = [
+transitive-pins = [
     { name = "anyio", specifier = "==4.14.2" },
     { name = "idna", specifier = "==3.18" },
     { name = "pyjwt", specifier = "==2.13.0" },

@@ -258,7 +258,7 @@ dev = [
 dotdict = [
     { name = "dotdict" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "aiohttp" },
     { name = "anyio" },
     { name = "certifi" },
@@ -299,7 +299,7 @@ dev = [
     { name = "watchfiles", specifier = "==0.22.0" },
 ]
 dotdict = [{ name = "dotdict", directory = "../shared/dotdict" }]
-secfloor = [
+transitive-pins = [
     { name = "aiohttp", specifier = "==3.14.3" },
     { name = "anyio", specifier = "==4.14.2" },
     { name = "certifi", specifier = "==2026.7.22" },

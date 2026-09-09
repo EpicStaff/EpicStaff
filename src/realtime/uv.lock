@@ -1459,7 +1459,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "anyio" },
     { name = "certifi" },
     { name = "charset-normalizer" },
@@ -1499,7 +1499,7 @@ dev = [
     { name = "pytest-asyncio", specifier = "==0.23.0" },
     { name = "pytest-cov", specifier = "==4.1.0" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "anyio", specifier = "==4.14.2" },
     { name = "certifi", specifier = "==2026.7.22" },
     { name = "charset-normalizer", specifier = "==3.4.7" },

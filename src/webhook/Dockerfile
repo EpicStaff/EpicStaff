@@ -30,9 +30,9 @@ ENV UV_NO_BUILD=1 \
 COPY ./webhook/uv.lock ./webhook/pyproject.toml ./webhook/.python-version .
 
 # Install dependencies into /app/src/.venv.
-# --all-groups is required: secfloor (and any other non-dev group) is not
-# installed by default. --no-group dev --no-group tests deliberately excludes
-# dev and tests from this image.
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev --no-group tests deliberately
+# excludes dev and tests from this image.
 #
 # This image has no stage boundary to discard the uv cache automatically, so
 # it must be removed explicitly here.

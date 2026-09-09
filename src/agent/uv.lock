@@ -4,7 +4,7 @@ requires-python = ">=3.12.10, <3.13"
 
 [[package]]
 name = "agent"
-version = "0.1.0"
+version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -20,7 +20,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "aiohttp" },
     { name = "anyio" },
     { name = "authlib" },
@@ -53,7 +53,7 @@ dev = [
     { name = "pytest", specifier = "==9.0.3" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },
 ]
-secfloor = [
+transitive-pins = [
     { name = "aiohttp", specifier = "==3.14.3" },
     { name = "anyio", specifier = "==4.14.2" },
     { name = "authlib", specifier = "==1.7.2" },

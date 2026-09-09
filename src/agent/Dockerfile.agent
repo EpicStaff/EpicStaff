@@ -29,8 +29,8 @@ COPY ./agent/pyproject.toml ./agent/uv.lock ./agent/.python-version ./agent/
 WORKDIR /app/src/agent
 
 # Install dependencies into /app/src/agent/.venv.
-# --all-groups is required: secfloor (and any other non-dev group) is not
-# installed by default. --no-group dev deliberately excludes dev from this
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
 # image.
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 

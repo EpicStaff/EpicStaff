@@ -35,8 +35,8 @@ RUN apt-get update && apt-get install -y \
 COPY ./django_app/pyproject.toml ./django_app/uv.lock ./django_app/.python-version ./
 
 # Install dependencies into /app/src/.venv.
-# --all-groups is required: secfloor (and any other non-dev group) is not
-# installed by default. --no-group dev deliberately excludes dev from this
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
 # image.
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
