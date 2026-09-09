@@ -100,7 +100,7 @@ rely on the process simply starting as proof it's configured.
 
 `src/env.yaml` defines the only non-empty default
 (`http://localhost:4200,http://localhost,https://localhost`), used purely to
-generate `.dev.env`/`.debug.env`/`.env.example` for local development. A real
+generate `src/.env`/`src/.env.example` for local development. A real
 deployment's hand-created `.env` gets no default — set the variable
 explicitly, or `docker compose up` refuses to start.
 
