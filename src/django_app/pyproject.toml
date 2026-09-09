@@ -15,7 +15,7 @@ authors = [
     { name = "Vasyl Cherkes" },
     { name = "Yaroslav Artiushenko" },
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = "==3.12.10"
 dependencies = [
     "apscheduler==3.11.2",
     "beautifulsoup4==4.14.3",

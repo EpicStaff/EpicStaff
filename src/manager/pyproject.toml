@@ -9,7 +9,7 @@ authors = [
     { name = "Artur Drohomeretskyi" },
     { name = "Vasyl Cherkes" },
 ]
-requires-python = ">=3.12,<4.0"
+requires-python = "==3.12.10"
 dependencies = [
     "apscheduler==3.11.2",
     "asyncpg==0.30.0",

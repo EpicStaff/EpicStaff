@@ -6,7 +6,7 @@ authors = [
     { name = "EpicStaff" },
     { name = "Vitalii Povroznyk "},
 ]
-requires-python = ">=3.12.10,<3.13"
+requires-python = "==3.12.10"
 dependencies = [
     "fastmcp==3.4.7",
     "jsonschema==4.26.0",
