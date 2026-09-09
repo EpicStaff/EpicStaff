@@ -1643,7 +1643,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "realtime_agent",
         "realtime_agent_definition",
         "channel_type",
-        "is_active",
+        "is_enabled",
         "token",
     ]
 
@@ -1675,7 +1675,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
         channel = (
-            RealtimeChannel.objects.select_related(
+            RealtimeChannel.enabled_objects.select_related(
                 "twilio__webhook_trigger__ngrok",
                 "twilio__webhook_trigger__localhost",
             )
