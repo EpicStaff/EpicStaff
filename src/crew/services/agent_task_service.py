@@ -66,7 +66,7 @@ class AgentTaskService:
         redis_service: RedisService,
         request_stream: str = "agent.requests",
         result_stream: str = "agent.results",
-        default_timeout_s: float = 600.0,
+        default_timeout: float = 600.0,
         timeout_buffer_s: float = 60.0,
         poll_block_ms: int = 1000,
         request_key_ttl_s: int = 86400,
@@ -74,7 +74,7 @@ class AgentTaskService:
         self.redis_service = redis_service
         self.request_stream = request_stream
         self.result_stream = result_stream
-        self.default_timeout_s = default_timeout_s
+        self.default_timeout_s = default_timeout
         self.timeout_buffer_s = timeout_buffer_s
         self.poll_block_ms = poll_block_ms
         self.request_key_ttl_s = request_key_ttl_s

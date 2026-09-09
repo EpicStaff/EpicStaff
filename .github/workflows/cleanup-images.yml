@@ -53,6 +53,7 @@ jobs:
           ARGS=(
             --org "$ORG"
             --package django_app
+            --package agent
             --package crew
             --package crewdb
             --package manager

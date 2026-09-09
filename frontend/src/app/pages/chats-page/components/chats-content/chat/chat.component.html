@@ -1,17 +1,13 @@
-<div
-    class="chat-container"
-    *ngIf="hasSelection"
->
-    <app-chat-header> </app-chat-header>
+@if (hasSelection) {
+    <div class="chat-container">
+        <app-chat-header> </app-chat-header>
+        <app-chat-messages></app-chat-messages>
+        <app-chat-controls></app-chat-controls>
+    </div>
+}
 
-    <app-chat-messages></app-chat-messages>
-
-    <app-chat-controls></app-chat-controls>
-</div>
-
-<div
-    class="empty-state"
-    *ngIf="!hasSelection"
->
-    <p>Please select an agent to start chatting.</p>
-</div>
+@if (!hasSelection) {
+    <div class="empty-state">
+        <p>Please select an agent to start chatting.</p>
+    </div>
+}

@@ -1,0 +1,25 @@
+@if (clickable()) {
+    <button
+        type="button"
+        class="status-badge"
+        [ngClass]="reviewed() ? 'status-reviewed' : 'status-needs-review'"
+        (click)="onToggle($event)"
+    >
+        <app-svg-icon
+            [icon]="reviewed() ? 'review-checkmark' : 'review-circle'"
+            size="10px"
+        ></app-svg-icon>
+        {{ reviewed() ? 'Reviewed' : notReviewedLabel() }}
+    </button>
+} @else {
+    <span
+        class="status-badge"
+        [ngClass]="reviewed() ? 'status-reviewed' : 'status-needs-review'"
+    >
+        <app-svg-icon
+            [icon]="reviewed() ? 'review-checkmark' : 'review-circle'"
+            size="10px"
+        ></app-svg-icon>
+        {{ reviewed() ? 'Reviewed' : notReviewedLabel() }}
+    </span>
+}

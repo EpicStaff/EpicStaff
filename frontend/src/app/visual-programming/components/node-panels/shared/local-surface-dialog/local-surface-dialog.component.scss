@@ -26,8 +26,8 @@
 
 .local-surface-dialog__title {
     margin: 0;
-    font-size: 20px;
-    font-weight: 500;
+    font-size: var(--text-h3-size);
+    font-weight: var(--text-h3-weight);
     color: var(--color-text-primary);
 }
 
@@ -64,7 +64,7 @@
 .local-surface-dialog__btn--confirm {
     background-color: var(--accent-color);
     border: none;
-    color: white;
+    color: var(--white);
 
     &:hover {
         opacity: 0.9;

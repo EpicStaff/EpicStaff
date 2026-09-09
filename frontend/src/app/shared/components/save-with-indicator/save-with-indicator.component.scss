@@ -26,7 +26,7 @@
     border: 1px solid var(--accent-color);
 
     &:hover {
-        background-color: rgba(154, 115, 175, 0.1);
+        background-color: var(--mauve-alpha-10);
     }
 
     &:disabled {

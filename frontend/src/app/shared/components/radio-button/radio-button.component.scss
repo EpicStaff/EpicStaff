@@ -46,7 +46,7 @@
     }
 
     &:hover:not(.active) {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--white-alpha-5);
     }
 
     &.active {
@@ -88,15 +88,15 @@
         border: none;
         background: transparent;
         color: var(--color-input-text-placeholder);
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         line-height: 1;
         cursor: pointer;
         transition: color 0.2s ease;
         padding: 0;
 
         &--active {
-            color: #fff;
+            color: var(--white);
         }
 
         &:not(&--active):hover {

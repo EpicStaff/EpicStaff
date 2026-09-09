@@ -209,7 +209,7 @@ def test_delete_task_node_removes_inline_surface_and_content(
 
 
 @pytest.mark.django_db
-def test_create_task_node_with_temp_id_wires_edge(auth_client, graph, crew_node):
+def test_create_task_node_with_temp_id_wires_edge(auth_client, graph, start_node):
     temp_id = "aaaa1111-0000-0000-0000-000000000099"
     payload = {
         "save_version": graph.save_version,
@@ -224,7 +224,7 @@ def test_create_task_node_with_temp_id_wires_edge(auth_client, graph, crew_node)
             {
                 "graph": graph.id,
                 "start_temp_id": temp_id,
-                "end_node_id": crew_node.id,
+                "end_node_id": start_node.id,
             }
         ],
     }
@@ -233,7 +233,7 @@ def test_create_task_node_with_temp_id_wires_edge(auth_client, graph, crew_node)
     assert response.status_code == status.HTTP_200_OK, response.content
     new_node = TaskNode.objects.get(graph=graph, node_name="task-temp-id")
     assert Edge.objects.filter(
-        graph=graph, start_node_id=new_node.id, end_node_id=crew_node.id
+        graph=graph, start_node_id=new_node.id, end_node_id=start_node.id
     ).exists()
 
 

@@ -64,7 +64,7 @@
             }
 
             &:not(:disabled):hover {
-                background-color: rgba(104, 95, 255, 0.85);
+                background-color: var(--purple-alpha-85);
             }
         }
     }
@@ -124,7 +124,7 @@
         display: inline-block;
         width: 1px;
         height: 16px;
-        background-color: rgba(217, 217, 222, 0.16);
+        background-color: var(--fog-alpha-16);
         margin: 0 4px;
     }
 
@@ -157,8 +157,8 @@
         border: 1px solid var(--color-flow-card-bg);
         border-radius: 10px;
         box-shadow:
-            0 2px 8px rgba(0, 0, 0, 0.4),
-            0 8px 24px rgba(0, 0, 0, 0.2);
+            0 2px 8px var(--black-alpha-40),
+            0 8px 24px var(--black-alpha-20);
         color: var(--color-text-primary);
         font-family: Inter, sans-serif;
         font-size: 14px;
@@ -218,7 +218,7 @@
     &__formats-section-title {
         font-size: 14px;
         font-weight: 700;
-        color: rgba(172, 172, 172, 1);
+        color: var(--gray-455);
         text-transform: uppercase;
     }
 
@@ -247,7 +247,7 @@
 
     &__formats-divider {
         height: 1px;
-        background-color: rgba(217, 217, 222, 0.16);
+        background-color: var(--fog-alpha-16);
         margin: 0 24px;
     }
 
@@ -307,7 +307,7 @@
         align-items: center;
         padding: 4px 8px;
         border-radius: 4px;
-        background: var(--Transparent-red, rgba(245, 66, 66, 0.08));
+        background: var(--red-alpha-8);
         color: var(--color-error);
         font-family: Inter, sans-serif;
         font-style: normal;
@@ -334,7 +334,7 @@
         transition: background-color 0.15s ease;
 
         &:hover {
-            background-color: rgba(101, 98, 245, 0.1);
+            background-color: var(--indigo-alpha-10);
         }
     }
 
@@ -445,8 +445,8 @@
         border: 1px solid var(--color-divider-regular);
         border-radius: 6px;
         box-shadow:
-            0 2px 8px rgba(0, 0, 0, 0.4),
-            0 8px 24px rgba(0, 0, 0, 0.2);
+            0 2px 8px var(--black-alpha-40),
+            0 8px 24px var(--black-alpha-20);
         z-index: 100;
         display: flex;
         flex-direction: column;
@@ -512,11 +512,11 @@
         min-width: max-content;
 
         &:hover:not(&--selected) {
-            background-color: rgba(217, 217, 222, 0.04);
+            background-color: var(--fog-alpha-4);
         }
 
         &--selected {
-            background-color: rgba(104, 95, 255, 0.1);
+            background-color: var(--purple-alpha-10);
         }
     }
 
@@ -678,13 +678,13 @@
         line-height: 1;
 
         &--unpack {
-            color: var(--color-ks-status-new);
+            color: var(--success-color);
             background-color: var(--transparent-green-8);
         }
 
         &--blocked {
             color: var(--color-error);
-            background-color: rgba(245, 66, 66, 0.08);
+            background-color: var(--red-alpha-8);
         }
     }
 

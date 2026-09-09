@@ -25,8 +25,8 @@
 
         <app-select
             label="Realtime Agent"
-            formControlName="realtime_agent"
-            [items]="agentItems()"
+            formControlName="realtime_agent_definition"
+            [items]="agentDefinitionItems()"
             placeholder="Select an agent"
             tooltipText="The realtime agent that will handle calls on this channel"
         />
@@ -41,6 +41,7 @@
                 formControlName="account_sid"
                 placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 tooltipText="Your Twilio Account SID"
+                [required]="true"
             />
         </div>
 
@@ -85,7 +86,9 @@
         <app-webhook-trigger-field
             formControlName="webhook_trigger"
             [pathRequired]="false"
-            [allowLocalhost]="false"
+            [allowedProviders]="['ngrok']"
+            [showAuth]="false"
+            [existingAuthKindFilter]="'twilio'"
             (triggerResolved)="onTriggerResolved($event)"
         ></app-webhook-trigger-field>
     </form>

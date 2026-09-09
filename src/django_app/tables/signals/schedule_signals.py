@@ -27,10 +27,16 @@ def schedule_trigger_post_save_handler(
     logger.info(f"[ScheduleSignal] post_save triggered for node ID: {node_id}")
 
     try:
+        node_payload = ScheduleTriggerNodePayload.model_validate(instance).model_copy(
+            update={
+                "is_active": instance.is_active
+                and not getattr(instance, "is_soft_deleted", False)
+            }
+        )
         message = ScheduleTriggerNodeUpdateMessage(
             data=ScheduleTriggerNodeUpdateData(
                 action=action,
-                node=ScheduleTriggerNodePayload.model_validate(instance),
+                node=node_payload,
             )
         )
         _publish(message)

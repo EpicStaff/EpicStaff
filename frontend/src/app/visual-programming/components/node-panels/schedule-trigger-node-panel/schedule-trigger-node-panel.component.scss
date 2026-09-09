@@ -103,7 +103,7 @@
     &.has-row-error {
         ::ng-deep .time-picker__trigger,
         ::ng-deep .date-picker__trigger {
-            border-color: #ef4444;
+            border-color: var(--crimson-500);
         }
     }
 }
@@ -115,7 +115,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     line-height: 130%;
-    color: rgba(217, 217, 222, 0.6);
+    color: var(--fog-alpha-60);
 }
 
 .help-icon {
@@ -128,7 +128,7 @@
     transition: color 0.2s ease;
 
     &:hover {
-        color: var(--accent-color-hover, var(--accent-color));
+        color: var(--accent-color-hover);
     }
 }
 
@@ -148,7 +148,7 @@
 
 .row-error {
     font-size: 0.75rem;
-    color: #ef4444;
+    color: var(--crimson-500);
     line-height: 1.4;
     margin-top: 4px;
 }
@@ -188,7 +188,7 @@
 .next-run-label {
     font-size: 0.8125rem;
     font-weight: 400;
-    color: rgba(217, 217, 222, 0.6);
+    color: var(--fog-alpha-60);
     line-height: 130%;
 }
 

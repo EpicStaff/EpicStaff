@@ -1,0 +1,21 @@
+<ng-template
+    #reviewStatusTpl
+    let-node
+>
+    @if (node.codeFieldCount > 0) {
+        <app-review-status-badge
+            [reviewed]="store.isNodeReviewed(node)"
+            [notReviewedLabel]="notReviewedLabel(node)"
+            [clickable]="store.isNodeBadgeClickable(node)"
+            (toggled)="store.toggleNodeReviewed(node)"
+        ></app-review-status-badge>
+    }
+</ng-template>
+
+<app-flow-node-list
+    [nodes]="nodes()"
+    [expanded]="expanded()"
+    [nodeTypeLabels]="nodeTypeLabels()"
+    [trailingTemplate]="reviewStatusTpl"
+    (rowClick)="onRowClick($event)"
+/>

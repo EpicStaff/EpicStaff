@@ -10,7 +10,7 @@
 
     &:hover {
         border-color: var(--gray-600);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 12px var(--black-alpha-15);
     }
 
     .header {
@@ -92,12 +92,12 @@
             }
 
             .add-icon-container {
-                background-color: rgba(104, 95, 255, 0.1);
+                background-color: var(--purple-alpha-10);
                 transition: transform 0.2s ease;
                 transform-origin: center;
 
                 &:hover {
-                    background-color: rgba(104, 95, 255, 0.2);
+                    background-color: var(--purple-alpha-20);
                     transform: scale(1.05);
                 }
 
@@ -112,31 +112,31 @@
             }
 
             .remove-icon-container {
-                background-color: rgba(128, 128, 128, 0.1);
+                background-color: var(--gray-alpha-10);
                 transition: transform 0.2s ease;
                 transform-origin: center;
 
                 .close-icon {
-                    color: #6c757d;
+                    color: var(--gray-585);
                     stroke-width: 1.5;
                     transition: color 0.2s ease;
                 }
 
                 &:hover {
-                    background-color: rgba(220, 53, 69, 0.2);
+                    background-color: var(--crimson-600-alpha-20);
                     transform: scale(1.05);
 
                     .close-icon {
-                        color: var(--red-color, #dc3545);
+                        color: var(--crimson-600);
                     }
                 }
 
                 &:active {
-                    background-color: rgba(220, 53, 69, 0.3);
+                    background-color: var(--crimson-600-alpha-30);
                     transform: scale(0.95);
 
                     .close-icon {
-                        color: var(--red-color, #dc3545);
+                        color: var(--crimson-600);
                     }
                 }
             }
@@ -213,7 +213,7 @@
                 transition: background-color 0.2s ease;
 
                 &:hover {
-                    background-color: var(--gray-850, rgba(255, 255, 255, 0.05));
+                    background-color: var(--gray-850);
                 }
 
                 .icon {
@@ -265,7 +265,7 @@
                     gap: 8px;
 
                     &:hover {
-                        background-color: var(--gray-850, rgba(255, 255, 255, 0.05));
+                        background-color: var(--gray-850);
                     }
 
                     .tool-count {
