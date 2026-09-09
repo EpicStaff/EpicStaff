@@ -5,7 +5,11 @@ from django.db import models
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 
-from tables.models.base_models import DefaultBaseModel
+from tables.models.base_models import (
+    DefaultBaseModel,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -95,7 +99,7 @@ class WebhookTriggerAuthKind(models.TextChoices):
     TWILIO = "twilio"
 
 
-class WebhookTriggerAuth(models.Model):
+class WebhookTriggerAuth(SoftDeleteFields):
     HEADER_NAMES = {
         WebhookTriggerAuthKind.WEBHOOK: "EPICSTAFF_API_KEY",
         WebhookTriggerAuthKind.TELEGRAM: "X-Telegram-Bot-Api-Secret-Token",
@@ -135,6 +139,11 @@ class WebhookTriggerAuth(models.Model):
         """`None` for `kind=twilio` -- that strategy has no `src/webhook`
         header check (see `WebhookTriggerAuthKind.TWILIO`)."""
         return self.HEADER_NAMES.get(self.kind)
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
         return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"

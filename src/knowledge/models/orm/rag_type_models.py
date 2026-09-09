@@ -7,9 +7,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .base_models import Base
+from .mixins import SoftDeleteColumnsMixin
 
 
-class BaseRagType(Base):
+class BaseRagType(SoftDeleteColumnsMixin, Base):
     """
     Common container for all RAG implementations.
 

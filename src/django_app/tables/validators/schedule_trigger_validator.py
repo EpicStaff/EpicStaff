@@ -331,7 +331,7 @@ class ScheduleTriggerValidator:
     @staticmethod
     def _validate_minimum_interval(*, every: int, unit: str) -> None:
         """Reject repeat schedules that would fire faster than the configured floor."""
-        floor = settings.SCHEDULE_MIN_INTERVAL_SECONDS
+        floor = settings.SCHEDULE_MIN_INTERVAL
         if floor <= 0:
             return
         seconds = interval_seconds(unit=unit, every=every)

@@ -136,84 +136,21 @@ async def test_voice_webhook_falls_back_to_ngrok_domain_when_no_live_url(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_voice_webhook_falls_back_to_settings_voice_stream_url(monkeypatch):
-    """When neither `ngrok_domain` nor `live_url` is available, `voice_stream_url`
-    must still fall back to the static `settings.VOICE_STREAM_URL` env var
-    (distinct from the `live_url`-over-settings precedence covered below —
-    here there is no `live_url` to prefer in the first place)."""
-    from api.main import twilio_voice_webhook_channel
-    from core.config import settings
-
-    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(
-        settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream"
-    )
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN, request=_fake_request()
-    )
-
-    assert response.status_code == 200
-    assert (
-        f"wss://static.example.com/voice/{CHANNEL_TOKEN}/stream"
-        in response.body.decode()
-    )
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_prefers_live_url_over_settings_voice_stream_url(monkeypatch):
-    """`ngrok_domain` is legitimately `None` for free-tier/random-subdomain ngrok
-    tunnels. In that case `voice_stream_url` must fall back to `live_url`'s
-    resolved host, not silently degrade to the static `settings.VOICE_STREAM_URL`
-    env var (which may point at a stale/wrong host). This was the encoded bug:
-    the static setting used to be preferred even when a live, active tunnel
-    URL was available.
-    """
-    from api.main import twilio_voice_webhook_channel
-    from core.config import settings
-
-    channel = _channel_with_nested_webhook_trigger(
-        live_url="https://tunnel-only.example.com/webhooks/abc123", ngrok_domain=None
-    )
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(
-        settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream"
-    )
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://tunnel-only.example.com"),
-    )
-
-    assert response.status_code == 200
-    body = response.body.decode()
-    assert f"wss://tunnel-only.example.com/voice/{CHANNEL_TOKEN}/stream" in body
-    assert "static.example.com" not in body
-    assert "/webhooks/" not in body
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_resolves_voice_stream_url_from_live_url_when_no_ngrok_domain(
+async def test_voice_webhook_resolves_stream_and_base_url_from_live_url_when_no_ngrok_domain(
     monkeypatch,
 ):
-    """Mirrors `test_voice_webhook_resolves_base_url_from_live_url_when_no_ngrok_domain`
-    but asserts on `voice_stream_url` instead of the signature-validation
-    `base_url`: a random-subdomain ngrok tunnel (no static `ngrok_domain`
-    configured) must still produce a working Media Stream WS URL derived from
-    the actual, currently-active tunnel host -- with no static-settings
-    fallback needed at all.
+    """`ngrok_config.domain` is the static custom-domain setting and is
+    legitimately `None` for free-tier/random-subdomain ngrok tunnels.
+    `live_url` is provider-agnostic and already reflects the real,
+    currently-active tunnel host in that case, so both `voice_stream_url`
+    (the Media Stream WS target) and `base_url` (used for Twilio signature
+    validation) must fall back to `live_url`'s resolved host rather than
+    fail-closed 503'ing just because `ngrok_domain` is unset. A 200 here
+    proves `base_url` resolved correctly (otherwise signature validation
+    would reject the request); the body assertion proves `voice_stream_url`
+    did too.
     """
     from api.main import twilio_voice_webhook_channel
-    from core.config import settings
 
     channel = _channel_with_nested_webhook_trigger(
         live_url="https://random-abc123.ngrok-free.dev/webhooks/abc123",
@@ -224,7 +161,6 @@ async def test_voice_webhook_resolves_voice_stream_url_from_live_url_when_no_ngr
         return channel.get("realtime_agent_definition"), channel
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(settings, "VOICE_STREAM_URL", "")
 
     response = await twilio_voice_webhook_channel(
         CHANNEL_TOKEN,
@@ -235,65 +171,6 @@ async def test_voice_webhook_resolves_voice_stream_url_from_live_url_when_no_ngr
     body = response.body.decode()
     assert f"wss://random-abc123.ngrok-free.dev/voice/{CHANNEL_TOKEN}/stream" in body
     assert "/webhooks/" not in body
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_resolves_base_url_from_live_url_when_no_ngrok_domain(
-    monkeypatch,
-):
-    """`ngrok_config.domain` is the static custom-domain setting and is
-    legitimately `None` for free-tier/random-subdomain ngrok tunnels.
-    `live_url` is provider-agnostic and already reflects the real,
-    currently-active tunnel host in that case. `base_url` (used for Twilio
-    signature validation) must fall back to `live_url`'s scheme+host instead
-    of fail-closed 503'ing just because the static `ngrok_domain` field is
-    unset — this is the actual regression: random-subdomain ngrok tunnels
-    were fail-closing with 503 even though a valid, live tunnel URL was
-    available.
-    """
-    from api.main import twilio_voice_webhook_channel
-    from core.config import settings
-
-    channel = _channel_with_nested_webhook_trigger(
-        live_url="https://random-abc123.ngrok-free.dev/webhooks/abc123",
-        ngrok_domain=None,
-    )
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    # ngrok_domain is unset, so voice_stream_url falls back to settings —
-    # unrelated to (and independent from) the base_url/live_url fix under
-    # test here, but required for this call to reach a 200 at all.
-    monkeypatch.setattr(settings, "VOICE_STREAM_URL", "wss://static.example.com/voice/stream")
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://random-abc123.ngrok-free.dev"),
-    )
-
-    assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
-    from api.main import twilio_voice_webhook_channel
-    from core.config import settings
-    from fastapi import HTTPException
-
-    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-    monkeypatch.setattr(settings, "VOICE_STREAM_URL", "")
-
-    with pytest.raises(HTTPException) as exc_info:
-        await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
-
-    assert exc_info.value.status_code == 503
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +316,28 @@ async def test_voice_webhook_503s_when_auth_token_not_configured(monkeypatch):
 
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail == "Twilio auth not configured"
+
+
+@pytest.mark.asyncio
+async def test_voice_webhook_503s_when_no_tunnel_domain_configured(monkeypatch):
+    """A channel whose `webhook_trigger` has neither `ngrok_domain` nor
+    `live_url` set must fail closed (503) — there is no static env-var
+    fallback for the Media Stream WS URL, by design."""
+    from api.main import twilio_voice_webhook_channel
+    from fastapi import HTTPException
+
+    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
+
+    async def fake_resolve(channel_token):
+        return channel["realtime_agent_definition"], channel
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "No tunnel domain configured for this channel's webhook_trigger."
 
 
 # ---------------------------------------------------------------------------

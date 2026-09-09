@@ -60,6 +60,11 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 
     _resync_tunnel_registration(id_)
 
+    if getattr(instance, "is_soft_deleted", False):
+        _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)
+        logger.info(f"TelegramTriggerNode {id_} is soft-deleted, skipping registration")
+        return
+
     old_trigger_id = getattr(instance, "_previous_webhook_trigger_id", None)
     new_trigger_id = instance.webhook_trigger_id
     if old_trigger_id is not None and old_trigger_id != new_trigger_id:
@@ -78,7 +83,11 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 
 
 @receiver(post_delete, sender=TelegramTriggerNode)
-def telegram_trigger_post_delete_handler(sender, instance: TelegramTriggerNode, **kwargs):
-    logger.info(f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}")
+def telegram_trigger_post_delete_handler(
+    sender, instance: TelegramTriggerNode, **kwargs
+):
+    logger.info(
+        f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}"
+    )
     _resync_tunnel_registration(instance.pk)
     _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)

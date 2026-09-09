@@ -4,9 +4,13 @@ WORKDIR /app/src/webhook
 
 RUN pip install poetry
 
+# Wheels only. Installing from an sdist runs setup.py / a PEP 517 backend at
+# install time; a wheel does not. No exception is needed here -- every package
+# this service resolves has a Linux wheel.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     POETRY_NO_INTERACTION=1 \
+    POETRY_INSTALLER_ONLY_BINARY=":all:" \
     PYTHONPATH=/app
 
 COPY ./webhook/poetry.lock ./webhook/pyproject.toml .

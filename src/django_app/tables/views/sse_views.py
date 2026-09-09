@@ -24,6 +24,7 @@ from tables.services.redis_service import RedisService
 from tables.services.rbac.session_access import assert_session_org_access
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
 
+from django.conf import settings
 
 redis_service = RedisService()
 
@@ -35,22 +36,14 @@ class RunSessionSSEViewSwagger(APIView):
 
 
 class RunSessionSSEView(SSEMixin):
-    session_status_channel_name = os.environ.get(
-        "SESSION_STATUS_CHANNEL", "sessions:session_status"
-    )
-    graph_messages_channel_name = os.environ.get(
-        "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
-    )
-    memory_updates_channel_name = os.environ.get(
-        "MEMORY_UPDATE_CHANNEL", "memory:update"
-    )
+    session_status_channel_name = settings.SESSION_STATUS_CHANNEL
+    graph_messages_channel_name = settings.GRAPH_MESSAGE_UPDATE_CHANNEL
 
     def __init__(self):
         super().__init__()
         self.handlers = {
             self.session_status_channel_name: self._handle_session_statuses,
             self.graph_messages_channel_name: self._handle_graph_session_messages,
-            self.memory_updates_channel_name: self._handle_memory_updates,
         }
 
     def __log(self, event, state, data):
@@ -123,22 +116,6 @@ class RunSessionSSEView(SSEMixin):
             },
         }
 
-    async def _handle_memory_updates(self, data):
-        queryset = MemoryDatabase.objects.filter(id=data["uuid"]).values(
-            "id", "payload"
-        )
-        exists = await sync_to_async(queryset.exists)()
-        if not exists:
-            yield {"event": "memory-delete", "data": data["uuid"]}
-        else:
-            # Yield memo lazily using sync_to_async generator wrapper
-            async for memo in self.async_orm_generator(queryset):
-                self.__log(event="memory", state="update", data=memo["id"])
-                yield {
-                    "event": "memory",
-                    "data": memo,
-                }
-
     async def get_initial_data(self):
         # Graph Session Messages
         session_id = self.kwargs["session_id"]
@@ -183,7 +160,6 @@ class RunSessionSSEView(SSEMixin):
             channels=[
                 self.graph_messages_channel_name,
                 self.session_status_channel_name,
-                self.memory_updates_channel_name,
             ],
             pubsub=pubsub,
         ):

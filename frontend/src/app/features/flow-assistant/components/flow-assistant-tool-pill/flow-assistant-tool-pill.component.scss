@@ -13,7 +13,7 @@
     border-radius: var(--ep-radius-md);
     background-color: transparent;
     overflow: hidden;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .tool-pill__header {
@@ -37,7 +37,7 @@
 }
 
 .tool-pill__count {
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.4;
 }
 
@@ -62,8 +62,8 @@
 
 .tool-pill__item-label {
     color: var(--ep-color-text-muted);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
 }
 
 .tool-pill__item-args {

@@ -3,6 +3,8 @@ from collections import OrderedDict
 from typing import Optional
 from loguru import logger
 
+import settings
+
 from services.cancellation_token import CancellationToken
 
 from psycopg2.errors import ForeignKeyViolation
@@ -367,6 +369,12 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                 naive_rag_id=naive_rag_id, status=current_status
             )
             logger.info(f"Status '{current_status}' was set to NaiveRag {naive_rag_id}")
+
+    def _create_default_embedding_function(self):
+        """Create default OpenAI embedder."""
+        return OpenAIEmbedder(
+            api_key=settings.OPENAI_API_KEY, model_name="text-embedding-3-small"
+        )
 
     def _set_embedder_config(self, embedder_config):
         """
