@@ -3,6 +3,20 @@
 from django.db import migrations
 
 
+def _merge_headers_into_extra(apps, schema_editor):
+    """Preserve pre-drop `headers` data by folding it into `extra_headers`
+    (extra_headers wins on key collision). Runs before the column is dropped."""
+    for model_name in ("LLMConfig", "DefaultLLMConfig"):
+        Model = apps.get_model("tables", model_name)
+        to_update = []
+        for cfg in Model.objects.exclude(headers={}).exclude(headers=None).iterator():
+            merged = {**cfg.headers, **(cfg.extra_headers or {})}
+            if merged != cfg.extra_headers:
+                cfg.extra_headers = merged
+                to_update.append(cfg)
+        Model.objects.bulk_update(to_update, ["extra_headers"], batch_size=500)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +24,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(_merge_headers_into_extra, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name="defaultllmconfig",
             name="headers",
