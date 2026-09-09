@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only dependency descriptors first (better layer caching)
-COPY ./knowledge/pyproject.toml ./knowledge/uv.lock ./knowledge/.python-version ./
+COPY ./knowledge/pyproject.toml ./knowledge/uv.lock ./
 
 # Copy local libraries before install (required if pyproject.toml references them)
 COPY ./knowledge/libraries/ ./libraries

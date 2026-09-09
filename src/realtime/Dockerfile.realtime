@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only dependency descriptors first (better layer caching)
-COPY ./realtime/pyproject.toml ./realtime/uv.lock ./realtime/.python-version ./
+COPY ./realtime/pyproject.toml ./realtime/uv.lock ./
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is

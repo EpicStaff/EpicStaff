@@ -33,7 +33,7 @@ WORKDIR /app/src
 # /app/src (matching the descriptor-copy convention used by every service in
 # this repo), so the "../shared/dotdict" path in [tool.uv.sources] resolves
 # to /app/shared/dotdict -- one level above WORKDIR, not /app/src/shared.
-COPY ./crew/pyproject.toml ./crew/uv.lock ./crew/.python-version ./
+COPY ./crew/pyproject.toml ./crew/uv.lock ./
 COPY ./shared/dotdict /app/shared/dotdict
 
 # Install dependencies into /app/src/.venv.

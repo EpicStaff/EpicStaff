@@ -27,7 +27,7 @@ ENV UV_NO_BUILD=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-COPY ./webhook/uv.lock ./webhook/pyproject.toml ./webhook/.python-version .
+COPY ./webhook/uv.lock ./webhook/pyproject.toml .
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is

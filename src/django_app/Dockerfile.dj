@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only dependency descriptors first (better layer caching)
-COPY ./django_app/pyproject.toml ./django_app/uv.lock ./django_app/.python-version ./
+COPY ./django_app/pyproject.toml ./django_app/uv.lock ./
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is

@@ -24,7 +24,7 @@ ENV UV_NO_BUILD=1 \
 WORKDIR /app/src
 
 # Copy only dependency descriptors first (better layer caching)
-COPY ./agent/pyproject.toml ./agent/uv.lock ./agent/.python-version ./agent/
+COPY ./agent/pyproject.toml ./agent/uv.lock ./agent/
 
 WORKDIR /app/src/agent
 
