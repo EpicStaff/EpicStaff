@@ -7,7 +7,7 @@
     display: flex;
     gap: 0;
     align-items: stretch;
-    background-color: var(--color-ks-card-background);
+    background-color: var(--color-card-background);
     border-radius: 10px 10px 0 0;
     border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -28,7 +28,7 @@
         border: 1px solid var(--color-divider-subtle);
         border-radius: 4px;
         padding: 0.25rem 0.5rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         font-size: 10px;
         outline: none;
 
@@ -42,7 +42,7 @@
         right: 12px;
         top: 50%;
         transform: translateY(-50%) rotate(180deg);
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         pointer-events: none;
         transition: transform 0.2s;
 
@@ -58,7 +58,7 @@
         width: 150px;
         max-height: 200px;
         overflow-y: auto;
-        background: var(--color-ks-background);
+        background: var(--color-background-body);
         border: 1px solid var(--color-divider-subtle);
         border-radius: 4px;
         z-index: 1000;
@@ -68,7 +68,7 @@
     &__dropdown-item {
         padding: 0.375rem 0.75rem;
         cursor: pointer;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         white-space: nowrap;
         border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -77,7 +77,7 @@
         }
 
         &:hover {
-            background: var(--color-ks-hover-row);
+            background: var(--graphite-650);
         }
 
         &--active {
@@ -109,12 +109,12 @@
         height: 100%;
         background: transparent;
         border: none;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         font-size: 12px;
         outline: none;
 
         &::placeholder {
-            color: var(--color-ks-transparent-text-60);
+            color: var(--color-text-secondary);
         }
     }
 
@@ -132,7 +132,7 @@
         justify-content: center;
         height: 28px;
         padding: 0 0.5rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         font-size: 10px;
         min-width: 2rem;
         text-align: center;
@@ -150,12 +150,12 @@
         background: transparent;
         border: 1px solid var(--color-divider-subtle);
         border-radius: 4px;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         cursor: pointer;
         padding: 0;
 
         &:hover:not(:disabled) {
-            background: var(--color-ks-hover-row);
+            background: var(--graphite-650);
         }
 
         &--disabled {

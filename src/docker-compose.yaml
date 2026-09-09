@@ -276,9 +276,11 @@ services:
     init: true
     environment:
       <<: [*docker-env, *redis-env, *minio-env, *communication-env]
+      CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
+      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:-true}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}

@@ -72,8 +72,7 @@ interface PromptTooltipParams extends ICellRendererParams {
             }
             .chip-id {
                 color: var(--color-text-primary);
-                font-size: 14px;
-                font-family: Inter, sans-serif;
+                font-size: 0.875rem;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -93,7 +92,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 cursor: pointer;
                 padding: 0;
                 color: var(--accent-color);
-                font-size: 16px;
+                font-size: 1rem;
             }
             .open-in-library-btn:hover {
                 background: rgba(104, 95, 255, 0.08);
@@ -106,10 +105,10 @@ interface PromptTooltipParams extends ICellRendererParams {
                 align-items: center;
                 gap: 4px;
                 color: rgba(255, 255, 255, 0.35);
-                font-size: 13px;
+                font-size: 0.8125rem;
             }
             .select-placeholder .ti {
-                font-size: 11px;
+                font-size: 0.6875rem;
                 opacity: 0.7;
             }
             .deleted-prompt-badge {
@@ -121,12 +120,12 @@ interface PromptTooltipParams extends ICellRendererParams {
                 color: var(--error-color, #ff3b30);
                 border: 1px solid rgba(255, 59, 48, 0.35);
                 border-radius: 10px;
-                font-size: 11px;
+                font-size: 0.6875rem;
                 font-weight: 500;
                 white-space: nowrap;
             }
             .deleted-prompt-badge .ti {
-                font-size: 12px;
+                font-size: 0.75rem;
             }
         `,
     ],

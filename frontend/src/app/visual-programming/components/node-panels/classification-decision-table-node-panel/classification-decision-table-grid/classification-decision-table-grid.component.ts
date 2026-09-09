@@ -470,6 +470,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         backgroundColor: '#1e1e1e',
         foregroundColor: '#d4d4d4',
         headerBackgroundColor: '#27272b',

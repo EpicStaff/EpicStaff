@@ -15,8 +15,8 @@
 }
 
 .section-title {
-    font-size: 20px;
-    font-weight: 700;
+    font-size: var(--text-h2-size);
+    font-weight: var(--text-h2-weight);
     color: var(--text);
     margin: 0 0 1rem;
 }
@@ -57,8 +57,8 @@
     justify-content: space-evenly;
     cursor: pointer;
     transition: background 0.3s;
-    font-size: 18px;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
 
     .plus {
         color: var(--purple-primary);
