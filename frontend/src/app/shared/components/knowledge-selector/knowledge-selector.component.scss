@@ -5,7 +5,7 @@
     label {
         display: block;
         margin-bottom: 8px;
-        font-size: 14px;
+        font-size: 0.875rem;
         color: var(--color-text-subtle);
     }
 
@@ -43,7 +43,7 @@
         }
 
         .selected-collection {
-            font-weight: normal;
+            font-weight: 400;
         }
 
         .selector-arrow {

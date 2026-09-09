@@ -1,6 +1,6 @@
 # Frontend
 
-Angular 22 application. Generated with [Angular CLI](https://github.com/angular/angular-cli) v19, upgraded to v22 (EST-3802).
+Angular 22 application. Generated with [Angular CLI](https://github.com/angular/angular-cli) v19, upgraded to v22.
 
 Node version is pinned in [.nvmrc](./.nvmrc) and enforced by the `engines` field; the Docker
 image uses the same version. Install with `npm ci` rather than `npm install` — the lockfile

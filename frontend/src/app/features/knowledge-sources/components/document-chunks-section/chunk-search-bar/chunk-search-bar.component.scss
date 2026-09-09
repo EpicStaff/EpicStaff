@@ -29,7 +29,7 @@
         border-radius: 4px;
         padding: 0.25rem 0.5rem;
         color: var(--color-text-primary);
-        font-size: 10px;
+        font-size: 0.625rem;
         outline: none;
 
         &:focus {
@@ -110,7 +110,7 @@
         background: transparent;
         border: none;
         color: var(--color-text-primary);
-        font-size: 12px;
+        font-size: 0.75rem;
         outline: none;
 
         &::placeholder {
@@ -133,7 +133,7 @@
         height: 28px;
         padding: 0 0.5rem;
         color: var(--color-text-primary);
-        font-size: 10px;
+        font-size: 0.625rem;
         min-width: 2rem;
         text-align: center;
         white-space: nowrap;
