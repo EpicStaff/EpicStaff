@@ -1,6 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { ActionCode, CreateLabelRequest, LabelDto, PatchLabelRequest, ResourceCode, UpdateLabelRequest } from '@shared/models';
+import {
+    ActionCode,
+    CreateLabelRequest,
+    LabelDto,
+    PatchLabelRequest,
+    ResourceCode,
+    UpdateLabelRequest,
+} from '@shared/models';
 import { LabelsApi } from '@shared/services';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';

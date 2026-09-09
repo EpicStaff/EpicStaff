@@ -56,7 +56,8 @@ export class McpToolsService {
                     previous: null,
                     results: [],
                 }),
-            }).pipe(map((response) => response.results));
+            })
+            .pipe(map((response) => response.results));
     }
 
     getMcpToolById(id: number): Observable<GetMcpToolRequest> {
