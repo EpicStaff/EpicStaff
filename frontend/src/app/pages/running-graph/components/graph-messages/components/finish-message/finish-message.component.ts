@@ -181,7 +181,7 @@ import {
                 h3 {
                     color: var(--gray-100);
                     font-size: 1.1rem;
-                    font-weight: 600;
+                    font-weight: 500;
                     margin: 0;
                     white-space: nowrap;
                     overflow: hidden;
@@ -199,8 +199,8 @@ import {
                     margin-left: 12px;
                     padding: 0.15rem 0.6rem;
                     border-radius: 999px;
-                    font-size: 0.75rem;
-                    font-weight: 600;
+                    font-size: var(--text-body-small-large-size);
+                    font-weight: var(--text-body-small-large-weight);
                     white-space: nowrap;
                     flex-shrink: 0;
 

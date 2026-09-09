@@ -3,7 +3,7 @@
 }
 
 .summary-count {
-    font-weight: 600;
+    font-weight: 500;
     color: var(--accent-color);
 }
 
@@ -90,8 +90,8 @@
         .item-name {
             flex: 1;
             min-width: 0;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             line-height: 100%;
             color: var(--color-text-primary);
             word-break: break-word;
@@ -99,8 +99,8 @@
 
         .item-transport {
             margin-left: 4px;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             line-height: 100%;
             color: var(--text-secondary-60);
         }
@@ -115,8 +115,8 @@
         border-radius: 4px;
         background-color: var(--transparent-white-8);
         color: var(--color-text-primary);
-        font-size: 0.75rem;
-        font-weight: 400;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
         letter-spacing: 0.3px;
         white-space: nowrap;
     }

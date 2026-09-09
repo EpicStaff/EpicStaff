@@ -21,8 +21,8 @@
 
     &__title {
         margin: 0;
-        font-size: 20px;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         line-height: 130%;
         letter-spacing: 0;
     }
@@ -70,9 +70,9 @@
 
     &__section-title {
         color: var(--text-secondary-60);
-        font-size: 14px;
-        font-weight: 700;
-        line-height: 130%;
+        font-size: var(--text-body-bold-size);
+        font-weight: var(--text-body-bold-weight);
+        line-height: var(--text-body-bold-line-height);
         letter-spacing: 0;
         text-transform: uppercase;
     }
@@ -100,17 +100,17 @@
         border: 1px solid var(--transparent-white-16);
         background: var(--color-flow-card-bg);
         color: var(--color-text-primary);
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 130%;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         letter-spacing: 0;
     }
 
     &__empty {
         color: var(--text-secondary-60);
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 130%;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         letter-spacing: 0;
     }
 }

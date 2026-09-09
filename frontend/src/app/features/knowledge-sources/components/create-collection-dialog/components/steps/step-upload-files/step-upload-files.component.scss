@@ -70,8 +70,8 @@
 
     &__content-title {
         padding: 1.25rem 0;
-        font-size: 0.875rem;
-        font-weight: 130;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
 
         &--count {
             color: var(--accent-color);

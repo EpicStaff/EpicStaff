@@ -143,6 +143,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         accentColor: '#685fff',
         backgroundColor: '#1e1e20',
         browserColorScheme: 'dark',
@@ -172,7 +173,7 @@ export class DecisionTableGridComponent implements OnInit {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontWeight: '600',
+                fontWeight: '500',
                 color: '#999',
             },
         },
