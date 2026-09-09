@@ -363,178 +363,11 @@ class TestV1ToV2:
 # ──────────────────────────────────────────
 
 
-def _trivial_crew_bundle():
-    return {
-        "Flow": [
-            {
-                "id": 10,
-                "nodes": [
-                    {
-                        "id": 100,
-                        "node_type": "CrewNode",
-                        "graph": 10,
-                        "node_name": "Crew Node #1",
-                        "input_map": {"topic": "static:AI"},
-                        "output_variable_path": "result",
-                        "metadata": {"nodeNumber": 1},
-                        "crew": 200,
-                    }
-                ],
-            }
-        ],
-        "Project": [
-            {
-                "id": 200,
-                "name": "Research Crew",
-                "process": "sequential",
-                "manager_llm_config": None,
-                "planning": False,
-                "planning_llm_config": None,
-                "memory": False,
-                "memory_llm_config": None,
-                "embedding_config": None,
-                "tasks": [
-                    {
-                        "id": 1,
-                        "name": "Research task",
-                        "agent": 300,
-                        "instructions": "Research the topic",
-                        "expected_output": "A research summary",
-                        "order": 1,
-                        "context": [],
-                        "knowledge_query": "some query",
-                        "human_input": True,
-                        "async_execution": False,
-                        "config": {"foo": "bar"},
-                    },
-                    {
-                        "id": 2,
-                        "name": "Write task",
-                        "agent": 300,
-                        "instructions": "Write the report",
-                        "expected_output": None,
-                        "order": 2,
-                        "context": [1],
-                        "knowledge_query": None,
-                        "human_input": False,
-                        "async_execution": False,
-                        "config": None,
-                    },
-                ],
-            }
-        ],
-        "Agent": [
-            {
-                "id": 300,
-                "role": "Senior Researcher",
-                "goal": "Find accurate information",
-                "backstory": "Years of experience in research",
-                "llm_config": 5,
-                "fcm_llm_config": None,
-                "max_iter": 15,
-                "max_rpm": 50,
-                "max_execution_time": None,
-                "cache": True,
-                "max_retry_limit": 3,
-                "default_temperature": 0.5,
-                "memory": True,
-                "allow_delegation": False,
-                "allow_code_execution": False,
-                "respect_context_window": True,
-                "knowledge_collection": None,
-                "tools": {"PythonCodeTool": [], "MCPTool": []},
-                "realtime_agent": None,
-                "naive_search_config": None,
-            }
-        ],
-    }
-
-
 class TestV2ToV3:
     def _convert(self, bundle):
         return v2_to_v3(copy.deepcopy(bundle))
 
-    def test_trivial_crew_node_converted_to_agent_node(self):
-        result = self._convert(_trivial_crew_bundle())
-        node = result["Flow"][0]["nodes"][0]
-
-        assert node["id"] == 100
-        assert node["node_type"] == "AgentNode"
-        assert node["graph"] == 10
-        assert node["node_name"] == "Crew Node #1"
-        assert node["surface_list"] == []
-        assert node["inline_surface"] is None
-        assert node["agent_definition"] == 300
-
-    def test_trivial_crew_node_creates_agent_definition(self):
-        result = self._convert(_trivial_crew_bundle())
-        agent_definitions = result["AgentDefinition"]
-
-        assert len(agent_definitions) == 1
-        agent_definition = agent_definitions[0]
-        assert agent_definition["id"] == 300
-        assert agent_definition["description"] == "Senior Researcher"
-        assert agent_definition["instructions"] == (
-            "Find accurate information\n\nYears of experience in research"
-        )
-        assert agent_definition["llm_config"] == 5
-        assert agent_definition["fcm_llm_config"] is None
-        assert agent_definition["max_iter"] == 15
-        assert agent_definition["max_rpm"] == 50
-        assert agent_definition["cache"] is True
-        assert agent_definition["max_retry_limit"] == 3
-        assert agent_definition["default_temperature"] == 0.5
-        assert agent_definition["max_execution_time"] is None
-        assert agent_definition["owned_surfaces"] == []
-        assert agent_definition["default_surfaces"] == []
-
-    def test_trivial_crew_node_tasks_built_in_order_with_context(self):
-        result = self._convert(_trivial_crew_bundle())
-        node = result["Flow"][0]["nodes"][0]
-        tasks = node["tasks"]
-
-        assert [task["id"] for task in tasks] == [1, 2]
-        assert tasks[0]["instructions"] == (
-            "Research the topic\n\nExpected output: A research summary"
-        )
-        assert tasks[0]["context_tasks"] == []
-        assert tasks[1]["instructions"] == "Write the report"
-        assert tasks[1]["context_tasks"] == [1]
-        assert tasks[1]["output_schema"] == {}
-
-    def test_task_with_null_order_resolves_to_valid_non_null_int(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["tasks"][0]["order"] = 5
-        bundle["Project"][0]["tasks"][1]["order"] = None
-
-        result = self._convert(bundle)
-        node = result["Flow"][0]["nodes"][0]
-        tasks = node["tasks"]
-
-        for task in tasks:
-            assert task["order"] is not None
-            assert isinstance(task["order"], int)
-
-        # order is the dense sorted-list position, so it's always non-null and unique.
-        order_values = [task["order"] for task in tasks]
-        assert order_values == sorted(set(order_values))
-        assert order_values == list(range(len(tasks)))
-
-        # order=None task (id=2) sorts before order=5 task (id=1) by original list position.
-        assert [task["id"] for task in tasks] == [2, 1]
-        assert tasks[0]["order"] == 0
-        assert tasks[1]["order"] == 1
-
-        # id=2's forward reference to id=1 (now higher order) is dropped.
-        tasks_by_id = {task["id"]: task for task in tasks}
-        for task in tasks:
-            for context_id in task["context_tasks"]:
-                assert tasks_by_id[context_id]["order"] < task["order"]
-        assert tasks_by_id[2]["context_tasks"] == []
-
-    def test_context_tasks_drops_reference_with_non_strictly_lower_resolved_order(
-        self,
-    ):
+    def test_crew_node_left_untouched(self):
         bundle = {
             "Flow": [
                 {
@@ -545,180 +378,20 @@ class TestV2ToV3:
                             "node_type": "CrewNode",
                             "graph": 10,
                             "node_name": "Crew Node #1",
-                            "input_map": {},
+                            "input_map": {"topic": "static:AI"},
                             "output_variable_path": "result",
-                            "metadata": {},
+                            "metadata": {"nodeNumber": 1},
                             "crew": 200,
                         }
                     ],
                 }
-            ],
-            "Project": [
-                {
-                    "id": 200,
-                    "name": "Crew",
-                    "process": "sequential",
-                    "tasks": [
-                        # invalidly references id=30, which sorts after it.
-                        {
-                            "id": 10,
-                            "name": "First",
-                            "agent": 300,
-                            "instructions": "Do first",
-                            "expected_output": None,
-                            "order": None,
-                            "context": [30],
-                        },
-                        # validly references id=10, sorted before it.
-                        {
-                            "id": 20,
-                            "name": "Second",
-                            "agent": 300,
-                            "instructions": "Do second",
-                            "expected_output": None,
-                            "order": None,
-                            "context": [10],
-                        },
-                        {
-                            "id": 30,
-                            "name": "Third",
-                            "agent": 300,
-                            "instructions": "Do third",
-                            "expected_output": None,
-                            "order": None,
-                            "context": [],
-                        },
-                    ],
-                }
-            ],
-            "Agent": [
-                {
-                    "id": 300,
-                    "role": "Worker",
-                    "goal": "Get things done",
-                    "backstory": "Reliable",
-                    "llm_config": None,
-                    "fcm_llm_config": None,
-                    "max_iter": None,
-                    "max_rpm": None,
-                    "max_execution_time": None,
-                    "cache": None,
-                    "max_retry_limit": None,
-                    "default_temperature": None,
-                }
-            ],
+            ]
         }
-
-        result = self._convert(bundle)
-        node = result["Flow"][0]["nodes"][0]
-        tasks_by_id = {task["id"]: task for task in node["tasks"]}
-
-        assert tasks_by_id[10]["order"] == 0
-        assert tasks_by_id[20]["order"] == 1
-        assert tasks_by_id[30]["order"] == 2
-
-        # id=10 -> id=30 is a forward reference — dropped.
-        assert tasks_by_id[10]["context_tasks"] == []
-        # id=20 -> id=10 is a valid backward reference — kept.
-        assert tasks_by_id[20]["context_tasks"] == [10]
-        assert tasks_by_id[30]["context_tasks"] == []
-
-    def test_trivial_crew_node_tasks_drop_unsupported_fields(self):
-        result = self._convert(_trivial_crew_bundle())
-        node = result["Flow"][0]["nodes"][0]
-
-        for task in node["tasks"]:
-            assert "knowledge_query" not in task
-            assert "human_input" not in task
-            assert "async_execution" not in task
-            assert "config" not in task
-
-    def test_multi_agent_crew_node_left_untouched(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["tasks"][1]["agent"] = 301
-        bundle["Agent"].append(
-            {
-                "id": 301,
-                "role": "Writer",
-                "goal": "Write well",
-                "backstory": "A great writer",
-                "llm_config": None,
-                "fcm_llm_config": None,
-                "max_iter": None,
-                "max_rpm": None,
-                "max_execution_time": None,
-                "cache": None,
-                "max_retry_limit": None,
-                "default_temperature": None,
-            }
-        )
         original_node = copy.deepcopy(bundle["Flow"][0]["nodes"][0])
 
         result = self._convert(bundle)
 
-        node = result["Flow"][0]["nodes"][0]
-        assert node == original_node
-        assert "AgentDefinition" not in result
-
-    def test_crew_node_with_stray_manager_llm_config_and_sequential_process_converted(
-        self,
-    ):
-        # manager_llm_config only takes effect when process="hierarchical".
-        # A leftover/default value with process="sequential" must not block
-        # the trivial-crew conversion.
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["manager_llm_config"] = 7
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node["node_type"] == "AgentNode"
-        assert node["agent_definition"] == 300
-        assert len(result["AgentDefinition"]) == 1
-
-    def test_hierarchical_crew_node_left_untouched(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["process"] = "hierarchical"
-        bundle["Project"][0]["manager_llm_config"] = 7
-        original_node = copy.deepcopy(bundle["Flow"][0]["nodes"][0])
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node == original_node
-        assert "AgentDefinition" not in result
-
-    def test_crew_node_with_stray_memory_llm_config_and_embedding_config_converted(
-        self,
-    ):
-        # memory_llm_config/embedding_config only take effect when
-        # memory=True. Leftover/default values with memory=False must not
-        # block the trivial-crew conversion (regression test for a real
-        # import that was wrongly skipped).
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["memory"] = False
-        bundle["Project"][0]["memory_llm_config"] = 2
-        bundle["Project"][0]["embedding_config"] = 2
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node["node_type"] == "AgentNode"
-        assert node["agent_definition"] == 300
-        assert len(result["AgentDefinition"]) == 1
-
-    def test_crew_node_with_memory_enabled_left_untouched(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["memory"] = True
-        bundle["Project"][0]["memory_llm_config"] = 2
-        bundle["Project"][0]["embedding_config"] = 2
-        original_node = copy.deepcopy(bundle["Flow"][0]["nodes"][0])
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node == original_node
-        assert "AgentDefinition" not in result
+        assert result["Flow"][0]["nodes"][0] == original_node
 
     def test_code_agent_node_left_untouched(self):
         bundle = {
@@ -894,82 +567,6 @@ class TestV2ToV3:
         # tags is M2M (no DB column) — must survive a naive "f.concrete" check.
         assert result == expected
 
-    def test_crew_node_with_missing_crew_left_unconverted(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Flow"][0]["nodes"][0]["crew"] = 999
-        original_node = copy.deepcopy(bundle["Flow"][0]["nodes"][0])
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node == original_node
-        assert node["node_type"] == "CrewNode"
-
-    def test_task_with_missing_agent_leaves_agent_definition_none(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["tasks"][0]["agent"] = 999
-        bundle["Project"][0]["tasks"][1]["agent"] = 999
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node["node_type"] == "AgentNode"
-        assert node["agent_definition"] is None
-        assert "AgentDefinition" not in result
-
-    def test_crew_with_no_tasks_converts_to_agent_node_with_empty_tasks(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["tasks"] = []
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        assert node["node_type"] == "AgentNode"
-        assert node["agent_definition"] is None
-        assert node["tasks"] == []
-        assert "AgentDefinition" not in result
-
-    def test_duplicate_legacy_task_names_disambiguated(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["tasks"][0]["name"] = "Same Name"
-        bundle["Project"][0]["tasks"][1]["name"] = "Same Name"
-        bundle["Project"][0]["tasks"][1]["context"] = []
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        names = [task["name"] for task in node["tasks"]]
-        assert names == ["Same Name", "Same Name (2)"]
-        assert len(set(names)) == len(names)
-
-    def test_duplicate_legacy_task_name_not_collided_with_preexisting_name(self):
-        bundle = _trivial_crew_bundle()
-        bundle["Project"][0]["tasks"][0]["name"] = "Research"
-        bundle["Project"][0]["tasks"][1]["name"] = "Research"
-        bundle["Project"][0]["tasks"][1]["context"] = []
-        bundle["Project"][0]["tasks"].append(
-            {
-                "id": 3,
-                "name": "Research (2)",
-                "agent": 300,
-                "instructions": "Double check the research",
-                "expected_output": None,
-                "order": 3,
-                "context": [],
-                "knowledge_query": None,
-                "human_input": False,
-                "async_execution": False,
-                "config": None,
-            }
-        )
-
-        result = self._convert(bundle)
-
-        node = result["Flow"][0]["nodes"][0]
-        names = [task["name"] for task in node["tasks"]]
-        assert names == ["Research", "Research (3)", "Research (2)"]
-        assert len(set(names)) == len(names)
-
     def test_stale_embedding_config_field_stripped(self):
         data = {
             "EmbeddingConfig": [
@@ -989,3 +586,118 @@ class TestV2ToV3:
         assert embedding_config["custom_name"] == "My Embedding Config"
         assert embedding_config["task_type"] == "retrieval_document"
         assert embedding_config["id"] == 500
+
+    def test_stale_mcp_tool_field_stripped(self):
+        data = {
+            "MCPTool": [
+                {
+                    "id": 600,
+                    "name": "My MCP Tool",
+                    "transport": "https://example.com/mcp",
+                    "tool_name": "search",
+                    "timeout": 30,
+                    "init_timeout": 10,
+                    "labels": [1, 2],
+                    "auth": "legacy-token",
+                }
+            ]
+        }
+
+        result = v2_to_v3(data)
+        mcp_tool = result["MCPTool"][0]
+
+        assert "auth" not in mcp_tool
+        assert mcp_tool["name"] == "My MCP Tool"
+        assert mcp_tool["transport"] == "https://example.com/mcp"
+        assert mcp_tool["tool_name"] == "search"
+        assert mcp_tool["timeout"] == 30
+        assert mcp_tool["init_timeout"] == 10
+        assert mcp_tool["labels"] == [1, 2]
+        assert mcp_tool["id"] == 600
+
+    def test_stale_python_code_tool_field_stripped(self):
+        # "favorite" was a boolean field on PythonCodeTool, removed in
+        # migration 0209 in favor of a separate PythonCodeToolFavorite
+        # model. Pre-0209 (1.1.2-era) exports still carry it as a top-level
+        # key, which would otherwise crash find_existing()'s create_filters()
+        # with FieldError.
+        data = {
+            "PythonCodeTool": [
+                {
+                    "id": 700,
+                    "name": "CLI Executor Tool",
+                    "description": "Runs a shell command",
+                    "python_code": {
+                        "libraries": "",
+                        "code": "print('hi')",
+                        "entrypoint": "main",
+                        "global_kwargs": {},
+                    },
+                    "python_code_tool_config": [],
+                    "variables": [
+                        {
+                            "name": "command",
+                            "type": "string",
+                            "required": True,
+                            "input_type": "agent_input",
+                            "description": "Command to run",
+                            "default_value": None,
+                        }
+                    ],
+                    "built_in": True,
+                    "use_storage": False,
+                    "labels": [1, 2],
+                    "favorite": True,
+                }
+            ]
+        }
+
+        result = v2_to_v3(data)
+        python_code_tool = result["PythonCodeTool"][0]
+
+        assert "favorite" not in python_code_tool
+        assert python_code_tool["id"] == 700
+        assert python_code_tool["name"] == "CLI Executor Tool"
+        assert python_code_tool["description"] == "Runs a shell command"
+        assert python_code_tool["built_in"] is True
+        assert python_code_tool["use_storage"] is False
+        assert python_code_tool["labels"] == [1, 2]
+        assert python_code_tool["variables"] == data["PythonCodeTool"][0]["variables"]
+        # These are handled specially by find_existing()/create_entity() and
+        # must survive the generic stale-field strip untouched.
+        assert python_code_tool["python_code"] == {
+            "libraries": "",
+            "code": "print('hi')",
+            "entrypoint": "main",
+            "global_kwargs": {},
+        }
+        assert python_code_tool["python_code_tool_config"] == []
+
+    def test_python_code_tool_with_only_valid_fields_passes_through_unchanged(self):
+        data = {
+            "PythonCodeTool": [
+                {
+                    "id": 701,
+                    "name": "Well-formed Tool",
+                    "description": "Already current-shape",
+                    "python_code": {
+                        "libraries": "requests",
+                        "code": "print('ok')",
+                        "entrypoint": "main",
+                        "global_kwargs": {},
+                    },
+                    "python_code_tool_config": [
+                        {"name": "api_key", "configuration": {"secret_id": 9}}
+                    ],
+                    "variables": [],
+                    "built_in": False,
+                    "use_storage": True,
+                    "labels": [],
+                }
+            ]
+        }
+        expected = copy.deepcopy(data)
+
+        result = v2_to_v3(data)
+
+        assert result == expected

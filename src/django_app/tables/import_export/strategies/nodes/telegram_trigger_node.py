@@ -1,6 +1,6 @@
 from typing import Optional
 
-from tables.models import TelegramTriggerNode
+from tables.models import TelegramTriggerNode, WebhookTrigger
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.telegram_trigger_node import (
     TelegramTriggerNodeImportSerializer,
@@ -34,8 +34,19 @@ class TelegramTriggerNodeStrategy(EntityImportExportStrategy):
     ) -> TelegramTriggerNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
         fields_data = data.pop("fields", [])
+        old_trigger_id = data.pop("webhook_trigger", None)
+        new_trigger_id = id_mapper.get_or_none(
+            EntityType.WEBHOOK_TRIGGER, old_trigger_id
+        )
+        webhook_trigger = WebhookTrigger.objects.filter(id=new_trigger_id).first()
 
-        serializer = self.serializer_class(data={**data, "graph": graph_id})
+        serializer = self.serializer_class(
+            data={
+                **data,
+                "graph": graph_id,
+                "webhook_trigger_id": getattr(webhook_trigger, "id", None),
+            }
+        )
         serializer.is_valid(raise_exception=True)
         node = serializer.save()
 

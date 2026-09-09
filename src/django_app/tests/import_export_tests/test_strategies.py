@@ -476,8 +476,52 @@ class TestWebhookTriggerStrategy:
         WebhookTrigger.objects.create(path="other-org-webhook", org=other_org)
 
         strategy = _get_strategy(EntityType.WEBHOOK_TRIGGER)
-        scoped = WebhookTrigger.objects.filter(
-            strategy.get_org_scope_q(default_org.id)
-        )
+        scoped = WebhookTrigger.objects.filter(strategy.get_org_scope_q(default_org.id))
 
         assert list(scoped) == [own]
+
+
+# ──────────────────────────────────────────
+# TelegramTriggerNode Strategy
+# ──────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestTelegramTriggerNodeStrategy:
+    def test_create_entity_remaps_webhook_trigger_fk(self, rich_seeded_db, default_org):
+        """Regression test: create_entity used to pass the raw OLD
+        webhook_trigger id straight through to the serializer instead of
+        remapping it via id_mapper, which 400s on any target DB where that
+        old id doesn't exist ("Invalid pk ... - object does not exist.")."""
+        graph = rich_seeded_db["graph"]
+        old_trigger = WebhookTrigger.objects.create(path="old-webhook", org=default_org)
+        new_trigger = WebhookTrigger.objects.create(path="new-webhook", org=default_org)
+
+        mapper = IDMapper()
+        mapper.map(EntityType.WEBHOOK_TRIGGER, old_trigger.id, new_trigger.id)
+
+        strategy = _get_strategy(EntityType.TELEGRAM_TRIGGER_NODE)
+        data = {
+            "node_name": "telegram_node_1",
+            "graph": graph.id,
+            "webhook_trigger": old_trigger.id,
+            "fields": [],
+        }
+
+        node = strategy.create_entity(data, mapper)
+
+        assert node.webhook_trigger_id == new_trigger.id
+
+    def test_create_entity_with_no_webhook_trigger(self, rich_seeded_db):
+        graph = rich_seeded_db["graph"]
+        strategy = _get_strategy(EntityType.TELEGRAM_TRIGGER_NODE)
+        data = {
+            "node_name": "telegram_node_2",
+            "graph": graph.id,
+            "webhook_trigger": None,
+            "fields": [],
+        }
+
+        node = strategy.create_entity(data, IDMapper())
+
+        assert node.webhook_trigger_id is None
