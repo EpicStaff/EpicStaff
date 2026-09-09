@@ -44,18 +44,18 @@ x-communication-env: &communication-env
   REALTIME_AGENTS_SCHEMA_CHANNEL: ${REALTIME_AGENTS_SCHEMA_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
-x-communication-env: &communication_env
-  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
-  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
-  COMMUNICATION_BROKER_HOST: ${COMMUNICATION_BROKER_HOST}
-  COMMUNICATION_BROKER_PORT: ${COMMUNICATION_BROKER_PORT}
-  COMMUNICATION_BROKER_NAME: ${COMMUNICATION_BROKER_NAME}
-
-  COMMUNICATION_STORAGE_USER: ${COMMUNICATION_STORAGE_USER}
-  COMMUNICATION_STORAGE_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
-  COMMUNICATION_STORAGE_HOST: ${COMMUNICATION_STORAGE_HOST}
-  COMMUNICATION_STORAGE_PORT: ${COMMUNICATION_STORAGE_PORT}
-  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
+#x-communication-env: &communication_env
+#  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
+#  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
+#  COMMUNICATION_BROKER_HOST: ${COMMUNICATION_BROKER_HOST}
+#  COMMUNICATION_BROKER_PORT: ${COMMUNICATION_BROKER_PORT}
+#  COMMUNICATION_BROKER_NAME: ${COMMUNICATION_BROKER_NAME}
+#
+#  COMMUNICATION_STORAGE_USER: ${COMMUNICATION_STORAGE_USER}
+#  COMMUNICATION_STORAGE_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
+#  COMMUNICATION_STORAGE_HOST: ${COMMUNICATION_STORAGE_HOST}
+#  COMMUNICATION_STORAGE_PORT: ${COMMUNICATION_STORAGE_PORT}
+#  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
 
 services:
   django_app:
@@ -502,89 +502,25 @@ services:
 
   knowledge_new:
     container_name: knowledge_new
-#    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
+    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
     networks:
       - backend-network
-    ports:
-      - "8100:8100"
     depends_on:
-      communication_redis_broker:
+      crewdb:
         condition: service_healthy
-      communication_redis_storage:
+      django_app:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     environment:
-      <<: *communication_env
-      KNOWLEDGE_DATABASE_USER: ${KNOWLEDGE_DATABASE_USER}
-      KNOWLEDGE_DATABASE_PASSWORD: ${KNOWLEDGE_DATABASE_PASSWORD}
-      KNOWLEDGE_DATABASE_HOST: ${DB_HOST_NAME}
-      KNOWLEDGE_DATABASE_PORT: ${DB_PORT}
-      KNOWLEDGE_DATABASE_NAME: ${DB_NAME}
-
-      KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL}
-      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL}
-      KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL}
-      KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
-      KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
-      KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
-
-      KNOWLEDGE_MINIO_HOST: ${STORAGE_ENDPOINT:-http://minio:9000}
-      KNOWLEDGE_MINIO_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      KNOWLEDGE_MINIO_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
-
-
-  communication_redis_broker:
-    container_name: communication_redis_broker
-    image: redis
-    networks:
-      - backend-network
-    volumes:
-      - ./broker_redis.conf:/usr/local/etc/redis/redis.conf
-      - broker_redis_data:/data
-    restart: unless-stopped
-    command: >
-      sh -c "redis-server --port $${REDIS_PORT}
-      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
-    healthcheck:
-      test: >
-        sh -c "redis-cli -p $${REDIS_PORT}
-        $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
-      interval: 5s
-      timeout: 2s
-      retries: 50
-      start_period: 5s
-    environment:
-      REDIS_USER: ${COMMUNICATION_BROKER_USER}
-      REDIS_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
-      REDIS_PORT: ${COMMUNICATION_BROKER_PORT}
-
-  communication_redis_storage:
-    container_name: communication_redis_storage
-    image: redis
-    networks:
-      - backend-network
-    volumes:
-      - ./storage_redis.conf:/usr/local/etc/redis/redis.conf
-      - storage_redis_data:/data
-    restart: unless-stopped
-    command: >
-      sh -c "redis-server --port $${REDIS_PORT}
-      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
-    healthcheck:
-      test: >
-        sh -c "redis-cli -p $${REDIS_PORT}
-        $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
-      interval: 5s
-      timeout: 2s
-      retries: 50
-      start_period: 5s
-    environment:
-      REDIS_USER: ${COMMUNICATION_STORAGE_USER}
-      REDIS_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
-      REDIS_PORT: ${COMMUNICATION_STORAGE_PORT}
-
+      <<: [*docker-env, *database-env, *minio-env]
+      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
+      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
+      KNOWLEDGE_MAP_PROCESS_WORKERS: ${KNOWLEDGE_MAP_PROCESS_WORKERS:?}
+      KNOWLEDGE_MINIO_BUCKET: ${KNOWLEDGE_MINIO_BUCKET:?}
 
 volumes:
   sandbox_venvs:
@@ -594,8 +530,6 @@ volumes:
   media_data:
     external: true
   redis_data: {}
-  broker_redis_data:
-  storage_redis_data:
   code_instances: {}
   minio_data: {}
 
