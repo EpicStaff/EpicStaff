@@ -29,8 +29,9 @@ COPY ./manager/pyproject.toml ./manager/uv.lock ./manager/.python-version ./
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: secfloor (and any other non-dev group) is not
-# installed by default.
-RUN uv sync --frozen --no-install-project --all-groups
+# installed by default. --no-group dev deliberately excludes dev from this
+# image.
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
 # Copy source code
 COPY ./manager /app/src/manager

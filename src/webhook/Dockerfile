@@ -31,11 +31,12 @@ COPY ./webhook/uv.lock ./webhook/pyproject.toml ./webhook/.python-version .
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: secfloor (and any other non-dev group) is not
-# installed by default.
+# installed by default. --no-group dev --no-group tests deliberately excludes
+# dev and tests from this image.
 #
 # This image has no stage boundary to discard the uv cache automatically, so
 # it must be removed explicitly here.
-RUN uv sync --frozen --no-install-project --all-groups && \
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev --no-group tests && \
     rm -rf /tmp/uv_cache
 
 # Add virtualenv to PATH so the existing CMD keeps resolving python from it.
