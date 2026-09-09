@@ -93,18 +93,17 @@
                 @for (item of group.items; track item.name) {
                     <div
                         class="multi-select__item"
-                        [class.multi-select__item--selected]="isChecked(item.value)"
+                        [class.multi-select__item--selected]="isChecked(item.value) && !readonlyView()"
                         [class.multi-select__item--checkbox-left]="checkboxPosition() === 'left'"
                         [class.multi-select__item--checkbox-white]="color() === 'white'"
                         [class.multi-select__item--has-action]="!!item.trailingActionIcon"
                         [class.multi-select__item--readonly]="readonlyView()"
                         (click)="toggleValue(item.value)"
                     >
-                        @if (checkboxPosition() === 'left') {
+                        @if (checkboxPosition() === 'left' && !readonlyView()) {
                             <app-checkbox
                                 mod="multiselect"
                                 [checked]="isChecked(item.value)"
-                                [disabled]="readonlyView()"
                             />
                         }
                         <span class="multi-select__item-text">
@@ -119,11 +118,10 @@
                                 </span>
                             }
                         </span>
-                        @if (checkboxPosition() === 'right') {
+                        @if (checkboxPosition() === 'right' && !readonlyView()) {
                             <app-checkbox
                                 color="secondary"
                                 [checked]="isChecked(item.value)"
-                                [disabled]="readonlyView()"
                             />
                         }
                         @if (item.trailingActionIcon) {
