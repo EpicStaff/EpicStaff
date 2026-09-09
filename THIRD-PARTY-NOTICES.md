@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Mon, 07 Sep 2026 12:14:38 GMT -->
-<!-- commit: b37536366e017957c4d8f3e8cdf1c07015dae692 -->
-<!-- package-lock.json sha256: ddcd53309f591898 -->
+<!-- generated: Wed, 09 Sep 2026 07:15:27 GMT -->
+<!-- commit: d398703c9f57d85cd9694bc0d39078d7b9cf85f3 -->
+<!-- package-lock.json sha256: a8a01bce84252414 -->
 
 # Third-Party Notices
 
