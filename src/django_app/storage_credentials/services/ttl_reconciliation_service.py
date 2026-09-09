@@ -24,9 +24,17 @@ from storage_credentials.services.org_credential_store import (
 
 
 def _list_provisioned_org_ids() -> list[int]:
+    # `.exclude(metadata__contains={"revoked": True})` compiles to
+    # `NOT (metadata @> '{"revoked": true}'::jsonb)`, which correctly
+    # includes rows with `metadata={}` (a freshly-provisioned, never-revoked
+    # row). `.exclude(metadata__revoked=True)` would instead compile to a
+    # `NOT (... = true)` comparison against SQL NULL for such rows -- which
+    # is itself NULL, not true -- silently dropping every unrevoked row from
+    # the queryset. See org_credential_store.get()/exists() for the same
+    # underlying JSON NULL semantics issue.
     return list(
-        Secret.objects.filter(name=SECRET_NAME_ORG_MINIO_USER, system=True)
-        .exclude(metadata__revoked=True)
+        Secret.all_objects.filter(name=SECRET_NAME_ORG_MINIO_USER, system=True)
+        .exclude(metadata__contains={"revoked": True})
         .values_list("org_id", flat=True)
     )
 

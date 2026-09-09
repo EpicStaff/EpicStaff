@@ -28,7 +28,7 @@ class OrgCredentialStore:
         marked revoked by `mark_revoked`) is deleted first: `Secret` enforces
         one row per (org, name), and reactivation always mints a brand new
         MinIO user rather than resurrecting the deprovisioned one."""
-        Secret.objects.filter(
+        Secret.all_objects.filter(
             org=org, name=SECRET_NAME_ORG_MINIO_USER, system=True
         ).delete()
         text = f"{access_key}{_CREDENTIAL_SEPARATOR}{secret_key}"
@@ -40,7 +40,7 @@ class OrgCredentialStore:
         )
 
     def get(self, *, org_id: int) -> OrgMinioCredentials:
-        secret = Secret.objects.filter(
+        secret = Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_MINIO_USER, system=True
         ).first()
         if secret is None or secret.metadata.get("revoked") is True:
@@ -52,13 +52,13 @@ class OrgCredentialStore:
         return OrgMinioCredentials(access_key=access_key, secret_key=secret_key)
 
     def exists(self, *, org_id: int) -> bool:
-        secret = Secret.objects.filter(
+        secret = Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_MINIO_USER, system=True
         ).first()
         return secret is not None and secret.metadata.get("revoked") is not True
 
     def mark_revoked(self, *, org_id: int) -> None:
-        Secret.objects.filter(
+        Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_MINIO_USER, system=True
         ).update(metadata={"revoked": True})
 

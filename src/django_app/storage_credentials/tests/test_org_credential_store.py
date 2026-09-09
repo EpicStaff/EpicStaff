@@ -32,7 +32,9 @@ def test_get_returns_credentials_for_never_revoked_secret(org):
         org=org,
         name=SECRET_NAME_ORG_MINIO_USER,
     )
-    assert Secret.objects.get(org=org, name=SECRET_NAME_ORG_MINIO_USER).metadata == {}
+    assert (
+        Secret.all_objects.get(org=org, name=SECRET_NAME_ORG_MINIO_USER).metadata == {}
+    )
 
     credentials = org_credential_store.get(org_id=org.id)
 
