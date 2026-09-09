@@ -1,11 +1,9 @@
 import asyncio
-from dataclasses import asdict
 from typing import Any
 
 from loguru import logger
 from langgraph.types import StreamWriter
 
-from models.graph_models import NodeExtractedChunksMessageData, GraphMessage
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
@@ -96,8 +94,8 @@ class KnowledgeNode(BaseNode):
             self.rag_search_config.model_dump() if self.rag_search_config else {}
         )
         try:
-            response, token_usage = await asyncio.to_thread(
-                self.knowledge_search_service.search_knowledges_detailed,
+            results = await asyncio.to_thread(
+                self.knowledge_search_service.search_knowledges,
                 sender="node",
                 knowledge_collection_id=self.collection_id,
                 rag_type_id=self.rag_type_id,
@@ -111,27 +109,7 @@ class KnowledgeNode(BaseNode):
                 f"Knowledge node '{self.node_name}' search failed: {e}"
             ) from e
 
-        if writer is not None:
-            writer(
-                GraphMessage(
-                    session_id=self.session_id,
-                    name=self.node_name,
-                    execution_order=execution_order,
-                    message_data=asdict(
-                        NodeExtractedChunksMessageData(
-                            knowledge_query=response.query,
-                            collection_id=response.collection_id,
-                            retrieved_chunks=response.retrieved_chunks,
-                            rag_search_config=response.rag_search_config.model_dump(),
-                            chunks=[chunk.model_dump() for chunk in response.chunks],
-                            token_usage=token_usage,
-                            input=input_,
-                        )
-                    ),
-                )
-            )
-
-        if not response.results:
+        if not results:
             return "No relevant results were found in the knowledge collection."
 
-        return "\n\n".join(response.results)
+        return "\n\n".join(results)
