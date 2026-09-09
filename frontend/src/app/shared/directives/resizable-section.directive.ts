@@ -2,6 +2,8 @@ import { Directive, ElementRef, inject, input, NgZone, OnDestroy, OnInit, output
 
 import { SectionHeightService } from '../services/section-height.service';
 
+const KEYBOARD_STEP = 16;
+
 @Directive({
     selector: '[appResizableSection]',
     host: {
@@ -34,6 +36,15 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
     private unlistenPointerMove?: () => void;
     private unlistenPointerUp?: () => void;
     private unlistenPointerCancel?: () => void;
+    private readonly onEscapeKeydown = (event: KeyboardEvent): void => {
+        if (event.key !== 'Escape') {
+            return;
+        }
+        // Capture phase: cancel the drag instead of letting a parent panel close on Escape.
+        event.preventDefault();
+        event.stopPropagation();
+        this.cancelDrag();
+    };
 
     private readonly el = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly renderer = inject(Renderer2);
@@ -45,6 +56,7 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
             this.renderer.listen(this.el.nativeElement, 'pointerdown', (event: PointerEvent) =>
                 this.onResizeStart(event)
             );
+            this.renderer.listen(this.el.nativeElement, 'keydown', (event: KeyboardEvent) => this.onKeydown(event));
         });
     }
 
@@ -82,6 +94,48 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         this.unlistenPointerCancel = this.renderer.listen(this.document, 'pointercancel', () =>
             this.onPointerEnd(false)
         );
+        // Renderer2.listen has no capture-phase option — added natively so Escape is caught
+        // before a parent panel's own Escape handler (e.g. one that closes the panel) sees it.
+        this.document.addEventListener('keydown', this.onEscapeKeydown, true);
+    }
+
+    /** Arrow-key step resize, mirroring ColumnResizeDividerComponent's keyboard support. Ignored mid-drag. */
+    private onKeydown(event: KeyboardEvent): void {
+        if (this.isResizing || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) {
+            return;
+        }
+        event.preventDefault();
+
+        const currentHeight = this.sectionTarget().getBoundingClientRect().height;
+        const dynamicMax = this.sectionMaxHeightFn()?.();
+        const maxHeight = dynamicMax != null ? Math.min(this.sectionMaxHeight(), dynamicMax) : this.sectionMaxHeight();
+        const nextHeight = currentHeight + (event.key === 'ArrowUp' ? -KEYBOARD_STEP : KEYBOARD_STEP);
+
+        this.ngZone.run(() => {
+            this.sectionHeightService.setHeight(this.storageKey(), nextHeight, this.sectionMinHeight(), maxHeight);
+            this.sectionHeightService.commitHeight(this.storageKey());
+            this.dragStart.emit();
+        });
+    }
+
+    /** Drops the drag and puts the section back at the height it had before it started. */
+    private cancelDrag(): void {
+        if (!this.isResizing) {
+            return;
+        }
+        if (this.frameId !== null) {
+            cancelAnimationFrame(this.frameId);
+            this.frameId = null;
+        }
+        this.ngZone.run(() => {
+            this.sectionHeightService.setHeight(
+                this.storageKey(),
+                this.startHeight,
+                this.sectionMinHeight(),
+                this.effectiveMaxHeight
+            );
+        });
+        this.onPointerEnd(false);
     }
 
     private onPointerMove(event: PointerEvent): void {
@@ -129,6 +183,7 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         this.unlistenPointerMove?.();
         this.unlistenPointerUp?.();
         this.unlistenPointerCancel?.();
+        this.document.removeEventListener('keydown', this.onEscapeKeydown, true);
     }
 
     private releasePointerCapture(): void {
@@ -161,5 +216,6 @@ export class ResizableSectionDirective implements OnInit, OnDestroy {
         this.unlistenPointerMove?.();
         this.unlistenPointerUp?.();
         this.unlistenPointerCancel?.();
+        this.document.removeEventListener('keydown', this.onEscapeKeydown, true);
     }
 }

@@ -149,9 +149,10 @@
 
 .explorer__section-body--fill {
     flex: 1 1 auto;
-    // 3 full tree rows (tree-node.component.scss: .row min-height 28px) — keep in sync with
-    // FILL_BODY_MIN_HEIGHT in explorer.component.ts, which reserves this same floor during drags.
-    min-height: 84px;
+    // Set by ExplorerComponent from FILL_BODY_MIN_HEIGHT (3 full tree rows — tree-node.component.scss:
+    // .row min-height 28px), which also reserves this same floor during drags. The 84px fallback only
+    // covers a render before the host binding applies; it isn't a second source of truth.
+    min-height: var(--fill-body-min-height, 84px);
     overflow-y: auto;
 }
 

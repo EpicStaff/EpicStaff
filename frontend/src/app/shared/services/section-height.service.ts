@@ -53,6 +53,7 @@ export class SectionHeightService {
     }
 
     private clamp(px: number, min: number, max: number): number {
-        return Math.min(max, Math.max(min, Math.round(px)));
+        // If max < min (a tight container), min wins — better to slightly overflow than undershoot the floor.
+        return Math.max(min, Math.min(max, Math.round(px)));
     }
 }
