@@ -205,3 +205,42 @@ async def test_conflicting_filters_and_query_is_rejected(app_and_client):
         json={"format": "json", "filters": {"field": "status", "op": "equals", "value": "failed"}, "query": "status=failed"},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_returns_only_the_callers_jobs(app_and_client):
+    app, client = app_and_client
+
+    resp = await client.post("/api/audit/export", json={"format": "json"})
+    own_job_id = resp.json()["job_id"]
+
+    # A job owned by a different org/user combo must never leak into the
+    # caller's listing.
+    await app.state.export_job_service.create_job(
+        job_id="other-job", org_id=999, user_id=999, ttl_seconds=3600, format="json"
+    )
+
+    resp = await client.get("/api/audit/export")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [job["job_id"] for job in body] == [own_job_id]
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_returns_empty_list_when_caller_has_no_jobs(app_and_client):
+    _, client = app_and_client
+
+    resp = await client.get("/api/audit/export")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_missing_action_claim_is_403(app_and_client):
+    app, client = app_and_client
+    app.dependency_overrides[verify_user_jwt] = lambda: {
+        **DEFAULT_CLAIMS,
+        "actions": ["read"],
+    }
+    resp = await client.get("/api/audit/export")
+    assert resp.status_code == 403

@@ -5,7 +5,7 @@ import pytest_asyncio
 from fakeredis import FakeAsyncRedis
 
 from services.audit_export_cleanup_service import ExportCleanupService
-from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX
+from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX, user_jobs_key
 
 
 @pytest_asyncio.fixture
@@ -90,10 +90,34 @@ async def test_sweep_once_tolerates_hash_already_gone(redis_client, cleanup_serv
     # zset entry survives (zadd carries no TTL of its own) but the hash is
     # already gone. Sweeping it must not raise - just clean up the zset.
     await redis_client.zadd(EXPIRY_ZSET_KEY, {"orphaned-job": time.time() - 10})
+    # Simulate the real per-user index entry that would have been created
+    # when this job was registered.
+    index_key = user_jobs_key(1, 1)
+    await redis_client.sadd(index_key, "orphaned-job")
 
     await cleanup_service.sweep_once()
 
     assert await redis_client.zscore(EXPIRY_ZSET_KEY, "orphaned-job") is None
+    # Known bug (tracked separately): with the hash already gone, org_id/user_id
+    # can't be read back, so deregister_job's srem targets the wrong
+    # (None, None) index key and the real per-user index entry is left
+    # orphaned rather than cleaned up here.
+    assert await redis_client.sismember(index_key, "orphaned-job")
+
+
+@pytest.mark.asyncio
+async def test_sweep_once_removes_job_from_user_index(redis_client, cleanup_service):
+    # _seed_job always writes org_id=1, user_id=1 into the hash mapping, so
+    # the per-user index entry lives under that same (org_id, user_id) pair.
+    index_key = user_jobs_key(1, 1)
+    await _seed_job(redis_client, "job-idx", expires_at=time.time() - 10)
+    await redis_client.sadd(index_key, "job-idx")
+
+    assert await redis_client.sismember(index_key, "job-idx")
+
+    await cleanup_service.sweep_once()
+
+    assert not await redis_client.sismember(index_key, "job-idx")
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,15 @@
 from enum import Enum
 from time import time
+from typing import Iterable
+
 from redis.asyncio import Redis
 
-from src.shared.audit.export_jobs import JOB_KEY_PREFIX, EXPIRY_ZSET_KEY
+from src.shared.audit.export_jobs import (
+    JOB_KEY_PREFIX,
+    register_job,
+    deregister_job,
+    user_jobs_key,
+)
 
 JOB_HASH_TTL_SAFETY_MARGIN_SECONDS = 60 * 60 * 24
 
@@ -22,22 +29,25 @@ class ExportJobService:
     ) -> None:
         now = time()
         expires_at = now + ttl_seconds
-        key = f"{JOB_KEY_PREFIX}{job_id}"
+        mapping = {
+            "status": JobStatus.PENDING.value,
+            "org_id": org_id,
+            "user_id": user_id,
+            "created_at": now,
+            "expires_at": expires_at,
+            "file_path": "",
+            "format": format,
+        }
         async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.hset(
-                key,
-                mapping={
-                    "status": JobStatus.PENDING.value,
-                    "org_id": org_id,
-                    "user_id": user_id,
-                    "created_at": now,
-                    "expires_at": expires_at,
-                    "file_path": "",
-                    "format": format,
-                },
+            register_job(
+                pipe,
+                job_id=job_id,
+                org_id=org_id,
+                user_id=user_id,
+                mapping=mapping,
+                hash_ttl_seconds=ttl_seconds + JOB_HASH_TTL_SAFETY_MARGIN_SECONDS,
+                expires_at=expires_at,
             )
-            pipe.expire(key, ttl_seconds + JOB_HASH_TTL_SAFETY_MARGIN_SECONDS)
-            pipe.zadd(EXPIRY_ZSET_KEY, {job_id: expires_at})
             await pipe.execute()
 
     async def mark_done(self, job_id: str, file_path: str) -> bool:
@@ -65,10 +75,29 @@ class ExportJobService:
         job = await self._redis.hgetall(f"{JOB_KEY_PREFIX}{job_id}")
         return job or None
 
-    async def delete_job(self, job_id: str) -> None:
+    async def get_jobs(self, job_ids: Iterable[str]) -> list[dict]:
+        job_ids = list(job_ids)
+        if not job_ids:
+            return []
+
+        async with self._redis.pipeline(transaction=False) as pipe:
+            for job_id in job_ids:
+                pipe.hgetall(f"{JOB_KEY_PREFIX}{job_id}")
+            results = await pipe.execute()
+
+        return [
+            {"job_id": job_id} | job for job_id, job in zip(job_ids, results) if job
+        ]
+
+    async def get_jobs_by_user(self, org_id: int, user_id: int) -> list[dict]:
+        key = user_jobs_key(org_id, user_id)
+        job_ids = await self._redis.smembers(key)
+        jobs = await self.get_jobs(job_ids)
+        return jobs
+
+    async def delete_job(self, job_id: str, org_id: int, user_id: int) -> None:
         async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.delete(f"{JOB_KEY_PREFIX}{job_id}")
-            pipe.zrem(EXPIRY_ZSET_KEY, job_id)
+            deregister_job(pipe, job_id=job_id, org_id=org_id, user_id=user_id)
             await pipe.execute()
 
     async def close(self) -> None:

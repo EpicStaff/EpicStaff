@@ -117,6 +117,16 @@ async def get_export(
     )
 
 
+@router.get("/api/audit/export")
+async def get_jobs(
+    request: Request, claims: dict = Depends(require_audit_action("export"))
+):
+    job_service = request.app.state.export_job_service
+    jobs = await job_service.get_jobs_by_user(claims["org_id"], claims["user_id"])
+
+    return list(jobs)
+
+
 @router.delete("/api/audit/export/{job_id}")
 async def delete_export(
     job_id: str,
@@ -129,7 +139,7 @@ async def delete_export(
     if job.get("file_path"):
         pathlib.Path(job["file_path"]).unlink(missing_ok=True)
 
-    await job_service.delete_job(job_id)
+    await job_service.delete_job(job_id, claims["org_id"], claims["user_id"])
     return Response(status_code=204)
 
 

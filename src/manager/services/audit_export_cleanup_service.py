@@ -6,7 +6,7 @@ from time import time
 from redis.asyncio import Redis
 
 from helpers.logger import logger
-from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX
+from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX, deregister_job
 
 
 def build_export_redis_client() -> Redis:
@@ -63,13 +63,22 @@ class ExportCleanupService:
 
     async def _delete_job(self, job_id: str):
         key = f"{JOB_KEY_PREFIX}{job_id}"
-        file_path = await self.redis_client.hget(key, "file_path")
+        file_path, org_id, user_id = await self.redis_client.hmget(
+            key, "file_path", "org_id", "user_id"
+        )
+
+        if org_id is None or user_id is None:
+            logger.warning(
+                f"Job {job_id} hash missing during sweep; skipping index cleanup"
+            )
+            await self.redis_client.zrem(EXPIRY_ZSET_KEY, job_id)
+            return
+
         if file_path:
             pathlib.Path(file_path).unlink(missing_ok=True)
         elif self.export_data_dir:
             for stale_file in pathlib.Path(self.export_data_dir).glob(f"{job_id}.*"):
                 stale_file.unlink(missing_ok=True)
         async with self.redis_client.pipeline(transaction=True) as pipe:
-            pipe.delete(key)
-            pipe.zrem(EXPIRY_ZSET_KEY, job_id)
+            deregister_job(pipe, job_id=job_id, org_id=org_id, user_id=user_id)
             await pipe.execute()

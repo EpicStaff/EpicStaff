@@ -81,7 +81,7 @@ async def test_mark_done_returns_false_for_deleted_job(job_service):
     await job_service.create_job(
         job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
     )
-    await job_service.delete_job("job-1")
+    await job_service.delete_job("job-1", 1, 1)
 
     was_recorded = await job_service.mark_done("job-1", "/app/export_data/job-1.json")
 
@@ -94,7 +94,7 @@ async def test_mark_failed_returns_false_for_deleted_job(job_service):
     await job_service.create_job(
         job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
     )
-    await job_service.delete_job("job-1")
+    await job_service.delete_job("job-1", 1, 1)
 
     was_recorded = await job_service.mark_failed("job-1", "boom")
 
@@ -125,7 +125,7 @@ async def test_delete_job_removes_hash_and_zset_entry(job_service):
     await job_service.create_job(
         job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
     )
-    await job_service.delete_job("job-1")
+    await job_service.delete_job("job-1", 1, 1)
 
     assert await job_service.get_job("job-1") is None
     score = await job_service._redis.zscore(
@@ -139,4 +139,59 @@ async def test_delete_job_is_idempotent_for_unknown_id(job_service):
     # Should not raise even though nothing was ever created for this id -
     # the manual-delete endpoint relies on this being a safe no-op path
     # after ownership has already been checked separately.
-    await job_service.delete_job("never-existed")
+    await job_service.delete_job("never-existed", 1, 1)
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_returns_hydrated_dicts_for_job_ids(job_service):
+    await job_service.create_job(
+        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+    )
+    await job_service.create_job(
+        job_id="job-2", org_id=1, user_id=1, ttl_seconds=3600, format="csv"
+    )
+
+    jobs = await job_service.get_jobs(["job-1", "job-2"])
+
+    assert {j["job_id"] for j in jobs} == {"job-1", "job-2"}
+    for job in jobs:
+        assert "job_id" in job
+        assert "status" in job
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_skips_ids_whose_hash_has_vanished(job_service):
+    await job_service.create_job(
+        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+    )
+    # "job-missing" was never created (simulates an expired/swept hash).
+    jobs = await job_service.get_jobs(["job-1", "job-missing"])
+
+    assert [j["job_id"] for j in jobs] == ["job-1"]
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_returns_empty_list_for_empty_input(job_service):
+    assert await job_service.get_jobs([]) == []
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_by_user_returns_only_that_users_jobs(job_service):
+    await job_service.create_job(
+        job_id="job-a1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+    )
+    await job_service.create_job(
+        job_id="job-a2", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+    )
+    await job_service.create_job(
+        job_id="job-b1", org_id=2, user_id=2, ttl_seconds=3600, format="json"
+    )
+
+    jobs = await job_service.get_jobs_by_user(org_id=1, user_id=1)
+
+    assert {j["job_id"] for j in jobs} == {"job-a1", "job-a2"}
+
+
+@pytest.mark.asyncio
+async def test_get_jobs_by_user_returns_empty_list_when_no_jobs(job_service):
+    assert await job_service.get_jobs_by_user(org_id=1, user_id=1) == []
