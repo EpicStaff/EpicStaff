@@ -1,6 +1,6 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 09 Sep 2026 07:22:32 GMT -->
-<!-- commit: 16802949263f965cc76f3b224009946cf66339d1 -->
+<!-- generated: Wed, 09 Sep 2026 08:04:40 GMT -->
+<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
 <!-- package-lock.json sha256: a8a01bce84252414 -->
 
 # Third-Party Notices
@@ -3736,9 +3736,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 ---
 
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-07-13T16:18:10Z UTC -->
-<!-- commit: e48e78fa4d4db7b1c322ff04e9c291f7ac805ffa -->
-<!-- lock-hashes: django_app:4146b9c9d3c4b8a6, crew:edf135d1fea84852, manager:2d89eb3d01831faf, knowledge:3ca903a67dd67b03, realtime:15e0c0a9898447ef, sandbox:fbce6561184433fb, webhook:85219ec3b8b71239, tool:53f4b4d8d27ddeef, voice_app:471a798fb1986259 -->
+<!-- generated: 2026-09-09T08:05:17Z UTC -->
+<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
+<!-- lock-hashes: django_app:9110300af17f94f1, crew:e2d28ca29efdc771, agent:3db082c932146c2e, manager:3db2a7f85977dde9, knowledge:aa9584a2aa0a2b9b, realtime:1741f28c1a0930ec, sandbox:8f11524fe5ec54ed, webhook:f78ff3d84484d519, voice_app:no-lock -->
 
 ## Embedded assets (prebuilt epicchat-widget)
 
