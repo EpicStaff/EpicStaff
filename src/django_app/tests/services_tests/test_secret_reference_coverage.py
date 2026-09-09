@@ -1,6 +1,7 @@
 """Coverage tests for the secrets:USE guard: every Secret-writing field must be gated or exempt, the paths the design leaves ungated must stay ungated, and every guarded serializer's validate() chain must actually reach the guard."""
 
 import pytest
+from rest_framework.exceptions import ValidationError
 from rest_framework.relations import ManyRelatedField, PrimaryKeyRelatedField
 from rest_framework.serializers import BaseSerializer
 from rest_framework.test import APIClient
@@ -309,11 +310,14 @@ def test_guard_is_reached_through_every_guarded_serializers_validate(mocker):
         spy.reset_mock()
         try:
             instance.validate({})
-        except Exception:
+        except ValidationError:
             # Unrelated validation errors raised from an empty attrs dict (e.g.
             # QuickstartSerializer's "provide either api_key or
             # api_key_secret_id") are expected and irrelevant here -- only
-            # whether the guard itself was reached matters.
+            # whether the guard itself was reached matters. Anything else --
+            # e.g. the KeyError this guard used to raise for a field a
+            # narrowed subclass no longer exposes -- is a real defect and
+            # must fail the test rather than be swallowed.
             pass
 
         if not spy.called:

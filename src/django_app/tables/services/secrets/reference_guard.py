@@ -21,7 +21,10 @@ class SecretReferenceGuard:
     def assert_unchanged_or_permitted(self, *, serializer, attrs, fields) -> None:
         """Raise ValidationError for each guarded field whose value changes without USE."""
         for field_name in fields:
-            source = serializer.fields[field_name].source
+            field = serializer.fields.get(field_name)
+            if field is None or field.read_only:
+                continue
+            source = field.source
             if source not in attrs:
                 continue
             incoming = self._normalize(value=attrs[source])

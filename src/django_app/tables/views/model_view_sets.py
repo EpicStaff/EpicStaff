@@ -729,6 +729,14 @@ class GraphViewSet(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()
                 ),
                 Prefetch(
+                    "classification_decision_table_node_list",
+                    queryset=ClassificationDecisionTableNode.objects.select_related(
+                        "pre_python_code", "post_python_code"
+                    ).prefetch_related(
+                        "pre_python_code__secrets", "post_python_code__secrets"
+                    ),
+                ),
+                Prefetch(
                     "subgraph_node_list",
                     queryset=SubGraphNode.objects.select_related(
                         "subgraph"
@@ -2031,7 +2039,9 @@ class ClassificationDecisionTableNodeModelViewSet(
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "export": Permission.EXPORT}
     org_filter_path = "graph__org_id"
-    queryset = ClassificationDecisionTableNode.objects.all()
+    queryset = ClassificationDecisionTableNode.objects.select_related(
+        "pre_python_code", "post_python_code"
+    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets")
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]

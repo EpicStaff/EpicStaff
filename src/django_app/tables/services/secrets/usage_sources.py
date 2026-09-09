@@ -13,9 +13,12 @@ from django.db.models import (
 from django.db.models.functions import Cast, Concat
 
 from tables.models import (
+    ElevenLabsRealtimeConfig,
     EmbeddingConfig,
+    GeminiRealtimeConfig,
     LLMConfig,
     McpTool,
+    OpenAIRealtimeConfig,
     RealtimeConfig,
     RealtimeTranscriptionConfig,
 )
@@ -61,6 +64,12 @@ RESOURCE_TYPE_LLM_CONFIG = "llm_config"
 RESOURCE_TYPE_EMBEDDING_CONFIG = "embedding_config"
 RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
 RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
+RESOURCE_TYPE_OPENAI_REALTIME_CONFIG = "openai_realtime_config"
+RESOURCE_TYPE_OPENAI_REALTIME_TRANSCRIPTION_CONFIG = (
+    "openai_realtime_transcription_config"
+)
+RESOURCE_TYPE_ELEVENLABS_REALTIME_CONFIG = "elevenlabs_realtime_config"
+RESOURCE_TYPE_GEMINI_REALTIME_CONFIG = "gemini_realtime_config"
 RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
 RESOURCE_TYPE_PYTHON_CODE_TOOL = "python_code_tool"
 RESOURCE_TYPE_TWILIO_CHANNEL = "twilio_channel"
@@ -501,6 +510,43 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         name_field="custom_name",
         rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
         resource_type=RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG,
+    ),
+    # --- provider-specific realtime configs: distinct models from RealtimeConfig /
+    UsageSource(
+        model=OpenAIRealtimeConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_OPENAI_REALTIME_CONFIG,
+    ),
+    UsageSource(
+        model=OpenAIRealtimeConfig,
+        secret_path="transcription_api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_OPENAI_REALTIME_TRANSCRIPTION_CONFIG,
+    ),
+    UsageSource(
+        model=ElevenLabsRealtimeConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_ELEVENLABS_REALTIME_CONFIG,
+    ),
+    UsageSource(
+        model=GeminiRealtimeConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_GEMINI_REALTIME_CONFIG,
     ),
     UsageSource(
         model=McpTool,

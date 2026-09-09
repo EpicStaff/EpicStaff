@@ -132,7 +132,11 @@ class WebhookTriggerNestedSerializer(
         try:
             WebhookTriggerService().set_trigger_auth_secret(
                 trigger,
-                secret=validated_data.get("auth_secret_id"),
+                secret=(
+                    validated_data["auth_secret_id"]
+                    if "auth_secret_id" in validated_data
+                    else (existing.secret if existing is not None else None)
+                ),
                 kind=kind,
             )
         except ValueError as e:

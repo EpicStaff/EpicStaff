@@ -149,3 +149,102 @@ class TestWebhookTriggerAuthSecretIsGated:
         )
 
         assert response.status_code == 200, response.json()
+
+
+@pytest.fixture
+def twilio_secret(default_org):
+    return secret_service.create(
+        text=_LONG_ENOUGH + "twilio", org=default_org, name="WTAUTH_SECRET_TWILIO"
+    )
+
+
+@pytest.fixture
+def twilio_trigger(default_org, twilio_secret) -> WebhookTrigger:
+    """A trigger whose auth row is kind=twilio with a secret already attached -- the state a TwilioChannel claiming a trigger produces via its own post_save signal, built here directly by ORM since set_trigger_auth_secret refuses to create it."""
+    trigger = WebhookTrigger.objects.create(
+        path="wtauth-twilio-trigger",
+        provider_type=ProviderType.NGROK,
+        org=default_org,
+    )
+    NgrokWebhookConfig.objects.create(trigger=trigger, name="tunnel")
+    WebhookTriggerAuth.objects.create(
+        trigger=trigger, kind=WebhookTriggerAuthKind.TWILIO, secret=twilio_secret
+    )
+    return trigger
+
+
+@pytest.mark.django_db
+class TestAuthKindOmittedSecretIdPreservesExistingSecret:
+    """Regression test for the auth_kind-only bypass: omitting auth_secret_id must never move the persisted reference."""
+
+    def test_resending_only_auth_kind_without_use_does_not_clear_the_secret(
+        self, no_use_client, trigger, secret
+    ):
+        response = no_use_client.patch(
+            f"/api/webhook-triggers/{trigger.id}/",
+            {"auth_kind": WebhookTriggerAuthKind.WEBHOOK},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        trigger.refresh_from_db()
+        assert trigger.auth.secret_id == secret.id
+
+    def test_resending_only_auth_kind_with_use_also_preserves_the_secret(
+        self, use_client, trigger, secret
+    ):
+        response = use_client.patch(
+            f"/api/webhook-triggers/{trigger.id}/",
+            {"auth_kind": WebhookTriggerAuthKind.WEBHOOK},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        trigger.refresh_from_db()
+        assert trigger.auth.secret_id == secret.id
+
+    def test_explicit_null_secret_id_without_use_is_still_rejected(
+        self, no_use_client, trigger, secret
+    ):
+        response = no_use_client.patch(
+            f"/api/webhook-triggers/{trigger.id}/",
+            {"auth_secret_id": None},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "auth_secret_id" in response.json()["message"]
+        trigger.refresh_from_db()
+        assert trigger.auth.secret_id == secret.id
+
+    def test_explicit_null_secret_id_with_use_still_removes_the_secret(
+        self, use_client, trigger
+    ):
+        response = use_client.patch(
+            f"/api/webhook-triggers/{trigger.id}/",
+            {"auth_secret_id": None},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        trigger.refresh_from_db()
+        assert trigger.auth.secret_id is None
+
+
+@pytest.mark.django_db
+class TestTwilioBareReservationNowRejectsResendingKindOverAClaimedSecret:
+    """Deliberate behavior change: resending auth_kind=twilio no longer silently nulls a claimed secret, it now hits the service's bare-reservation error."""
+
+    def test_resending_twilio_kind_over_an_already_claimed_secret_is_a_400(
+        self, no_use_client, twilio_trigger, twilio_secret
+    ):
+        response = no_use_client.patch(
+            f"/api/webhook-triggers/{twilio_trigger.id}/",
+            {"auth_kind": WebhookTriggerAuthKind.TWILIO},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "bare reservation" in response.json()["message"]
+        twilio_trigger.refresh_from_db()
+        assert twilio_trigger.auth.secret_id == twilio_secret.id

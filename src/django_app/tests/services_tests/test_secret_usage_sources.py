@@ -701,10 +701,11 @@ class TestDetailShapes:
         shapes = [source.detail_shape for source in USAGE_SOURCES]
 
         assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE}
-        # 4 configs + McpTool + PythonCodeTool + TwilioChannel +
-        # NgrokWebhookConfig + WebhookTriggerAuth / 5 flow nodes (Telegram,
-        # Python, Webhook, CDT pre, CDT post) / ConditionalEdge.
-        assert shapes.count(SHAPE_NAMED) == 9
+        # 4 configs + 4 provider-specific realtime configs (OpenAIRealtimeConfig x2,
+        # ElevenLabsRealtimeConfig, GeminiRealtimeConfig) + McpTool + PythonCodeTool +
+        # TwilioChannel + NgrokWebhookConfig + WebhookTriggerAuth / 5 flow nodes
+        # (Telegram, Python, Webhook, CDT pre, CDT post) / ConditionalEdge.
+        assert shapes.count(SHAPE_NAMED) == 13
         assert shapes.count(SHAPE_NODE) == 5
         assert shapes.count(SHAPE_EDGE) == 1
         assert set(HITS_ASSEMBLERS) == set(SHAPE_PROJECTIONS) == set(shapes)
@@ -773,13 +774,14 @@ class TestDetailShapes:
 
 @pytest.mark.django_db
 def test_registry_covers_every_declared_source():
-    """Fifteen sources: nine FK-declared written out (eight original + one
-    WebhookTriggerAuth entry), six derived from PYTHON_CODE_SITES. A source
-    added to the module but forgotten in the registry is invisible to both
-    endpoints, which is a silent under-report."""
+    """Nineteen sources are registered: every FK-declared source plus every source PYTHON_CODE_SITES derives."""
+    # Thirteen FK-declared: eight original + one WebhookTriggerAuth entry + four
+    # provider-specific realtime config entries. Six derived from PYTHON_CODE_SITES. A
+    # source added to the module but forgotten in the registry is invisible to both
+    # endpoints, which is a silent under-report.
     from tables.services.secrets.python_code_sites import PYTHON_CODE_SITES
 
-    assert len(USAGE_SOURCES) == 15
+    assert len(USAGE_SOURCES) == 19
     # The derived half tracks PYTHON_CODE_SITES automatically; assert the link rather
     # than the number, so adding a Python-carrying model cannot break this test while
     # leaving the dialog under-reporting.

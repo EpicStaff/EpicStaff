@@ -15,6 +15,7 @@ from tables.models import (
     EmbeddingConfig,
     LLMConfig,
     McpTool,
+    OpenAIRealtimeConfig,
     PythonCode,
     PythonCodeTool,
 )
@@ -28,6 +29,8 @@ from tables.models.graph_models import (
 )
 from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
 from tables.models.rbac_models import Organization
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_service import secret_usage_service
 
@@ -874,3 +877,50 @@ class TestCountsDedupInSql:
             ].readable
             == 2
         )
+
+
+@pytest.mark.django_db
+class TestProviderSpecificRealtimeConfigUsage:
+    """A secret used only by an OpenAIRealtimeConfig must land in readable or hidden, never silently as zero."""
+
+    # OpenAIRealtimeConfig.api_key_secret was unregistered until this task: it used to
+    # report {"readable": 0, "hidden": 0}, which the frontend renders as "Not used"
+    # even though the FK is on_delete=SET_NULL and deleting the secret would silently
+    # break the config. This is the one behavioural check for the four
+    # newly-registered realtime FKs; the other three are covered by
+    # test_secret_usage_source_coverage.py rather than duplicated here.
+
+    @staticmethod
+    def _effective(*, can_read_llm_configs: bool) -> EffectivePermissions:
+        by_resource = (
+            {ResourceType.LLM_CONFIGS.value: int(Permission.READ)}
+            if can_read_llm_configs
+            else {}
+        )
+        return EffectivePermissions(
+            is_superadmin=False, role=None, by_resource=by_resource
+        )
+
+    def test_readable_for_a_caller_with_llm_configs_read(self, org, secret):
+        OpenAIRealtimeConfig.objects.create(
+            custom_name="voice cfg", org=org, api_key_secret=secret
+        )
+
+        counts = secret_usage_service.count_for(
+            secret=secret, effective=self._effective(can_read_llm_configs=True)
+        )
+
+        assert counts.readable == 1
+        assert counts.hidden == 0
+
+    def test_hidden_for_a_caller_without_llm_configs_read(self, org, secret):
+        OpenAIRealtimeConfig.objects.create(
+            custom_name="voice cfg", org=org, api_key_secret=secret
+        )
+
+        counts = secret_usage_service.count_for(
+            secret=secret, effective=self._effective(can_read_llm_configs=False)
+        )
+
+        assert counts.readable == 0
+        assert counts.hidden == 1

@@ -14,6 +14,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
@@ -478,3 +479,215 @@ def test_quickstart_with_a_raw_api_key_is_unaffected(
     )
 
     assert response.status_code == 200, response.json()
+
+
+# ---------------------------------------------------------------------------
+# Task 2: removal and create attempts, at the endpoint level, for one FK-shaped
+# and one M2M-shaped guarded field. Every prior test in this file only sends
+# add/change payloads; none send `null`/`[]`, which is the gap this closes.
+# The FK representative reuses LLMConfig/api_key_secret_id (6a's fixtures and
+# client roles, already in place). The M2M representative is
+# PythonCode.secret_ids, the only `secret_ids`-style guarded field in the
+# codebase, reached through PythonCodeToolViewSet (TOOLS resource, matching
+# 6b's `no_use_client_6b`/`use_client_6b`). Its nested serializer is not
+# implicitly partial on PATCH, so the removal payload resends `code`,
+# `entrypoint`, `libraries`, and `global_kwargs` unchanged alongside
+# `secret_ids: []`, mirroring the working PATCH shape already used against
+# the sibling PythonNode endpoint in test_secret_declaration_api.py.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_removing_the_fk_secret_without_use_is_rejected(
+    no_use_client, llm_config_pointing_at_secret_a, secret_a
+):
+    """PATCH {api_key_secret_id: null} without USE is rejected and the FK is unchanged."""
+    instance = llm_config_pointing_at_secret_a
+    response = no_use_client.patch(
+        f"/api/llm-configs/{instance.id}/",
+        {"api_key_secret_id": None},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert "api_key_secret_id" in response.json()["message"]
+    instance.refresh_from_db()
+    assert instance.api_key_secret_id == secret_a.id
+
+
+@pytest.mark.django_db
+def test_use_holder_can_remove_the_fk_secret(
+    use_client, llm_config_pointing_at_secret_a
+):
+    """PATCH {api_key_secret_id: null} with USE succeeds and clears the FK in the DB."""
+    instance = llm_config_pointing_at_secret_a
+    response = use_client.patch(
+        f"/api/llm-configs/{instance.id}/",
+        {"api_key_secret_id": None},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    instance.refresh_from_db()
+    assert instance.api_key_secret_id is None
+
+
+@pytest.fixture
+def python_code_tool_pointing_at_secret_a(default_org, secret_a) -> PythonCodeTool:
+    python_code = PythonCode.objects.create(
+        code="def main(**kwargs):\n    return 1\n",
+        entrypoint="main",
+        libraries="",
+        global_kwargs={},
+    )
+    python_code.secrets.set([secret_a])
+    return PythonCodeTool.objects.create(
+        name="fkuse-python-code-tool",
+        description="fkuse python code tool",
+        python_code=python_code,
+        org=default_org,
+    )
+
+
+def _resend_python_code_payload(*, python_code: PythonCode, secret_ids: list[int]):
+    """The nested `python_code` block for a PATCH, unchanged except for `secret_ids`."""
+    return {
+        "code": python_code.code,
+        "entrypoint": python_code.entrypoint,
+        "libraries": python_code.get_libraries_list(),
+        "global_kwargs": python_code.global_kwargs,
+        "secret_ids": secret_ids,
+    }
+
+
+@pytest.mark.django_db
+def test_removing_the_m2m_secret_without_use_is_rejected(
+    no_use_client_6b, python_code_tool_pointing_at_secret_a, secret_a
+):
+    """PATCH python_code.secret_ids=[] without USE is rejected and the M2M set is unchanged."""
+    tool = python_code_tool_pointing_at_secret_a
+    response = no_use_client_6b.patch(
+        f"/api/python-code-tool/{tool.pk}/",
+        {
+            "python_code": _resend_python_code_payload(
+                python_code=tool.python_code, secret_ids=[]
+            )
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert "secret_ids" in response.json()["message"]
+    tool.python_code.refresh_from_db()
+    assert list(tool.python_code.secrets.values_list("id", flat=True)) == [secret_a.id]
+
+
+@pytest.mark.django_db
+def test_use_holder_can_remove_the_m2m_secret(
+    use_client_6b, python_code_tool_pointing_at_secret_a
+):
+    """PATCH python_code.secret_ids=[] with USE succeeds and empties the M2M set in the DB."""
+    tool = python_code_tool_pointing_at_secret_a
+    response = use_client_6b.patch(
+        f"/api/python-code-tool/{tool.pk}/",
+        {
+            "python_code": _resend_python_code_payload(
+                python_code=tool.python_code, secret_ids=[]
+            )
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    tool.python_code.refresh_from_db()
+    assert list(tool.python_code.secrets.values_list("id", flat=True)) == []
+
+
+@pytest.mark.django_db
+def test_creating_with_the_fk_secret_without_use_is_rejected(
+    no_use_client, secret_a, gpt_4o_llm
+):
+    """POST a new LLMConfig with api_key_secret_id set, without USE, is rejected and nothing is created."""
+    response = no_use_client.post(
+        "/api/llm-configs/",
+        {
+            "custom_name": "fkuse-create-denied",
+            "model": gpt_4o_llm.id,
+            "api_key_secret_id": secret_a.id,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert "api_key_secret_id" in response.json()["message"]
+    assert not LLMConfig.objects.filter(custom_name="fkuse-create-denied").exists()
+
+
+@pytest.mark.django_db
+def test_use_holder_can_create_with_the_fk_secret(use_client, secret_a, gpt_4o_llm):
+    """POST a new LLMConfig with api_key_secret_id set, with USE, succeeds with the reference attached."""
+    response = use_client.post(
+        "/api/llm-configs/",
+        {
+            "custom_name": "fkuse-create-permitted",
+            "model": gpt_4o_llm.id,
+            "api_key_secret_id": secret_a.id,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    config = LLMConfig.objects.get(custom_name="fkuse-create-permitted")
+    assert config.api_key_secret_id == secret_a.id
+
+
+@pytest.mark.django_db
+def test_creating_a_tool_with_the_m2m_secret_without_use_is_rejected(
+    no_use_client_6b, secret_a
+):
+    """POST a new PythonCodeTool with python_code.secret_ids set, without USE, is rejected and nothing is created."""
+    response = no_use_client_6b.post(
+        "/api/python-code-tool/",
+        {
+            "name": "fkuse-create-tool-denied",
+            "description": "fkuse create denied",
+            "variables": [],
+            "python_code": {
+                "code": "def main(**kwargs):\n    return 1\n",
+                "entrypoint": "main",
+                "libraries": [],
+                "global_kwargs": {},
+                "secret_ids": [secret_a.id],
+            },
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert "secret_ids" in response.json()["message"]
+    assert not PythonCodeTool.objects.filter(name="fkuse-create-tool-denied").exists()
+
+
+@pytest.mark.django_db
+def test_use_holder_can_create_a_tool_with_the_m2m_secret(use_client_6b, secret_a):
+    """POST a new PythonCodeTool with python_code.secret_ids set, with USE, succeeds with the reference attached."""
+    response = use_client_6b.post(
+        "/api/python-code-tool/",
+        {
+            "name": "fkuse-create-tool-permitted",
+            "description": "fkuse create permitted",
+            "variables": [],
+            "python_code": {
+                "code": "def main(**kwargs):\n    return 1\n",
+                "entrypoint": "main",
+                "libraries": [],
+                "global_kwargs": {},
+                "secret_ids": [secret_a.id],
+            },
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    tool = PythonCodeTool.objects.get(name="fkuse-create-tool-permitted")
+    assert list(tool.python_code.secrets.values_list("id", flat=True)) == [secret_a.id]

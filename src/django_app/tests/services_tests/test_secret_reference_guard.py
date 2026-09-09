@@ -31,6 +31,22 @@ class _GuardedSerializer(SecretReferenceGuardMixin, serializers.Serializer):
     )
 
 
+class _AbsentFieldSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    """A narrowed subclass whose inherited secret_reference_fields names a field it does not declare."""
+
+    secret_reference_fields = ("retired_secret_id",)
+
+
+class _ReadOnlyFieldSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    """A narrowed subclass whose guarded field is read_only, so it can never carry an incoming change."""
+
+    secret_reference_fields = ("api_key_secret_id",)
+
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        read_only=True, source="api_key_secret"
+    )
+
+
 @pytest.fixture
 def org(db):
     return Organization.objects.create(name="Org Guard")
@@ -156,3 +172,25 @@ class TestFailSafe:
             _Holder(), data={"api_key_secret_id": secret_a.id}
         )
         assert not serializer.is_valid()
+
+
+@pytest.mark.django_db
+class TestNarrowedSubclassFieldIsSkippedNotFatal:
+    """A subclass that inherits a guarded field name it no longer exposes must be skipped, not crash the guard."""
+
+    def test_field_absent_from_fields_does_not_raise_or_deny(self, user_without_use):
+        serializer = _AbsentFieldSerializer(context={"request": user_without_use})
+        assert serializer.validate({}) == {}
+
+    def test_read_only_field_does_not_raise_or_deny(self, user_without_use, secret_a):
+        # `attrs` must actually carry the field's source for this to discriminate:
+        # with an empty `attrs`, `source not in attrs` already short-circuits the
+        # pre-fix code before its missing read_only check would matter. Putting the
+        # source in `attrs` drives the pre-fix code past that point and into
+        # `_assert_may_use`, which denies (raises ValidationError) because
+        # `user_without_use` lacks secrets:USE -- a denial here would mean the
+        # read_only skip is missing.
+        serializer = _ReadOnlyFieldSerializer(context={"request": user_without_use})
+        assert serializer.validate({"api_key_secret": secret_a}) == {
+            "api_key_secret": secret_a
+        }
