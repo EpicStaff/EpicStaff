@@ -567,6 +567,44 @@ class TestV2ToV3:
         # tags is M2M (no DB column) — must survive a naive "f.concrete" check.
         assert result == expected
 
+    def test_legacy_llm_config_headers_merged_into_extra_headers(self):
+        data = {
+            "LLMConfig": [
+                {
+                    "id": 402,
+                    "custom_name": "Merged Config",
+                    "headers": {"X-Legacy": "legacy-value", "X-Shared": "from-legacy"},
+                    "extra_headers": {"X-New": "new-value", "X-Shared": "from-extra"},
+                }
+            ]
+        }
+
+        result = v2_to_v3(data)
+        llm_config = result["LLMConfig"][0]
+
+        assert "headers" not in llm_config
+        assert llm_config["extra_headers"] == {
+            "X-Legacy": "legacy-value",
+            "X-New": "new-value",
+            "X-Shared": "from-extra",
+        }
+
+    def test_llm_config_without_headers_passes_through_unaffected(self):
+        data = {
+            "LLMConfig": [
+                {
+                    "id": 403,
+                    "custom_name": "No Legacy Headers",
+                    "extra_headers": {"X-New": "new-value"},
+                }
+            ]
+        }
+        expected = copy.deepcopy(data)
+
+        result = v2_to_v3(data)
+
+        assert result == expected
+
     def test_stale_embedding_config_field_stripped(self):
         data = {
             "EmbeddingConfig": [

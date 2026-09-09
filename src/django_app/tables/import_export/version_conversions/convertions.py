@@ -90,9 +90,17 @@ def v2_to_v3(data: dict) -> dict:
         _strip_python_node_stream_config(nodes)
         _remap_classification_prompt_refs(nodes)
 
+    _merge_legacy_llm_config_headers(data)
     _strip_stale_config_fields(data)
 
     return data
+
+
+def _merge_legacy_llm_config_headers(data: dict) -> None:
+    for config in data.get(EntityType.LLM_CONFIG, []):
+        legacy = config.pop("headers", None)
+        if legacy:
+            config["extra_headers"] = {**legacy, **(config.get("extra_headers") or {})}
 
 
 def _strip_stale_config_fields(data: dict) -> None:
