@@ -280,7 +280,7 @@ export class SecretsSectionComponent implements OnInit {
 
         const parts: string[] = [];
         if (readable > 0) parts.push(`<strong>${readable} resources</strong> you can see`);
-        if (hidden > 0) parts.push(`<strong>${hidden} resources</strong> you don't have permission to view`);
+        if (hidden > 0) parts.push(`<strong>some resources</strong> you don't have permission to view`);
 
         return `This secret is still referenced by ${parts.join(' and ')}. They'll fall back to their <strong>NULL</strong> value once it's removed.`;
     }

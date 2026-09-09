@@ -123,9 +123,7 @@ export class SecretUsageDialogComponent implements OnInit {
             });
     }
 
-    public hiddenUsageTooltip(hiddenTotal: number): string {
-        return `${hiddenTotal} more use${hiddenTotal === 1 ? '' : 's'} you don't have permission to view.`;
-    }
+    public readonly hiddenUsageTooltip = "You don't have permission to view some of this secret's uses.";
 
     public readableCount(summary: SecretUsageSummary): number {
         return summary.categories.reduce((sum, category) => sum + category.items.length, 0);
