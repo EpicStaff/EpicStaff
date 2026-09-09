@@ -48,12 +48,16 @@ class AuditTokenView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        try:
-            retention_days = OrganizationConfig.objects.get(
-                org_id=org_id
-            ).audit_retention_days
-        except OrganizationConfig.DoesNotExist:
+        # Restrictionless pass superadmin user
+        if effective.is_superadmin:
             retention_days = 0
+        else:
+            try:
+                retention_days = OrganizationConfig.objects.get(
+                    org_id=org_id
+                ).audit_retention_days
+            except OrganizationConfig.DoesNotExist:
+                retention_days = 0
 
         now = datetime.now(timezone.utc)
         payload = {
