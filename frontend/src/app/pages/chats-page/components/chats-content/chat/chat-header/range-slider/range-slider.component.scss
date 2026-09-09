@@ -3,7 +3,7 @@
         display: block;
         margin-bottom: 8px;
         font-size: 14px;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
     }
 
     input[type='range'] {
@@ -21,18 +21,18 @@
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background-color: var(--accent-color, #685fff);
+            background-color: var(--accent-color);
             cursor: pointer;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 1px 3px var(--black-alpha-30);
         }
 
         &::-moz-range-thumb {
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background-color: var(--accent-color, #685fff);
+            background-color: var(--accent-color);
             cursor: pointer;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 1px 3px var(--black-alpha-30);
             border: none;
         }
     }

@@ -11,7 +11,7 @@
     border: none;
     color: var(--color-text-primary);
     font-size: 1em;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
@@ -19,7 +19,7 @@
 
 .dur-dropdown.open .toggle-btn,
 .dur-dropdown.has-value .toggle-btn {
-    color: var(--accent-color, #5e9eff);
+    color: var(--accent-color);
 }
 
 .dur-panel {
@@ -27,10 +27,10 @@
     top: calc(100% + 8px);
     left: 0;
     z-index: 1100;
-    background: var(--color-background-body, #23232a);
-    border: 1px solid var(--color-divider-regular, #333);
+    background: var(--color-background-body);
+    border: 1px solid var(--color-divider-regular);
     border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 4px 24px var(--black-alpha-18);
     min-width: 240px;
     padding: 12px;
     display: flex;
@@ -46,24 +46,24 @@
 .op-btn {
     flex: 1;
     padding: 4px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: 0.6875rem;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
 
     &:hover {
-        background: rgba(94, 158, 255, 0.1);
+        background: var(--blue-alpha-10);
         color: var(--color-text-primary);
     }
 
     &--active {
-        background: rgba(94, 158, 255, 0.18);
-        border-color: var(--accent-color, #5e9eff);
-        color: var(--accent-color, #5e9eff);
+        background: var(--blue-alpha-18);
+        border-color: var(--accent-color);
+        color: var(--accent-color);
     }
 }
 
@@ -75,23 +75,23 @@
 .unit-btn {
     flex: 1;
     padding: 4px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: 0.6875rem;
     cursor: pointer;
     transition: all 0.15s;
 
     &:hover {
-        background: rgba(94, 158, 255, 0.1);
+        background: var(--blue-alpha-10);
         color: var(--color-text-primary);
     }
 
     &--active {
-        background: rgba(94, 158, 255, 0.18);
-        border-color: var(--accent-color, #5e9eff);
-        color: var(--accent-color, #5e9eff);
+        background: var(--blue-alpha-18);
+        border-color: var(--accent-color);
+        color: var(--accent-color);
     }
 }
 
@@ -106,19 +106,19 @@
     flex: 1;
     min-width: 0;
     padding: 6px 8px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     outline: none;
 
     &:focus {
-        border-color: var(--accent-color, #5e9eff);
+        border-color: var(--accent-color);
     }
 
     &::placeholder {
-        color: var(--color-text-secondary, #888);
+        color: var(--color-text-secondary);
     }
 }
 
@@ -137,20 +137,20 @@
     padding: 4px 14px;
     border: none;
     border-radius: 4px;
-    background: var(--accent-color, #5e9eff);
-    color: #fff;
+    background: var(--accent-color);
+    color: var(--white);
     font-size: 0.95em;
     font-weight: 500;
     cursor: pointer;
 
     &:hover {
-        background: var(--accent-color-hover, #3a7bd5);
+        background: var(--accent-color-hover);
     }
 }
 
 .clear-btn {
     padding: 4px 14px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
@@ -159,7 +159,7 @@
     cursor: pointer;
 
     &:hover {
-        border-color: #e0575b;
-        color: #e0575b;
+        border-color: var(--red-580);
+        color: var(--red-580);
     }
 }

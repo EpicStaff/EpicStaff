@@ -215,7 +215,7 @@ class InvalidAvatarError(CustomAPIExeption):
 
 class AvatarTooLargeError(CustomAPIExeption):
     """Raised by UserAvatarStorageService when an avatar upload exceeds
-    settings.AVATAR_MAX_BYTES. The default_detail is overridden at
+    settings.AVATAR_MAX_SIZE. The default_detail is overridden at
     raise-site with the actual maximum so the FE can render it without
     hardcoding the number."""
 
@@ -232,6 +232,14 @@ class BuiltInRoleImmutableError(CustomAPIExeption):
     status_code = 403
     default_detail = "Built-in roles cannot be edited or deleted."
     default_code = "built_in_role_immutable"
+
+
+class BuiltInModelImmutableError(CustomAPIExeption):
+    """Raised when a write targets a shared built-in provider model row (org IS NULL)."""
+
+    status_code = 403
+    default_detail = "Built-in models cannot be edited or deleted."
+    default_code = "built_in_model_immutable"
 
 
 class OrgContextRequiredError(CustomAPIExeption):

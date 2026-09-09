@@ -1,0 +1,26 @@
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-radius: 6px;
+    margin: 0;
+
+    i {
+        margin-right: 10px;
+        font-size: 15px;
+    }
+
+    &:hover {
+        background: var(--white-alpha-6);
+        color: var(--color-text-primary);
+    }
+
+    &.delete:hover {
+        color: var(--red-400);
+        background: var(--red-400-alpha-10);
+    }
+}

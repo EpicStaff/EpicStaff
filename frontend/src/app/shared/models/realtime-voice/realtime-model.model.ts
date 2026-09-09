@@ -8,5 +8,4 @@ export interface RealtimeModel {
 export interface CreateRealtimeModel {
     name: string;
     provider: number;
-    is_custom: boolean;
 }
