@@ -4,7 +4,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent, ConfirmationDialogService, StepConfig, StepperComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    StepConfig,
+    StepperComponent,
+} from '@shared/components';
 import { EMPTY, filter, Observable, of } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 
