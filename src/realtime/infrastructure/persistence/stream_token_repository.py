@@ -31,7 +31,7 @@ class StreamTokenRepository(metaclass=SingletonMeta):
     it's missing or invalid.
 
     Mirrors the TTL + single-use pattern already used by
-    `ConnectionRepository` (EST-1869) for the `realtime_agents:schema`
+    `ConnectionRepository` for the `realtime_agents:schema`
     connection_key handshake.
     """
 

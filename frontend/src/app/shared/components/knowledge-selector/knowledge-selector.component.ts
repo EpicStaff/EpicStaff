@@ -18,6 +18,8 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 export interface KnowledgeSelectorRagConfig {
     rag_type: string;
@@ -38,7 +40,7 @@ const RAG_TYPE_LABELS: Record<string, string> = {
 
 @Component({
     selector: 'app-knowledge-selector',
-    imports: [OverlayModule, TooltipComponent, AppSvgIconComponent],
+    imports: [[FormsModule, ReactiveFormsModule, ClickOutsideDirective, OverlayModule, TooltipComponent, AppSvgIconComponent],
     templateUrl: './knowledge-selector.component.html',
     styleUrls: ['./knowledge-selector.component.scss'],
     providers: [

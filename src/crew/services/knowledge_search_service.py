@@ -4,15 +4,10 @@ from loguru import logger
 from langgraph.types import StreamWriter
 from pydantic import TypeAdapter
 
+import settings
 from models.graph_models import GraphMessage
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
-from constants.constants import (
-    NAIVE_RAG_SEARCH_TIMEOUT,
-    GRAPH_RAG_SEARCH_TIMEOUT,
-    DEFAULT_RAG_SEARCH_TIMEOUT,
-)
-from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import (
     NaiveSearchConfig,
     GraphSearchConfig,
@@ -22,6 +17,7 @@ from src.shared.models import (
 )
 from clients import KnowledgeClient
 from clients.errors import ClientTimeoutError
+
 
 
 class RagSearchConfigFactory:
@@ -35,8 +31,8 @@ class RagSearchConfigFactory:
     }
 
     _timeouts = {
-        "naive": NAIVE_RAG_SEARCH_TIMEOUT,
-        "graph": GRAPH_RAG_SEARCH_TIMEOUT,
+        "naive": settings.NAIVE_RAG_SEARCH_TIMEOUT,
+        "graph": settings.GRAPH_RAG_SEARCH_TIMEOUT,
     }
 
     @classmethod
@@ -120,7 +116,68 @@ class KnowledgeSearchService:
         rag_llm_api_key: str | None = None,
     ) -> list[str]:
         """
-        Search knowledge using specified RAG implementation.
+        Search knowledge and return result strings (agent path).
+
+        When this service was constructed with a stream writer, also emits an
+        `extracted_chunks` graph message. For the node path, which needs the full
+        response and adds its own message fields, use `search_knowledges_detailed`.
+
+        Returns:
+            List of knowledge results (strings)
+        """
+        response, token_usage = self._search(
+            sender=sender,
+            knowledge_collection_id=knowledge_collection_id,
+            rag_type_id=rag_type_id,
+            query=query,
+            rag_search_config=rag_search_config,
+            stop_event=stop_event,
+            timeout=timeout,
+            rag_embedder_api_key=rag_embedder_api_key,
+        )
+
+        if self.writer is not None:
+            self._add_knowledges_to_graph_message(
+                knowledge_results=response,
+                token_usage=token_usage,
+            )
+        return response.results
+
+    def search_knowledges_detailed(
+        self,
+        sender: str,
+        knowledge_collection_id: int,
+        rag_type_id: str,
+        query: str,
+        rag_search_config: Dict[str, Any],
+        stop_event: Optional[StopEvent] = None,
+        timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
+    ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
+        return self._search(
+            sender=sender,
+            knowledge_collection_id=knowledge_collection_id,
+            rag_type_id=rag_type_id,
+            query=query,
+            rag_search_config=rag_search_config,
+            stop_event=stop_event,
+            timeout=timeout,
+            rag_embedder_api_key=rag_embedder_api_key,
+        )
+
+    def _search(
+        self,
+        sender: str,
+        knowledge_collection_id: int,
+        rag_type_id: str,
+        query: str,
+        rag_search_config: Dict[str, Any],
+        stop_event: Optional[StopEvent] = None,
+        timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
+    ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
+        """
+        Publish a search request over Redis and block until the response arrives.
 
         Args:
             sender: Identifier of the sender

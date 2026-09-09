@@ -126,6 +126,34 @@ def test_openai_passes_org_id(MockOpenai, factory, rt_tools, on_server_event):
 
 
 @patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
+def test_openai_passes_rt_base_url(MockOpenai, factory, rt_tools, on_server_event):
+    config = _make_config(rt_provider="openai", rt_base_url="https://my-proxy.internal")
+    factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    _, kwargs = MockOpenai.call_args
+    assert kwargs.get("base_url") == "https://my-proxy.internal"
+
+
+@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
+def test_openai_passes_none_rt_base_url_by_default(MockOpenai, factory, rt_tools, on_server_event):
+    config = _make_config(rt_provider="openai")
+    factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    _, kwargs = MockOpenai.call_args
+    assert kwargs.get("base_url") is None
+
+
+@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
 def test_openai_passes_user_id(MockOpenai, factory, rt_tools, on_server_event):
     config = _make_config(rt_provider="openai", user_id=101)
     factory.create(

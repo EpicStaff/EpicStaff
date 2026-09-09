@@ -131,7 +131,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
                 next: () => {},
                 error: (e) => {
                     this.toastService.error('Failed to fetch documents');
-                    console.log(e);
+                    console.error('Failed to fetch documents:', e);
                 },
             });
     }

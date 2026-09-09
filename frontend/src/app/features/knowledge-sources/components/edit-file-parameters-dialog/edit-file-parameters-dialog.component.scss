@@ -79,7 +79,7 @@
     }
 
     &__document-config {
-        width: 550px;
-        flex-shrink: 0;
+        flex: 0 1 550px;
+        min-width: 470px;
     }
 }

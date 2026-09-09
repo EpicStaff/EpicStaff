@@ -77,7 +77,7 @@ def test_two_orgs_reuse_top_level_label_name(client_member, org_b):
     assert resp.status_code == 201
 
 
-# ---- WebhookTrigger (EST-3491: top-level org-owned resource, own `org` FK) ----
+# ---- WebhookTrigger (top-level org-owned resource, own `org` FK) ----
 
 
 @pytest.mark.django_db
@@ -96,7 +96,7 @@ def test_webhook_trigger_of_another_org_is_hidden(client_member, org_b):
     results = _results(client_member.get("/api/webhook-triggers/"))
     assert len(results) == 0
 
-# NOTE (EST-3491): the standalone /api/ngrok-config/ endpoint
+# NOTE: the standalone /api/ngrok-config/ endpoint
 # (NgrokWebhookConfigViewSet) never had a live route registered in
 # tables/urls.py and NgrokWebhookConfig.trigger is a required OneToOneField,
 # so the two tests that used to live here (`test_ngrok_read_allowed_for_member`,

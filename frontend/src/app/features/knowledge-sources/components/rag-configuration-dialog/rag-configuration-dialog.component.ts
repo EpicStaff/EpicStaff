@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { Component, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
 import { filter, switchMap } from 'rxjs/operators';
@@ -10,6 +10,7 @@ import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources
 import { RagIndexingService } from '../../services/rag-indexing.service';
 
 @Component({
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: '',
 })
 export abstract class RagConfigurationDialogComponent {

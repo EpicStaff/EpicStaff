@@ -1,10 +1,10 @@
 .extracted-chunks-container {
-    border-left: 4px solid #5c7cfa;
+    border-left: 4px solid var(--indigo-450);
     border-radius: 8px;
     background: var(--color-nodes-background);
     padding: 1rem;
 
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 16px var(--black-alpha-20);
 }
 
 .header {
@@ -21,7 +21,7 @@
 }
 
 .play-arrow i {
-    color: #5c7cfa;
+    color: var(--indigo-450);
     font-size: 1.1rem;
     transition: transform 0.3s ease;
 }
@@ -30,7 +30,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #5c7cfa;
+    background: var(--indigo-450);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -45,7 +45,7 @@
 
 .title h3 {
     margin: 0;
-    color: var(--gray-050);
+    color: var(--gray-50);
     font-size: 1rem;
     font-weight: 600;
 }
@@ -57,7 +57,7 @@
 }
 
 .query {
-    color: var(--gray-050);
+    color: var(--gray-50);
     font-weight: 500;
 }
 
@@ -70,8 +70,8 @@
 }
 
 .chip {
-    background: rgba(92, 124, 250, 0.15);
-    color: #bec8ff;
+    background: var(--indigo-450-alpha-15);
+    color: var(--indigo-300);
     padding: 0.15rem 0.65rem;
     border-radius: 999px;
     font-size: 0.8rem;
@@ -108,7 +108,7 @@
 
 .value {
     font-size: 0.95rem;
-    color: var(--gray-050);
+    color: var(--gray-50);
     font-weight: 600;
 }
 
@@ -144,7 +144,7 @@
 
 .chunk-order {
     font-weight: 600;
-    color: #5c7cfa;
+    color: var(--indigo-450);
 }
 
 .chunk-source {
@@ -165,7 +165,7 @@
     margin: 0;
     font-family: var(--font-family-monospace, 'Fira Code', monospace);
     white-space: pre-wrap;
-    color: var(--gray-050);
+    color: var(--gray-50);
     background: var(--gray-900);
     border-radius: 6px;
     padding: 0.75rem;

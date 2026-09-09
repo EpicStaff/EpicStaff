@@ -6,6 +6,7 @@ from tables.models.webhook_models import (
     RealtimeChannel,
     TwilioChannel,
     WebhookTrigger,
+    WebhookTriggerAuthKind,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from agents.models.agent_models import AgentDefinition
@@ -25,22 +26,6 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from tables.services.secrets import secret_resolver
-
-
-class RealtimeAgentSerializer(serializers.ModelSerializer):
-    # Org isolation: only configs from the caller's active org may be referenced.
-    realtime_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeConfig.objects.all(), required=False, allow_null=True
-    )
-    realtime_transcription_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeTranscriptionConfig.objects.all(),
-        required=False,
-        allow_null=True,
-    )
-
-    class Meta:
-        model = RealtimeAgent
-        exclude = ["agent"]
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -143,6 +128,7 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
             "custom_name",
             "api_key_secret_id",
             "model_name",
+            "base_url",
             "transcription_model_name",
             "transcription_api_key_secret_id",
             "voice_recognition_prompt",
@@ -203,8 +189,8 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
     auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="auth_token_secret",
-        required=False,
-        allow_null=True,
+        required=True,
+        allow_null=False,
     )
 
     class Meta:
@@ -230,6 +216,21 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        auth = getattr(wt, "auth", None) if wt else None
+        if auth is not None and auth.kind not in (
+            WebhookTriggerAuthKind.TWILIO,
+        ):
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        f"This trigger's auth is already configured for "
+                        f"kind='{auth.kind}' and cannot be claimed by a "
+                        "Twilio channel."
+                    )
+                }
+            )
+
         return attrs
 
 
@@ -251,12 +252,13 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
     twilio = _TwilioChannelReadSerializer(read_only=True)
-    realtime_agent = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeAgent.objects.all(),
-        org_lookup="agent__org_id",
-        required=False,
-        allow_null=True,
-    )
+    # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).
+    # Kept read-only, never writable: the only supported destination going
+    # forward is `realtime_agent_definition`. It stays in the response so
+    # operators can see which rows on this org are still stranded on the old
+    # destination. It cannot be dropped from the model because migrations are
+    # frozen on this branch.
+    realtime_agent = serializers.PrimaryKeyRelatedField(read_only=True)
     realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=RealtimeAgentDefinition.objects.all(),
         org_lookup="agent_definition__organization_id",
@@ -270,19 +272,14 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
     def validate(self, attrs):
-        realtime_agent = attrs.get(
-            "realtime_agent", getattr(self.instance, "realtime_agent", None)
-        )
-        realtime_agent_definition = attrs.get(
-            "realtime_agent_definition",
-            getattr(self.instance, "realtime_agent_definition", None),
-        )
-
-        if realtime_agent is not None and realtime_agent_definition is not None:
-            raise serializers.ValidationError(
-                "A RealtimeChannel may have at most one destination set "
-                "(realtime_agent or realtime_agent_definition)."
-            )
+        # `realtime_agent` is read-only, so a caller can no longer set both
+        # destinations at once. But a row created on `main` before this field
+        # existed may already carry a legacy `realtime_agent` in the DB — for
+        # such a stranded row, setting `realtime_agent_definition` is the fix,
+        # not a conflict. Let the new destination win and clear the dead
+        # pointer, rather than rejecting the very repair the caller is making.
+        if "realtime_agent_definition" in attrs:
+            attrs["realtime_agent"] = None
 
         return attrs
 
@@ -295,7 +292,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     never a logged-in user AND never a self-issued `key_type=USER` API key). That
     caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
     Twilio webhook requests. Do NOT reuse this serializer for any user-facing
-    endpoint — that would reopen the EST-3633 leak.
+    endpoint
 
     `TwilioChannel.auth_token` is now a Secret reference (`auth_token_secret`), so
     it must be resolved at the point of use rather than read as a plain model

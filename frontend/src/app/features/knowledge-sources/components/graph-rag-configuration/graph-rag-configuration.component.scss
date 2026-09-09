@@ -37,11 +37,11 @@
             gap: 0.5rem;
             margin: 0.75rem 1.875rem 0 2.5rem;
             padding: 0.625rem 0.75rem;
-            background: rgba(255, 179, 0, 0.08);
-            border: 1px solid rgba(255, 179, 0, 0.3);
+            background: var(--amber-600-alpha-8);
+            border: 1px solid var(--amber-600-alpha-30);
             border-radius: 6px;
             font-size: 0.8125rem;
-            color: #ffb300;
+            color: var(--amber-600);
             line-height: 1.4;
 
             .warning-icon {

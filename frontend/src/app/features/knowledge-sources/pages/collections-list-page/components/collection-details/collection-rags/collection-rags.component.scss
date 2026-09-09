@@ -34,12 +34,12 @@
     .name {
         white-space: nowrap;
         font-size: 12px;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     .model {
         font-size: 12px;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         text-overflow: ellipsis;
         white-space: nowrap;
         overflow: hidden;
@@ -51,7 +51,7 @@
         align-items: center;
         margin-left: auto;
         font-size: 12px;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     .nav {
@@ -64,6 +64,15 @@
                 transition: 0.3s;
                 background-color: var(--color-ks-hover-row);
             }
+        }
+    }
+
+    &__nav--action {
+        border-radius: 50%;
+        cursor: pointer;
+        &:hover {
+            transition: 0.3s;
+            background-color: var(--graphite-650);
         }
     }
 }

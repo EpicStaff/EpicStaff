@@ -10,65 +10,9 @@ from tables.serializers.model_serializers import (
     SessionSerializer,
     SessionLightSerializer,
 )
-from tables.serializers.serializers import AnswerToLLMSerializer, RunSessionSerializer
+from tables.serializers.serializers import RunSessionSerializer
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
-
-ANSWER_TO_LLM = dict(
-    summary="Submit user answer to a waiting LLM session",
-    description="Sends the user's text response to an active session that is paused and waiting for human input (status = `wait_for_user`). The answer is registered as a session message and forwarded via Redis to the appropriate crew node.",
-    request=AnswerToLLMSerializer,
-    responses={
-        202: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Answer accepted.",
-            examples=[
-                OpenApiExample(
-                    "Answer accepted",
-                    value={},
-                    response_only=True,
-                ),
-            ],
-        ),
-        400: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Validation error — one or more request fields are missing or invalid.",
-            examples=[
-                OpenApiExample(
-                    "Validation error",
-                    value={
-                        "session_id": ["This field is required."],
-                        "answer": ["This field may not be blank."],
-                    },
-                    response_only=True,
-                ),
-            ],
-        ),
-        401: UNAUTHORIZED_401_RESPONSE,
-        404: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="No session exists for the given `session_id`.",
-            examples=[
-                OpenApiExample(
-                    "Session not found",
-                    value="Session not found",
-                    response_only=True,
-                ),
-            ],
-        ),
-        418: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="The session exists but is not currently waiting for user input (status != `wait_for_user`).",
-            examples=[
-                OpenApiExample(
-                    "Wrong session status",
-                    value="Session status is not wait_for_user",
-                    response_only=True,
-                ),
-            ],
-        ),
-    },
-)
 
 RUN_SESSION_POST = dict(
     summary="Start a new session",
@@ -297,7 +241,6 @@ SESSION_LIST_GET = dict(
                                     "edge_list": [],
                                     "entrypoint": "string",
                                     "llm_node_list": [],
-                                    "crew_node_list": [],
                                     "python_node_list": [],
                                     "subgraph_node_list": [],
                                     "conditional_edge_list": [],

@@ -20,11 +20,8 @@ from tables.models import (
     ConditionalEdge,
     Graph,
     PythonCode,
-    PythonCodeTool,
-    PythonNode,
     Secret,
     WebhookTrigger,
-    WebhookTriggerNode,
 )
 from tables.models.graph_models import StartNode, TelegramTriggerNode
 from tables.services.persistent_variables_service import (
@@ -392,7 +389,6 @@ class GraphVersioningManager:
     def _build_missing_sets(self, missing: dict) -> _MissingSets:
         """Gather all missing dependencies ids into dataclass structure"""
         return _MissingSets(
-            crews=set(missing.get(EntityType.CREW.value, [])),
             subgraphs=set(missing.get(EntityType.GRAPH.value, [])),
             llm_configs=set(missing.get(EntityType.LLM_CONFIG.value, [])),
             webhooks=set(missing.get(EntityType.WEBHOOK_TRIGGER.value, [])),
@@ -717,38 +713,15 @@ class GraphVersioningManager:
         return node_mapper
 
     def _wipe_graph_children(self, graph: Graph) -> None:
+        """Wipe all graph related nodes. Orphaned PythonCode rows are reclaimed
+        by the post_delete signal cleanup in tables.signals.python_code_signals.
+        Intentionally hard-deletes and is NOT routed through the soft-delete
+        cascade (DeleteService): this replaces a graph's content during a
+        version restore, it does not delete the graph itself, so soft-delete
+        semantics don't apply here. Do not "fix" this to go through .delete().
         """
-        Wipe all graph related nodes
-        """
-        python_code_ids: set[int] = set()
-        python_code_ids.update(
-            PythonNode.objects.filter(graph=graph).values_list(
-                "python_code_id", flat=True
-            )
-        )
-        python_code_ids.update(
-            ConditionalEdge.objects.filter(graph=graph).values_list(
-                "python_code_id", flat=True
-            )
-        )
-        python_code_ids.update(
-            WebhookTriggerNode.objects.filter(graph=graph).values_list(
-                "python_code_id", flat=True
-            )
-        )
-
         for relation_name in _GRAPH_RELATION_NAMES:
             getattr(graph, relation_name).all().delete()
-
-        if python_code_ids:
-            shared_ids = set(
-                PythonCodeTool.objects.filter(
-                    python_code_id__in=python_code_ids
-                ).values_list("python_code_id", flat=True)
-            )
-            orphan_ids = python_code_ids - shared_ids
-            if orphan_ids:
-                PythonCode.objects.filter(id__in=orphan_ids).delete()
 
     def _update_graph_scalars(self, graph: Graph, snapshot: dict) -> None:
         """

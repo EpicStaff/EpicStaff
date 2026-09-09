@@ -1,6 +1,6 @@
 export interface AgentSearchConfigs {
-    naive?: NaiveRagSearchConfig;
-    graph?: GraphRagSearchConfig;
+    naive?: NaiveRagSearchConfig | null;
+    graph?: GraphRagSearchConfig | null;
 }
 
 export interface NaiveRagSearchConfig {
@@ -11,10 +11,10 @@ export interface NaiveRagSearchConfig {
 
 export interface GraphRagSearchConfig {
     search_method: GraphSearchMethod;
-    basic?: GraphBasicSearchConfig;
-    local?: GraphLocalSearchConfig;
-    global?: GraphGlobalSearchConfig;
-    drift?: GraphDriftSearchConfig;
+    basic?: GraphBasicSearchConfig | null;
+    local?: GraphLocalSearchConfig | null;
+    global?: GraphGlobalSearchConfig | null;
+    drift?: GraphDriftSearchConfig | null;
 }
 
 export type GraphSearchMethod = 'basic' | 'local' | 'global' | 'drift';

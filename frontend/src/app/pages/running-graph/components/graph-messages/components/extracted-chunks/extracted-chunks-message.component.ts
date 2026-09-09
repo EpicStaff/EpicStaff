@@ -13,7 +13,6 @@ import {
 
 @Component({
     selector: 'app-extracted-chunks-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     templateUrl: './extracted-chunks-message.component.html',
     styleUrls: ['./extracted-chunks-message.component.scss'],

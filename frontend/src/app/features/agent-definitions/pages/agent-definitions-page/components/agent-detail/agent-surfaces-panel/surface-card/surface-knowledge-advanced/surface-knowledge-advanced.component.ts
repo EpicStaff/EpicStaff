@@ -15,6 +15,16 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SelectComponent, SelectItem, TabButtonComponent } from '@shared/components';
+import {
+    InputNumberComponent,
+    RadioButtonComponent,
+    SelectComponent,
+    SelectItem,
+    SliderWithStepperComponent,
+    TabButtonComponent,
+    TextareaComponent,
+} from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgentSearchConfigs, GraphSearchMethod, NaiveRagSearchConfig } from '@shared/models';
 import { Subscription } from 'rxjs';
@@ -42,6 +52,8 @@ type RagKind = 'naive' | 'graph' | null;
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     private readonly fb = inject(FormBuilder);
     private readonly destroyRef = inject(DestroyRef);
     private readonly collectionsApi = inject(CollectionsApiService);

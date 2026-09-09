@@ -4,6 +4,17 @@
     min-width: 0;
 }
 
+.knowledge-selector {
+    position: relative;
+    width: 100%;
+
+    label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: var(--color-text-subtle);
+    }
+
 .selector {
     position: relative;
     width: 100%;
@@ -47,6 +58,11 @@
         }
     }
 
+        &.placeholder {
+            color: var(--white-alpha-30);
+        }
+    }
+
     &__text {
         flex: 1;
         min-width: 0;
@@ -56,7 +72,7 @@
         text-align: left;
 
         &--placeholder {
-            color: var(--color-input-text-placeholder);
+            color: var(--white-alpha-30);
         }
     }
 
@@ -85,14 +101,19 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    max-height: 320px;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 300px;
     overflow-y: auto;
     overflow-x: hidden;
-    border-radius: 4px;
-    border: 1px solid var(--color-input-border);
-    background-color: var(--color-input-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+    background-color: var(--color-modals-background);
     color: var(--color-text-primary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    z-index: 1000;
+    box-shadow: 0 4px 12px var(--black-alpha-15);
     z-index: 1005;
 
     &__option {
@@ -116,11 +137,12 @@
         }
 
         &:hover {
-            background: var(--color-ks-hover-row);
+            background-color: var(--white-alpha-5);
         }
 
         &--selected {
-            background: var(--color-ks-hover-row);
+            background-color: var(--purple-alpha-10);
+            color: var(--accent-color);
         }
     }
 

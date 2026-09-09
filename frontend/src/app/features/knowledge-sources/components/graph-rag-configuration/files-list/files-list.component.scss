@@ -14,8 +14,8 @@
         justify-content: space-between;
         padding: 0 1.875rem 1rem 2.5rem;
         width: 100%;
-        font-size: 0.875rem;
-        font-weight: 130;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
 
         .count {
             color: var(--accent-color);
@@ -118,7 +118,7 @@
         flex-shrink: 0;
 
         .size {
-            color: var(--color-ks-transparent-text-80);
+            color: var(--fog-alpha-80);
             text-align: center;
         }
     }

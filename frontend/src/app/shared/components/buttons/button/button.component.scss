@@ -95,16 +95,16 @@
     &--mod-default {
         height: 40px;
         padding: 0.6rem 1.5rem;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
     }
 
     &--mod-small {
         border-radius: 4px;
         height: 28px;
-        font-weight: 200;
-        font-size: 12px;
-        padding: 0.25rem 0.5rem;
+        font-weight: var(--text-body-small-weight);
+        font-size: var(--text-body-small-size);
+        padding: 0.625rem 0.5rem;
 
         .btn-content {
             gap: 0.25rem;

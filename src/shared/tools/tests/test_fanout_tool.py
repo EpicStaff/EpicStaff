@@ -119,7 +119,7 @@ class TestFanoutToolParallel:
         assert "truncated" not in data
 
     def test_returns_status_data_output_not_static_input_echo(self, monkeypatch):
-        """Regression test (EST-3285): the top-level `variables` field on a
+        """Regression test: the top-level `variables` field on a
         session is a STATIC copy of the initial input, set once at session
         creation and never updated. The sub-flow's real, declared output
         (produced by the EndNode's output_map) only ever lands in
@@ -546,7 +546,7 @@ class TestFanoutToolPipeline:
 
 
 class TestFanoutToolResilience:
-    """Covers FIX B (EST-3285 QA report): 'server disconnected without
+    """Covers FIX B (QA report): 'server disconnected without
     sending a response' (httpx.RemoteProtocolError) and other transient
     connection errors must not abort an item outright -- see
     `_post_run_session_with_retry` / `_poll_until_terminal` in main.py."""
@@ -730,7 +730,7 @@ class TestFanoutToolCommon:
         assert "mode" in result
 
     def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
-        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        """Regression test (smoke test): python_code.global_kwargs
         folds user_input config (graph_id/api_key/poll_timeout_s/etc.) into
         func_kwargs, so main() may also receive them as kwargs even though
         main()'s real signature is only (mode, items, input). The globals
@@ -771,7 +771,7 @@ class TestFanoutToolCommon:
 
 
 class TestFanoutToolHeaders:
-    """EST-3285: org_id (server-side resolved from Graph.org_id, injected by
+    """org_id (server-side resolved from Graph.org_id, injected by
     the crew engine) must be sent as X-Organization-Id so org-scoped API
     endpoints (e.g. GET /sessions/<id>/) don't 400 with org_context_required."""
 

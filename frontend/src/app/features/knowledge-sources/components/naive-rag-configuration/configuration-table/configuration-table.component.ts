@@ -20,6 +20,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { MATERIAL_FORMS } from '@shared/material-forms';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
 import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
@@ -45,6 +46,8 @@ import { DocumentStatusFilter, TableDocument } from './configuration-table.inter
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConfigurationTableComponent {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     fileTypeSelectItems: SelectItem[] = FILE_TYPES.map((t) => ({ name: t, value: t }));
     chunkStrategySelectItems: SelectItem[] = CHUNK_STRATEGIES_SELECT_ITEMS;
 

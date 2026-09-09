@@ -12,6 +12,7 @@ from infrastructure.providers.openai.event_handlers.agent_server_event_handler i
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from domain.models.realtime_tool import RealtimeTool
 from application.tool_manager_service import ToolManagerService
+from utils.openai_endpoints import derive_realtime_ws_url
 from loguru import logger
 
 
@@ -40,6 +41,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         output_audio_format: str = "pcm16",
         org_id: Optional[int] = None,
         user_id: Optional[int] = None,
+        base_url: Optional[str] = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -51,9 +53,9 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
 
         self.tool_manager_service = tool_manager_service
         self.model = model
-        self.voice = voice
+        self.voice = voice or "alloy"
         self.instructions = instructions
-        self.base_url = "wss://api.openai.com/v1/realtime"
+        self.base_url = derive_realtime_ws_url(base_url)
         self.turn_detection_mode = turn_detection_mode
         self.input_audio_format = input_audio_format
         self.output_audio_format = output_audio_format
@@ -117,7 +119,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         """
         Update session configuration using the GA `session` object shape.
         """
-        voice = config.get("voice", self.voice)
+        voice = config.get("voice") or self.voice
         turn_detection = config.get("turn_detection")
         tool_choice = config.get("tool_choice", "auto")
         input_audio_transcription = config.get(

@@ -1,10 +1,11 @@
-import os
 from typing import List, Optional
 
 import httpx
 
 from .base_embedder import BaseEmbedder
 from ._http_retry import request_with_retry
+
+import settings
 
 COHERE_API_URL = "https://api.cohere.com/v2/embed"
 
@@ -23,7 +24,7 @@ class CohereEmbedder(BaseEmbedder):
         # dims=1536
         self.model_name = model_name or "embed-v4.0"
         self.input_type = "search_query"
-        self.api_key = api_key or os.getenv("COHERE_API_KEY")
+        self.api_key = api_key or settings.COHERE_API_KEY
         if not self.api_key:
             raise ValueError(
                 "Cohere API key must be provided via argument or 'COHERE_API_KEY' environment variable."

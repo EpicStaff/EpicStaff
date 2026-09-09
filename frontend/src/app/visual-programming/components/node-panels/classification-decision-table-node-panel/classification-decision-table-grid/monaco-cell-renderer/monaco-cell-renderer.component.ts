@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -60,23 +59,18 @@ function ensureMonacoLoaded(): Promise<void> {
 
 @Component({
     selector: 'app-monaco-cell-renderer',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div
             class="code-cell"
             #codeContainer
         >
-            <span
-                *ngIf="!value"
-                class="placeholder"
-                >—</span
-            >
-            <span
-                *ngIf="value && !colorized"
-                class="plain-text"
-                >{{ displayText }}</span
-            >
+            @if (!value) {
+                <span class="placeholder">—</span>
+            }
+            @if (value && !colorized) {
+                <span class="plain-text">{{ displayText }}</span>
+            }
         </div>
     `,
     styles: [
@@ -95,7 +89,7 @@ function ensureMonacoLoaded(): Promise<void> {
                 padding: 0 8px;
                 cursor: text;
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-                font-size: 12px;
+                font-size: 0.75rem;
                 line-height: 1.4;
                 color: #d4d4d4;
             }

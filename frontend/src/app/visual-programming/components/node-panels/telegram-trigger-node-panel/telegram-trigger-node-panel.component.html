@@ -48,8 +48,9 @@
                     <div class="webhook-section">
                         <app-webhook-trigger-select
                             formControlName="webhook_trigger"
-                            [allowLocalhost]="false"
-                            disallowedProviderMessage="Localhost webhooks are not supported for Telegram. Use ngrok or a publicly reachable provider."
+                            [disallowedProviderTypes]="['localhost']"
+                            [disallowedAuthKinds]="['webhook', 'twilio']"
+                            disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
                             (triggerResolved)="onTriggerResolved($event)"
                         ></app-webhook-trigger-select>
 

@@ -1,14 +1,13 @@
 """
-EST-1869 security fix: `RealtimeAgentChatData.org_id` binds a realtime session
+Security fix: `RealtimeAgentChatData.org_id` binds a realtime session
 to the org that owns it, so the `realtime` service can reject a WS connect
 attempt made with a valid user token that does not belong to that org (see
 `src/realtime/api/main.py`'s `root()` handler). Before this fix, the payload
 carried no ownership data at all — a leaked/guessed `connection_key` let
 anyone drive another org's live realtime session.
 
-These tests confirm `org_id` is populated correctly from the *authoritative*
-source for each conversion path:
-- `convert_rt_agent_chat_to_pydantic` -> `Agent.org_id` (via `RealtimeAgent.agent`)
+This test confirms `org_id` is populated correctly from the *authoritative*
+source for the surviving conversion path:
 - `convert_rt_agent_definition_chat_to_pydantic` -> `AgentDefinition.organization_id`
   (via `RealtimeAgentDefinition.agent_definition`)
 """
@@ -18,7 +17,6 @@ import pytest
 from agents.models import AgentDefinition
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
-    RealtimeAgent,
     RealtimeAgentChat,
     RealtimeAgentDefinition,
 )
@@ -38,27 +36,6 @@ def _api_key_secret(org, name: str, text: str = "sk-test-key") -> Secret:
     secret_encryption.encrypt(text=text).write_to(secret)
     secret.save()
     return secret
-
-
-@pytest.mark.django_db
-def test_convert_rt_agent_chat_to_pydantic_populates_org_id_from_agent(
-    converter, wikipedia_agent, default_org
-):
-    config = OpenAIRealtimeConfig.objects.create(
-        custom_name="openai-cfg",
-        org=default_org,
-        model_name="gpt-4o-realtime-preview",
-        api_key_secret=_api_key_secret(default_org, "openai-cfg-api-key"),
-    )
-    rt_agent = RealtimeAgent.objects.create(agent=wikipedia_agent, openai_config=config)
-    chat = RealtimeAgentChat.objects.create(
-        rt_agent=rt_agent, connection_key="conn-org-id", openai_config=config
-    )
-
-    data = converter.convert_rt_agent_chat_to_pydantic(chat)
-
-    assert data.org_id == default_org.pk
-    assert data.org_id == wikipedia_agent.org_id
 
 
 @pytest.mark.django_db

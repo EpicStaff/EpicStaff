@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -19,11 +18,9 @@ interface InputMapPair {
 }
 
 @Component({
-    standalone: true,
     selector: 'app-subgraph-node-panel',
     imports: [
         ReactiveFormsModule,
-        CommonModule,
         CustomInputComponent,
         InputMapComponent,
         GoToButtonComponent,
@@ -114,9 +111,9 @@ interface InputMapPair {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-                font-size: 14px;
+                font-size: var(--text-body-medium-size);
                 color: rgba(255, 255, 255, 0.7);
-                font-weight: 500;
+                font-weight: var(--text-body-medium-weight);
                 margin-bottom: 0.5rem;
             }
 

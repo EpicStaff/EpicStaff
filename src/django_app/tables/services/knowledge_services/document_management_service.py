@@ -8,10 +8,11 @@ from tables.models import SourceCollection, DocumentMetadata, DocumentContent
 from tables.models.knowledge_models import NaiveRag, GraphRagDocument
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
-from tables.constants.knowledge_constants import (
-    MAX_FILE_SIZE,
-    ALLOWED_FILE_TYPES,
-)
+from tables.constants.knowledge_constants import MAX_FILE_SIZE
+from tables.constants.knowledge_constants import ALLOWED_FILE_TYPES
+from tables.constants.upload_limits import default_upload_limits
+from rest_framework import serializers
+
 from tables.exceptions import (
     DocumentUploadException,
     FileSizeExceededException,
@@ -22,6 +23,7 @@ from tables.exceptions import (
     DocumentsNotFoundException,
     InvalidCollectionIdException,
 )
+from tables.validators.file_upload_validator import FileValidator
 
 
 class DocumentManagementService:
@@ -54,9 +56,9 @@ class DocumentManagementService:
         file_size = uploaded_file.size
 
         # Validate file size
-        if file_size > MAX_FILE_SIZE:
-            max_size_mb = MAX_FILE_SIZE / (1024 * 1024)
-            raise FileSizeExceededException(file_name, max_size_mb)
+        max_file_bytes = default_upload_limits().max_file_bytes
+        if file_size > max_file_bytes:
+            raise FileSizeExceededException(file_name, max_file_bytes / (1024 * 1024))
 
         # Extract and validate file extension
         file_type = file_name.split(".")[-1].lower() if "." in file_name else ""
@@ -83,6 +85,7 @@ class DocumentManagementService:
             NoFilesProvidedException: If no files provided
             FileSizeExceededException: If any file exceeds size limit
             InvalidFileTypeException: If any file has invalid type
+            DocumentUploadException: If the batch as a whole is rejected
         """
         if not uploaded_files:
             raise NoFilesProvidedException()
@@ -101,9 +104,21 @@ class DocumentManagementService:
                     {"index": idx, "file_name": uploaded_file.name, "error": str(e)}
                 )
 
+        try:
+            FileValidator().validate(uploaded_files)
+        except serializers.ValidationError as e:
+            detail = e.detail if isinstance(e.detail, list) else [e.detail]
+            errors.extend(
+                {"index": None, "file_name": None, "error": str(item)}
+                for item in detail
+            )
+
         # If there are any validation errors, raise exception with all errors
         if errors:
-            error_messages = [f"[{e['index']}] {e['error']}" for e in errors]
+            error_messages = [
+                f"[{e['index']}] {e['error']}" if e["index"] is not None else e["error"]
+                for e in errors
+            ]
             raise DocumentUploadException(("\n".join(error_messages)))
 
         return validated_files

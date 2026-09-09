@@ -40,7 +40,6 @@ interface NavItem {
 
 @Component({
     selector: 'app-left-sidebar',
-    standalone: true,
     imports: [
         TooltipComponent,
         RouterLinkActive,
@@ -148,33 +147,18 @@ export class LeftSidebarComponent implements AfterViewInit {
         // avoiding CORS failures and hardcoded URLs.
         // this.apiBaseUrl = `${window.location.origin}/api/`;
 
+        // Comment on the comment above:
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;
         this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
-                id: 'projects',
-                routeLink: 'projects',
-                icon: 'project',
-                label: 'Projects',
-                isPermitted: this.permissionService.can(ResourceCode.Projects, ActionCode.Read),
-                showTooltip: false,
-            },
-            {
-                id: 'staff',
-                routeLink: 'staff',
-                icon: 'agent',
-                label: 'Staff',
-                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
-                showTooltip: false,
-            },
-            {
                 id: 'agents',
                 routeLink: 'agents',
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: true,
+                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -186,14 +170,6 @@ export class LeftSidebarComponent implements AfterViewInit {
                 showTooltip: false,
             },
             {
-                id: 'flows',
-                routeLink: 'flows',
-                icon: 'flows',
-                label: 'Flows',
-                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
-                showTooltip: false,
-            },
-            {
                 id: 'files',
                 routeLink: 'files',
                 icon: 'sources',
@@ -201,6 +177,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 isPermitted:
                     this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
                     this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+                showTooltip: false,
+            },
+            {
+                id: 'flows',
+                routeLink: 'flows',
+                icon: 'flows',
+                label: 'Flows',
+                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {

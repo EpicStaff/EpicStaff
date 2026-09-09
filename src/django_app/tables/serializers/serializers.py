@@ -46,7 +46,7 @@ class RunSessionSerializer(serializers.Serializer):
     # agent session that triggered it. Not exposed by any UI form — purely a
     # programmatic/tool-runtime input.
     parent_session_id = serializers.IntegerField(required=False, allow_null=True)
-    # EST-3285 4.2c: optional run-level token budget hard stop. Not exposed
+    # optional run-level token budget hard stop. Not exposed
     # by any UI form. Threaded to crew via SessionData.initial_state's
     # reserved "__token_budget__" key (see
     # SessionManagerService.create_session_data) rather than a new typed
@@ -68,14 +68,6 @@ class GetUpdatesSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
 
 
-class AnswerToLLMSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-    crew_id = serializers.IntegerField(required=True)
-    execution_order = serializers.IntegerField(required=True)
-    name = serializers.CharField()
-    answer = serializers.CharField()
-
-
 class NotifyEmailSerializer(serializers.Serializer):
     to = serializers.EmailField(required=True)
     subject = serializers.CharField(
@@ -85,20 +77,8 @@ class NotifyEmailSerializer(serializers.Serializer):
 
 
 class InitRealtimeSerializer(serializers.Serializer):
-    agent_id = serializers.IntegerField(required=False)
-    agent_definition_id = serializers.IntegerField(required=False)
+    agent_definition_id = serializers.IntegerField(required=True)
     config = serializers.DictField(required=False, default=dict)
-
-    def validate(self, attrs):
-        agent_id = attrs.get("agent_id")
-        agent_definition_id = attrs.get("agent_definition_id")
-
-        if bool(agent_id) == bool(agent_definition_id):
-            raise serializers.ValidationError(
-                "Exactly one of 'agent_id' or 'agent_definition_id' must be provided."
-            )
-
-        return attrs
 
 
 class BaseToolSerializer(serializers.Serializer):
@@ -130,10 +110,6 @@ class BaseToolSerializer(serializers.Serializer):
         return repr
 
 
-class RegisterTelegramTriggerSerializer(serializers.Serializer):
-    telegram_trigger_node_id = serializers.IntegerField(required=True)
-
-
 class ProcessDocumentChunkingSerializer(serializers.Serializer):
     document_id = serializers.IntegerField(required=True)
 
@@ -162,9 +138,6 @@ class BulkExportSerializer(serializers.Serializer):
 
 
 class GraphNodesPartialExportSerializer(serializers.Serializer):
-    crew_node_list = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, default=list
-    )
     python_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
@@ -193,6 +166,9 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     schedule_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    knowledge_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     agent_node_list = serializers.ListField(
@@ -240,6 +216,10 @@ class ImportRequestSerializer(serializers.Serializer):
                 }
             )
         return attrs
+
+
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

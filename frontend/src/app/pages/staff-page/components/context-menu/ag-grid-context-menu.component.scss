@@ -1,9 +1,9 @@
 .custom-menu {
     position: fixed;
-    background: #1e1e1f;
-    border: 1px solid #333741;
+    background: var(--graphite-890);
+    border: 1px solid var(--graphite-670);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px var(--black-alpha-15);
     padding: 0.25rem 0;
     z-index: 1000;
     padding: 8px;
@@ -21,13 +21,13 @@
             transition:
                 background 0.15s ease,
                 color 0.2s ease;
-            color: #e1e4e9;
+            color: var(--gray-220);
             font-size: 14px;
             border-radius: 4px;
 
             &.divider {
                 height: 1px;
-                background-color: #333741;
+                background-color: var(--graphite-670);
                 margin: 8px 0;
                 padding: 0;
                 cursor: default;
@@ -35,20 +35,20 @@
             }
 
             &:not(.divider):hover {
-                background: #292a2f;
-                color: #ffffff;
+                background: var(--graphite-790);
+                color: var(--white);
 
                 i.icon {
-                    color: #ffffff;
+                    color: var(--white);
                 }
             }
 
             &.delete-option:hover {
-                background: #542326;
-                color: #ff8383;
+                background: var(--red-950);
+                color: var(--red-430);
 
                 i.icon {
-                    color: #ff7a7a;
+                    color: var(--red-425);
                 }
             }
 

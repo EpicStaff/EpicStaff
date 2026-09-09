@@ -3,12 +3,12 @@
     flex-direction: column;
     gap: 8px;
     border-radius: 10px;
-    background-color: var(--color-ks-card-background);
+    background-color: var(--color-card-background);
     padding: 0.75rem 1rem;
     user-select: none;
 
     &.selected {
-        border: 1px solid var(--color-ks-button-activated);
+        border: 1px solid var(--accent-color);
     }
 
     .header {
@@ -25,7 +25,7 @@
         white-space: nowrap;
         text-overflow: ellipsis;
         font-size: 1.125rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     .files-count {
@@ -51,8 +51,9 @@
         padding: 2px 8px;
         border-radius: 4px;
         background-color: var(--color-ks-card-tag-background, rgba(255, 255, 255, 0.06));
-        font-size: 12px;
+        font-size: 1rem;
         white-space: nowrap;
+        color: var(--fog-alpha-80);
 
         &__name {
             overflow: hidden;
@@ -68,6 +69,28 @@
         text-overflow: ellipsis;
         font-size: 12px;
         color: var(--text-secondary-60);
+        align-items: center;
+        column-gap: 0.5rem;
+        min-width: 0;
+        &--completed {
+            color: var(--accent-color);
+        }
+
+        &--empty {
+            color: var(--success-color);
+        }
+
+        &--warning {
+            color: var(--color-status-warning);
+        }
+
+        &--uploading {
+            color: var(--color-status-processing);
+        }
+
+        &--failed {
+            color: var(--color-status-failed);
+        }
     }
 
     .status-icon {

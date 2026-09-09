@@ -17,10 +17,6 @@ export class DocumentsApiService {
     private http = inject(HttpClient);
     private configService = inject(ConfigService);
 
-    private readonly httpHeaders = new HttpHeaders({
-        'Content-Type': 'application/json',
-    });
-
     private get apiUrl(): string {
         return `${this.configService.apiUrl}documents`;
     }

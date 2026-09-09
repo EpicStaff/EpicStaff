@@ -84,6 +84,7 @@
                     formControlName="chunk_overlap"
                     [min]="0"
                     [max]="5000"
+                    [stepSize]="DEFAULT_STEP_SIZE"
                     [invalid]="!!getControl('chunk_overlap')?.invalid"
                     [alwaysShowSteps]="true"
                 />

@@ -3,6 +3,7 @@ from tables.models.knowledge_models.naive_rag_models import (
     NaiveRag,
     AgentNaiveRag,
     NaiveRagSearchConfig,
+    KnowledgeNodeNaiveRagSearchConfig,
 )
 from tables.models.knowledge_models.graphrag_models import (
     GraphRag,
@@ -11,15 +12,16 @@ from tables.models.knowledge_models.graphrag_models import (
     GraphRagLocalSearchConfig,
     GraphRagGlobalSearchConfig,
     GraphRagDriftSearchConfig,
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
 )
 from tables.models.crew_models import Agent
 from tables.exceptions import (
-    NaiveRagNotFoundException,
-    GraphRagNotFoundException,
     AgentMissingCollectionException,
     RagCollectionMismatchException,
     UnknownRagTypeException,
 )
+from tables.services.rag_registry import resolve_rag_in_collection
 
 
 class RagAssignmentService:
@@ -40,41 +42,7 @@ class RagAssignmentService:
         if not agent.knowledge_collection:
             raise AgentMissingCollectionException()
 
-        if rag_type == "naive":
-            try:
-                naive_rag = NaiveRag.objects.select_related(
-                    "base_rag_type__source_collection"
-                ).get(naive_rag_id=rag_id)
-            except NaiveRag.DoesNotExist:
-                raise NaiveRagNotFoundException(rag_id)
-
-            # Validate RAG belongs to agent's collection
-            if naive_rag.base_rag_type.source_collection != agent.knowledge_collection:
-                raise RagCollectionMismatchException(
-                    "naive", rag_id, agent.knowledge_collection.collection_id
-                )
-
-            # TODO: add status validation
-            return naive_rag
-
-        elif rag_type == "graph":
-            try:
-                graph_rag = GraphRag.objects.select_related(
-                    "base_rag_type__source_collection"
-                ).get(graph_rag_id=rag_id)
-            except GraphRag.DoesNotExist:
-                raise GraphRagNotFoundException(rag_id)
-
-            # Validate RAG belongs to agent's collection
-            if graph_rag.base_rag_type.source_collection != agent.knowledge_collection:
-                raise RagCollectionMismatchException(
-                    "graph", rag_id, agent.knowledge_collection.collection_id
-                )
-
-            return graph_rag
-
-        else:
-            raise UnknownRagTypeException(rag_type)
+        return resolve_rag_in_collection(rag_type, rag_id, agent.knowledge_collection)
 
     @staticmethod
     @transaction.atomic
@@ -253,6 +221,19 @@ class SearchConfigService:
     Handles both read (get) and write (create/update/apply) operations.
     """
 
+    # Column sets shared by agent- and node-bound configs (same fields, different models).
+    _NAIVE_FIELDS = ("search_limit", "similarity_threshold")
+    _BASIC_FIELDS = ("prompt", "k", "max_context_tokens")
+    _LOCAL_FIELDS = (
+        "prompt",
+        "text_unit_prop",
+        "community_prop",
+        "conversation_history_max_turns",
+        "top_k_entities",
+        "top_k_relationships",
+        "max_context_tokens",
+    )
+
     # Read methods
 
     @staticmethod
@@ -400,6 +381,47 @@ class SearchConfigService:
             result["drift"] = None
 
         return result
+
+    _NODE_GRAPH_METHOD_FIELDS = {
+        "basic": ("graph_basic_search_config", _BASIC_FIELDS),
+        "local": ("graph_local_search_config", _LOCAL_FIELDS),
+    }
+
+    @staticmethod
+    def get_node_search_configs(node) -> dict | None:
+        """
+        Node-bound mirror of get_search_configs in the same nested format
+        build_rag_search_config expects. search_method comes from node.search_method.
+
+        Graph methods are driven by _NODE_GRAPH_METHOD_FIELDS, so a new method is
+        picked up without touching this assembly. getattr(..., None) relies on
+        Django's reverse-OneToOne accessor raising an AttributeError subclass when
+        no config row exists.
+        """
+        configs: dict = {}
+
+        naive = getattr(node, "naive_search_config", None)
+        if naive is not None:
+            configs["naive"] = {
+                "search_limit": naive.search_limit,
+                "similarity_threshold": round(float(naive.similarity_threshold), 2),
+            }
+
+        graph_cfg: dict = {}
+        for method, (
+            related_name,
+            fields,
+        ) in SearchConfigService._NODE_GRAPH_METHOD_FIELDS.items():
+            row = getattr(node, related_name, None)
+            graph_cfg[method] = (
+                None if row is None else {f: getattr(row, f) for f in fields}
+            )
+
+        if any(graph_cfg[method] is not None for method in graph_cfg):
+            graph_cfg["search_method"] = node.search_method or "basic"
+            configs["graph"] = graph_cfg
+
+        return configs or None
 
     # Write methods
 
@@ -600,4 +622,31 @@ class SearchConfigService:
                 "is_suggested",
             ),
             **kwargs,
+        )
+
+    @staticmethod
+    def update_node_naive_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeNaiveRagSearchConfig,
+            node,
+            SearchConfigService._NAIVE_FIELDS,
+            kwargs,
+        )
+
+    @staticmethod
+    def update_node_graph_basic_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeGraphRagBasicSearchConfig,
+            node,
+            SearchConfigService._BASIC_FIELDS,
+            kwargs,
+        )
+
+    @staticmethod
+    def update_node_graph_local_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeGraphRagLocalSearchConfig,
+            node,
+            SearchConfigService._LOCAL_FIELDS,
+            kwargs,
         )
