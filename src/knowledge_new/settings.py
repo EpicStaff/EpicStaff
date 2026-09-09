@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from src.shared.communication.dns import build_dns
 from src.shared.envtools import Env
 
 BASE_DIR: Path = Path(__file__).resolve().parent
 
 env = Env()
 
-if env.bool("RUN_IN_DOCKER", False):
+if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(BASE_DIR / '../.env')
 
 DEBUG = env.bool("KNOWLEDGE_DEBUG")
