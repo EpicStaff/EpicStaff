@@ -10,6 +10,12 @@
         />
     </div>
 
+    @if (disabled()) {
+        <div class="disabled-note">
+            Superadmin has access to every organization. Organization assignments are not needed.
+        </div>
+    }
+
     @if (isOrgsLoading()) {
         <app-loading-spinner
             size="md"
@@ -17,9 +23,12 @@
         />
     } @else {
         <app-table
+            class="assign-table"
+            [class.assign-table--disabled]="disabled()"
             [columns]="columns"
             [data]="filteredOrganizations()"
             [selectable]="true"
+            [rowSelectable]="isRowSelectable"
             [initialSelectedIds]="selectionIds()"
             rowId="id"
             (selectionChange)="onSelection($event)"

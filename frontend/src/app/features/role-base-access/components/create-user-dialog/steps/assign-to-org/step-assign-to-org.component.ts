@@ -44,6 +44,7 @@ export class StepAssignToOrgComponent implements OnInit {
     organizations = input.required<Organization[]>();
     existingMemberships = input<FullMembership[]>([]);
     isEditMode = input.required<boolean>();
+    disabled = input<boolean>(false);
 
     organizationsTableData = signal<TableRow[]>([]);
     searchTerm = signal('');
@@ -127,6 +128,8 @@ export class StepAssignToOrgComponent implements OnInit {
     rolesForOrg(orgId: number): SelectItem[] {
         return this.roleItemsByOrg().get(orgId) ?? [];
     }
+
+    readonly isRowSelectable = (): boolean => !this.disabled();
 
     onSelection(items: TableRow[]): void {
         this.selectedOrganizations.set(items);

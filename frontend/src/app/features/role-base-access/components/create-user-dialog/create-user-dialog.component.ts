@@ -56,6 +56,7 @@ export class CreateUserDialogComponent implements OnInit {
 
     editMode = computed(() => this.editUser() !== null);
     existingMemberships = computed<FullMembership[]>(() => this.editUser()?.memberships ?? []);
+    superadminActive = computed(() => this.userDetailsStep()?.superadminValue() ?? false);
     submitDisabled = computed(() => !(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting());
 
     ngOnInit(): void {
@@ -134,11 +135,13 @@ export class CreateUserDialogComponent implements OnInit {
         assignments: OrgAssignment[]
     ): Observable<boolean> {
         return this.adminUserService.createUser({ email, password }).pipe(
-            switchMap((user) =>
-                (superadmin ? this.adminUserService.grantSuperadmin(user.id) : of(void 0)).pipe(map(() => user.id))
-            ),
-            switchMap((userId) => this.createMembershipsForUser(userId, assignments)),
-            map(() => true)
+            switchMap((user) => {
+                // Superadmins have implicit access to every org — skip membership creation entirely.
+                if (superadmin) {
+                    return this.adminUserService.grantSuperadmin(user.id).pipe(map(() => true));
+                }
+                return this.createMembershipsForUser(user.id, assignments).pipe(map(() => true));
+            })
         );
     }
 
@@ -159,30 +162,37 @@ export class CreateUserDialogComponent implements OnInit {
     }
 
     /** Edit flow: diff `assignments` vs existing memberships and superadmin flag.
-     *   - Role change on existing membership → PATCH.
-     *   - New org → POST.
-     *   - Removed org → DELETE.
-     *   - Superadmin toggle → grant/revoke. */
+     *   - Granting superadmin → grant only; backend wipes memberships, so any local diff is discarded.
+     *   - Revoking superadmin → revoke first, then run the membership diff (backend rejects membership
+     *     writes while the user is still superadmin).
+     *   - No superadmin change → run the membership diff in parallel. */
     private updateExistingUser(
         user: AggregatedUser,
         assignments: OrgAssignment[],
         wantsSuperadmin: boolean
     ): Observable<boolean> {
+        const granting = wantsSuperadmin && !user.isSuperadmin;
+        const revoking = !wantsSuperadmin && user.isSuperadmin;
+
+        if (granting) {
+            return this.adminUserService.grantSuperadmin(user.id).pipe(map(() => true));
+        }
+
+        if (revoking) {
+            return this.adminUserService
+                .revokeSuperadmin(user.id)
+                .pipe(switchMap(() => this.runMembershipDiff(user, assignments)));
+        }
+
+        return this.runMembershipDiff(user, assignments);
+    }
+
+    private runMembershipDiff(user: AggregatedUser, assignments: OrgAssignment[]): Observable<boolean> {
         const membershipByOrg = new Map(user.memberships.map((m) => [m.organization.id, m]));
         const wantedByOrg = new Map(assignments.map((a) => [a.orgId, a.roleId]));
 
         const ops: Observable<unknown>[] = [];
 
-        // Superadmin diff first (grant/revoke can affect visibility of subsequent ops).
-        if (wantsSuperadmin !== user.isSuperadmin) {
-            ops.push(
-                wantsSuperadmin
-                    ? this.adminUserService.grantSuperadmin(user.id)
-                    : this.adminUserService.revokeSuperadmin(user.id)
-            );
-        }
-
-        // Adds & role updates.
         for (const a of assignments) {
             const existing = membershipByOrg.get(a.orgId);
             if (!existing) {
@@ -192,7 +202,6 @@ export class CreateUserDialogComponent implements OnInit {
             }
         }
 
-        // Removals.
         for (const m of user.memberships) {
             if (!wantedByOrg.has(m.organization.id)) {
                 ops.push(this.membershipsService.remove(m.id));

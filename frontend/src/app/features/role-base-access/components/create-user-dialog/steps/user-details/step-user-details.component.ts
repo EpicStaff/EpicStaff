@@ -52,6 +52,10 @@ export class StepUserDetailsComponent {
         initialValue: this.form.valid,
     });
 
+    readonly superadminValue = toSignal(this.form.controls.superadmin.valueChanges, {
+        initialValue: this.form.controls.superadmin.value ?? false,
+    });
+
     constructor() {
         effect(() => {
             const user = this.userData();
