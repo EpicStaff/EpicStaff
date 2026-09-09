@@ -7,6 +7,8 @@ from src.shared.models import CodeTaskData
 from services.storage_credential_manager import StorageCredentialManager
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+import isolation
+import landlock
 from utils.logger import logger
 
 import settings
@@ -26,7 +28,7 @@ redis_service = RedisService(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
     user=settings.REDIS_USER,
-    password=settings.REDIS_PASSWORD
+    password=settings.REDIS_PASSWORD,
 )
 
 os.chdir("savefiles")
@@ -68,14 +70,39 @@ def log_secret_masking_state():
         )
 
 
+def log_isolation_state():
+    """Announce the Landlock filesystem-jail state once per process."""
+    abi = landlock.abi_version()
+    if abi >= 1:
+        logger.info(
+            "Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi
+        )
+    elif isolation.isolation_required():
+        logger.warning(
+            "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
+            "{} is not false: executions will be refused until this is resolved.",
+            isolation.REQUIRE_ISOLATION_ENV_VAR,
+        )
+    else:
+        logger.warning(
+            "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
+            "{}=false: executions will run UNCONFINED. Do not use this in "
+            "production.",
+            isolation.REQUIRE_ISOLATION_ENV_VAR,
+        )
+
+
 async def init():
     sweep_output_path()
     log_secret_masking_state()
+    log_isolation_state()
     await redis_service.connect()
 
 
 async def listen_redis():
-    logger.info(f"Subscribed to channel '{settings.CODE_EXEC_CHANNEL}' for code execution tasks.")
+    logger.info(
+        f"Subscribed to channel '{settings.CODE_EXEC_CHANNEL}' for code execution tasks."
+    )
 
     while True:
         try:
@@ -121,7 +148,9 @@ async def run(code_task_data: CodeTaskData):
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (
-                    settings.OUTPUT_PATH / code_task_data.execution_id / "storage_mutations.json"
+                    settings.OUTPUT_PATH
+                    / code_task_data.execution_id
+                    / "storage_mutations.json"
                 )
 
                 if mutations_path.exists():

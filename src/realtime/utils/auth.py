@@ -13,9 +13,9 @@ def validate_api_key() -> bool:
         return True
     try:
         resp = httpx.get(
-            f"{settings.DJANGO_AUTH_URL}/api/auth/api-key/validate/",
-            headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
-            timeout=settings.DJANGO_AUTH_TIMEOUT,
+            f"{config.DJANGO_AUTH_URL}/api/auth/api-key/validate/",
+            headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
+            timeout=config.DJANGO_AUTH_TIMEOUT,
         )
     except Exception:
         logger.warning("API key validation request failed")
@@ -39,10 +39,10 @@ def introspect_token(token: str) -> dict | None:
         return None
     try:
         resp = httpx.post(
-            f"{settings.DJANGO_AUTH_URL}/api/auth/introspect/",
+            f"{config.DJANGO_AUTH_URL}/api/auth/introspect/",
             json={"token": token},
-            headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
-            timeout=settings.DJANGO_AUTH_TIMEOUT,
+            headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
+            timeout=config.DJANGO_AUTH_TIMEOUT,
         )
     except Exception:
         logger.warning("Token introspection request failed")

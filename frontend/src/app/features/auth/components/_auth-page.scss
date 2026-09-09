@@ -30,8 +30,8 @@
 
     .title {
         color: var(--color-text-primary);
-        font-size: 2rem;
-        font-weight: 700;
+        font-size: var(--text-h1-hero-size);
+        font-weight: var(--text-h1-hero-weight);
 
         span {
             color: var(--accent-color);

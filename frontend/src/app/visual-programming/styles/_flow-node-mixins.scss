@@ -20,7 +20,7 @@
 
     .port-label {
         position: absolute;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--gray-560);
         background: var(--graphite-1005-alpha-flat);
         white-space: nowrap;
@@ -45,7 +45,7 @@
     justify-content: center;
 
     .plus-icon {
-        font-size: 8px;
+        font-size: 0.5rem;
         opacity: 0;
         transition: opacity 0.2s;
         pointer-events: none;
@@ -225,7 +225,7 @@
     }
 
     i {
-        font-size: 18px;
+        font-size: 1.125rem;
         width: 18px;
         height: 18px;
         color: var(--gray-219);
