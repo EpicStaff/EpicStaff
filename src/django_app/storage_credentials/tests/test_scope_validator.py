@@ -52,27 +52,20 @@ def test_path_traversal_in_a_nested_segment_is_rejected(validator):
         )
 
 
-def test_empty_storage_allowed_paths_defaults_to_the_whole_org_prefix(validator):
-    """DISCREPANCY vs. the test plan: the plan asked to "fix the actual
-    behaviour, whichever it is" for an empty `storage_allowed_paths` -- here
-    it is a deliberate default (the whole org folder), not an error. The
-    docstring in scope_validator.py explicitly calls this out as mirroring
-    the pre-existing sandbox-side `_scoped_folders()` default."""
-    scoped_folders = validator.validate(
-        org_id=1, storage_org_prefix="org_1", storage_allowed_paths=None
-    )
-
-    assert scoped_folders == {"org_1/"}
+def test_none_storage_allowed_paths_is_rejected(validator):
+    """Fail closed: an unset `storage_allowed_paths` must not default to
+    the whole org prefix. Every caller must pass an explicit, narrow path."""
+    with pytest.raises(CredentialScopeValidationError):
+        validator.validate(
+            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=None
+        )
 
 
-def test_empty_list_storage_allowed_paths_also_defaults_to_the_whole_org_prefix(
-    validator,
-):
-    scoped_folders = validator.validate(
-        org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[]
-    )
-
-    assert scoped_folders == {"org_1/"}
+def test_empty_list_storage_allowed_paths_is_rejected(validator):
+    with pytest.raises(CredentialScopeValidationError):
+        validator.validate(
+            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[]
+        )
 
 
 def test_missing_org_id_is_rejected(validator):

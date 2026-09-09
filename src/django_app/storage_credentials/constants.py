@@ -1,6 +1,11 @@
 """Names, TTLs, and Redis key formats for per-execution MinIO credential
 issuance."""
 
+from src.shared.storage_credentials.constants import (
+    STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
+    STORAGE_CREDENTIAL_REQUEST_STREAM,
+)
+
 # `Secret(system=True, name=...)` that stores one organization's org-level
 # MinIO IAM user credentials (access_key:secret_key, colon-joined plaintext).
 SECRET_NAME_ORG_MINIO_USER = "system_minio_org_user"
@@ -31,14 +36,14 @@ ISSUER_HEARTBEAT_KEY_TTL_SECONDS = 20
 # the issuer as unreachable and failing closed.
 STORAGE_CREDENTIAL_WAIT_TIMEOUT_S = 15
 
-# Redis Stream + consumer group carrying credential-issuance requests
-# (sandbox -> issuer). A durable, redelivery-capable primitive: unlike the
-# scope key (GETDEL, execute-once) or the response key (List+BLPOP, private
-# per-execution channel), this is the one link where a future horizontally
-# scaled issuer could otherwise double-process the same request.
-STORAGE_CREDENTIAL_REQUEST_STREAM = "storage_credential_requests"
+# Consumer group over STORAGE_CREDENTIAL_REQUEST_STREAM (imported above from
+# `src.shared.storage_credentials.constants`, shared with `sandbox` since
+# both sides must agree on the stream name and envelope type). A durable,
+# redelivery-capable primitive: unlike the scope key (GETDEL, execute-once)
+# or the response key (List+BLPOP, private per-execution channel), this is
+# the one link where a future horizontally scaled issuer could otherwise
+# double-process the same request.
 STORAGE_CREDENTIAL_REQUEST_CONSUMER_GROUP = "storage_credential_issuers"
-STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE = "issue_temporary_credential"
 
 # Idle time before a pending (unacked) request is eligible for XAUTOCLAIM
 # redelivery to another consumer.

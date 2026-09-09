@@ -576,6 +576,20 @@ class DynamicVenvExecutorChain:
                     stdout="",
                     returncode=1,
                 )
+            except Exception as e:
+                # Anything unwrapped that still escapes the credential-request
+                # path (StorageCredentialClient is expected to wrap everything
+                # as StorageCredentialRequestError, but this is defense in
+                # depth) must fail closed the same way.
+                logger.exception(
+                    "Unexpected failure obtaining scoped storage credentials"
+                )
+                return CodeResultData(
+                    execution_id=execution_id,
+                    stderr=f"Unexpected failure obtaining scoped storage credentials: {e}",
+                    stdout="",
+                    returncode=1,
+                )
             context["temp_storage_access_key"] = credentials["access_key"]
             context["temp_storage_secret_key"] = credentials["secret_key"]
 

@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import shutil
-from src.shared.models import CodeTaskData
+from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.redis_streams import RedisStreamClient
 
 from services.redis_service import RedisService
@@ -144,19 +144,43 @@ async def run(code_task_data: CodeTaskData):
     """
     execution_dir = settings.OUTPUT_PATH / code_task_data.execution_id
     try:
-        result = await executor_chain.run(
-            venv_name=code_task_data.venv_name,
-            libraries=code_task_data.libraries,
-            code=code_task_data.code,
-            execution_id=code_task_data.execution_id,
-            entrypoint=code_task_data.entrypoint,
-            func_kwargs=code_task_data.func_kwargs,
-            global_kwargs=code_task_data.global_kwargs,
-            use_storage=code_task_data.use_storage,
-            storage_allowed_paths=code_task_data.storage_allowed_paths,
-            storage_org_prefix=code_task_data.storage_org_prefix,
-            secrets=code_task_data.secrets,
-        )
+        try:
+            result = await executor_chain.run(
+                venv_name=code_task_data.venv_name,
+                libraries=code_task_data.libraries,
+                code=code_task_data.code,
+                execution_id=code_task_data.execution_id,
+                entrypoint=code_task_data.entrypoint,
+                func_kwargs=code_task_data.func_kwargs,
+                global_kwargs=code_task_data.global_kwargs,
+                use_storage=code_task_data.use_storage,
+                storage_allowed_paths=code_task_data.storage_allowed_paths,
+                storage_org_prefix=code_task_data.storage_org_prefix,
+                secrets=code_task_data.secrets,
+            )
+        except Exception as e:
+            # executor_chain.run() is already expected to fail closed and
+            # return an error CodeResultData rather than raise (see
+            # dynamic_venv_executor_chain.py). This is defense in depth: if
+            # something still escapes uncaught, we must still publish a
+            # code_results message so callers waiting on this execution_id
+            # don't hang, and so any temporary storage credential minted for
+            # it is revoked by django_app's result_listener.
+            logger.exception(
+                "Unhandled exception running execution chain (execution_id={})",
+                code_task_data.execution_id,
+            )
+            await redis_service.async_publish(
+                channel=settings.CODE_RESULT_CHANNEL,
+                message=CodeResultData(
+                    execution_id=code_task_data.execution_id,
+                    stderr=f"Unhandled exception running execution chain: {e}",
+                    stdout="",
+                    returncode=1,
+                ).model_dump(),
+            )
+            return
+
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (

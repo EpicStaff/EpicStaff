@@ -23,6 +23,7 @@ import pytest
 
 from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.services import temporary_credential_service as tcs_module
+from storage_credentials.services.org_credential_cache import org_credential_cache
 from storage_credentials.services.org_credential_store import OrgMinioCredentials
 from storage_credentials.services.temporary_credential_service import (
     TemporaryCredentialService,
@@ -36,16 +37,23 @@ def fake_gateway():
     gateway = MagicMock()
     gateway.create_service_account = AsyncMock(return_value=("temp-ak", "temp-sk"))
     gateway.delete_service_account = AsyncMock()
+    gateway.close = AsyncMock()
     return gateway
 
 
 @pytest.fixture
 def service(monkeypatch, fake_gateway):
+    # `org_credential_cache` is a process-wide singleton (module-level, TTL
+    # 60s) shared across every test in this process -- clear it so one
+    # test's cached gateway/credentials can never leak into another's.
+    org_credential_cache._entries.clear()
     monkeypatch.setattr(
-        tcs_module, "MinioAdminGateway", MagicMock(return_value=fake_gateway)
+        "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+        MagicMock(return_value=fake_gateway),
     )
     monkeypatch.setattr(
-        tcs_module.org_credential_store, "get", MagicMock(return_value=ORG_CREDENTIALS)
+        "storage_credentials.services.org_credential_cache.org_credential_store.get",
+        MagicMock(return_value=ORG_CREDENTIALS),
     )
     return TemporaryCredentialService(host="http://minio:9000", bucket="epicstaff")
 

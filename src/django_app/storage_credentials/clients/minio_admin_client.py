@@ -16,6 +16,7 @@ from miniopy_async import MinioAdmin as _MinioAdminClient
 from miniopy_async.credentials import StaticProvider
 
 from storage_credentials.exceptions import (
+    StorageCredentialConfigError,
     TemporaryCredentialIssueError,
     TemporaryCredentialRevokeError,
 )
@@ -32,8 +33,23 @@ class MinioAdminGateway:
 
     @staticmethod
     def _split_host(value: str) -> tuple[bool, str]:
-        http, endpoint = value.split("://")
+        parts = value.split("://")
+        if len(parts) != 2:
+            raise StorageCredentialConfigError(
+                f"STORAGE_ENDPOINT is empty or malformed: expected "
+                f"`scheme://host[:port]`, got {value!r}"
+            )
+        http, endpoint = parts
         return http == "https", endpoint
+
+    async def close(self) -> None:
+        """`miniopy_async.MinioAdmin` lazily opens an aiohttp session on its
+        first request and never exposes a public way to close it. Reaching
+        into the private `_session` attribute is the only way to release
+        those sockets -- there is no public API on this library for it."""
+        session = getattr(self._client, "_session", None)
+        if session is not None:
+            await session.close()
 
     # --- org-level (long-lived) IAM user ---------------------------------
 
@@ -55,6 +71,9 @@ class MinioAdminGateway:
 
     async def attach_named_policy(self, policy_name: str, user: str) -> None:
         await self._client.policy_set(policy_name, user=user)
+
+    async def remove_named_policy(self, policy_name: str) -> None:
+        await self._client.policy_remove(policy_name)
 
     # --- per-execution (temporary) service account ------------------------
 
@@ -78,8 +97,7 @@ class MinioAdminGateway:
             return credentials["accessKey"], credentials["secretKey"]
         except Exception as error:
             raise TemporaryCredentialIssueError(
-                f"Failed to mint temporary service account: {error}",
-                transient=True,
+                f"Failed to mint temporary service account: {error}"
             ) from error
 
     async def delete_service_account(self, access_key: str) -> None:

@@ -1,12 +1,13 @@
 """Background process: issues and revokes per-execution temporary MinIO
 credentials, and sweeps expired ones.
 
-This is actually started as `python manage.py run_storage_credential_issuer &`
-in `src/django_app/entrypoint.sh`, backgrounded alongside the existing
-`listen_redis`/`cache_redis` commands.
+This is the entrypoint for the dedicated `storage-credential-issuer` service
+in `src/docker-compose.yaml` -- same image as `django_app`, its own
+`command:`, supervised directly by Docker (`restart: unless-stopped`), not a
+backgrounded process inside the `django_app` container.
 
-One event loop, three concurrent tasks (request consumer, result listener,
-TTL sweep) plus a heartbeat -- not three separate commands: none of them
+One event loop, four concurrent tasks (request consumer, result listener,
+TTL sweep, heartbeat) -- not four separate commands: none of them
 compete for a distinct resource or have a different SLA from each other.
 """
 
@@ -66,27 +67,44 @@ class Command(BaseCommand):
         heartbeat = IssuerHeartbeat(redis_client=redis_client)
         ttl_service = TtlReconciliationService(host=settings.STORAGE_ENDPOINT)
 
-        tasks = [
-            asyncio.create_task(request_consumer.run_forever()),
-            asyncio.create_task(result_listener.run_forever()),
-            asyncio.create_task(heartbeat.run_forever()),
-            asyncio.create_task(self._ttl_loop(ttl_service)),
-        ]
-
         stop_event = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, stop_event.set)
 
         logger.info("storage_credential_issuer started")
+        try:
+            # TaskGroup supervises all four worker tasks: if any of them
+            # raises, the group cancels the rest and re-raises, so
+            # `_main()` (and therefore the process, via asyncio.run() in
+            # handle()) exits non-zero -- Docker's `restart: unless-stopped`
+            # then restarts the whole issuer rather than silently running
+            # with one dead task and a heartbeat that stays green.
+            # `_wait_for_stop()` is the deliberate-shutdown counterpart: it
+            # returns normally (not an exception) once `stop_event` is set
+            # and cancels the four worker tasks itself, so a SIGTERM/SIGINT
+            # lets the group exit cleanly instead of being treated as a
+            # task failure.
+            async with asyncio.TaskGroup() as task_group:
+                worker_tasks = [
+                    task_group.create_task(request_consumer.run_forever()),
+                    task_group.create_task(result_listener.run_forever()),
+                    task_group.create_task(heartbeat.run_forever()),
+                    task_group.create_task(self._ttl_loop(ttl_service)),
+                ]
+                task_group.create_task(self._wait_for_stop(stop_event, worker_tasks))
+        finally:
+            logger.info("storage_credential_issuer shutting down")
+            await redis_client.aclose()
+            await stream_client.close()
+
+    async def _wait_for_stop(
+        self, stop_event: asyncio.Event, worker_tasks: list[asyncio.Task]
+    ) -> None:
         await stop_event.wait()
         logger.info("storage_credential_issuer received stop signal, shutting down")
-
-        for task in tasks:
+        for task in worker_tasks:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        await redis_client.aclose()
-        await stream_client.close()
 
     async def _ttl_loop(self, ttl_service: TtlReconciliationService) -> None:
         while True:

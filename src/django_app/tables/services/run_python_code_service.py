@@ -82,14 +82,20 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         # A bare "Test run" has no graph/session context to resolve
         # storage_allowed_paths from (unlike converter_service's node/tool
         # conversions). use_storage is derived from whether this PythonCode
-        # is used by at least one storage-enabled PythonCodeTool; when so,
-        # it gets the whole-org prefix with no narrower path restriction --
-        # the same default converter_service uses when a tool/node declares
-        # use_storage but no allowed paths.
+        # is used by at least one storage-enabled PythonCodeTool belonging
+        # to *this* organization -- an org-scoped filter, since a different
+        # tenant's tool marked use_storage=True must never be able to flip
+        # storage on for this org's Test run.
+        #
+        # CredentialScopeValidator fails closed on an empty/missing
+        # storage_allowed_paths (no more "whole org prefix" default), so an
+        # explicit, narrow path scoped to this one execution is passed here
+        # rather than relying on any default.
         use_storage = PythonCodeTool.objects.filter(
-            python_code=python_code, use_storage=True
+            python_code=python_code, use_storage=True, org_id=organization_id
         ).exists()
         storage_org_prefix = f"org_{organization_id}" if use_storage else None
+        storage_allowed_paths = [f"test-runs/{execution_id}/"] if use_storage else None
 
         code_task_data = CodeTaskData(
             venv_name=f"venv_{python_code_id}",
@@ -101,6 +107,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
             use_storage=use_storage,
             storage_org_prefix=storage_org_prefix,
+            storage_allowed_paths=storage_allowed_paths,
             org_id=organization_id if use_storage else None,
             secrets=secrets,
         )

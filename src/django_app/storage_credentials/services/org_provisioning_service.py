@@ -79,7 +79,9 @@ class OrgStorageProvisioningService:
         (retention policy is out of scope -- see plan section 1)."""
         access_key = _org_access_key(org.id)
         try:
-            asyncio.run(self._deprovision_in_minio(access_key=access_key))
+            asyncio.run(
+                self._deprovision_in_minio(org_id=org.id, access_key=access_key)
+            )
         except Exception as error:
             raise OrgStorageProvisioningError(
                 f"Failed to deprovision MinIO storage user for org_id={org.id}: {error}"
@@ -91,25 +93,49 @@ class OrgStorageProvisioningService:
     async def _provision_in_minio(
         self, *, org_id: int, access_key: str, secret_key: str
     ) -> None:
+        # Each public method here runs its own one-off `asyncio.run()`
+        # (see the module docstring), so there is no long-lived event loop
+        # to cache a gateway/aiohttp session against across calls the way
+        # `TemporaryCredentialService`/`TtlReconciliationService` do -- a
+        # session created in one `asyncio.run()` cannot be reused once that
+        # loop closes. Explicitly closing it here (MinioAdminGateway.close())
+        # is the correct fix for this call shape.
         gateway = MinioAdminGateway(
             host=self._host,
             access_key=self._root_access_key,
             secret_key=self._root_secret_key,
         )
-        await gateway.add_user(access_key, secret_key)
-        policy = build_org_user_policy(
-            bucket=self._bucket, org_prefix=_org_prefix(org_id)
-        )
-        await gateway.create_named_policy(_org_policy_name(org_id), policy)
-        await gateway.attach_named_policy(_org_policy_name(org_id), access_key)
+        try:
+            await gateway.add_user(access_key, secret_key)
+            policy = build_org_user_policy(
+                bucket=self._bucket, org_prefix=_org_prefix(org_id)
+            )
+            await gateway.create_named_policy(_org_policy_name(org_id), policy)
+            await gateway.attach_named_policy(_org_policy_name(org_id), access_key)
+        finally:
+            await gateway.close()
 
-    async def _deprovision_in_minio(self, *, access_key: str) -> None:
+    async def _deprovision_in_minio(self, *, org_id: int, access_key: str) -> None:
         gateway = MinioAdminGateway(
             host=self._host,
             access_key=self._root_access_key,
             secret_key=self._root_secret_key,
         )
-        await gateway.remove_user(access_key)
+        try:
+            await gateway.remove_user(access_key)
+            try:
+                await gateway.remove_named_policy(_org_policy_name(org_id))
+            except Exception as error:
+                # The named policy may not exist if a previous provisioning
+                # attempt failed partway through -- this is best-effort
+                # cleanup, not a reason to fail the whole deprovision.
+                logger.error(
+                    "Failed to remove MinIO policy for org_id={}: {}",
+                    org_id,
+                    error,
+                )
+        finally:
+            await gateway.close()
 
 
 org_storage_provisioning_service = OrgStorageProvisioningService()

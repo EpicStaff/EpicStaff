@@ -25,6 +25,7 @@ from storage_credentials.constants import (
     CREDENTIAL_RESPONSE_TTL_SECONDS,
     STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS,
     STORAGE_CREDENTIAL_REQUEST_CONSUMER_GROUP,
+    STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
     STORAGE_CREDENTIAL_REQUEST_STREAM,
     TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX,
 )
@@ -59,13 +60,18 @@ class StorageCredentialRequestConsumer:
         self._credential_service = credential_service
 
     async def run_forever(self) -> None:
-        await self._stream_client.ensure_group(
-            STORAGE_CREDENTIAL_REQUEST_STREAM,
-            STORAGE_CREDENTIAL_REQUEST_CONSUMER_GROUP,
-            start_id="0",
-        )
         while True:
             try:
+                # Idempotent (XGROUP CREATE + BUSYGROUP-tolerant) -- called
+                # on every loop iteration, not just once before the loop, so
+                # a startup failure (Redis unreachable, transient error) gets
+                # retried instead of permanently killing this task while the
+                # heartbeat stays green.
+                await self._stream_client.ensure_group(
+                    STORAGE_CREDENTIAL_REQUEST_STREAM,
+                    STORAGE_CREDENTIAL_REQUEST_CONSUMER_GROUP,
+                    start_id="0",
+                )
                 await self._reclaim_abandoned()
                 messages = await self._stream_client.read(
                     streams={STORAGE_CREDENTIAL_REQUEST_STREAM: ">"},
@@ -95,6 +101,9 @@ class StorageCredentialRequestConsumer:
     async def _handle(self, message: StreamMessage) -> None:
         try:
             envelope = StreamEnvelope.from_fields(message.fields)
+            if envelope.type != STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE:
+                logger.warning("Unexpected envelope type on stream: {}", envelope.type)
+                return
             await self._issue_for(envelope.correlation_id)
         except Exception as error:
             logger.error("Failed to process credential request message: {}", error)
@@ -148,45 +157,84 @@ class StorageCredentialRequestConsumer:
             return
 
         scope = json.loads(scope_raw)
+        issued: IssuedCredential | None = None
         try:
             issued = await self._credential_service.issue(
                 org_id=scope["org_id"],
                 storage_org_prefix=scope["storage_org_prefix"],
                 storage_allowed_paths=scope.get("storage_allowed_paths"),
             )
+
+            # TTL matches the temporary credential's own max lifetime, not
+            # the short response TTL: this key must still be present when
+            # `code_results` arrives for a long-running execution, otherwise
+            # revocation would silently no-op and the account would be
+            # picked up only later, by TtlReconciliationService.sweep().
+            await self._redis_client.set(
+                keys.lease_key(execution_id),
+                json.dumps(
+                    {"org_id": scope["org_id"], "access_key": issued.access_key}
+                ),
+                ex=TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX,
+            )
+            await self._respond_success(execution_id, issued)
         except (
             CredentialScopeValidationError,
             OrgStorageCredentialMissingError,
             TemporaryCredentialError,
         ) as error:
+            # These three can only come from credential_service.issue()
+            # itself, before it returns -- `issued` is guaranteed still None
+            # here, so nothing was minted and there is nothing to revoke.
             await self._respond_error(execution_id, str(error))
-            return
-
-        # TTL matches the temporary credential's own max lifetime, not the
-        # short response TTL: this key must still be present when
-        # `code_results` arrives for a long-running execution, otherwise
-        # revocation would silently no-op and the account would be picked
-        # up only later, by TtlReconciliationService.sweep().
-        await self._redis_client.set(
-            keys.lease_key(execution_id),
-            json.dumps({"org_id": scope["org_id"], "access_key": issued.access_key}),
-            ex=TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX,
-        )
-        await self._respond_success(execution_id, issued)
+        except Exception as error:
+            # Anything else, including a failure in the lease SET or the
+            # response publish that follow a successful issue() above, must
+            # not propagate to _handle() -- that would ack the stream
+            # message with no response ever sent, leaving the sandbox to
+            # time out with no diagnostic.
+            logger.error(
+                "Unexpected error issuing temporary credential for "
+                "execution_id={}: {}",
+                execution_id,
+                error,
+            )
+            if issued is not None:
+                # Mint succeeded but something after it failed -- revoke now
+                # rather than leaving the account orphaned until
+                # TtlReconciliationService's next TTL sweep.
+                try:
+                    await self._credential_service.revoke(
+                        org_id=scope["org_id"], access_key=issued.access_key
+                    )
+                except Exception as revoke_error:
+                    logger.error(
+                        "Failed to revoke just-minted credential "
+                        "(execution_id={}, access_key={}) after a post-mint "
+                        "failure; it is orphaned until the next TTL sweep: {}",
+                        execution_id,
+                        issued.access_key,
+                        revoke_error,
+                    )
+            await self._respond_error(execution_id, "internal_error")
 
     async def _respond_success(
         self, execution_id: str, issued: IssuedCredential
     ) -> None:
         key = keys.response_key(execution_id)
-        await self._redis_client.rpush(
+        pipe = self._redis_client.pipeline()
+        pipe.rpush(
             key,
             json.dumps(
                 {"access_key": issued.access_key, "secret_key": issued.secret_key}
             ),
         )
-        await self._redis_client.expire(key, CREDENTIAL_RESPONSE_TTL_SECONDS)
+        pipe.expire(key, CREDENTIAL_RESPONSE_TTL_SECONDS)
+        await pipe.execute()
 
     async def _respond_error(self, execution_id: str, error: str) -> None:
         key = keys.response_key(execution_id)
-        await self._redis_client.rpush(key, json.dumps({"error": error}))
-        await self._redis_client.expire(key, CREDENTIAL_RESPONSE_TTL_SECONDS)
+        pipe = self._redis_client.pipeline()
+        pipe.rpush(key, json.dumps({"error": error}))
+        pipe.expire(key, CREDENTIAL_RESPONSE_TTL_SECONDS)
+        await pipe.execute()

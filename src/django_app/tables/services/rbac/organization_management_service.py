@@ -1,5 +1,6 @@
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
+from loguru import logger
 
 from tables.models.rbac_models import Organization, OrganizationUser, User
 from tables.models.rbac_models.rbac_enums import BuiltInRole
@@ -9,6 +10,7 @@ from tables.services.rbac.rbac_exceptions import (
     OrganizationNotFoundError,
 )
 
+from storage_credentials.exceptions import OrgStorageProvisioningError
 from storage_credentials.services.org_provisioning_service import (
     org_storage_provisioning_service,
 )
@@ -105,7 +107,22 @@ class OrganizationManagementService:
         self._assert_can_deactivate()
         org.is_active = False
         org.save(update_fields=["is_active", "updated_at"])
-        org_storage_provisioning_service.deprovision_for_organization(org)
+        # `is_active` must reflect the caller's intent regardless of MinIO's
+        # availability -- an org that should be deactivated (a
+        # security-relevant action) must not stay active just because MinIO
+        # is unreachable. The failure is logged, not silently swallowed, so
+        # the leftover MinIO user can be reconciled out of band.
+        try:
+            org_storage_provisioning_service.deprovision_for_organization(org)
+        except OrgStorageProvisioningError as error:
+            logger.error(
+                "Failed to deprovision MinIO storage for org_id={} during "
+                "deactivation; org.is_active is False regardless -- the "
+                "MinIO user was left in place and needs out-of-band "
+                "reconciliation: {}",
+                org.id,
+                error,
+            )
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -115,7 +132,18 @@ class OrganizationManagementService:
             return self._get_organization_with_member_count(org.pk)
         org.is_active = True
         org.save(update_fields=["is_active", "updated_at"])
-        org_storage_provisioning_service.provision_for_organization(org)
+        # Same reasoning as deactivate_organization(): is_active always
+        # commits regardless of MinIO's availability.
+        try:
+            org_storage_provisioning_service.provision_for_organization(org)
+        except OrgStorageProvisioningError as error:
+            logger.error(
+                "Failed to provision MinIO storage for org_id={} during "
+                "reactivation; org.is_active is True regardless -- storage "
+                "for this org needs out-of-band provisioning: {}",
+                org.id,
+                error,
+            )
         return self._get_organization_with_member_count(org.pk)
 
     def _get_organization_with_member_count(self, org_id: int) -> Organization:

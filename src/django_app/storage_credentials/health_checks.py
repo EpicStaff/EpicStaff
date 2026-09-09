@@ -11,16 +11,20 @@ from storage_credentials.redis.keys import ISSUER_HEARTBEAT_KEY
 
 
 class StorageCredentialIssuerHealthCheck(BaseHealthCheckBackend):
-    critical_service = True
+    # Non-critical: the issuer now runs as its own `storage-credential-issuer`
+    # Docker service (see docker-compose.yaml), not inside django_app. A dead
+    # issuer must not fail django_app's own `/ht/` health check and take the
+    # API down with it.
+    critical_service = False
 
     def check_status(self):
-        client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            password=settings.REDIS_PASSWORD,
-        )
         try:
-            exists = client.exists(ISSUER_HEARTBEAT_KEY)
+            with redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                password=settings.REDIS_PASSWORD,
+            ) as client:
+                exists = client.exists(ISSUER_HEARTBEAT_KEY)
         except redis.RedisError as error:
             raise ServiceUnavailable(
                 f"Could not reach Redis to check issuer heartbeat: {error}"

@@ -27,12 +27,31 @@ Design notes
 
 import json
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
 import dynamic_venv_executor_chain
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+
+
+class FakeStorageCredentialClient:
+    """sandbox no longer mints/revokes anything itself; it only asks the
+    issuer (django_app) for credentials by execution_id and never sees --
+    let alone chooses -- org_id/storage_org_prefix/storage_allowed_paths."""
+
+    def __init__(self, response=None, error=None):
+        self.response = response or {
+            "access_key": "scoped-ak",
+            "secret_key": "scoped-sk",
+        }
+        self.error = error
+        self.requested_execution_ids: list[str] = []
+
+    async def request(self, execution_id: str) -> dict:
+        self.requested_execution_ids.append(execution_id)
+        if self.error:
+            raise self.error
+        return self.response
 
 
 class _FakeProcess:
@@ -64,7 +83,9 @@ def _make_fake_shell(recorded_shell_calls: list):
     return _fake_shell
 
 
-def _make_fake_exec(result_file_path: Path, expected_result: object, recorded_exec_calls: list):
+def _make_fake_exec(
+    result_file_path: Path, expected_result: object, recorded_exec_calls: list
+):
     """Return an async fake for asyncio.create_subprocess_exec.
 
     Distinguishes the "run user code" call from pip calls by checking whether
@@ -122,12 +143,12 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
         _make_fake_exec(result_file_path, expected_result, recorded_exec_calls),
     )
 
-    storage_credential_manager = Mock(spec=["build_policy", "create", "revoke"])
+    fake_client = FakeStorageCredentialClient()
 
     chain = DynamicVenvExecutorChain(
         output_path=output_path,
         base_venv_path=base_venv_path,
-        storage_credential_manager=storage_credential_manager,
+        storage_credential_client=fake_client,
     )
 
     result = await chain.run(
@@ -141,11 +162,15 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
         use_storage=False,
     )
 
-    assert result.returncode == 0, f"Expected returncode 0, got {result.returncode!r} (stderr={result.stderr!r})"
+    assert (
+        result.returncode == 0
+    ), f"Expected returncode 0, got {result.returncode!r} (stderr={result.stderr!r})"
     assert result.execution_id == execution_id
     assert result.result_data == json.dumps(expected_result)
-    assert len(recorded_shell_calls) >= 1, "Expected at least one create_subprocess_shell call (venv creation)"
-    assert len(recorded_exec_calls) >= 1, "Expected at least one create_subprocess_exec call (code execution)"
-    storage_credential_manager.build_policy.assert_not_called()
-    storage_credential_manager.create.assert_not_called()
-    storage_credential_manager.revoke.assert_not_called()
+    assert (
+        len(recorded_shell_calls) >= 1
+    ), "Expected at least one create_subprocess_shell call (venv creation)"
+    assert (
+        len(recorded_exec_calls) >= 1
+    ), "Expected at least one create_subprocess_exec call (code execution)"
+    assert fake_client.requested_execution_ids == []

@@ -23,9 +23,11 @@ import redis.asyncio as aioredis
 from loguru import logger
 
 from src.shared.redis_streams import RedisStreamClient, StreamEnvelope
+from src.shared.storage_credentials.constants import (
+    STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
+    STORAGE_CREDENTIAL_REQUEST_STREAM,
+)
 
-STORAGE_CREDENTIAL_REQUEST_STREAM = "storage_credential_requests"
-STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE = "issue_temporary_credential"
 STORAGE_CREDENTIAL_WAIT_TIMEOUT_S = 15
 
 
@@ -101,9 +103,17 @@ class StorageCredentialClient:
             decode_responses=True,
         )
         try:
-            result = await client.blpop(
-                response_key, timeout=STORAGE_CREDENTIAL_WAIT_TIMEOUT_S
-            )
+            try:
+                result = await client.blpop(
+                    response_key, timeout=STORAGE_CREDENTIAL_WAIT_TIMEOUT_S
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                raise StorageCredentialRequestError(
+                    f"Failed to wait for storage credential response "
+                    f"(response_key={response_key}): {error}"
+                ) from error
         finally:
             await client.aclose()
         if result is None:
@@ -127,4 +137,7 @@ class StorageCredentialClient:
                 execution_id,
                 error,
             )
-            raise
+            raise StorageCredentialRequestError(
+                f"Failed to publish storage credential request "
+                f"(execution_id={execution_id}): {error}"
+            ) from error

@@ -35,8 +35,8 @@ class StorageCredentialResultListener:
 
     async def run_forever(self) -> None:
         while True:
+            pubsub = self._redis_client.pubsub()
             try:
-                pubsub = self._redis_client.pubsub()
                 await pubsub.subscribe(self._channel)
                 async for message in pubsub.listen():
                     if message["type"] != "message":
@@ -51,6 +51,8 @@ class StorageCredentialResultListener:
                     error,
                 )
                 await asyncio.sleep(1)
+            finally:
+                await pubsub.aclose()
 
     async def _handle(self, raw: str) -> None:
         try:

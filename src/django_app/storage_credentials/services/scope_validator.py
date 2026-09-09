@@ -25,10 +25,13 @@ class CredentialScopeValidator:
             raise CredentialScopeValidationError("storage_org_prefix is empty.")
 
         if not storage_allowed_paths:
-            # No explicit restriction narrower than the org's own prefix:
-            # the whole org folder, same default as the pre-existing
-            # sandbox-side _scoped_folders() this replaces.
-            return {f"{normalized_org_prefix}/"}
+            # Fail closed: an empty/missing storage_allowed_paths must not
+            # default to org-wide access. Every caller that legitimately
+            # wants storage must pass an explicit, narrow path.
+            raise CredentialScopeValidationError(
+                "storage_allowed_paths is empty; refusing to scope a "
+                "temporary credential to the entire org prefix."
+            )
 
         scoped_folders: set[str] = set()
         for path in storage_allowed_paths:

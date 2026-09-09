@@ -11,19 +11,21 @@ Redis state of its own.
 import asyncio
 from datetime import datetime, timezone
 
+from django.db import close_old_connections
 from loguru import logger
 
 from tables.models import Secret
 
-from storage_credentials.clients.minio_admin_client import MinioAdminGateway
 from storage_credentials.constants import SECRET_NAME_ORG_MINIO_USER
-from storage_credentials.services.org_credential_store import (
-    OrgMinioCredentials,
-    org_credential_store,
-)
+from storage_credentials.services.org_credential_cache import org_credential_cache
 
 
 def _list_provisioned_org_ids() -> list[int]:
+    # Runs in a worker thread via `asyncio.to_thread()` on the issuer's
+    # single, long-lived event loop -- see `org_credential_cache._get_org_credentials`
+    # for why `close_old_connections()` must run before every ORM call made
+    # from that thread.
+    close_old_connections()
     # `.exclude(metadata__contains={"revoked": True})` compiles to
     # `NOT (metadata @> '{"revoked": true}'::jsonb)`, which correctly
     # includes rows with `metadata={}` (a freshly-provisioned, never-revoked
@@ -63,13 +65,8 @@ class TtlReconciliationService:
                 )
 
     async def _sweep_one_org(self, org_id: int) -> None:
-        org_credentials: OrgMinioCredentials = await asyncio.to_thread(
-            org_credential_store.get, org_id=org_id
-        )
-        gateway = MinioAdminGateway(
-            host=self._host,
-            access_key=org_credentials.access_key,
-            secret_key=org_credentials.secret_key,
+        org_credentials, gateway = await org_credential_cache.get(
+            org_id=org_id, host=self._host
         )
         accounts = await gateway.list_service_accounts(org_credentials.access_key)
         now = datetime.now(timezone.utc)

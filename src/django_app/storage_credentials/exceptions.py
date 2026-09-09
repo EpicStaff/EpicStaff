@@ -58,19 +58,10 @@ class TemporaryCredentialError(StorageCredentialError):
 
 
 class TemporaryCredentialIssueError(TemporaryCredentialError):
-    """Minting a temporary service account failed.
-
-    `transient` distinguishes errors worth a caller-side retry (e.g. a
-    momentary MinIO connectivity blip) from ones that are not (e.g. a
-    rejected policy) -- callers may use it to decide whether to retry.
-    """
+    """Minting a temporary service account failed."""
 
     default_detail = "Failed to mint temporary storage credential."
     default_code = "temporary_credential_issue_error"
-
-    def __init__(self, message: str, *, transient: bool = False):
-        self.transient = transient
-        super().__init__(message)
 
 
 class TemporaryCredentialRevokeError(TemporaryCredentialError):

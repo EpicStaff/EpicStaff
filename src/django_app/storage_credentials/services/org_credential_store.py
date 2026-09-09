@@ -58,9 +58,13 @@ class OrgCredentialStore:
         return secret is not None and secret.metadata.get("revoked") is not True
 
     def mark_revoked(self, *, org_id: int) -> None:
-        Secret.all_objects.filter(
+        secret = Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_MINIO_USER, system=True
-        ).update(metadata={"revoked": True})
+        ).first()
+        if secret is None:
+            return
+        secret.metadata = {**secret.metadata, "revoked": True}
+        secret.save(update_fields=["metadata"])
 
 
 org_credential_store = OrgCredentialStore()
