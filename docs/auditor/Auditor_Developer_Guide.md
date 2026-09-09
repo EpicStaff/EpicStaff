@@ -64,6 +64,93 @@ Also re-derive the type-drift answer for `input`/`output`/`details`: these hold 
 
 ---
 
+## How the export job lifecycle works
+
+Export is async (`export_routes.py`) because a full-org export can outlive a
+single request: `POST /api/audit/export` only creates a job and schedules the
+actual query/write as a `BackgroundTasks` task, returning `{"job_id": ...}`
+immediately.
+
+- `POST /api/audit/export` — same `filters`/`query` body shape as the browse
+  routes (`ExportRequest`, `filters` xor `query`), plus `format` (`json`/`csv`,
+  default `json`) and `detail` (`base`/`full`, default `base`). `detail=full`
+  re-fetches each matched session's whole tree (deduped by `session_id`) instead
+  of returning just the matched rows. Gated by `require_audit_action("export")`.
+- `GET /api/audit/export/{job_id}` — poll status; while pending/failed returns
+  `{"status": ...}` (`404` if the job isn't found or isn't yours, `500` if it
+  failed). Once `completed`, streams the file back as a `FileResponse`
+  (`410` if the file already expired off disk). CSV columns come from
+  `SessionAuditEvent.model_fields`, not from the first row, so an empty result
+  set still produces a valid header-only file rather than a zero-byte one.
+- `GET /api/audit/export` — lists the caller's own jobs (pending, completed, or
+  failed), scoped to the `org_id`/`user_id` pair from the token's claims. Order
+  is **not** guaranteed (backed by a Redis set, not a sorted list).
+- `DELETE /api/audit/export/{job_id}` — deletes the job's file (if any) and its
+  Redis bookkeeping immediately, instead of waiting for TTL expiry.
+
+All four routes enforce ownership the same way (`_get_owned_job` in
+`export_routes.py`): a job is only visible to the `user_id`+`org_id` pair from
+its own JWT claims — checked together, not `user_id` alone, so a user who lost
+`AUDIT:export` in org A can't still reach an org-A job via a token minted for
+org B. A non-owner and a missing job both get a `404`, never a `403`, so
+ownership can't be probed from the outside.
+
+### Redis-backed job tracking
+
+Job state and the async result live in two different places for two different
+reasons: Redis is fast to poll and self-expiring (no export ever needs to be
+queried, cleaned up otherwise); the actual export file goes straight to disk
+(`EXPORT_DATA_DIR`, default `/app/export_data`) because a multi-GB org export
+doesn't belong in a Redis value. `src/shared/audit/export_jobs.py` centralizes
+the key shapes so both `auditor` (job service) and `manager` (TTL sweep) stay
+in sync — one job keeps **three** Redis keys alive together, staged onto a
+caller-supplied pipeline by `register_job`/`deregister_job` so all three are
+written or removed atomically:
+
+- `auditor:export_job:{job_id}` — hash: `status`, `org_id`, `user_id`,
+  `created_at`, `expires_at`, `file_path`, `format` (and `error` once failed).
+  TTL'd to `EXPORT_FILE_TTL_SECONDS` plus a day of safety margin, so the hash
+  outlives the file long enough for `GET`/`DELETE` to still resolve ownership
+  and return a clean `410` instead of losing the job record before the sweep
+  even runs.
+- `auditor:export_jobs_by_expiry` — one sorted set, `job_id` scored by
+  `expires_at` epoch seconds. This is what the TTL sweep scans
+  (`zrangebyscore(..., max=now)`) instead of doing a Redis-wide key scan.
+- `auditor:export_jobs_by_user:{org_id}:{user_id}` — one set per
+  (`org_id`, `user_id`) pair of that user's own `job_id`s. This is what backs
+  `GET /api/audit/export` (`get_jobs_by_user` → `SMEMBERS` → batched
+  `HGETALL` pipeline, one round trip regardless of job count). TTL'd the same
+  as the job hash — an abandoned index key expires on its own even if a sweep
+  or delete is somehow missed.
+
+`ExportJobService` (`app/services/export_job_service.py`) is the only thing
+that reads/writes these keys from `auditor`'s side — `create_job` stages all
+three via `register_job`, `mark_done`/`mark_failed` only ever touch the job
+hash (and check it still exists first, so a job deleted mid-export can't be
+resurrected by a background task finishing late), `delete_job` stages all
+three removals via `deregister_job`.
+
+### TTL sweep (`manager`)
+
+`manager`'s `ExportCleanupService` (`src/manager/services/audit_export_cleanup_service.py`)
+runs a periodic loop (`sweep_interval_seconds`, default 60s) independent of
+`auditor` — it owns cleanup so a restarted/scaled `auditor` doesn't need its
+own background task competing over the same keys. Each sweep:
+
+1. `ZRANGEBYSCORE auditor:export_jobs_by_expiry 0 <now>` — every job whose
+   `expires_at` has passed.
+2. For each due job: reads `file_path`/`org_id`/`user_id` off the job hash,
+   deletes the file (falling back to a glob on `{job_id}.*` under
+   `EXPORT_DATA_DIR` if the hash itself already expired without `file_path`
+   surviving), then calls `deregister_job` to remove all three keys.
+
+If the job hash is already gone by sweep time (its own TTL fired first), the
+sweep still removes the now-orphaned entry from the expiry zset so it doesn't
+get rescanned forever, but can't clean up the per-user index key in that case
+(logged, not fatal — that key has its own TTL and will self-expire).
+
+---
+
 ## How to trace one node/session end-to-end for debugging
 
 Both session and node ids are **deterministic** — you can compute the expected id locally and `GET` it directly by `_id`, sidestepping any search-relevance ambiguity:
@@ -126,4 +213,9 @@ Mirror the existing controllers (`app/controllers/*.py`) — one file per concer
 - `src/django_app/tables/views/audit_token_views.py` — token minting.
 - `src/auditor/app/main.py`, `controllers/*.py`, `core/security.py` — the service itself.
 - `src/auditor/app/repositories/{base,opensearch_repository,factory}.py` — the backend-swap seam.
+- `src/auditor/app/repositories/opensearch_query_compiler.py` — FilterNode AST → OpenSearch DSL.
+- `src/auditor/app/filtering/{ast.py,query_language.py}` — the shared FilterNode AST and its text-query parser (see [`Filtering_And_Query_Language.md`](./Filtering_And_Query_Language.md)).
+- `src/auditor/app/services/{match_scope.py,duration_filter.py}` — `match_scope` expansion and computed-`duration` filtering.
+- `src/auditor/app/services/export_job_service.py`, `src/shared/audit/export_jobs.py` — export job Redis bookkeeping (see "How the export job lifecycle works" above).
+- `src/manager/services/audit_export_cleanup_service.py` — the TTL sweep that deletes expired export jobs/files.
 - `src/auditor/app/index_setup/` — mapping file, idempotent runner, field-decision README.

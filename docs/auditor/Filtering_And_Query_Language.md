@@ -18,6 +18,8 @@ copy-paste starting point.
 |---|---|
 | `kind` | `in`, `not_in`, `equals`, `not_equal` |
 | `id` | those + `gt`, `lt`, `gte`, `lte` |
+| `session_id` | `in`, `not_in`, `equals`, `not_equal` |
+| `session_message_id` | `in`, `not_in`, `equals`, `not_equal` |
 | `name` | `equals`, `not_equal`, `contains`, `not_contains`, `starts_with`, `ends_with`, `is_empty`, `is_not_empty` |
 | `flow_name` | `in`, `not_in`, `equals`, `not_equal` |
 | `node_type` | `in`, `not_in`, `equals`, `not_equal` |
