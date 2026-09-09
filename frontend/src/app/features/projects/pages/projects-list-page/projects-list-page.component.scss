@@ -33,22 +33,23 @@
                 .title {
                     margin: 0;
 
-                    font-size: 1.8rem;
-                    font-weight: 400;
+                    font-size: var(--text-h1-size);
+                    font-weight: var(--text-h1-weight);
                     color: var(--color-text-primary);
                 }
 
                 .subtitle {
                     margin-top: 0.5rem;
-                    font-size: 1.1rem;
-                    color: var(--color-text-secondary);
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    color: var(--text-secondary-60);
                 }
 
                 .subtitle-inline {
                     margin-left: 0.7rem;
-                    font-size: 1.1rem;
-                    font-weight: 400;
-                    color: var(--color-text-secondary);
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    color: var(--text-secondary-60);
                 }
             }
 

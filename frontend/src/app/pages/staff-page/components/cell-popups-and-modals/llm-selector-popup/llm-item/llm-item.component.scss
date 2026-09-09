@@ -39,7 +39,7 @@
 
     .llm-name {
         flex: 1;
-        font-size: 13px;
+        font-size: 0.8125rem;
         font-weight: 500;
         color: var(--gray-105);
         white-space: nowrap;
@@ -79,7 +79,7 @@
             &::after {
                 content: '✓';
                 color: var(--white);
-                font-size: 10px;
+                font-size: 0.625rem;
             }
         }
 

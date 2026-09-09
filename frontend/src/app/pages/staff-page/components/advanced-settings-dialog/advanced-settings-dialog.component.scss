@@ -36,8 +36,8 @@
         }
 
         .dialog-title {
-            font-size: 1.125rem;
-            font-weight: 600;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
             margin: 0;
             padding: 0;
             white-space: nowrap;
@@ -91,8 +91,8 @@
     button {
         padding: 0.5rem 1rem;
         border-radius: 6px;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         cursor: pointer;
         transition: all 0.2s ease;
 

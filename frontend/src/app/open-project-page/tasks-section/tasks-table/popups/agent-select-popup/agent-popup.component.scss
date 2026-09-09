@@ -14,7 +14,6 @@ $transition-default: all 0.2s ease;
     border-radius: 8px;
     width: 400px;
     color: var(--gray-105);
-    font-family: 'Inter', sans-serif;
     box-shadow: 0 10px 40px var(--black-alpha-50);
     border: 1px solid var(--white-alpha-10);
     animation: fadeIn 0.3s ease;
@@ -35,7 +34,7 @@ $transition-default: all 0.2s ease;
             border-radius: 6px;
             background-color: var(--graphite-720);
             color: var(--gray-105);
-            font-size: 13px;
+            font-size: 0.8125rem;
             border: 1px solid var(--white-alpha-10);
             transition: $transition-default;
             outline: none;
@@ -59,7 +58,7 @@ $transition-default: all 0.2s ease;
             color: var(--gray-490);
             border-radius: 6px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 0.8125rem;
             font-weight: 500;
             transition: $transition-default;
             border: none;
@@ -103,7 +102,7 @@ $transition-default: all 0.2s ease;
                 }
 
                 p {
-                    font-size: 13px;
+                    font-size: 0.8125rem;
                     text-align: center;
                 }
             }
@@ -161,7 +160,7 @@ $transition-default: all 0.2s ease;
                 .item-text {
                     display: flex;
                     flex-direction: column;
-                    font-size: 13px;
+                    font-size: 0.8125rem;
                     font-weight: 500;
                     color: var(--gray-105);
                     line-height: 1.2;
@@ -175,8 +174,8 @@ $transition-default: all 0.2s ease;
                     .agent-role {
                         margin-top: 3px;
                         color: var(--gray-490);
-                        font-size: 12px;
-                        font-weight: normal;
+                        font-size: var(--text-body-small-size);
+                        font-weight: var(--text-body-small-weight);
                     }
                 }
             }
@@ -192,7 +191,7 @@ $transition-default: all 0.2s ease;
                 color: var(--gray-490);
                 border-radius: 4px;
                 cursor: pointer;
-                font-size: 14px;
+                font-size: 0.875rem;
                 transition: $transition-default;
                 border: none;
                 margin-left: 8px;

@@ -13,8 +13,8 @@
 
         .dialog-title {
             margin: 0;
-            font-size: 18px;
-            font-weight: 600;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
         }
 
         .close-button {
@@ -46,7 +46,7 @@
         label {
             display: block;
             margin-bottom: 8px;
-            font-size: 14px;
+            font-size: 0.875rem;
             color: var(--white-alpha-70);
         }
 
@@ -57,7 +57,7 @@
             border: 1px solid var(--white-alpha-10);
             border-radius: 6px;
             color: var(--white);
-            font-size: 14px;
+            font-size: 0.875rem;
             transition: border-color 0.2s ease;
 
             &:focus {
@@ -71,7 +71,7 @@
         }
 
         .error-message {
-            font-size: 12px;
+            font-size: 0.75rem;
             color: var(--red-450);
             margin-top: 4px;
         }
@@ -85,8 +85,8 @@
         .button {
             padding: 8px 16px;
             border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             cursor: pointer;
             transition: background-color 0.2s ease;
             border: none;

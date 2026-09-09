@@ -75,9 +75,9 @@
 
             h3 {
                 margin: 0;
-                font-size: 14px;
+                font-size: var(--text-body-size);
                 color: var(--white-alpha-70);
-                font-weight: 400;
+                font-weight: var(--text-body-weight);
             }
 
             &:not(:last-child)::after {
@@ -195,7 +195,7 @@
                                 font-size: 0.7rem;
                                 color: var(--gray-540);
                                 font-style: italic;
-                                font-weight: 300;
+                                font-weight: 400;
                             }
                         }
                     }

@@ -3,7 +3,7 @@
     align-items: center;
     margin-left: 0.75rem;
     color: var(--accent-color);
-    font-size: 14px;
+    font-size: 0.875rem;
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
@@ -14,8 +14,8 @@
     }
 
     .unsaved-text {
-        font-size: 12px;
-        font-weight: 500;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         white-space: nowrap;
     }
 

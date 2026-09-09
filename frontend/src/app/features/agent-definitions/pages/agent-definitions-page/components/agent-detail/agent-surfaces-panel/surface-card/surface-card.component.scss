@@ -338,8 +338,8 @@
     border: none;
     border-bottom: 2px solid transparent;
     color: var(--accent-color);
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     white-space: nowrap;
     cursor: pointer;
 
@@ -627,8 +627,8 @@ $remove-col: 28px;
     min-height: 32px;
     padding-left: 0.75rem;
     color: var(--color-text-primary);
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
     box-shadow: inset 0 -4px 0 var(--graphite-750);
 }
 

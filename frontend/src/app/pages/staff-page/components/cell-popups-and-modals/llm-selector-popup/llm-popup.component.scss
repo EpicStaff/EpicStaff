@@ -55,7 +55,7 @@ $transition-default: all 0.2s ease;
                 border-radius: 6px;
                 background-color: var(--graphite-720);
                 color: var(--gray-105);
-                font-size: 13px;
+                font-size: 0.8125rem;
                 border: 1px solid var(--white-alpha-10);
                 transition: $transition-default;
                 outline: none;
@@ -79,13 +79,13 @@ $transition-default: all 0.2s ease;
                 color: var(--gray-490);
                 border-radius: 6px;
                 cursor: pointer;
-                font-size: 13px;
+                font-size: 0.8125rem;
                 font-weight: 500;
                 transition: $transition-default;
                 border: none;
 
                 i {
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     width: 14px;
                     height: 14px;
                     margin-bottom: 2px;
@@ -116,7 +116,7 @@ $transition-default: all 0.2s ease;
                 background: transparent;
                 border: none;
                 color: var(--gray-490);
-                font-size: 13px;
+                font-size: 0.8125rem;
                 padding: 8px 16px;
                 cursor: pointer;
                 position: relative;
@@ -202,13 +202,13 @@ $transition-default: all 0.2s ease;
                 color: var(--gray-490);
 
                 i {
-                    font-size: 24px;
+                    font-size: 1.5rem;
                     margin-bottom: 8px;
                     opacity: 0.7;
                 }
 
                 p {
-                    font-size: 13px;
+                    font-size: 0.8125rem;
                     text-align: center;
                 }
             }

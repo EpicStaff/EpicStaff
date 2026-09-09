@@ -31,8 +31,8 @@
             max-width: calc(100% - 145px);
 
             .role-title {
-                font-size: 16px;
-                font-weight: 600;
+                font-size: 1rem;
+                font-weight: 500;
                 color: var(--gray-100);
                 margin: 0;
                 white-space: nowrap;
@@ -161,8 +161,8 @@
             }
 
             .section-title {
-                font-size: 14px;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
                 letter-spacing: 0.05em;
                 text-transform: uppercase;
                 color: var(--gray-400);
@@ -172,7 +172,7 @@
             }
 
             .section-subtitle {
-                font-size: 14px;
+                font-size: 0.875rem;
                 color: var(--gray-400);
                 font-style: italic;
                 margin: 0;
@@ -183,7 +183,7 @@
                 min-height: 24px;
 
                 .section-content {
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     line-height: 1.5;
                     color: var(--gray-200);
                     margin: 0;
@@ -250,8 +250,8 @@
                 }
 
                 .subsection-title {
-                    font-size: 12px;
-                    font-weight: 600;
+                    font-size: var(--text-body-small-large-size);
+                    font-weight: var(--text-body-small-large-weight);
                     color: var(--gray-400);
                     margin: 0 0 8px 0;
                     text-transform: uppercase;
@@ -269,9 +269,9 @@
                     }
 
                     .tool-count {
-                        font-size: 10px;
+                        font-size: var(--text-caption-size);
                         color: var(--gray-500);
-                        font-weight: 400;
+                        font-weight: var(--text-caption-weight);
                         text-transform: none;
                     }
                 }
@@ -283,7 +283,7 @@
             border: none;
             color: var(--accent-color);
             cursor: pointer;
-            font-size: 12px;
+            font-size: 0.75rem;
             padding: 2px 0;
             margin-top: 4px;
             display: block;
@@ -297,19 +297,19 @@
             &.tools-toggle,
             &.tags-toggle {
                 margin-top: 8px;
-                font-size: 13px;
+                font-size: 0.8125rem;
             }
         }
 
         .model-name {
-            font-size: 14px;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             color: var(--gray-100);
             margin: 0;
         }
 
         .model-custom-name {
-            font-size: 12px;
+            font-size: 0.75rem;
             color: var(--gray-400);
             margin: 4px 0 0;
         }
@@ -365,12 +365,12 @@
 
                 .python-icon {
                     color: var(--blue-400);
-                    font-size: 16px;
+                    font-size: 1rem;
                     flex-shrink: 0;
                 }
 
                 .tool-name {
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     color: var(--gray-200);
                     flex: 1;
                     overflow: hidden;

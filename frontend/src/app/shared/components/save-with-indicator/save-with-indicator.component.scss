@@ -12,8 +12,8 @@
     padding: 0 0.75rem;
     height: 40px;
     border-radius: 6px;
-    font-size: 14px;
-    font-weight: 400;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     min-width: 0;

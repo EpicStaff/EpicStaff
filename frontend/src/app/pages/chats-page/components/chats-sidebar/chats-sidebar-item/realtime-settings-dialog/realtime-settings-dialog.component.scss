@@ -24,8 +24,8 @@
 
         .title {
             margin: 0;
-            font-size: 1.125rem;
-            font-weight: 500;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
             max-width: calc(100% - 40px);
             overflow: hidden;
             text-overflow: ellipsis;
@@ -91,7 +91,7 @@
                     border: 1px solid var(--graphite-700);
                     border-radius: 6px;
                     color: var(--color-text-primary);
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: border-color 0.2s ease;
                     box-sizing: border-box;
 
@@ -118,8 +118,8 @@
         .btn {
             padding: 8px 20px;
             border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             cursor: pointer;
             transition: background 0.2s ease;
             border: none;

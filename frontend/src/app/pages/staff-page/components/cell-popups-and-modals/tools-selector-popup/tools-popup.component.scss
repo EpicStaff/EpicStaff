@@ -33,7 +33,6 @@ $transition-default: all 0.2s ease;
     background-color: var(--graphite-875); // Match LLM popup background
     box-shadow: 0 10px 40px var(--black-alpha-50); // Match LLM popup shadow
     color: var(--gray-105);
-    font-family: 'Inter', sans-serif;
     border: 1px solid var(--white-alpha-10);
     animation: fadeIn 0.3s ease;
     position: relative;
@@ -58,7 +57,7 @@ $transition-default: all 0.2s ease;
             border-radius: 6px;
             background-color: var(--graphite-720);
             color: var(--gray-105);
-            font-size: 13px;
+            font-size: 0.8125rem;
             border: 1px solid var(--white-alpha-10);
             transition: $transition-default;
             outline: none;
@@ -82,13 +81,13 @@ $transition-default: all 0.2s ease;
             color: var(--gray-490);
             border-radius: 6px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 0.8125rem;
             font-weight: 500;
             transition: $transition-default;
             border: none;
 
             i {
-                font-size: 14px;
+                font-size: 0.875rem;
                 width: 14px;
                 height: 14px;
                 margin-bottom: 2px;
@@ -119,7 +118,7 @@ $transition-default: all 0.2s ease;
             background: transparent;
             border: none;
             color: var(--gray-490);
-            font-size: 13px;
+            font-size: 0.8125rem;
             padding: 8px 16px;
             cursor: pointer;
             position: relative;
@@ -208,7 +207,7 @@ $transition-default: all 0.2s ease;
 
     p {
         margin-bottom: 1rem;
-        font-size: 13px;
+        font-size: 0.8125rem;
     }
 
     .create-tool-btn {
@@ -230,7 +229,7 @@ $transition-default: all 0.2s ease;
         }
 
         .plus-icon {
-            font-size: 16px;
+            font-size: 1rem;
         }
     }
 }

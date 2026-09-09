@@ -103,7 +103,7 @@
                 }
 
                 .variable-name {
-                    font-size: 14px;
+                    font-size: var(--text-body-medium-size);
                     color: var(--gray-50);
                     background: var(--gray-750);
                     padding: 6px 12px;
@@ -111,19 +111,19 @@
                     min-width: 60px;
                     max-width: 120px;
                     flex-shrink: 0;
-                    font-weight: 500;
+                    font-weight: var(--text-body-medium-weight);
                 }
 
                 .chain-separator {
                     margin: 0 12px;
-                    font-weight: bold;
+                    font-weight: 700;
                     color: var(--accent-color);
                     flex-shrink: 0;
-                    font-size: 16px;
+                    font-size: 1rem;
                 }
 
                 .variable-value {
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     color: var(--gray-400);
                     background: var(--gray-800);
                     padding: 6px 12px;
@@ -151,7 +151,7 @@
                     border-radius: 6px;
                     padding: 6px 12px;
                     color: var(--gray-50);
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: all 0.25s ease;
 
                     &.name-input {
@@ -179,8 +179,8 @@
 
                 .chain-separator {
                     color: var(--accent-color);
-                    font-weight: bold;
-                    font-size: 16px;
+                    font-weight: 700;
+                    font-size: 1rem;
                 }
             }
 
@@ -204,7 +204,7 @@
                     transition: all 0.25s ease;
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                         width: 16px;
                         height: 16px;
                     }
@@ -273,7 +273,7 @@
                     padding: 6px 12px;
                     color: var(--gray-50);
                     transition: all 0.25s ease;
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
 
                     &.name-input {
@@ -309,10 +309,10 @@
                 }
 
                 .chain-separator {
-                    font-weight: bold;
+                    font-weight: 700;
                     color: var(--accent-color);
                     flex-shrink: 0;
-                    font-size: 16px;
+                    font-size: 1rem;
                 }
             }
 
@@ -320,8 +320,8 @@
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
-                font-size: 14px;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
                 padding: 6px 12px;
                 background-color: var(--purple-alpha-10);
                 color: var(--gray-200);
@@ -345,7 +345,7 @@
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: 1rem;
                     width: 16px;
                     height: 16px;
                 }

@@ -2,7 +2,7 @@
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
@@ -11,7 +11,7 @@
 
     i {
         margin-right: 10px;
-        font-size: 15px;
+        font-size: 0.9375rem;
     }
 
     &:hover {

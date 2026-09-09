@@ -28,8 +28,8 @@
 
         .dialog-title {
             color: var(--white-alpha-90);
-            font-size: 18px;
-            font-weight: 600;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
             margin: 0;
             padding: 0;
             text-overflow: ellipsis;
@@ -74,7 +74,7 @@
             }
 
             .section-title {
-                font-size: 16px;
+                font-size: 1rem;
                 color: var(--white-alpha-80);
                 display: flex;
                 align-items: center;
@@ -117,7 +117,7 @@
 
             .task-order {
                 min-width: 30px;
-                font-size: 14px;
+                font-size: 0.875rem;
                 padding: 4px;
                 margin-right: 12px;
                 color: var(--white-alpha-70);
@@ -140,7 +140,7 @@
 
                 .task-id {
                     color: var(--white-alpha-50);
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     margin-right: 12px;
                 }
 
@@ -205,8 +205,8 @@
     button {
         padding: 8px 16px;
         border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         cursor: pointer;
         transition: background-color 0.2s ease;
         border: none;
@@ -252,9 +252,9 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 14px;
+            font-size: var(--text-body-medium-size);
             color: var(--white-alpha-80);
-            font-weight: 500;
+            font-weight: var(--text-body-medium-weight);
         }
 
         mat-slide-toggle {
@@ -291,7 +291,7 @@
     margin-top: 12px;
     padding: 8px 16px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
