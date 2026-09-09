@@ -6,7 +6,7 @@ from typing import Literal
 
 from infrastructure.processing_run import set_process_pool
 from infrastructure.prompt_patching import patch_graphrag_prompts
-from settings import settings
+import settings
 
 __all__ = ["get_lifespans"]
 

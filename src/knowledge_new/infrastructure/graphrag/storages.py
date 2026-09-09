@@ -9,7 +9,7 @@ from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
 from miniopy_async import Minio, S3Error
 from miniopy_async.deleteobjects import DeleteObject
-from settings import settings
+import settings
 
 
 def create_storage_config(

@@ -11,7 +11,7 @@ from litestar.openapi.plugins import (
 from presentation.rest.controllers.maintenances import MaintenanceController
 from presentation.rest.controllers.rag import RagController
 from presentation.rest.error_handlers import get_error_handlers
-from settings import settings
+import settings
 
 app = Litestar(
     debug=settings.DEBUG,

@@ -1,95 +1,31 @@
 from pathlib import Path
 
-from loguru import logger
-from pydantic import Field, computed_field
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.shared.communication.dns import build_dns
+from src.shared.envtools import Env
 
-__all__ = ["settings"]
+BASE_DIR: Path = Path(__file__).resolve().parent
 
+env = Env()
 
-class MainSettings(BaseSettings):
-    BASE_DIR: Path = Path(__file__).resolve().parent
+if env.bool("RUN_IN_DOCKER", False):
+    env.read_env(BASE_DIR / '../.env')
 
-    DEBUG: bool = False
+DEBUG = env.bool("KNOWLEDGE_DEBUG")
 
-    MAX_PROCESS_WORKERS: int = 10
+MAX_PROCESS_WORKERS = env.int("KNOWLEDGE_MAX_PROCESS_WORKERS")
 
-    DATABASE_BACKEND: str = "postgresql+psycopg"
-    DATABASE_USER: str = ""
-    DATABASE_PASSWORD: str = ""
-    DATABASE_HOST: str
-    DATABASE_PORT: int
-    DATABASE_NAME: str
+DATABASE_DNS = env.dns(
+    "postgresql+psycopg",
+    "DB_HOST",
+    "DB_PORT",
+    "DB_NAME",
+    "KNOWLEDGE_DB_BACKEND",
+    "KNOWLEDGE_DB_USER",
+)
 
-    BROKER_BACKEND: str = "redis"
-    BROKER_USER: str = Field(default="", validation_alias="COMMUNICATION_BROKER_USER")
-    BROKER_PASSWORD: str = Field(default="", validation_alias="COMMUNICATION_BROKER_PASSWORD")
-    BROKER_HOST: str = Field(validation_alias="COMMUNICATION_BROKER_HOST")
-    BROKER_PORT: int = Field(validation_alias="COMMUNICATION_BROKER_PORT")
-    BROKER_NAME: str = Field(validation_alias="COMMUNICATION_BROKER_NAME")
+MINIO_HOST = env.str("MINIO_HOST")
+MINIO_ACCESS_KEY = env.str("MINIO_USER")
+MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
+MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
 
-    STORAGE_BACKEND: str = "redis"
-    STORAGE_USER: str = Field(default="", validation_alias="COMMUNICATION_STORAGE_USER")
-    STORAGE_PASSWORD: str = Field(default="", validation_alias="COMMUNICATION_STORAGE_PASSWORD")
-    STORAGE_HOST: str = Field(validation_alias="COMMUNICATION_STORAGE_HOST")
-    STORAGE_PORT: int = Field(validation_alias="COMMUNICATION_STORAGE_PORT")
-    STORAGE_NAME: str = Field(validation_alias="COMMUNICATION_STORAGE_NAME")
-
-    SEARCH_REQUEST_CHANNEL: str
-    SEARCH_RESPONSE_CHANNEL: str
-    PRECHUNK_REQUEST_CHANNEL: str
-    PRECHUNK_RESPONSE_CHANNEL: str
-    INDEX_REQUEST_CHANNEL: str
-    CANCEL_REQUEST_CHANNEL: str
-
-    MINIO_HOST: str = "http://minio:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin_secret"
-    MINIO_BUCKET: str = "knowledge"
-
-    GRAPHRAG_ENCODING: str = "utf-8"
-
-    model_config = SettingsConfigDict(
-        env_file=BASE_DIR / "../.env",
-        env_prefix="KNOWLEDGE_",
-        extra="ignore",
-    )
-
-    @computed_field
-    def DATABASE_DNS(self) -> str:  # noqa: N802
-        return build_dns(
-            self.DATABASE_BACKEND,
-            self.DATABASE_HOST,
-            self.DATABASE_PORT,
-            self.DATABASE_NAME,
-            self.DATABASE_USER,
-            self.DATABASE_PASSWORD,
-        )
-
-    @computed_field
-    def BROKER_DNS(self) -> str:  # noqa: N802
-        return build_dns(
-            self.BROKER_BACKEND,
-            self.BROKER_HOST,
-            self.BROKER_PORT,
-            self.BROKER_NAME,
-            self.BROKER_USER,
-            self.BROKER_PASSWORD,
-        )
-
-    @computed_field
-    def STORAGE_DNS(self) -> str:  # noqa: N802
-        return build_dns(
-            self.STORAGE_BACKEND,
-            self.STORAGE_HOST,
-            self.STORAGE_PORT,
-            self.STORAGE_NAME,
-            self.STORAGE_USER,
-            self.STORAGE_PASSWORD,
-        )
-
-
-settings = MainSettings()
-
-logger.debug("Settings:\n{}", settings)
+GRAPHRAG_ENCODING = "utf-8"
