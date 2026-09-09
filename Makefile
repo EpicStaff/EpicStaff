@@ -10,6 +10,12 @@ endif
 # (the same directory this file is in).
 
 .DEFAULT_GOAL := help
+
+# Every backend service that uv manages, derived from the pyproject files so a
+# new service is picked up without editing this list.
+uv_services := $(patsubst src/%/pyproject.toml,%,$(wildcard src/*/pyproject.toml))
+uv_lock_targets := $(addprefix uv-lock-,$(uv_services))
+
 .PHONY: help \
         backup apply-backup stash-tags apply-tags switch \
         dev dev-init dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
@@ -17,6 +23,7 @@ endif
         prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
         clean docker-generate-certs \
         gen-env check-env \
+        uv-lock \
         uv-sync \
         django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests
 
@@ -199,6 +206,24 @@ venv_py := .venv\Scripts\python.exe
 else
 venv_py := .venv/bin/python
 endif
+
+# Regenerate every service's uv.lock. `--project` avoids a per-service cd and
+# resolves each pyproject's relative [tool.uv.sources] paths (crew's
+# ../shared/dotdict) against the service directory rather than the CWD.
+# No --upgrade: this refreshes the lock to match pyproject.toml, it does not
+# bump pinned versions.
+#
+# Deliberately NOT listing uv-lock-% (the expanded $(uv_lock_targets)) in
+# .PHONY: GNU Make registers any name appearing in .PHONY's prerequisite list
+# as already having an explicit (empty) rule, which then blocks the pattern
+# rule below from ever matching it -- every uv-lock-<service> silently turns
+# into a no-op ("Nothing to be done"). None of these names correspond to real
+# files on disk, so they always rebuild anyway without needing .PHONY.
+uv-lock: $(uv_lock_targets)
+
+uv-lock-%:
+	@echo "--- Locking src/$* ---"
+	@uv lock --project src/$*
 
 # --no-install-project keeps this target in lockstep with the Docker builders.
 uv-sync:
