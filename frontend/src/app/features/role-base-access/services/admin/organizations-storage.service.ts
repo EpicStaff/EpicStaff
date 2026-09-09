@@ -1,7 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { CreateOrganizationRequest, GetOrganizationResponse, UpdateOrganizationRequest } from '@shared/models';
 import { StorageService } from '@shared/services';
-import { catchError, delay, map, Observable, of, tap, throwError } from 'rxjs';
+import { catchError, map, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import { AdminOrganizationsService, ListOrganizationsParams } from './organizations.service';
@@ -39,7 +39,6 @@ export class OrganizationsStorageService implements StorageService {
                 this.organizationsSignal.set(organizations);
                 this.organizationsLoaded.set(true);
             }),
-            delay(this.organizationsLoaded() ? 0 : 300),
             shareReplay(1),
             catchError((err) => {
                 this.organizationsLoaded.set(false);

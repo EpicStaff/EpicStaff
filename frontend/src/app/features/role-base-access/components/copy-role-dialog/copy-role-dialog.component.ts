@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -39,7 +39,7 @@ export interface CopyRoleDialogData {
         ValidationErrorsComponent,
     ],
 })
-export class CopyRoleDialogComponent implements OnInit {
+export class CopyRoleDialogComponent {
     private dialogRef = inject<DialogRef<'copied' | undefined>>(DialogRef);
     private data = inject<CopyRoleDialogData>(DIALOG_DATA);
     private permissionsService = inject(PermissionsService);
@@ -63,7 +63,7 @@ export class CopyRoleDialogComponent implements OnInit {
 
     readonly canSubmit = computed(() => !this.isSubmitting() && this.targetOrgId() !== null);
 
-    ngOnInit(): void {
+    constructor() {
         this.loadCreatableOrgs();
     }
 

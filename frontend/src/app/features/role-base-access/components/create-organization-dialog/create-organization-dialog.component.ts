@@ -6,7 +6,7 @@ import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonComponent, CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { CreateOrganizationRequest, GetOrganizationResponse } from '@shared/models';
-import { finalize, map, Observable, switchMap } from 'rxjs';
+import { finalize, map, Observable, of, switchMap } from 'rxjs';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
@@ -75,7 +75,7 @@ export class CreateOrganizationDialogComponent {
 
         orgAction$
             .pipe(
-                switchMap((org) => this.membersEditor()!.commit(org.id)),
+                switchMap((org) => this.membersEditor()?.commit(org.id) ?? of(0)),
                 switchMap((failures) => this.profileService.getCurrentUser().pipe(map(() => failures))),
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isSubmitting.set(false))

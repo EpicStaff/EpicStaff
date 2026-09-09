@@ -144,8 +144,16 @@ export class CreateUserDialogComponent implements OnInit {
 
     private createMembershipsForUser(userId: number, assignments: OrgAssignment[]): Observable<unknown> {
         if (!assignments.length) return of(null);
+        const orgNameById = new Map(this.availableOrganizations().map((o) => [o.id, o.name]));
         const ops = assignments.map((a) =>
-            this.membershipsService.create({ org_id: a.orgId, user_id: userId, role_id: a.roleId })
+            this.membershipsService.create({ org_id: a.orgId, user_id: userId, role_id: a.roleId }).pipe(
+                map(() => true),
+                catchError((err: HttpErrorResponse) => {
+                    const orgName = orgNameById.get(a.orgId) ?? `organization #${a.orgId}`;
+                    this.toast.error(rbacErrorMessage(err, `Failed to add user to ${orgName}.`));
+                    return of(false);
+                })
+            )
         );
         return concat(...ops).pipe(toArray());
     }

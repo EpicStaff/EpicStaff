@@ -1,7 +1,7 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
@@ -13,7 +13,7 @@ import {
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
 import { rolePermissionsToSet, setToRolePermissions } from '@shared/utils';
-import { finalize } from 'rxjs';
+import { finalize, map } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -118,6 +118,17 @@ export class CreateRoleDialogComponent implements OnInit {
     readonly orgOptions = signal<SelectItem<number>[]>([]);
 
     readonly isSubmitting = signal(false);
+
+    private readonly formIsValid = toSignal(this.form.statusChanges.pipe(map(() => this.form.valid)), {
+        initialValue: this.form.valid,
+    });
+
+    readonly canSubmit = computed(() => {
+        if (this.isSubmitting()) return false;
+        if (!this.formIsValid()) return false;
+        if (!this.isEditMode && this.targetOrgId() === null) return false;
+        return true;
+    });
 
     /** Ceiling set: keys the actor CANNOT grant in the currently-selected target org.
      *  In duplicate-mode the ceiling is removed — actor can preview & submit any subset;
@@ -304,13 +315,6 @@ export class CreateRoleDialogComponent implements OnInit {
             }
             return next;
         });
-    }
-
-    canSubmit(): boolean {
-        if (this.isSubmitting()) return false;
-        if (this.form.invalid) return false;
-        if (!this.isEditMode && this.targetOrgId() === null) return false;
-        return true;
     }
 
     onSubmit(): void {

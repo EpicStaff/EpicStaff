@@ -30,6 +30,7 @@ import {
 import { RoleInfoDialogComponent } from '../../../components/role-info-dialog/role-info-dialog.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { RolesService } from '../../../services/admin/roles.service';
+import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
 @Component({
     selector: 'app-roles-tab',
@@ -150,7 +151,7 @@ export class RolesTabComponent implements OnInit {
                 finalize(() => this.isLoading.set(false))
             )
             .subscribe({
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to load roles'),
+                error: (err) => this.toast.error(rbacErrorMessage(err, 'Failed to load roles')),
             });
     }
 

@@ -312,7 +312,7 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/api-keys-tab/api-keys-tab.component').then(
                                         (m) => m.ApiKeysTabComponent
                                     ),
-                                canActivate: [permissionGuard],
+                                canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.ApiKeys, ActionCode.Read] },
                             },
                         ],

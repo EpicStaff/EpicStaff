@@ -38,6 +38,7 @@ import {
     getBulkDeleteConfirmationData,
     getBulkRevokeConfirmationData,
 } from '../../../utils';
+import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'All', value: null },
@@ -90,7 +91,15 @@ export class ApiKeysTabComponent {
 
     private readonly knownOwners = signal<Map<number, { name: string; email: string }>>(new Map());
 
-    protected readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
+    protected readonly readableOrgs = computed<{ id: number; name: string }[]>(() => {
+        if (this.permissionsService.isSuperadmin) {
+            return this.organizationsService
+                .organizations()
+                .filter((o) => o.is_active)
+                .map((o) => ({ id: o.id, name: o.name }));
+        }
+        return this.permissionsService.orgsWith(ResourceCode.ApiKeys, ActionCode.Read);
+    });
 
     protected readonly orgFilterItems = computed<SelectItem[]>(() =>
         this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
@@ -179,7 +188,7 @@ export class ApiKeysTabComponent {
     ]);
 
     constructor() {
-        this.loadReadableOrgs();
+        this.ensureOrgsLoaded();
 
         this.filters$
             .pipe(
@@ -196,7 +205,7 @@ export class ApiKeysTabComponent {
                         .pipe(
                             finalize(() => this.isLoading.set(false)),
                             catchError((err) => {
-                                this.toast.error(err.error?.message ?? 'Failed to load API keys');
+                                this.toast.error(rbacErrorMessage(err, 'Failed to load API keys'));
                                 return EMPTY;
                             })
                         );
@@ -209,17 +218,10 @@ export class ApiKeysTabComponent {
             });
     }
 
-    private loadReadableOrgs(): void {
-        if (this.permissionsService.isSuperadmin) {
-            this.organizationsService
-                .getOrganizations()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((orgs) =>
-                    this.readableOrgs.set(orgs.filter((o) => o.is_active).map((o) => ({ id: o.id, name: o.name })))
-                );
-            return;
-        }
-        this.readableOrgs.set(this.permissionsService.orgsWith(ResourceCode.ApiKeys, ActionCode.Read));
+    private ensureOrgsLoaded(): void {
+        if (!this.permissionsService.isSuperadmin) return;
+        if (this.organizationsService.isOrganizationsLoaded()) return;
+        this.organizationsService.getOrganizations().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private canRetireRow(row: TableRow): boolean {

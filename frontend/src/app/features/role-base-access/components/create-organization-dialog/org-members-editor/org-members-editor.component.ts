@@ -64,7 +64,7 @@ export class OrgMembersEditorComponent implements OnInit {
     selectedUserIds = computed(() => new Set(this.selectedUsers().map((r) => r['id'] as number)));
     readonly roleItems = signal<SelectItem[]>([]);
 
-    private originalMembershipByUserId = new Map<number, MembershipSnapshot>();
+    private readonly originalMembershipByUserId = signal<Map<number, MembershipSnapshot>>(new Map());
 
     readonly canManageMembers = computed(() => {
         if (this.permissionsService.isSuperadmin) return true;
@@ -188,15 +188,16 @@ export class OrgMembersEditorComponent implements OnInit {
                 this.usersTableData.set(users.map((u) => this.mapToRow(u, u.id === currentUserId)));
 
                 if (this.isEditMode() && this.organizationId() !== null) {
-                    this.originalMembershipByUserId.clear();
+                    const original = new Map<number, MembershipSnapshot>();
                     const preselected: number[] = [];
                     for (const u of users) {
                         const m = this.membershipInThisOrg(u);
                         if (m) {
-                            this.originalMembershipByUserId.set(u.id, { membershipId: m.id, roleId: m.role.id });
+                            original.set(u.id, { membershipId: m.id, roleId: m.role.id });
                             preselected.push(u.id);
                         }
                     }
+                    this.originalMembershipByUserId.set(original);
                     this.selectionIds.set(preselected);
                 }
 
@@ -231,28 +232,30 @@ export class OrgMembersEditorComponent implements OnInit {
         if (!this.isEditMode()) return [];
         const currentIds = new Set(this.selectedUsers().map((r) => r['id'] as number));
         const removed: number[] = [];
-        for (const [userId, { membershipId }] of this.originalMembershipByUserId) {
+        for (const [userId, { membershipId }] of this.originalMembershipByUserId()) {
             if (!currentIds.has(userId)) removed.push(membershipId);
         }
         return removed;
     }
 
     private getSelectedAssignments(): { user_id: number; role_id: number }[] {
+        const original = this.originalMembershipByUserId();
         return this.selectedUsers()
-            .filter((row) => row['role'] != null && !this.originalMembershipByUserId.has(row['id'] as number))
+            .filter((row) => row['role'] != null && !original.has(row['id'] as number))
             .map((row) => ({ user_id: row['id'] as number, role_id: row['role'] as number }));
     }
 
     private getRoleUpdates(): { membershipId: number; role_id: number }[] {
         if (!this.isEditMode()) return [];
+        const original = this.originalMembershipByUserId();
         const updates: { membershipId: number; role_id: number }[] = [];
         for (const row of this.selectedUsers()) {
             const userId = row['id'] as number;
-            const original = this.originalMembershipByUserId.get(userId);
+            const snapshot = original.get(userId);
             const roleId = row['role'] as number | null;
-            if (original == null || roleId == null) continue;
-            if (roleId !== original.roleId) {
-                updates.push({ membershipId: original.membershipId, role_id: roleId });
+            if (snapshot == null || roleId == null) continue;
+            if (roleId !== snapshot.roleId) {
+                updates.push({ membershipId: snapshot.membershipId, role_id: roleId });
             }
         }
         return updates;

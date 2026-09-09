@@ -78,13 +78,10 @@ export class StepAssignToOrgComponent implements OnInit {
             )
         );
 
-        const defaultOrgRole = (orgId: number) =>
-            this.permissionsService.canInOrg(orgId, ResourceCode.Roles, ActionCode.Read) ? UserRole.MEMBER : null;
-
         const rows: TableRow[] = assignableOrgs.map((org) => ({
             id: org.id,
             name: org.name,
-            role: membershipMap.get(org.id) || defaultOrgRole(org.id),
+            role: membershipMap.get(org.id) || this.defaultOrgRole(org.id),
         }));
 
         const assignableOrgIds = new Set(assignableOrgs.map((o) => o.id));
@@ -97,6 +94,10 @@ export class StepAssignToOrgComponent implements OnInit {
             .map((o) => o.id)
             .filter((id) => this.permissionsService.canInOrg(id, ResourceCode.Roles, ActionCode.Read));
         this.loadRolesForOrgs(roleReadableOrgIds);
+    }
+
+    private defaultOrgRole(orgId: number): number | null {
+        return this.permissionsService.canInOrg(orgId, ResourceCode.Roles, ActionCode.Read) ? UserRole.MEMBER : null;
     }
 
     /** Fetches built-ins and custom roles for orgs where the actor can read roles,

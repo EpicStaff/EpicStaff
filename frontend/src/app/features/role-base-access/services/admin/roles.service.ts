@@ -1,5 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { effect, inject, Injectable, signal } from '@angular/core';
 import {
     ActionCode,
     CreateRoleRequest,
@@ -14,6 +14,7 @@ import { StorageService } from '@shared/services';
 import { Observable, tap } from 'rxjs';
 
 import { withCrossOrgPermission } from '../../../../core/http/permission-context';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 
 export interface LoadRolesParams {
@@ -28,6 +29,7 @@ export interface LoadRolesParams {
 export class RolesService implements StorageService {
     private readonly configService = inject(ConfigService);
     private readonly http = inject(HttpClient);
+    private readonly permissionsService = inject(PermissionsService);
 
     private get apiUrl(): string {
         return this.configService.apiUrl + 'admin/roles/';
@@ -43,6 +45,20 @@ export class RolesService implements StorageService {
 
     private readonly _count = signal(0);
     readonly count = this._count.asReadonly();
+
+    constructor() {
+        // Invalidate cached roles when the active-org permissions change so stale rows
+        // from a previous org don't leak into the next view.
+        let firstRun = true;
+        effect(() => {
+            this.permissionsService.active();
+            if (firstRun) {
+                firstRun = false;
+                return;
+            }
+            this.clear();
+        });
+    }
 
     loadRoles(params: LoadRolesParams = {}): Observable<RolesListResponse> {
         let httpParams = new HttpParams();

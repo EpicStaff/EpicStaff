@@ -25,7 +25,7 @@
                 >
                     Collection Name
                 </label>
-                @if (canEditKnowledge) {
+                @if (canEditKnowledge()) {
                     <input
                         [formControl]="collectionName"
                         type="text"

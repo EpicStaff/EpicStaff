@@ -1,6 +1,7 @@
 import {
     ChangeDetectionStrategy,
     Component,
+    computed,
     DestroyRef,
     effect,
     inject,
@@ -80,7 +81,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
 
     private lastInitializedCollectionId: number | null = null;
 
-    canEditKnowledge = this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update);
+    canEditKnowledge = computed(() => this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update));
     constructor() {
         effect(() => {
             const selectedId = this.selectedCollectionId();
