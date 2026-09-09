@@ -119,6 +119,7 @@ ipython_config.py
 
 # uv
 .python-version
+src/**/uv.lock
 
 .pdm.toml
 
