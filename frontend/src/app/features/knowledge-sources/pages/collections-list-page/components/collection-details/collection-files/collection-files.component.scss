@@ -43,32 +43,6 @@
         color: var(--fog-alpha-80);
     }
 
-    &__error {
-        border-radius: 5px;
-        background-color: var(--red-600-alpha-6);
-        color: var(--color-status-failed);
-        padding: 0.25rem 0.5rem;
-
-        &--medium {
-            font-size: 0.875rem;
-        }
-
-        &--small {
-            font-size: 0.625rem;
-        }
-    }
-
-    &__actions {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        column-gap: 0.5rem;
-    }
-
-    &__file-action {
-        color: var(--fog-alpha-80);
-    }
-
     &__upload-spinner {
         width: 14px;
         height: 14px;

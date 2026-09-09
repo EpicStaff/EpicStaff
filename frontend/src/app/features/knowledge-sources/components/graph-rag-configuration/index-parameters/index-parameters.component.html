@@ -59,6 +59,7 @@
                     formControlName="chunk_size"
                     [min]="100"
                     [max]="10000"
+                    [stepSize]="DEFAULT_STEP_SIZE"
                     [invalid]="!!getControl('chunk_size')?.invalid"
                     [alwaysShowSteps]="true"
                 />

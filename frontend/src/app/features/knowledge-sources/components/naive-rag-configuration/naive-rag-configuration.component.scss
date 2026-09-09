@@ -18,7 +18,6 @@
 
     &__files-searchbar {
         display: grid;
-        flex-wrap: wrap;
         grid-template-columns: 1fr // search
             145px // select
             100px // reinclude files

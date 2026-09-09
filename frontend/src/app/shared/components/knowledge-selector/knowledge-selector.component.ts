@@ -1,4 +1,4 @@
-import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
     ChangeDetectionStrategy,
@@ -18,8 +18,6 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 export interface KnowledgeSelectorRagConfig {
     rag_type: string;
@@ -40,7 +38,7 @@ const RAG_TYPE_LABELS: Record<string, string> = {
 
 @Component({
     selector: 'app-knowledge-selector',
-    imports: [[FormsModule, ReactiveFormsModule, ClickOutsideDirective, OverlayModule, TooltipComponent, AppSvgIconComponent],
+    imports: [TooltipComponent, AppSvgIconComponent],
     templateUrl: './knowledge-selector.component.html',
     styleUrls: ['./knowledge-selector.component.scss'],
     providers: [

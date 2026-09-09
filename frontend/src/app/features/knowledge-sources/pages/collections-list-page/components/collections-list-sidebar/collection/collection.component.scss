@@ -51,9 +51,8 @@
         padding: 2px 8px;
         border-radius: 4px;
         background-color: var(--color-ks-card-tag-background, rgba(255, 255, 255, 0.06));
-        font-size: 1rem;
+        font-size: 0.75rem;
         white-space: nowrap;
-        color: var(--fog-alpha-80);
 
         &__name {
             overflow: hidden;
@@ -69,28 +68,6 @@
         text-overflow: ellipsis;
         font-size: 12px;
         color: var(--text-secondary-60);
-        align-items: center;
-        column-gap: 0.5rem;
-        min-width: 0;
-        &--completed {
-            color: var(--accent-color);
-        }
-
-        &--empty {
-            color: var(--success-color);
-        }
-
-        &--warning {
-            color: var(--color-status-warning);
-        }
-
-        &--uploading {
-            color: var(--color-status-processing);
-        }
-
-        &--failed {
-            color: var(--color-status-failed);
-        }
     }
 
     .status-icon {

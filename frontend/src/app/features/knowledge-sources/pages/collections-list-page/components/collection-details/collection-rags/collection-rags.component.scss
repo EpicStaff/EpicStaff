@@ -66,13 +66,4 @@
             }
         }
     }
-
-    &__nav--action {
-        border-radius: 50%;
-        cursor: pointer;
-        &:hover {
-            transition: 0.3s;
-            background-color: var(--graphite-650);
-        }
-    }
 }

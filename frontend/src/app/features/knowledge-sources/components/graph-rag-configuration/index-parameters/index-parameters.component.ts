@@ -22,10 +22,9 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { ApiErrorItem } from '@shared/models';
-import { DEFAULT_STEP_SIZE } from '@shared/constants';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 
 import { GraphRagFileType, GraphRagIndexConfig } from '../../../models/graph-rag.model';
 

@@ -17,41 +17,15 @@
     &__header-label {
         display: flex;
         align-items: center;
-        min-width: 0;
-    }
-
-    &__header-label {
-        color: var(--color-ks-text);
-        font-size: 1rem;
-        font-weight: bold;
-        min-width: 0;
         gap: 6px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--color-ks-text);
     }
 
     &__header-count {
         font-weight: 400;
         color: var(--color-text-muted);
-    }
-
-    &__actions {
-        margin-top: 1.5rem;
-        display: flex;
-        gap: 0.5rem;
-        min-width: 0;
-    }
-
-    &__search {
-        flex: 2 1 0;
-        min-width: 0;
-    }
-
-    &__select {
-        height: 100%;
-        flex: 1 1 0;
-        min-width: 0;
     }
 
     &__items {
