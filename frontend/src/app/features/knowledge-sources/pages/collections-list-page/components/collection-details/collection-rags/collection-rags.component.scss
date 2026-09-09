@@ -33,12 +33,12 @@
 
     .name {
         white-space: nowrap;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--color-text-primary);
     }
 
     .model {
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--fog-alpha-80);
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -50,7 +50,7 @@
         gap: 4px;
         align-items: center;
         margin-left: auto;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--fog-alpha-80);
     }
 

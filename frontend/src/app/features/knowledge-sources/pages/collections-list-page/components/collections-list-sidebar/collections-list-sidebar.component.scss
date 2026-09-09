@@ -15,12 +15,13 @@
     }
 
     &__header-label {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 1rem;
-        font-weight: 700;
-        color: var(--color-ks-text);
+        font-weight: var(--text-h2-weight);
+        color: var(--color-text-primary);
+        font-size: var(--text-h2-size);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     &__header-count {

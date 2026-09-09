@@ -46,17 +46,17 @@
     &__title {
         margin: 0;
         color: var(--color-text-primary);
-        font-size: 2rem;
-        line-height: 1;
-        font-weight: 700;
+        font-size: var(--text-h1-hero-size);
+        line-height: var(--text-h1-hero-line-height);
+        font-weight: var(--text-h1-hero-weight);
     }
 
     &__text {
         margin: 0;
         color: var(--color-text-secondary);
-        font-size: 18px;
-        line-height: 1.3;
-        font-weight: 500;
+        font-size: var(--text-h4-size);
+        line-height: var(--text-h4-line-height);
+        font-weight: var(--text-h4-weight);
         letter-spacing: 0;
         text-align: center;
     }
@@ -77,8 +77,8 @@
         padding: 0 1rem;
         height: 2.5rem;
         border-radius: 8px;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         cursor: pointer;
         border: 1px solid transparent;
         color: var(--color-text-primary);

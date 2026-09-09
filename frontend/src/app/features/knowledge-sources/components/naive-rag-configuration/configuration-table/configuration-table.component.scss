@@ -112,8 +112,8 @@
     }
 
     &__header {
-        font-weight: bold;
-        font-size: 0.875rem;
+        font-weight: var(--text-body-bold-weight);
+        font-size: var(--text-body-bold-size);
         width: calc(645px - 1.25rem);
         margin: 0 0 0.5rem 3.125rem;
         padding: 0;
@@ -147,7 +147,7 @@
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--fog-alpha-80);
         cursor: pointer;
     }
