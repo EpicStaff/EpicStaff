@@ -53,16 +53,3 @@ package = "openai"
 services = ["knowledge", "realtime"]
 blocked_at = "1.58.1"
 reason = "openai 1.x -> 2.x is a breaking major. knowledge declares openai <2.0.0; realtime pins 1.58.1. Needs its own migration."
-
-[[exception]]
-package = "starlette"
-services = ["realtime", "webhook"]
-blocked_at = "0.49.3"
-reason = "fastapi 0.120.1 pins starlette <0.50.0. Needs a FastAPI major upgrade; carries 4 open HIGH advisories."
-
-[[exception]]
-package = "langchain-core"
-services = ["crew"]
-blocked_at = "0.3.86"
-reason = "Deliberately held on the 0.3 line: 1.x is a breaking LangChain release and crew is the LangGraph orchestrator. 0.3.86 closes CVE-2025-68664."
-

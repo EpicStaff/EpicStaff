@@ -11,7 +11,7 @@ requires-python = "==3.12.10"
 dependencies = [
     "aiohttp==3.14.3",
     "asyncpg==0.30.0",
-    "fastapi==0.120.1",
+    "fastapi==0.141.1",
     "google-genai==1.19.0",
     "httpx==0.28.1",
     "loguru==0.7.3",
@@ -45,6 +45,7 @@ transitive-pins = [
     "requests==2.34.2",
     "urllib3==2.7.0",
     "yarl==1.24.5",
+    "starlette==1.6.0",
 ]
 
 [tool.uv]

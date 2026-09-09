@@ -9,11 +9,10 @@ authors = [
     { name = "Vitalii Povoroznyk" },
     { name = "Vasyl Cherkes" },
 ]
-license = "MIT"
 requires-python = "==3.12.10"
 dependencies = [
     "datamodel-code-generator==0.64.0",
-    "langchain-core==1.4.7",
+    "langchain-core==1.6.2",
     "langgraph==1.2.11",
     "litellm==1.85.1",
     "loguru==0.7.2",
