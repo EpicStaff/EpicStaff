@@ -47,15 +47,15 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 OUTPUT_FILE = SCRIPTS_DIR / "python-notices-partial.md"
 
 SERVICES = [
-    "src/django_app",
-    "src/crew",
     "src/agent",
-    "src/manager",
+    "src/auditor",
+    "src/crew",
+    "src/django_app",
     "src/knowledge",
+    "src/manager",
     "src/realtime",
     "src/sandbox",
     "src/webhook",
-    "src/voice_app",
 ]
 
 BOOTSTRAP_PACKAGES = {
@@ -155,14 +155,13 @@ def poetry_without_groups(svc_dir: Path) -> list[str]:
 
 def poetry_root_name(svc_dir: Path) -> str | None:
     """The service's own root/self package name, e.g. "webhook",
-    "crewai-sheets-ui" for crew, "backend" for realtime, "knowledge",
-    "voice-app". Used to exclude a service's own first-party package from
+    "crewai-sheets-ui" for crew, "backend" for realtime, "knowledge". Used to exclude a service's own first-party package from
     the notices even if it ended up installed in the venv (stale venv
     predating `--no-root`, or a developer running a plain `poetry install`).
 
     Poetry 2.x projects declare the name either the legacy way
     (`[tool.poetry].name`) or via PEP 621 (`[project].name`, used by e.g.
-    knowledge and voice_app here) — both are checked, legacy takes
+    knowledge here) — both are checked, legacy takes
     precedence if a project somehow declares both."""
     data = load_pyproject(svc_dir)
     name = data.get("tool", {}).get("poetry", {}).get("name") or data.get(
@@ -497,7 +496,7 @@ def build_markdown(
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
         "(`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, "
-        "`src/sandbox`, `src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "`src/sandbox`, `src/webhook`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")
