@@ -13,10 +13,8 @@ license = "MIT"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "datamodel-code-generator==0.64.0",
-    # Pinned to the 0.3 line: 0.3.81+ closes CVE-2025-68664, while 1.x is a
-    # breaking LangChain release this orchestrator has not been moved to.
-    "langchain-core==0.3.86",
-    "langgraph==0.5.4",
+    "langchain-core==1.4.7",
+    "langgraph==1.2.11",
     "litellm==1.85.1",
     "loguru==0.7.2",
     "python-dotenv==1.2.2",
