@@ -202,9 +202,9 @@ docker-generate-certs:
 # PATH. Every service's venv lives at a plain .venv. A missing .venv fails
 # loudly; `make uv-sync svc=<service>` is the one-command fix.
 ifeq ($(OS),Windows_NT)
-venv_py := .venv\Scripts\python.exe
+VENV_PY := .venv\Scripts\python.exe
 else
-venv_py := .venv/bin/python
+VENV_PY := .venv/bin/python
 endif
 
 # Regenerate every service's uv.lock. `--project` avoids a per-service cd and
@@ -233,16 +233,16 @@ uv-sync:
 django-makemigrations django-migrate django-manage django-tests: export PYTHONPATH = $(CURDIR)
 
 django-makemigrations:
-	@cd src/django_app && $(venv_py) manage.py makemigrations $(ARGS)
+	@cd src/django_app && $(VENV_PY) manage.py makemigrations $(ARGS)
 
 django-migrate:
-	@cd src/django_app && $(venv_py) manage.py migrate $(ARGS)
+	@cd src/django_app && $(VENV_PY) manage.py migrate $(ARGS)
 
 django-manage:
-	@cd src/django_app && $(venv_py) manage.py $(CMD)
+	@cd src/django_app && $(VENV_PY) manage.py $(CMD)
 
 django-tests:
-	@cd src/django_app && $(venv_py) -m pytest $(ARGS)
+	@cd src/django_app && $(VENV_PY) -m pytest $(ARGS)
 
 # ==========================================
 # LOCAL CREW DEVELOPMENT
@@ -251,9 +251,9 @@ django-tests:
 crew-tests: export PYTHONPATH = $(CURDIR)
 
 crew-tests:
-	@cd src/crew && $(venv_py) -m pytest $(ARGS)
+	@cd src/crew && $(VENV_PY) -m pytest $(ARGS)
 
 agent-tests: export PYTHONPATH = $(CURDIR)
 
 agent-tests:
-	@cd src/agent && $(venv_py) -m pytest $(ARGS)
+	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)
