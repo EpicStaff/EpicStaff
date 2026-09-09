@@ -39,9 +39,8 @@ SOFT_DELETE = os.getenv("SOFT_DELETE", "False").lower() in ("true", "1", "yes", 
 Default is `False` — soft delete is opt-in. It's read from the environment in three places that must be kept consistent for a given deployment:
 
 - `src/django_app/django_app/settings.py` — the Python-level default (`False`).
-- `src/docker-compose.yaml` — `SOFT_DELETE: ${SOFT_DELETE:-False}` for the `django_app` service.
-- `src/.env.example` — the template new deployments copy (`SOFT_DELETE=False`).
-- `src/.dev.env` — the local dev environment explicitly opts in with `SOFT_DELETE=True`, since soft-delete behavior is what the team develops/tests against day to day.
+- `src/docker-compose.yaml` — `DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:-False}` for the `django_app` service.
+- `src/.env` — set `DJANGO_SOFT_DELETE=True` here to opt a local dev environment in, since soft-delete behavior is what the team develops/tests against day to day. Generate `src/.env` with `python scripts/envtool.py --dev`.
 
 `SoftDeleteMixin.delete()` (see below) is the only place that reads `settings.SOFT_DELETE`; everything else in the mechanism is agnostic to the flag.
 

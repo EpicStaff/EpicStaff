@@ -1,5 +1,4 @@
 import time
-import os
 from django.core.management.base import BaseCommand
 import psycopg2
 from psycopg2 import OperationalError

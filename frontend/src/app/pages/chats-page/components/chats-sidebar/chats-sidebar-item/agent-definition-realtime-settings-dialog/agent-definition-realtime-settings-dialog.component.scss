@@ -24,8 +24,8 @@
 
         .title {
             margin: 0;
-            font-size: 18px;
-            font-weight: 600;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
             max-width: calc(100% - 40px);
             overflow: hidden;
             text-overflow: ellipsis;
@@ -75,9 +75,9 @@
 
             h3 {
                 margin: 0;
-                font-size: 14px;
+                font-size: var(--text-body-size);
                 color: var(--white-alpha-70);
-                font-weight: 400;
+                font-weight: var(--text-body-weight);
             }
 
             .input-container {
@@ -90,7 +90,7 @@
                     border: 1px solid var(--white-alpha-10);
                     border-radius: 6px;
                     color: var(--white);
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
@@ -121,8 +121,8 @@
         .btn {
             padding: 8px 16px;
             border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             cursor: pointer;
             transition: background-color 0.2s ease;
             border: none;

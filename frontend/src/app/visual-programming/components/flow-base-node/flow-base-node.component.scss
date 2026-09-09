@@ -18,7 +18,7 @@
     .node-name-label {
         background-color: var(--color-nodes-actionbar-bg);
         color: var(--gray-204);
-        font-size: 12px;
+        font-size: 0.75rem;
         padding: 2px 6px;
         border-radius: 3px;
         white-space: nowrap;
@@ -87,7 +87,7 @@
 
         &.edit-button i {
             color: var(--gray-450);
-            font-size: 16px;
+            font-size: 1rem;
 
             &:hover {
                 color: var(--white);
@@ -96,7 +96,7 @@
 
         &.toggle-button i {
             color: var(--accent-color);
-            font-size: 16px;
+            font-size: 1rem;
 
             &.disabled {
                 opacity: 0.5;
@@ -107,12 +107,12 @@
 
         &.ungroup-button i {
             color: var(--accent-color);
-            font-size: 16px;
+            font-size: 1rem;
         }
 
         &.delete-button i {
             color: var(--gray-450);
-            font-size: 16px;
+            font-size: 1rem;
         }
 
         &.delete-button:hover i {
@@ -144,7 +144,7 @@
 
                 i {
                     color: var(--python-node-accent-color);
-                    font-size: 25px;
+                    font-size: 1.5625rem;
                 }
             }
 
@@ -152,7 +152,7 @@
                 display: flex;
                 align-items: center;
                 gap: 6px;
-                font-size: 16px;
+                font-size: 1rem;
                 font-weight: 500;
                 letter-spacing: 0.5px;
                 color: inherit;
@@ -172,7 +172,7 @@
 
             .blocked-badge {
                 margin-left: auto;
-                font-size: 11px;
+                font-size: 0.6875rem;
                 padding: 2px 6px;
                 border-radius: 10px;
                 background: var(--red-400-alpha-15);
@@ -186,7 +186,7 @@
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
-                font-size: 11px;
+                font-size: 0.6875rem;
                 padding: 2px 6px;
                 border-radius: 10px;
                 background: color-mix(in srgb, var(--color-error) 15%, transparent);

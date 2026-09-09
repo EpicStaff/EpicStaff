@@ -37,7 +37,7 @@
     <div class="files-dialog__toolbar">
         <div class="files-dialog__selected-info">
             <span class="files-dialog__selected-label">Selected Files:</span>
-            <span class="files-dialog__selected-count">({{ selectedSizeLabel() }})</span>
+            <span class="files-dialog__selected-count">({{ selectedSizeBytes() | fileSize: 'auto' }})</span>
         </div>
         <div class="files-dialog__toolbar-right">
             <div class="files-dialog__search">
@@ -64,72 +64,79 @@
     </div>
 
     <div class="files-dialog__body">
-        <div class="files-dialog__file-list">
-            @if (isLoadingRoot()) {
-                <div class="files-dialog__state">Loading files...</div>
-            } @else if (visibleNodes().length === 0) {
-                <div class="files-dialog__state">No files found</div>
-            } @else {
-                @for (node of visibleNodes(); track node.path) {
-                    <div
-                        class="files-dialog__item"
-                        [class.files-dialog__item--checked]="isChecked(node)"
-                        [style.padding-left.px]="20 + node.level * 20"
-                        (click)="toggleCheck(node)"
-                    >
-                        @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
-                            <button
-                                class="files-dialog__chevron"
-                                [class.files-dialog__chevron--open]="node.isExpanded"
-                                (click)="toggleExpand($event, node)"
-                            >
-                                <app-svg-icon
-                                    icon="expand"
-                                    size="0.5rem"
-                                ></app-svg-icon>
-                            </button>
-                        } @else {
-                            <span class="files-dialog__chevron-gap"></span>
-                        }
-
+        <app-drag-drop-area
+            class="files-dialog__drop-wrapper"
+            (filesDropped)="onFilesDropped($event)"
+        >
+            <div class="files-dialog__file-list">
+                @if (isUploading()) {
+                    <div class="files-dialog__state">Uploading files...</div>
+                } @else if (isLoadingRoot()) {
+                    <div class="files-dialog__state">Loading files...</div>
+                } @else if (visibleNodes().length === 0) {
+                    <div class="files-dialog__state">No files found</div>
+                } @else {
+                    @for (node of visibleNodes(); track node.path) {
                         <div
-                            class="files-dialog__checkbox"
-                            [class.files-dialog__checkbox--checked]="isChecked(node)"
-                            [class.files-dialog__checkbox--indeterminate]="isIndeterminate(node)"
+                            class="files-dialog__item"
+                            [class.files-dialog__item--checked]="isChecked(node)"
+                            [style.padding-left.px]="20 + node.level * 20"
+                            (click)="toggleCheck(node)"
                         >
-                            @if (isChecked(node)) {
-                                <app-svg-icon
-                                    class="files-dialog__checkbox-tick"
-                                    icon="checkbox-tick"
-                                    size="16px"
-                                ></app-svg-icon>
-                            } @else if (isIndeterminate(node)) {
-                                <app-svg-icon
-                                    class="files-dialog__checkbox-dash"
-                                    icon="checkbox-dash"
-                                    size="9px"
-                                ></app-svg-icon>
+                            @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
+                                <button
+                                    class="files-dialog__chevron"
+                                    [class.files-dialog__chevron--open]="node.isExpanded"
+                                    (click)="toggleExpand($event, node)"
+                                >
+                                    <app-svg-icon
+                                        icon="expand"
+                                        size="0.5rem"
+                                    ></app-svg-icon>
+                                </button>
+                            } @else {
+                                <span class="files-dialog__chevron-gap"></span>
+                            }
+
+                            <div
+                                class="files-dialog__checkbox"
+                                [class.files-dialog__checkbox--checked]="isChecked(node)"
+                                [class.files-dialog__checkbox--indeterminate]="isIndeterminate(node)"
+                            >
+                                @if (isChecked(node)) {
+                                    <app-svg-icon
+                                        class="files-dialog__checkbox-tick"
+                                        icon="checkbox-tick"
+                                        size="16px"
+                                    ></app-svg-icon>
+                                } @else if (isIndeterminate(node)) {
+                                    <app-svg-icon
+                                        class="files-dialog__checkbox-dash"
+                                        icon="checkbox-dash"
+                                        size="9px"
+                                    ></app-svg-icon>
+                                }
+                            </div>
+
+                            <app-svg-icon
+                                class="files-dialog__file-icon"
+                                [icon]="getFileIcon(node)"
+                                size="12px"
+                            ></app-svg-icon>
+
+                            <span
+                                class="files-dialog__item-name"
+                                [title]="node.name"
+                                >{{ node.name }}</span
+                            >
+
+                            @if (node.type === 'file' && node.size != null) {
+                                <span class="files-dialog__item-size">({{ node.size | fileSize: 'auto' }})</span>
                             }
                         </div>
-
-                        <app-svg-icon
-                            class="files-dialog__file-icon"
-                            [icon]="getFileIcon(node)"
-                            size="12px"
-                        ></app-svg-icon>
-
-                        <span
-                            class="files-dialog__item-name"
-                            [title]="node.name"
-                            >{{ node.name }}</span
-                        >
-
-                        @if (node.type === 'file' && node.size != null) {
-                            <span class="files-dialog__item-size">({{ formatSize(node.size) }})</span>
-                        }
-                    </div>
+                    }
                 }
-            }
-        </div>
+            </div>
+        </app-drag-drop-area>
     </div>
 </div>

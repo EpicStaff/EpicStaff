@@ -35,8 +35,8 @@
     }
 
     &__count {
-        font-size: 12px;
-        font-weight: 600;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         color: var(--accent-color);
         line-height: 1;
         flex-shrink: 0;

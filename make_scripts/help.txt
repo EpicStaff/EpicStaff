@@ -3,48 +3,40 @@
  Available commands
 ================================================================
 
- DEVELOPMENT
+ ENVIRONMENT
 ----------------------------------------------------------------
- make dev
-   Start the development environment (live-reload, mapped ports).
-   Uses docker-compose.yaml + docker-compose.dev.yaml.
+ make up
+   Start all services (single docker-compose.yaml + src/.env).
+   Creates src/.env from src/.env.example on first run.
 
- make dev-down
-   Stop the development environment.
+ make down
+   Stop all services.
 
- make dev-build
-   Build dev images without starting containers.
+ make build
+   Build images without starting containers.
 
- make dev-logs
-   Tail logs for all dev services.
-
- make dev-restart s=<service>
-   Restart a single dev service.
-   Example: make dev-restart s=manager
-
- make dev-logs-s s=<service>
-   Tail logs for a single dev service.
-   Example: make dev-logs-s s=django_app
-
- make dev-rebuild-s s=<service>
-   Rebuild and restart a single dev service (uses cache).
-   Example: make dev-rebuild-s s=crew
-
- make rebuild-dev
-   Rebuild ALL dev services from scratch (no cache) and start.
+ make rebuild
+   Rebuild ALL services from scratch (no cache) and start.
    Use when dependencies or Dockerfiles changed.
 
- PRODUCTION
-----------------------------------------------------------------
- make prod  /  make start-prod
-   Build and start all production services.
-   Uses docker-compose.yaml + docker-compose.override.yaml.
+ make rebuild-s s=<service>
+   Rebuild and restart a single service (uses cache).
+   Example: make rebuild-s s=crew
 
- make prod-down
-   Stop the production environment.
+ make restart s=<service>
+   Restart a single service.
+   Example: make restart s=manager
 
- make prod-logs
-   Tail logs for all production services.
+ make logs
+   Tail logs for all services.
+
+ make logs-s s=<service>
+   Tail logs for a single service.
+   Example: make logs-s s=django_app
+
+ make init
+   Create external volumes and networks. Run automatically by
+   up / build / rebuild, so rarely needed directly.
 
  BRANCH SWITCHING  (fast builds via image cache)
 ----------------------------------------------------------------
@@ -55,7 +47,7 @@
      3. Runs: git checkout <branch>
      4. Loads cached Docker images for the new branch (if any)
      5. Restores DB volume for the new branch (if backup exists)
-   After this: run  make dev  or  make prod  (build uses cache).
+   After this: run  make up  (build uses cache).
    Example: make switch b=feature/EST-1234
 
  make stash-tags
@@ -101,9 +93,9 @@
  UTILITIES
 ----------------------------------------------------------------
  make clean
-   Stop ALL environments and DELETE volumes. WARNING: wipes DB data.
+   Stop all services and DELETE volumes. WARNING: wipes DB data.
 
- make docker-generate-certs
+ make docker-generate-certs domain=<domain>
    Generate self-signed SSL certificates for local Nginx.
 
 ================================================================
@@ -111,10 +103,10 @@
 ----------------------------------------------------------------
  Switch to another branch (one command):
    make switch b=<branch>
-   make dev                    (or make prod)
+   make up
 
  Already ran git checkout manually:
    make apply-tags
    make apply-backup
-   make dev                    (or make prod)
+   make up
 ================================================================

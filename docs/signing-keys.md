@@ -51,8 +51,7 @@ deployment secrets, and reuse it. If you regenerate `src/.env` from
 
 | Path | Source |
 | --- | --- |
-| `make dev`, `make dev-*` | `src/.dev.env`, generated from `src/env.yaml` (development placeholder values) |
-| `make prod-*` | `src/.env`, supplied by the operator |
+| `make up` and every other `make` target | `src/.env`, created from `src/.env.example` on first run and filled in by the operator |
 | Manual `docker compose up` in `src/` | `src/.env`, created by copying `src/.env.example` — see the Quick Start in the README |
 
 `src/.env` is gitignored. Keep it out of version control and out of image builds.

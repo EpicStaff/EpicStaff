@@ -75,7 +75,7 @@
 }
 
 .code-editor-section {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--white-alpha-70);
     display: flex;
     flex-direction: column;
@@ -90,13 +90,13 @@
     &__info {
         display: flex;
         align-items: center;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--fog-alpha-80);
         opacity: 0.7;
     }
 
     &__info-icon {
-        font-size: 14px;
+        font-size: 0.875rem;
         width: 14px;
         height: 14px;
         display: inline-flex;

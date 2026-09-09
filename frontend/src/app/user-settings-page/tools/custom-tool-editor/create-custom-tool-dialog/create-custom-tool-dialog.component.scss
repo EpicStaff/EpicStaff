@@ -26,9 +26,9 @@
 
         .title {
             margin: 0;
-            font-size: 20px;
-            line-height: 100%;
-            font-weight: 500;
+            font-size: var(--text-h3-size);
+            line-height: var(--text-h3-line-height);
+            font-weight: var(--text-h3-weight);
             color: var(--white);
             letter-spacing: 0;
         }
@@ -113,14 +113,14 @@
         gap: 6px;
 
         &__label {
-            font-size: 13px;
+            font-size: 0.8125rem;
             font-weight: 500;
             color: var(--color-text-secondary);
         }
 
         &__value {
             margin: 0;
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 1.4;
             color: var(--white);
             word-break: break-word;
@@ -153,9 +153,9 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 14px;
-        line-height: 130%;
-        font-weight: 700;
+        font-size: var(--text-body-bold-size);
+        line-height: var(--text-body-bold-line-height);
+        font-weight: var(--text-body-bold-weight);
         color: var(--white);
 
         .python-icon {
@@ -219,9 +219,9 @@
 
             h3 {
                 margin: 0;
-                font-size: 14px;
+                font-size: var(--text-body-medium-size);
                 line-height: 18px;
-                font-weight: 500;
+                font-weight: var(--text-body-medium-weight);
                 color: var(--gray-213);
                 display: inline-flex;
                 align-items: center;
@@ -236,7 +236,7 @@
 
     .error-message {
         margin: 0;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--red-427);
     }
 
@@ -256,8 +256,8 @@
     }
 
     .parameters-issue-label {
-        font-size: 12px;
-        font-weight: 500;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         color: var(--red-400);
         background: var(--red-460-alpha-10);
         border: 1px solid var(--red-460-alpha-40);
@@ -294,9 +294,9 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        font-size: 14px;
+        font-size: var(--text-body-medium-size);
         line-height: 18px;
-        font-weight: 500;
+        font-weight: var(--text-body-medium-weight);
         color: var(--gray-213);
 
         app-toggle-switch {
@@ -339,13 +339,13 @@
         min-width: 0;
         gap: 8px;
         color: var(--white);
-        font-size: 14px;
+        font-size: var(--text-body-medium-size);
         line-height: 18px;
-        font-weight: 600;
+        font-weight: var(--text-body-medium-weight);
 
         small {
             color: var(--gray-609);
-            font-size: 13px;
+            font-size: 0.8125rem;
             font-weight: 400;
             margin-left: 4px;
         }

@@ -24,8 +24,8 @@
             justify-content: center;
 
             .status-text {
-                font-size: 1.25rem;
-                font-weight: 600;
+                font-size: var(--text-h3-size);
+                font-weight: var(--text-h3-weight);
                 color: var(--color-text-primary);
                 margin: 0;
             }
@@ -48,7 +48,7 @@
     width: 100%;
 
     .terms-text {
-        font-size: 14px;
+        font-size: 0.875rem;
         color: var(--color-text-subtle);
         margin: 0;
 

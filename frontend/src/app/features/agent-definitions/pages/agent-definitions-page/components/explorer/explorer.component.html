@@ -55,6 +55,7 @@
             @if (store.isSectionVisible('agents')) {
                 <section
                     class="explorer__section"
+                    data-section-id="agents"
                     [class.explorer__section--fill]="shouldFillBody('agents')"
                 >
                     <app-section-header
@@ -68,8 +69,11 @@
                         (add)="onAdd('agents')"
                     />
                     <div
+                        #agentsBody
                         class="explorer__section-body"
                         [class.explorer__section-body--fill]="shouldFillBody('agents')"
+                        [class.explorer__section-body--resized]="sectionHeight('agents') != null"
+                        [style.height.px]="sectionHeight('agents')"
                         [hidden]="!store.isSectionExpanded('agents')"
                     >
                         <app-agents-section
@@ -79,11 +83,23 @@
                             (attachSurface)="onAttachSharedSurface($event)"
                         />
                     </div>
+                    @if (!shouldFillBody('agents')) {
+                        <div
+                            class="explorer__section-resize-handle"
+                            [appResizableSection]="sectionHeightKey('agents')"
+                            [sectionTarget]="agentsBody"
+                            [sectionMinHeight]="sectionMinHeight"
+                            [sectionMaxHeightFn]="sectionMaxHeightFn('agents', agentsBody)"
+                            sectionAriaLabel="Resize Agents section"
+                            (dragStart)="ensureExpanded('agents')"
+                        ></div>
+                    }
                 </section>
             }
             @if (store.isSectionVisible('surfaces')) {
                 <section
                     class="explorer__section"
+                    data-section-id="surfaces"
                     [class.explorer__section--fill]="shouldFillBody('surfaces')"
                     [class.explorer__section--bottom]="isBottomSection('surfaces')"
                     [class.explorer__section--bottom-anchor]="isBottomAnchor('surfaces')"
@@ -99,8 +115,11 @@
                         (add)="onAdd('surfaces')"
                     />
                     <div
+                        #surfacesBody
                         class="explorer__section-body"
                         [class.explorer__section-body--fill]="shouldFillBody('surfaces')"
+                        [class.explorer__section-body--resized]="sectionHeight('surfaces') != null"
+                        [style.height.px]="sectionHeight('surfaces')"
                         [hidden]="!store.isSectionExpanded('surfaces')"
                     >
                         <app-surfaces-section
@@ -110,11 +129,23 @@
                             (attachSurface)="onAttachSharedSurface($event)"
                         />
                     </div>
+                    @if (!shouldFillBody('surfaces')) {
+                        <div
+                            class="explorer__section-resize-handle"
+                            [appResizableSection]="sectionHeightKey('surfaces')"
+                            [sectionTarget]="surfacesBody"
+                            [sectionMinHeight]="sectionMinHeight"
+                            [sectionMaxHeightFn]="sectionMaxHeightFn('surfaces', surfacesBody)"
+                            sectionAriaLabel="Resize Shared Surfaces section"
+                            (dragStart)="ensureExpanded('surfaces')"
+                        ></div>
+                    }
                 </section>
             }
             @if (store.isSectionVisible('storage')) {
                 <section
                     class="explorer__section"
+                    data-section-id="storage"
                     [class.explorer__section--fill]="shouldFillBody('storage')"
                     [class.explorer__section--bottom]="isBottomSection('storage')"
                     [class.explorer__section--bottom-anchor]="isBottomAnchor('storage')"
