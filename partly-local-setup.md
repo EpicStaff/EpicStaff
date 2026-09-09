@@ -46,7 +46,7 @@ python.exe -m pip install --upgrade pip
 cd src
 ```
 
-Install `uv` once — every service below uses it instead of Poetry:
+Install `uv` once — every service below uses it:
 ```powershell
 pip install uv==0.11.21
 ```
