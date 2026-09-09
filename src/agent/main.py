@@ -55,7 +55,7 @@ async def main() -> None:
     )
     await sandbox_client.start()
 
-    knowledge_client = KnowledgeClient(base_url=settings.knowledge_base_url)
+    knowledge_client = KnowledgeClient(base_url=settings.KNOWLEDGE_BASE_URL)
     await knowledge_client.start()
 
     loader = DataLoader(
