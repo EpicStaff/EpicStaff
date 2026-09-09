@@ -1,0 +1,79 @@
+# Updates automatically.
+
+[floor]
+aiohttp = "3.14.3"
+beautifulsoup4 = "4.14.3"
+certifi = "2026.7.22"
+cryptography = "50.0.1"
+django = "5.1.14"
+fastapi = "0.120.1"
+h11 = "0.16.0"
+httpcore = "1.0.9"
+httpx = "0.28.1"
+idna = "3.18"
+jinja2 = "3.1.6"
+langchain-core = "1.4.0"
+litellm = "1.85.1"
+lxml = "6.1.3"
+msgpack = "1.2.2"
+openai = "2.54.0"
+orjson = "3.12.0"
+pillow = "12.3.0"
+psycopg2 = "2.9.12"
+pyjwt = "2.13.0"
+pyyaml = "6.0.3"
+redis = "5.3.1"
+requests = "2.34.2"
+soupsieve = "2.9.2"
+sqlalchemy = "2.0.49"
+sqlparse = "0.6.0"
+starlette = "1.6.0"
+urllib3 = "2.7.0"
+uvicorn = "0.49.0"
+zipp = "4.1.0"
+
+# Services that cannot currently reach the floor, each with the upstream cap
+# that blocks it. These are tracked gaps, not hidden ones: the check prints them
+# on every run and fails if one is listed but no longer needed.
+
+[[exception]]
+package = "certifi"
+services = ["sandbox"]
+blocked_at = "2025.11.12"
+reason = "miniopy-async 1.23.5 requires certifi >=2025.1.31,<2026.0.0. Needs a miniopy-async upgrade."
+
+[[exception]]
+package = "litellm"
+services = ["knowledge"]
+blocked_at = "1.80.0"
+reason = "litellm >=1.83 requires openai >=2.8, but knowledge declares openai <2.0.0. Blocked behind the openai 2.x migration."
+
+[[exception]]
+package = "orjson"
+services = ["knowledge"]
+blocked_at = "3.11.9"
+reason = "Held by knowledge's langchain/langsmith stack. Lifts with the openai 2.x migration."
+
+[[exception]]
+package = "openai"
+services = ["agent", "knowledge", "realtime"]
+blocked_at = "1.58.1"
+reason = "openai 1.x -> 2.x is a breaking major. knowledge declares openai <2.0.0; realtime pins 1.58.1. Needs its own migration."
+
+[[exception]]
+package = "starlette"
+services = ["realtime", "webhook"]
+blocked_at = "0.49.3"
+reason = "fastapi 0.120.1 pins starlette <0.50.0. Needs a FastAPI major upgrade; carries 4 open HIGH advisories."
+
+[[exception]]
+package = "langchain-core"
+services = ["crew"]
+blocked_at = "0.3.86"
+reason = "Deliberately held on the 0.3 line: 1.x is a breaking LangChain release and crew is the LangGraph orchestrator. 0.3.86 closes CVE-2025-68664."
+
+[[exception]]
+package = "zipp"
+services = ["crew", "django_app", "knowledge"]
+blocked_at = "3.23.0"
+reason = "Transitive via importlib-metadata; 3.x -> 4.x is a major. No open advisory at 3.23.x."
