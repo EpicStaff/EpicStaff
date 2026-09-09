@@ -37,8 +37,8 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
-                font-size: 14px;
-                font-weight: 400;
+                font-size: var(--text-body-size);
+                font-weight: var(--text-body-weight);
                 padding: 0.4rem 1.2rem;
                 height: 36px;
                 line-height: 14px;

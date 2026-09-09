@@ -48,7 +48,7 @@
         .role-avatar {
             width: 80px;
             height: 80px;
-            font-size: 28px;
+            font-size: 1.75rem;
             font-weight: 500;
             border-radius: 50%;
         }
@@ -59,13 +59,13 @@
         }
 
         .role-name {
-            font-size: 24px;
+            font-size: 1.5rem;
             font-weight: 500;
             color: var(--text);
         }
 
         .role-desc {
-            font-size: 14px;
+            font-size: 0.875rem;
             color: var(--text-secondary-60);
         }
     }

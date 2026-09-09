@@ -10,12 +10,13 @@ import {
     AppTableRowAction,
     ConfirmationDialogService,
     LoadingSpinnerComponent,
+    MultiSelectComponent,
+    MultiSelectTriggerDirective,
     SearchComponent,
-    SelectComponent,
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { ApiKeyStatus, GetApiKeyWithOwnerResponse } from '@shared/models';
+import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, map, of, switchMap } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
@@ -56,37 +57,44 @@ const STATUS_ITEMS: SelectItem[] = [
         CdkConnectedOverlay,
         CdkOverlayOrigin,
         LoadingSpinnerComponent,
+        MultiSelectComponent,
+        MultiSelectTriggerDirective,
         SearchComponent,
         StatusBadgeComponent,
         UserAvatarComponent,
         DatePipe,
-        SelectComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApiKeysTabComponent {
     private readonly apiKeysService = inject(AdminApiKeysService);
-    private readonly permissionService = inject(PermissionsService);
+    private readonly permissionsService = inject(PermissionsService);
     private readonly organizationsService = inject(OrganizationsStorageService);
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly toast = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
-    protected readonly totalApiKeysCount = signal<number | null>(null);
+    protected readonly totalApiKeysCount = signal(0);
     protected readonly isLoading = signal(true);
     protected readonly isBulkLoading = signal(false);
     protected readonly isBulkMenuOpen = signal(false);
     protected readonly selectedItems = signal<TableRow[]>([]);
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
-    protected readonly orgFilterValue = signal<number | null>(null);
 
     protected readonly searchTerm = signal('');
     protected readonly ownerFilterId = signal<number | null>(null);
     protected readonly statusFilter = signal<ApiKeyStatus | null>(null);
+    protected readonly orgFilterIds = signal<number[]>([]);
 
     private readonly refreshTrigger = signal(0);
 
     private readonly knownOwners = signal<Map<number, { name: string; email: string }>>(new Map());
+
+    protected readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
+
+    protected readonly orgFilterItems = computed<SelectItem[]>(() =>
+        this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
+    );
 
     protected readonly ownerFilterItems = computed<SelectItem[]>(() => {
         const items: SelectItem[] = [...this.knownOwners().entries()]
@@ -100,25 +108,17 @@ export class ApiKeysTabComponent {
             icon: 'x',
             tooltip: 'Revoke key',
             variant: 'warning',
-            hidden: (row) => row['status'] !== ApiKeyStatus.ACTIVE,
+            hidden: (row) => row['status'] !== ApiKeyStatus.ACTIVE || !this.canRetireRow(row),
             onClick: (row) => this.onRevokeKey(row),
         },
         {
             icon: 'trash',
             tooltip: 'Delete key',
             variant: (row) => (row['status'] === ApiKeyStatus.ACTIVE ? 'danger' : 'default'),
+            hidden: (row) => !this.canRetireRow(row),
             onClick: (row) => this.onDeleteKey(row),
         },
     ];
-
-    protected readonly orgsSelectItems = computed<SelectItem[]>(() => {
-        const items: SelectItem[] = this.organizationsService.organizations().map((o) => ({
-            name: o.name,
-            value: o.id,
-        }));
-
-        return [{ name: 'All Organizations', value: null }, ...items];
-    });
 
     protected readonly columns = computed<AppTableColumnDef[]>(() => [
         {
@@ -163,56 +163,72 @@ export class ApiKeysTabComponent {
                 ownerAvatar: k.owner.avatar_url,
                 ownerName: k.owner.display_name || k.owner.email,
                 ownerEmail: k.owner.email,
+                orgIds: k.org_ids,
             }))
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
     );
 
+    protected readonly isRowSelectable = (row: TableRow): boolean => this.canRetireRow(row);
+
     private readonly filters$ = combineLatest([
         toObservable(this.ownerFilterId),
         toObservable(this.statusFilter),
-        toObservable(this.orgFilterValue),
+        toObservable(this.orgFilterIds),
         toObservable(this.searchTerm).pipe(debounceTime(300), distinctUntilChanged()),
         toObservable(this.refreshTrigger),
     ]);
 
     constructor() {
-        if (this.canFilterByOrg) {
-            this.organizationsService.getOrganizations().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-        }
+        this.loadReadableOrgs();
+
         this.filters$
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 switchMap(() => {
                     this.isLoading.set(true);
-                    const orgId = this.canFilterByOrg ? this.orgFilterValue() : undefined;
                     return this.apiKeysService
-                        .getApiKeys(
-                            {
-                                user: this.ownerFilterId() ?? undefined,
-                                status: this.statusFilter() ?? undefined,
-                                search: this.searchTerm() || undefined,
-                            },
-                            orgId
-                        )
+                        .getApiKeys({
+                            user: this.ownerFilterId() ?? undefined,
+                            status: this.statusFilter() ?? undefined,
+                            search: this.searchTerm() || undefined,
+                            orgIds: this.orgFilterIds().length ? this.orgFilterIds() : undefined,
+                        })
                         .pipe(
                             finalize(() => this.isLoading.set(false)),
                             catchError((err) => {
-                                this.toast.error(err.error?.message ?? 'Failed to reload API keys');
+                                this.toast.error(err.error?.message ?? 'Failed to load API keys');
                                 return EMPTY;
                             })
                         );
                 })
             )
-            .subscribe((keys) => {
-                if (this.totalApiKeysCount() === null) this.totalApiKeysCount.set(keys.length);
-                this.keys.set(keys);
-                this.rememberOwners(keys);
+            .subscribe((envelope) => {
+                this.totalApiKeysCount.set(envelope.count);
+                this.keys.set(envelope.results);
+                this.rememberOwners(envelope.results);
             });
     }
 
-    onOrgFilterChange(value: unknown): void {
-        this.orgFilterValue.set(value === null || value === undefined ? null : Number(value));
-        this.totalApiKeysCount.set(null);
+    private loadReadableOrgs(): void {
+        if (this.permissionsService.isSuperadmin) {
+            this.organizationsService
+                .getOrganizations()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((orgs) =>
+                    this.readableOrgs.set(orgs.filter((o) => o.is_active).map((o) => ({ id: o.id, name: o.name })))
+                );
+            return;
+        }
+        this.readableOrgs.set(this.permissionsService.orgsWith(ResourceCode.ApiKeys, ActionCode.Read));
+    }
+
+    private canRetireRow(row: TableRow): boolean {
+        const orgIds = (row['orgIds'] as number[] | undefined) ?? [];
+        return orgIds.some((id) => this.permissionsService.canInOrg(id, ResourceCode.ApiKeys, ActionCode.Delete));
+    }
+
+    onOrgFilterChange(values: unknown[]): void {
+        this.orgFilterIds.set(values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
     }
 
     onFilterChange({ key, values }: { key: string; values: unknown[] }): void {
@@ -271,7 +287,7 @@ export class ApiKeysTabComponent {
                 if (isSomeRevoked) this.toast.info('Some selected keys were already revoked');
                 if (succeeded > 0) this.toast.success(`${succeeded} ${succeeded === 1 ? 'key' : 'keys'} revoked`);
                 if (failed > 0) this.toast.error(`${failed} ${failed === 1 ? 'key' : 'keys'} failed to revoke`);
-                this.resetFiltersAndReload();
+                this.reload();
             });
     }
 
@@ -305,7 +321,7 @@ export class ApiKeysTabComponent {
                 const succeeded = count - failed;
                 if (succeeded > 0) this.toast.success(`${succeeded} ${succeeded === 1 ? 'key' : 'keys'} deleted`);
                 if (failed > 0) this.toast.error(`${failed} ${failed === 1 ? 'key' : 'keys'} failed to delete`);
-                this.resetFiltersAndReload();
+                this.reload();
             });
     }
 
@@ -315,13 +331,11 @@ export class ApiKeysTabComponent {
             .confirm(getAdminRevokeConfirmationData(row['name'] as string))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.apiKeysService.revokeApiKey(id) : EMPTY)),
-                finalize(() => this.resetFiltersAndReload()),
+                finalize(() => this.reload()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toast.success(`"${row['name']}" was revoked`);
-                },
+                next: () => this.toast.success(`"${row['name']}" was revoked`),
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
             });
     }
@@ -332,34 +346,18 @@ export class ApiKeysTabComponent {
             .confirm(getAdminDeleteConfirmationData(row['ownerName'] as string))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.apiKeysService.deleteApiKey(id) : EMPTY)),
-                finalize(() => this.resetFiltersAndReload()),
+                finalize(() => this.reload()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toast.success(`"${row['name']}" was deleted`);
-                },
+                next: () => this.toast.success(`"${row['name']}" was deleted`),
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
             });
     }
 
-    /** Triggers a re-fetch by incrementing `refreshTrigger`, which causes the `switchMap` pipeline
-     *  to emit and automatically cancels any prior in-flight request. */
-    private loadApiKeys(): void {
+    /** Triggers a re-fetch by bumping `refreshTrigger`; `switchMap` cancels any in-flight request. */
+    private reload(): void {
         this.refreshTrigger.update((v) => v + 1);
-    }
-
-    /** Clears all active filters and forces a re-fetch so `totalApiKeysCount` can be recalculated
-     *  from the unfiltered response. Used after mutations (delete/revoke) to keep the counter accurate. */
-    private resetFiltersAndReload(): void {
-        this.totalApiKeysCount.set(null);
-        this.searchTerm.set('');
-        this.ownerFilterId.set(null);
-        this.statusFilter.set(null);
-        if (this.canFilterByOrg) {
-            this.orgFilterValue.set(null);
-        }
-        this.loadApiKeys();
     }
 
     /** Merges any newly-seen owners into the cache used by the owner filter dropdown. */
@@ -376,7 +374,6 @@ export class ApiKeysTabComponent {
         });
     }
 
-    protected readonly canFilterByOrg = this.permissionService.isSuperadmin;
     protected readonly ApiKeyStatus = ApiKeyStatus;
     protected readonly statusLabel = apiKeyStatusLabel;
     protected readonly statusIcon = apiKeyStatusIcon;

@@ -36,6 +36,7 @@
         </div>
         @if (item() && !readOnly()) {
             <app-button
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
                 class="storage-preview__add-to-flow"
                 type="outline-primary"
                 mod="small"

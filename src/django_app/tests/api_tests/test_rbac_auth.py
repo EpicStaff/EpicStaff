@@ -244,7 +244,7 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
     r = auth_client.post(reverse("sse_ticket"))
     assert r.status_code == 200
     ticket = r.json()["ticket"]
-    assert r.json()["expires_in"] == settings.SSE_TICKET_TTL_SECONDS
+    assert r.json()["expires_in"] == settings.SSE_TICKET_TTL
 
     user = sse_ticket_service.consume(ticket)
     assert user is not None

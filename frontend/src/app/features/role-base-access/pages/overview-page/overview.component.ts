@@ -45,7 +45,7 @@ export class OverviewComponent {
             routerLink: 'api-keys',
             icon: 'key',
             label: 'API Keys',
-            isPermitted: () => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.ApiKeys, ActionCode.Read),
         },
     ];
 }

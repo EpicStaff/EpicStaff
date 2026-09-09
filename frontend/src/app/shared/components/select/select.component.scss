@@ -46,13 +46,13 @@
             height: 40px;
             padding: 0.5rem 2rem 0.5rem 1rem;
             font-size: 0.875rem;
-            line-height: 130%;
+            line-height: var(--text-body-line-height);
         }
 
         &--small {
             height: 28px;
-            font-weight: 200;
-            font-size: 0.625rem;
+            font-weight: var(--text-caption-weight);
+            font-size: var(--text-caption-size);
             padding: 0.625rem 1.5rem 0.625rem 0.5rem;
         }
 
@@ -75,8 +75,8 @@
     }
 
     &__spinner {
-        border: 4px solid #44474f;
-        border-top: 4px solid #b0b8c1;
+        border: 4px solid var(--slate-700);
+        border-top: 4px solid var(--slate-400);
         border-radius: 50%;
         animation: spin 1s linear infinite;
 
@@ -120,7 +120,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        box-shadow: 0 8px 24px var(--black-alpha-24);
         z-index: 1005;
         max-height: 240px;
         overflow-y: auto;
@@ -226,9 +226,9 @@
         &--default {
             height: 40px;
             padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
-            font-weight: 400;
-            line-height: 130%;
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
+            line-height: var(--text-body-line-height);
             border-bottom: 1px solid var(--color-divider-subtle);
 
             &:last-child {
@@ -237,8 +237,8 @@
         }
 
         &--small {
-            font-weight: 400;
-            font-size: 0.625rem;
+            font-weight: var(--text-caption-weight);
+            font-size: var(--text-caption-size);
             padding: 0.625rem 0.5rem;
             border-bottom: 1px solid var(--color-divider-subtle);
 

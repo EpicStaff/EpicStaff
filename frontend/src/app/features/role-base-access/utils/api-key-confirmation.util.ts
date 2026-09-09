@@ -14,22 +14,28 @@ function keyListHtml(items: BulkApiKeyItem[]): string {
     return `<ul>${items.map((k) => `<li>• ${escapeHtml(k.name)}</li>`).join('')}</ul>`;
 }
 
-/** Single-key revoke — admin view (cross-org messaging). */
+/** Single-key revoke — admin view.
+ *  Copy states the account-wide blast radius as a rule; it does not name or count affected
+ *  organizations because the row deliberately does not carry that information. */
 export function getAdminRevokeConfirmationData(keyName: string): ConfirmationDialogData {
     return {
         title: 'Revoke key',
-        message: `The key <strong>${escapeHtml(keyName)}</strong> will stop working immediately across <strong>all organizations</strong>. The record will remain in the list for audit purposes.`,
+        message: `Revoking <strong>${escapeHtml(keyName)}</strong> retires it immediately. The record stays in the list for audit purposes.`,
+        caution:
+            'API keys are account-wide, so this key will stop working everywhere its owner uses it — including organizations you may not be able to see.',
         type: 'danger',
         confirmText: 'Revoke',
         cancelText: 'Cancel',
     };
 }
 
-/** Single-key delete — admin view (shows owner name + cross-org messaging). */
+/** Single-key delete — admin view. Same blast-radius rule as revoke. */
 export function getAdminDeleteConfirmationData(ownerName: string): ConfirmationDialogData {
     return {
         title: 'Delete key',
-        message: `This key belongs to <strong>${escapeHtml(ownerName)}</strong>. Deleting it will immediately disable it in <strong>all organizations</strong> this user belongs to.`,
+        message: `This key belongs to <strong>${escapeHtml(ownerName)}</strong>. Deleting it removes the record and cannot be undone.`,
+        caution:
+            'API keys are account-wide, so this key will stop working everywhere its owner uses it — including organizations you may not be able to see.',
         type: 'danger',
         confirmText: 'Delete',
         cancelText: 'Cancel',

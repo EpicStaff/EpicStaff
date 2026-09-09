@@ -21,8 +21,8 @@
     .port-label {
         position: absolute;
         font-size: 12px;
-        color: #a3a3a3;
-        background: #1818187e;
+        color: var(--gray-560);
+        background: var(--graphite-1005-alpha-flat);
         white-space: nowrap;
         pointer-events: none;
         opacity: 0;
@@ -208,8 +208,8 @@
     position: absolute;
     #{$position}: -32px;
     top: -35px;
-    background: rgba(20, 20, 20, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: var(--graphite-990-alpha-85);
+    border: 1px solid var(--white-alpha-20);
     border-radius: 50%;
     width: 30px;
     height: 30px;
@@ -221,14 +221,14 @@
     transition: transform 0.2s ease-in-out;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: var(--white-alpha-20);
     }
 
     i {
         font-size: 18px;
         width: 18px;
         height: 18px;
-        color: #dbdbdb;
+        color: var(--gray-219);
     }
 
     &::before {

@@ -147,7 +147,7 @@ export class PermissionsService implements StorageService {
         if (this.canInAnyOrg(ResourceCode.Organizations, ActionCode.Read)) return '/workspace/organizations';
         if (this.canInAnyOrg(ResourceCode.Memberships, ActionCode.Read)) return '/workspace/users';
         if (this.canInAnyOrg(ResourceCode.Roles, ActionCode.Read)) return '/workspace/roles';
-        if (this.can(ResourceCode.Secrets, ActionCode.Read)) return '/workspace/api-keys';
+        if (this.canInAnyOrg(ResourceCode.ApiKeys, ActionCode.Read)) return '/workspace/api-keys';
         return null;
     }
 

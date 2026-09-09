@@ -1,4 +1,4 @@
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode } from '@shared/models';
 
 export const ACTION_ICONS: Partial<Record<ActionCode, string>> = {
     create: 'plus',
@@ -19,23 +19,4 @@ export const GROUP_META: Record<string, GroupMeta> = {
     admin: { label: 'Organizations & Access', icon: 'buildings' },
     workspace: { label: 'Workspace Resources', icon: 'workspace' },
     config: { label: 'Configuration & Secrets', icon: 'settings' },
-};
-
-export interface ResourceMeta {
-    description: string;
-}
-
-export const RESOURCE_META: Record<ResourceCode, ResourceMeta> = {
-    organizations: { description: 'Create, rename, deactivate organizations' },
-    memberships: { description: 'Add/remove members, assign roles within org' },
-    roles: { description: 'Create/edit custom roles and assign to users' },
-    flows: { description: 'Automation pipelines' },
-    agents: { description: 'Manage AI agents and their capabilities' },
-    tools: { description: 'Manage built-in and custom tools' },
-    surfaces: { description: 'Manage surfaces for Agents' },
-    knowledge_sources: { description: 'RAG collections and embeddings' },
-    files: { description: 'Files and folders in organization storage' },
-    llm_configs: { description: 'LLM model configurations and settings' },
-    secrets: { description: 'Provider API keys, credentials, sensitive config' },
-    voice: { description: 'Manage voice settings' },
 };

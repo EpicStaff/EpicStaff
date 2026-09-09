@@ -11,6 +11,14 @@ import { SKIP_FORBIDDEN_RELOAD } from './skip-forbidden-reload.context';
 let refresh$: Observable<unknown> | null = null;
 
 /**
+ * Error codes for a 403 that reflects a fixed business rule on the targeted row (e.g.
+ * "this specific row can't be edited"), not a change in the caller's own permissions.
+ * These must not trigger the session refresh/reload below — the caller's own error
+ * handling shows the message instead.
+ */
+const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>(['built_in_model_immutable']);
+
+/**
  * Extracts the server `message` field from an HttpErrorResponse.
  * When the request is issued with `responseType: 'blob'`, Angular delivers `err.error` as a Blob,
  * so we need to read it as text and parse JSON.
@@ -39,7 +47,11 @@ export const forbiddenInterceptor: HttpInterceptorFn = (req, next) => {
 
     return next(req).pipe(
         catchError((err: HttpErrorResponse) => {
-            if (err.status !== 403 || req.context.get(SKIP_FORBIDDEN_RELOAD)) {
+            if (
+                err.status !== 403 ||
+                req.context.get(SKIP_FORBIDDEN_RELOAD) ||
+                BUSINESS_RULE_FORBIDDEN_CODES.has(err.error?.code)
+            ) {
                 return throwError(() => err);
             }
             return extractErrorMessage(err).pipe(

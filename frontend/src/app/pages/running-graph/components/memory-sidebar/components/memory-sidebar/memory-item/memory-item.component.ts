@@ -120,8 +120,8 @@ import {
             }
 
             .memory-type {
-                font-size: 12px;
-                font-weight: 600;
+                font-size: var(--text-body-small-large-size);
+                font-weight: var(--text-body-small-large-weight);
                 text-transform: capitalize;
                 color: var(--gray-300);
                 background: var(--gray-750);
@@ -130,7 +130,7 @@ import {
             }
 
             .memory-date {
-                font-size: 12px;
+                font-size: 0.75rem;
                 color: var(--gray-400);
             }
 
@@ -151,7 +151,7 @@ import {
 
             .memory-content {
                 margin-bottom: 12px;
-                font-size: 14px;
+                font-size: 0.875rem;
                 line-height: 1.5;
                 color: var(--white);
             }
@@ -166,7 +166,7 @@ import {
                 border-radius: 4px;
                 padding: 8px 12px;
                 color: var(--gray-300);
-                font-size: 13px;
+                font-size: 0.8125rem;
                 cursor: pointer;
                 margin-top: 10px;
             }
@@ -195,7 +195,7 @@ import {
                 padding: 12px;
                 padding-bottom: 4px;
                 margin-top: 8px;
-                font-size: 13px;
+                font-size: 0.8125rem;
             }
 
             .memory-relationships,

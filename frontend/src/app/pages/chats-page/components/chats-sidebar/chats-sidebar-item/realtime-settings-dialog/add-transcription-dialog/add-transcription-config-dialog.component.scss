@@ -1,0 +1,118 @@
+.dialog-container {
+    background-color: var(--graphite-875);
+    border-radius: 12px;
+    padding: 24px;
+    color: var(--white-alpha-90);
+    min-width: 400px;
+
+    .dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+
+        .dialog-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: var(--white-alpha-60);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            margin-left: 10px;
+
+            &:hover {
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
+            }
+        }
+    }
+
+    .dialog-content {
+        margin-bottom: 24px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: var(--white-alpha-70);
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 10px 12px;
+            background-color: var(--color-backdrop);
+            border: 1px solid var(--white-alpha-10);
+            border-radius: 6px;
+            color: var(--white);
+            font-size: 14px;
+            transition: border-color 0.2s ease;
+
+            &:focus {
+                outline: none;
+                border-color: var(--accent-color);
+            }
+
+            &.masked {
+                -webkit-text-security: disc;
+            }
+        }
+
+        .error-message {
+            font-size: 12px;
+            color: var(--red-450);
+            margin-top: 4px;
+        }
+    }
+
+    .dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+
+        .button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border: none;
+
+            &.secondary {
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
+
+                &:hover {
+                    background-color: var(--white-alpha-15);
+                }
+            }
+
+            &.primary {
+                background-color: var(--accent-color);
+                color: var(--white);
+
+                &:hover {
+                    background-color: var(--purple-400);
+                }
+
+                &:disabled {
+                    background-color: var(--purple-alpha-50);
+                    cursor: not-allowed;
+                }
+            }
+        }
+    }
+}
