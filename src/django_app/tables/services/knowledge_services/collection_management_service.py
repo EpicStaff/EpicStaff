@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Literal
 from django.conf import settings
 from django.db import transaction, models
 from django.db.models import Prefetch, Count, Avg

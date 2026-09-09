@@ -8,7 +8,6 @@ from tables.models import SourceCollection, DocumentMetadata, DocumentContent
 from tables.models.knowledge_models import NaiveRag, GraphRagDocument
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
-from tables.constants.knowledge_constants import MAX_FILE_SIZE
 from tables.constants.knowledge_constants import ALLOWED_FILE_TYPES
 from tables.constants.upload_limits import default_upload_limits
 from rest_framework import serializers
