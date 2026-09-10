@@ -1,52 +1,9 @@
 from loguru import logger
 
-from src.shared.models import args_schema_to_variables
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import McpTool, PythonCodeTool
-
-_FIELD_TYPE_TO_VAR_TYPE = {
-    "llm_config": "number",
-    "embedding_config": "number",
-    "string": "string",
-    "boolean": "boolean",
-    "any": "any",
-    "integer": "number",
-    "float": "number",
-}
-
-
-@VersionConverter.register(from_version=1)
-def v1_to_v2(data: dict) -> dict:
-    """
-    v1 → v2: collapse args_schema + python_code_tool_config_fields into a
-    single `variables` list, mirroring DB migration 0170. "integer" is
-    normalized to "number" since VariableType has no integer variant.
-    """
-    for tool in data.get("PythonCodeTool", []):
-        variables = args_schema_to_variables(tool.get("args_schema") or {})
-
-        for field in tool.get("python_code_tool_config_fields", []):
-            variables.append(
-                {
-                    "name": field.get("name"),
-                    "type": _FIELD_TYPE_TO_VAR_TYPE.get(
-                        field.get("data_type"), "string"
-                    ),
-                    "description": field.get("description") or "",
-                    "default_value": None,
-                    "input_type": "user_input",
-                    "required": field.get("required", True),
-                }
-            )
-
-        tool["variables"] = variables
-        tool.pop("args_schema", None)
-        tool.pop("python_code_tool_config_fields", None)
-
-    return data
-
 
 _GENERIC_CONFIG_ENTITY_TYPES = (
     EntityType.LLM_CONFIG,
@@ -75,10 +32,7 @@ _STALE_FIELD_STRIPPED_ENTITY_TYPES = _GENERIC_CONFIG_ENTITY_TYPES + (
 @VersionConverter.register(from_version=2)
 def v2_to_v3(data: dict) -> dict:
     """
-    v2 → v3: restore compatibility with 1.1.2 exports after the
-    feat/crewai-removal refactor changed the flow node schema without
-    bumping IMPORT_VERSION.
-
+    v2 → v3:
     - PythonNode.stream_config stripped (removed from the model).
     - ClassificationConditionGroup.prompt_id remapped to the prompt FK id.
     - Stale fields stripped from *Config/MCPTool/PythonCodeTool entries that
