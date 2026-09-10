@@ -35,11 +35,11 @@ export interface ToolFilterContext {
 
 const BUCKET_COUNT_KEY: Record<
     UsageBucket,
-    keyof Pick<GetBulkToolUsageItem, 'agent_surface_count' | 'shared_surface_count' | 'inline_count'>
+    keyof Pick<GetBulkToolUsageItem, 'agent_surface_count' | 'shared_surface_count' | 'inline_surface_count'>
 > = {
     agent_surface: 'agent_surface_count',
     shared_surface: 'shared_surface_count',
-    inline: 'inline_count',
+    inline_surface: 'inline_surface_count',
 };
 
 /**
@@ -68,7 +68,7 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
     if (usage.size > 0) {
         if (filter.unusedOnly) {
             const u = usage.get(id);
-            const totalUsage = u ? u.agent_surface_count + u.shared_surface_count + u.inline_count : 0;
+            const totalUsage = u ? u.agent_surface_count + u.shared_surface_count + u.inline_surface_count : 0;
             if (totalUsage > 0) return false;
         } else if (filter.usageBuckets.length > 0) {
             const u = usage.get(id);
@@ -121,7 +121,7 @@ export function compareTools<T>(
 ): number {
     const usageSum = (id: number) => {
         const u = usage.get(id);
-        return u ? u.agent_surface_count + u.shared_surface_count + u.inline_count : 0;
+        return u ? u.agent_surface_count + u.shared_surface_count + u.inline_surface_count : 0;
     };
     const idA = adapter.idOf(a);
     const idB = adapter.idOf(b);
@@ -156,12 +156,12 @@ export function toUsageVmFields(
     usage: Map<number, GetBulkToolUsageItem>,
     id: number,
     showUsage: boolean
-): Pick<ToolCardVM, 'agentSurfaceUsage' | 'sharedSurfaceUsage' | 'inlineUsage' | 'unused'> {
+): Pick<ToolCardVM, 'agentSurfaceUsage' | 'sharedSurfaceUsage' | 'inlineSurfaceUsage' | 'unused'> {
     const u = showUsage ? usage.get(id) : undefined;
     return {
         agentSurfaceUsage: u?.agent_surface_count || undefined,
         sharedSurfaceUsage: u?.shared_surface_count || undefined,
-        inlineUsage: u?.inline_count || undefined,
-        unused: u?.agent_surface_count === 0 && u?.shared_surface_count === 0 && u?.inline_count === 0,
+        inlineSurfaceUsage: u?.inline_surface_count || undefined,
+        unused: u?.agent_surface_count === 0 && u?.shared_surface_count === 0 && u?.inline_surface_count === 0,
     };
 }

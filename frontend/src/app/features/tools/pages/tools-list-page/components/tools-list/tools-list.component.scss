@@ -38,11 +38,11 @@
     flex-shrink: 0;
     max-width: 240px;
     box-shadow:
-        0 2px 3px 0 #0000004d,
-        0 6px 10px 4px #00000026;
+        0 2px 3px 0 var(--black-alpha-30),
+        0 6px 10px 4px var(--black-alpha-15);
 
     &:hover {
-        background: #313438;
+        background: var(--graphite-690);
     }
 }
 

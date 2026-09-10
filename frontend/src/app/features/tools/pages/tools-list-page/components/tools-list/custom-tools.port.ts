@@ -88,13 +88,9 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
         return this.service.getUsageDetailById(id);
     }
 
-    public openConfigureDialog(
-        dialog: Dialog,
-        tool: GetPythonCodeToolRequest,
-        allTools: GetPythonCodeToolRequest[]
-    ): DialogRef<GetPythonCodeToolRequest> {
+    public openConfigureDialog(dialog: Dialog, tool: GetPythonCodeToolRequest): DialogRef<GetPythonCodeToolRequest> {
         return dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, {
-            data: { pythonTools: allTools, selectedTool: tool },
+            data: { selectedTool: tool },
         });
     }
 

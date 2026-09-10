@@ -65,7 +65,6 @@ enum ActiveEditor {
 }
 
 interface CreateCustomToolDialogData {
-    pythonTools?: GetPythonCodeToolRequest[];
     selectedTool?: GetPythonCodeToolRequest;
 }
 

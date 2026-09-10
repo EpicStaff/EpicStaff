@@ -2,7 +2,7 @@ import { CustomFilterCondition as SharedCustomFilterCondition } from '@shared/mo
 
 export type ToolSortOrder = 'default' | 'last_modified' | 'name_asc' | 'name_desc' | 'most_used' | 'unused_first';
 
-export type UsageBucket = 'agent_surface' | 'shared_surface' | 'inline';
+export type UsageBucket = 'agent_surface' | 'shared_surface' | 'inline_surface';
 
 export type CustomFilterScope = 'tool_name' | 'label_name';
 

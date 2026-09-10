@@ -20,7 +20,7 @@ export interface ToolCardVM {
     builtIn: boolean;
     agentSurfaceUsage?: number;
     sharedSurfaceUsage?: number;
-    inlineUsage?: number;
+    inlineSurfaceUsage?: number;
     unused?: boolean;
 }
 

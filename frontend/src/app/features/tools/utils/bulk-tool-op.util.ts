@@ -129,7 +129,7 @@ export function runDeleteUnused<T extends { id: number }>(
                         (i) =>
                             i.agent_surface_count === 0 &&
                             i.shared_surface_count === 0 &&
-                            i.inline_count === 0 &&
+                            i.inline_surface_count === 0 &&
                             !i.is_built_in
                     )
                     .map((i) => i.id);
@@ -227,12 +227,12 @@ export function buildBulkSelectedDeleteDialog(
         name: string;
         agentSurfaceCount: number;
         sharedSurfaceCount: number;
-        inlineCount: number;
+        inlineSurfaceCount: number;
     }[]
 ): ConfirmationDialogData {
     const count = tools.length;
-    const total = (t: { agentSurfaceCount: number; sharedSurfaceCount: number; inlineCount: number }) =>
-        t.agentSurfaceCount + t.sharedSurfaceCount + t.inlineCount;
+    const total = (t: { agentSurfaceCount: number; sharedSurfaceCount: number; inlineSurfaceCount: number }) =>
+        t.agentSurfaceCount + t.sharedSurfaceCount + t.inlineSurfaceCount;
     const sorted = [...tools].sort((a, b) => total(b) - total(a));
     const listItems = sorted
         .map((t) => {
@@ -241,7 +241,7 @@ export function buildBulkSelectedDeleteDialog(
                 `<li><strong>${safeName}</strong> is connected to ` +
                 `<strong>${t.agentSurfaceCount} ${pluralise(t.agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
                 `<strong>${t.sharedSurfaceCount} ${pluralise(t.sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
-                `and <strong>${t.inlineCount} ${pluralise(t.inlineCount, 'inline usage', 'inline usages')}</strong>.</li>`
+                `and <strong>${t.inlineSurfaceCount} ${pluralise(t.inlineSurfaceCount, 'inline usage', 'inline usages')}</strong>.</li>`
             );
         })
         .join('');

@@ -45,7 +45,7 @@ export interface ToolsListPort<
     getUsageDetail(id: number): Observable<GetToolUsage>;
 
     // configure/edit dialog
-    openConfigureDialog(dialog: Dialog, tool: T, allTools: T[]): DialogRef<T>;
+    openConfigureDialog(dialog: Dialog, tool: T): DialogRef<T>;
 
     /**
      * Opens the kind-specific "create tool" dialog. On confirm, the port

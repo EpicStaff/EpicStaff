@@ -4,7 +4,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 
-import { GetToolUsage } from '../../models/tool-config.model';
+import { GetToolUsage, InlineUsageItem } from '../../models/tool-config.model';
 
 export interface ToolUsageDialogData {
     toolName: string;
@@ -27,12 +27,12 @@ export class ToolUsageDialogComponent {
 
     public readonly agentSurface = this.data.usage.agent_surface;
     public readonly sharedSurface = this.data.usage.shared_surface;
-    public readonly inline = this.data.usage.inline;
+    public readonly inlineSurface = this.data.usage.inline_surface;
 
     public readonly agentSurfaceCount = this.agentSurface.length;
     public readonly sharedSurfaceCount = this.sharedSurface.length;
-    public readonly inlineCount = this.inline.length;
-    public readonly totalCount = this.agentSurfaceCount + this.sharedSurfaceCount + this.inlineCount;
+    public readonly inlineSurfaceCount = this.inlineSurface.length;
+    public readonly totalCount = this.agentSurfaceCount + this.sharedSurfaceCount + this.inlineSurfaceCount;
 
     private readonly agentSection = viewChild<ElementRef<HTMLElement>>('agentSection');
     private readonly sharedSection = viewChild<ElementRef<HTMLElement>>('sharedSection');
@@ -58,8 +58,8 @@ export class ToolUsageDialogComponent {
         this.openInNewTab(['/agents'], { surfaceId });
     }
 
-    public openFlows(id: number): void {
-        this.openInNewTab([`/flows/${id}`]);
+    public openFlows(item: InlineUsageItem): void {
+        this.openInNewTab([`/flows/${item.id}`], { nodeId: item.node_id });
     }
 
     private openInNewTab(commands: unknown[], queryParams?: Record<string, unknown>): void {

@@ -1,6 +1,6 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { forkJoin, map, Observable, of } from 'rxjs';
+import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { InspectResult } from '../../../../core/models/review-item.model';
@@ -30,9 +30,26 @@ export class CustomToolsService {
     }
 
     getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
-        return this.http
-            .get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl)
-            .pipe(map((response) => response.results));
+        const LIMIT = 50;
+        return this.fetchToolsSlice(LIMIT, 0).pipe(
+            switchMap((first) => {
+                if (first.results.length >= first.count) return of(first.results);
+                const remainingOffsets: number[] = [];
+                for (let offset = LIMIT; offset < first.count; offset += LIMIT) {
+                    remainingOffsets.push(offset);
+                }
+                if (remainingOffsets.length === 0) return of(first.results);
+                const rest$ = remainingOffsets.map((offset) =>
+                    this.fetchToolsSlice(LIMIT, offset).pipe(map((slice) => slice.results))
+                );
+                return forkJoin(rest$).pipe(map((slices) => [first.results, ...slices].flat()));
+            })
+        );
+    }
+
+    private fetchToolsSlice(limit: number, offset: number): Observable<ApiGetRequest<GetPythonCodeToolRequest>> {
+        const params = new HttpParams().set('limit', String(limit)).set('offset', String(offset));
+        return this.http.get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, { params });
     }
 
     createPythonCodeTool(tool: CreatePythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {

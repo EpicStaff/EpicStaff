@@ -1,7 +1,7 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { forkJoin, Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, switchMap } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { InspectResult } from '../../../../core/models/review-item.model';
@@ -30,24 +30,38 @@ export class McpToolsService {
         limit?: number;
         offset?: number;
     }): Observable<GetMcpToolRequest[]> {
-        let httpParams = new HttpParams();
+        if (!params || (!params.name && !params.tool_name && !params.limit && !params.offset)) {
+            const LIMIT = 50;
+            return this.fetchMcpToolsSlice(LIMIT, 0).pipe(
+                switchMap((first) => {
+                    if (first.results.length >= first.count) return of(first.results);
+                    const remainingOffsets: number[] = [];
+                    for (let offset = LIMIT; offset < first.count; offset += LIMIT) {
+                        remainingOffsets.push(offset);
+                    }
+                    if (remainingOffsets.length === 0) return of(first.results);
+                    const rest$ = remainingOffsets.map((offset) =>
+                        this.fetchMcpToolsSlice(LIMIT, offset).pipe(map((slice) => slice.results))
+                    );
+                    return forkJoin(rest$).pipe(map((slices) => [first.results, ...slices].flat()));
+                })
+            );
+        }
 
-        if (params?.name) {
-            httpParams = httpParams.set('name', params.name);
-        }
-        if (params?.tool_name) {
-            httpParams = httpParams.set('tool_name', params.tool_name);
-        }
-        if (params?.limit) {
-            httpParams = httpParams.set('limit', params.limit.toString());
-        }
-        if (params?.offset) {
-            httpParams = httpParams.set('offset', params.offset.toString());
-        }
+        let httpParams = new HttpParams();
+        if (params.name) httpParams = httpParams.set('name', params.name);
+        if (params.tool_name) httpParams = httpParams.set('tool_name', params.tool_name);
+        if (params.limit) httpParams = httpParams.set('limit', params.limit.toString());
+        if (params.offset) httpParams = httpParams.set('offset', params.offset.toString());
 
         return this.http
             .get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, { params: httpParams })
             .pipe(map((response) => response.results));
+    }
+
+    private fetchMcpToolsSlice(limit: number, offset: number): Observable<ApiGetRequest<GetMcpToolRequest>> {
+        const params = new HttpParams().set('limit', String(limit)).set('offset', String(offset));
+        return this.http.get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, { params });
     }
 
     getMcpToolById(id: number): Observable<GetMcpToolRequest> {

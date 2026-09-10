@@ -212,7 +212,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const params = this.routeQueryParamMap();
             const nodeId = params.get('nodeId');
             if (nodeId) {
-                this.initialNodeId = nodeId;
+                const match = this.currentFlowState().nodes.find(
+                    (n) => n.id === nodeId || String(n.backendId) === nodeId
+                );
+                this.initialNodeId = match?.id ?? nodeId;
                 this.initialNodeExpand = true;
                 return;
             }

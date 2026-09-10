@@ -132,8 +132,8 @@ export class ToolsFilterMenuComponent {
                 {
                     key: 'inline',
                     label: 'Used locally in Flows',
-                    checked: () => this.hasBucket('inline'),
-                    toggle: () => this.toggleBucket('inline'),
+                    checked: () => this.hasBucket('inline_surface'),
+                    toggle: () => this.toggleBucket('inline_surface'),
                 },
                 {
                     key: 'unused',

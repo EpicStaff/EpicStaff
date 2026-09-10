@@ -530,7 +530,7 @@ export class ToolsListComponent implements OnInit {
     // --------------------------------------------------------------------- //
 
     public onConfigure(tool: Tool): void {
-        const dialogRef = this.port.openConfigureDialog(this.dialog, tool, this.allTools());
+        const dialogRef = this.port.openConfigureDialog(this.dialog, tool);
         dialogRef.closed
             .pipe(
                 tap((result) => {
@@ -559,15 +559,15 @@ export class ToolsListComponent implements OnInit {
                     const usage = items.find((i) => i.id === tool.id);
                     const agentSurfaceCount = usage?.agent_surface_count ?? 0;
                     const sharedSurfaceCount = usage?.shared_surface_count ?? 0;
-                    const inlineCount = usage?.inline_count ?? 0;
+                    const inlineSurfaceCount = usage?.inline_surface_count ?? 0;
                     const confirm$ =
-                        agentSurfaceCount + sharedSurfaceCount + inlineCount > 0
+                        agentSurfaceCount + sharedSurfaceCount + inlineSurfaceCount > 0
                             ? this.confirmationDialogService.confirm(
                                   buildSingleDeleteWithUsageDialog(
                                       tool.name,
                                       agentSurfaceCount,
                                       sharedSurfaceCount,
-                                      inlineCount
+                                      inlineSurfaceCount
                                   )
                               )
                             : this.confirmationDialogService.confirmDelete(tool.name);
@@ -617,7 +617,7 @@ export class ToolsListComponent implements OnInit {
                             name: tool?.name ?? '',
                             agentSurfaceCount: usage?.agent_surface_count ?? 0,
                             sharedSurfaceCount: usage?.shared_surface_count ?? 0,
-                            inlineCount: usage?.inline_count ?? 0,
+                            inlineSurfaceCount: usage?.inline_surface_count ?? 0,
                         };
                     });
                     runBulkDeleteWithConfirm(ids, {
