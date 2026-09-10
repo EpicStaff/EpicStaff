@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HelpTooltipComponent, InputNumberComponent, ValidationErrorsComponent } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
 import { JsonStrategyModel } from '../../../../../models/strategy.model';
@@ -20,6 +21,8 @@ import { StrategyForm } from '../strategy-config-form.abstract';
     ],
 })
 export class JsonFormComponent extends StrategyForm<JsonStrategyModel> {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     initializeForm(config: JsonStrategyModel): FormGroup {
         return this.fb.group({
             mainParams: this.fb.group({

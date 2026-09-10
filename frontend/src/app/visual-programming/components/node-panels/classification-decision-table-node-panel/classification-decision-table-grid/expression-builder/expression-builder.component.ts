@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -92,7 +91,7 @@ const SYMBOLIC_TOKENS = new Set([
 @Component({
     selector: 'app-expression-builder',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, FormsModule],
+    imports: [FormsModule],
     templateUrl: './expression-builder.component.html',
     styleUrls: ['./expression-builder.component.scss'],
 })

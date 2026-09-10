@@ -3,6 +3,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from domain.ports.i_summarization_client import ISummarizationClient
+from utils.openai_endpoints import derive_chat_http_url
 
 
 class OpenaiSummarizationClient(ISummarizationClient):
@@ -14,13 +15,15 @@ class OpenaiSummarizationClient(ISummarizationClient):
         self,
         api_key: str,
         model: str = "gpt-4o",
+        base_url: str | None = None,
     ):
         self.__api_key = api_key
         self.model = model
+        self.__base_url = derive_chat_http_url(base_url)
 
     async def _summarize(self, messages: list[dict]) -> str:
         try:
-            client = AsyncOpenAI(api_key=self.__api_key)
+            client = AsyncOpenAI(api_key=self.__api_key, base_url=self.__base_url)
             response = await client.chat.completions.create(
                 model=self.model,
                 messages=messages,

@@ -1,9 +1,10 @@
 import json
 from typing import List
 import requests
-import os
 
 from .base_embedder import BaseEmbedder
+
+import settings
 
 
 class CustomEmbedder(BaseEmbedder):
@@ -11,8 +12,8 @@ class CustomEmbedder(BaseEmbedder):
         self, api_key: str = None, model_name: str = None, base_url: str = None
     ):
         """Initialize the embedder."""
-        self.base_url = base_url or os.getenv("CUSTOM_EMBED_BASE_URL")
-        self.api_key = api_key or os.getenv("CUSTOM_EMBED_API_KEY")
+        self.base_url = base_url or settings.CUSTOM_EMBED_BASE_URL
+        self.api_key = api_key or settings.CUSTOM_EMBED_API_KEY
         self.model_name = model_name or "nomic-embed-text-v2-moe"
         self.endpoint = f"{self.base_url}"
 
@@ -23,7 +24,7 @@ class CustomEmbedder(BaseEmbedder):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        raw_headers = os.environ.get("EMBEDDING_HEADERS")
+        raw_headers = settings.EMBEDDING_HEADERS
         if raw_headers:
             extra_headers = json.loads(raw_headers)
             headers.update(extra_headers)

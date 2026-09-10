@@ -7,8 +7,8 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KnowledgeRetrieverNodeModel,
     LLMNodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -26,7 +26,6 @@ export interface NodeDiff<T> {
 
 export interface NodeDiffByType {
     startNodes: NodeDiff<StartNodeModel>;
-    crewNodes: NodeDiff<ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNodeModel>;
     taskNodes: NodeDiff<TaskNodeModel>;
     agentNodes: NodeDiff<AgentNodeModel>;
@@ -41,6 +40,7 @@ export interface NodeDiffByType {
     decisionTableNodes: NodeDiff<DecisionTableNodeModel>;
     noteNodes: NodeDiff<GraphNoteModel>;
     classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
+    knowledgeRetrieverNodes: NodeDiff<KnowledgeRetrieverNodeModel>;
 }
 
 export interface ConnectionDiff {

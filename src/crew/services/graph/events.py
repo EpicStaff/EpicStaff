@@ -8,7 +8,7 @@ class StopEvent(threading.Event):
         super().__init__(*args, **kwargs)
         self.status = default_status
         # Optional reason surfaced when the event is set (e.g. by the
-        # EST-3285 4.2c token-budget hard stop). None for manual stop /
+        # token-budget hard stop). None for manual stop /
         # timeout, which keep their current (reason-less) behavior.
         self.reason: str | None = None
 

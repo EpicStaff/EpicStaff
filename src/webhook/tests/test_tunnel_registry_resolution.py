@@ -1,7 +1,7 @@
 """Tests for `TunnelRegistry.resolve_by_path`.
 
-Rewritten for the path-primary routing model (EST-3826) plus the org-aware
-`unique_id` fix (EST-3862/EST-3826 follow-up, C3): `BaseTunnelConfigData.name`
+Rewritten for the path-primary routing model plus the org-aware
+`unique_id` fix: `BaseTunnelConfigData.name`
 is the raw `WebhookTrigger.path`, which the DB only guarantees unique
 per-org (`unique_together(org, path, provider_type)`), not globally. Two
 different orgs -- or two different providers -- can legitimately register the

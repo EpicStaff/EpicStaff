@@ -3,7 +3,6 @@ import { MatTooltip } from '@angular/material/tooltip';
 
 @Directive({
     selector: '[appTooltipOnOverflow][matTooltip]',
-    standalone: true,
 })
 export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
     readonly appTooltipOnOverflow = input<string>('');

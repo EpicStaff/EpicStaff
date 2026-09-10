@@ -19,8 +19,8 @@
         align-items: center;
         gap: 6px;
         margin: 0;
-        font-size: 18px;
-        font-weight: 500;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
         color: var(--text);
 
         .count {
@@ -45,7 +45,7 @@
 .key-name {
     display: inline-block;
     max-width: 100%;
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -58,7 +58,7 @@
 
 .key-value {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -72,7 +72,7 @@
 }
 
 .cell-text {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text-secondary-60);
     white-space: nowrap;
     overflow: hidden;
@@ -82,7 +82,7 @@
 }
 
 .expires-value {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;

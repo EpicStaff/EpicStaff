@@ -1,4 +1,4 @@
-"""EST-1869 — PATCH/PUT `/api/realtime-agent-definitions/<pk>/`.
+"""PATCH/PUT `/api/realtime-agent-definitions/<pk>/`.
 
 Regression coverage for a reported "update appears to succeed but the
 provider config doesn't end up persisted" bug. Root cause investigation

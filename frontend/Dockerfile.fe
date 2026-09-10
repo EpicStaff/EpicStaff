@@ -1,19 +1,31 @@
 ARG TARGET=production
 
 # ─── Stage: deps ─────────────────────────────────────────────────────────────
-FROM node:20.17.0 AS deps
+FROM node:24.15.0 AS deps
 
 WORKDIR /app
 
+# --ignore-scripts blocks preinstall/postinstall hooks, the execution vector a
+# supply-chain payload uses. Verified safe here: only 6 of 840 locked packages
+# declare install scripts and all 6 are dev-only, esbuild resolves its binary
+# through platform optionalDependencies rather than its postinstall, and the
+# production bundle builds byte-identical with scripts disabled.
+# HUSKY=0 is kept because `prepare` also runs outside install (e.g. local runs).
+ENV HUSKY=0
+
 COPY package*.json ./
-RUN npm ci && npm cache clean --force
+RUN npm ci --ignore-scripts && npm cache clean --force
 
 # ─── Stage: development ───────────────────────────────────────────────────────
 FROM deps AS development
 
 EXPOSE 4200
 
-CMD ["sh", "-c", "npm ci && npm run start -- --host 0.0.0.0 --poll=1000"]
+# Incremental, not `npm ci`: the deps stage already installed, and `npm ci` would wipe
+# and refetch node_modules on every container start. This only reconciles what a
+# bind-mounted package.json changed. Dropping --force is safe now that the
+# compiler-cli/compiler mismatch that needed it is fixed.
+CMD ["sh", "-c", "npm install --ignore-scripts && npm run start -- --host 0.0.0.0 --poll=1000"]
 
 # ─── Stage: build ─────────────────────────────────────────────────────────────
 FROM deps AS build
@@ -25,7 +37,7 @@ RUN npm run build -- --configuration production
 # ─── Stage: production ────────────────────────────────────────────────────────
 FROM docker.io/library/nginx:alpine AS production
 
-COPY --from=build /app/dist/frontend-crewai/browser/ /usr/share/nginx/html/
+COPY --from=build /app/dist/epicstaff-frontend/browser/ /usr/share/nginx/html/
 
 COPY 50x.html /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf

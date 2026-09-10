@@ -14,9 +14,6 @@ from .agent_service import (
 from .agents import (
     AgentData,
     RealtimeAgentChatData,
-    CrewData,
-    TaskData,
-    TaskMessageData,
 )
 from .ai_providers import (
     LLMConfigData,
@@ -24,14 +21,14 @@ from .ai_providers import (
     LLMData,
     EmbedderData,
     BaseTunnelConfigData,
-    WebhookNodeAuthData,
+    WebhookTriggerAuthData,
     NgrokConfigData,
     LocalhostConfigData,
     WebhookConfigData,
 )
 from .graph_nodes import (
-    CrewNodeData,
     PythonNodeData,
+    KnowledgeNodeData,
     FileExtractorNodeData,
     AudioTranscriptionNodeData,
     ConditionData,
@@ -72,6 +69,7 @@ from .surfaces import (
     CombinedSurfaceData,
 )
 from .knowledge import (
+    KnowledgeStatus,
     BaseRagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
@@ -90,7 +88,6 @@ from .sessions import (
     SessionData,
     GraphSessionMessageData,
     StopSessionMessage,
-    UNAUTHENTICATED_FALLBACK_PRINCIPAL,
     WebhookEventData,
     ScheduleEventData,
     StorageMutation,
@@ -146,22 +143,19 @@ __all__ = [
     # agents
     "AgentData",
     "RealtimeAgentChatData",
-    "CrewData",
-    "TaskData",
-    "TaskMessageData",
     # ai_providers
     "LLMConfigData",
     "EmbedderConfigData",
     "LLMData",
     "EmbedderData",
     "BaseTunnelConfigData",
-    "WebhookNodeAuthData",
+    "WebhookTriggerAuthData",
     "NgrokConfigData",
     "LocalhostConfigData",
     "WebhookConfigData",
     # graph_nodes
-    "CrewNodeData",
     "PythonNodeData",
+    "KnowledgeNodeData",
     "FileExtractorNodeData",
     "AudioTranscriptionNodeData",
     "ConditionData",
@@ -200,6 +194,7 @@ __all__ = [
     "CombinedSurfaceKnowledgeData",
     "CombinedSurfaceData",
     # knowledge
+    "KnowledgeStatus",
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
     "GraphRagSearchConfig",
@@ -217,7 +212,6 @@ __all__ = [
     "SessionData",
     "GraphSessionMessageData",
     "StopSessionMessage",
-    "UNAUTHENTICATED_FALLBACK_PRINCIPAL",
     "WebhookEventData",
     "ScheduleEventData",
     "StorageMutation",

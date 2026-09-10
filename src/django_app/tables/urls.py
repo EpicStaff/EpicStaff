@@ -6,7 +6,6 @@ from tables.views.model_view_sets import (
     AgentNodeTaskViewSet,
     ClassificationDecisionTableNodeModelViewSet,
     ConditionalEdgeViewSet,
-    CrewNodeViewSet,
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
     EndNodeModelViewSet,
@@ -19,6 +18,7 @@ from tables.views.model_view_sets import (
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
+    KnowledgeNodeViewSet,
     AudioTranscriptionNodeViewSet,
     StartNodeModelViewSet,
     RealtimeConfigModelViewSet,
@@ -32,15 +32,11 @@ from tables.views.model_view_sets import (
     LLMModelReadWriteViewSet,
     EmbeddingModelReadWriteViewSet,
     EmbeddingConfigReadWriteViewSet,
-    AgentViewSet,
-    CrewReadWriteViewSet,
-    TaskReadWriteViewSet,
     PythonCodeToolViewSet,
     PythonCodeResultReadViewSet,
     GraphSessionMessageReadOnlyViewSet,
     MemoryViewSet,
     RealtimeModelViewSet,
-    RealtimeAgentViewSet,
     RealtimeAgentDefinitionViewSet,
     RealtimeAgentChatViewSet,
     OpenAIRealtimeConfigViewSet,
@@ -52,8 +48,6 @@ from tables.views.model_view_sets import (
     RealtimeVoicesView,
     GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
-    VoiceSettingsView,
-    TwilioPhoneNumbersView,
     TwilioConfigureWebhookView,
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
@@ -64,12 +58,9 @@ from tables.views.model_view_sets import (
 )
 
 from tables.views.views import (
-    AnswerToLLM,
     NotifyEmailView,
     InitRealtimeAPIView,
-    RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
-    RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
     SessionViewSet,
@@ -139,9 +130,6 @@ router.register(r"llm-configs", LLMConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
 # DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
-router.register(r"agents", AgentViewSet)
-router.register(r"crews", CrewReadWriteViewSet)
-router.register(r"tasks", TaskReadWriteViewSet)
 router.register(r"python-code-tool", PythonCodeToolViewSet)
 router.register(
     r"python-code-result", PythonCodeResultReadViewSet, basename="python-code-result"
@@ -156,9 +144,9 @@ collection_documents_viewset = CollectionDocumentsViewSet.as_view({"get": "list"
 # Graphs
 router.register(r"graphs", GraphViewSet, basename="graphs")
 # DEPRECATED: crewnodes route is deprecated. Use agentnodes/tasknodes instead.
-router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
+router.register(r"knowledge-nodes", KnowledgeNodeViewSet)
 router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
@@ -182,7 +170,6 @@ router.register(
     r"realtime-transcription-model-configs", RealtimeTranscriptionConfigModelViewSet
 )
 router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
-router.register(r"realtime-agents", RealtimeAgentViewSet)
 router.register(r"realtime-agent-definitions", RealtimeAgentDefinitionViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
 router.register(r"openai-realtime-configs", OpenAIRealtimeConfigViewSet)
@@ -252,7 +239,6 @@ urlpatterns = [
     path("admin/", include(admin_router.urls)),
     path("", include(router.urls)),
     path("run-session/", RunSession.as_view(), name="run-session"),
-    path("answer-to-llm/", AnswerToLLM.as_view(), name="answer-to-llm"),
     path(
         "sessions/<int:session_id>/get-updates/",
         GetUpdates.as_view(),
@@ -408,29 +394,9 @@ urlpatterns = [
         name="telegram-trigger-available-fields",
     ),
     path(
-        "register-telegram-trigger/",
-        RegisterTelegramTriggerApiView.as_view(),
-        name="register-telegram-trigger",
-    ),
-    path(
-        "register-webhooks/",
-        RegisterWebhooksApiView.as_view(),
-        name="register-webhooks",
-    ),
-    path(
         "realtime-voices/",
         RealtimeVoicesView.as_view(),
         name="realtime-voices",
-    ),
-    path(
-        "voice-settings/",
-        VoiceSettingsView.as_view(),
-        name="voice-settings",
-    ),
-    path(
-        "twilio/phone-numbers/",
-        TwilioPhoneNumbersView.as_view(),
-        name="twilio-phone-numbers",
     ),
     path(
         "twilio/configure-webhook/",

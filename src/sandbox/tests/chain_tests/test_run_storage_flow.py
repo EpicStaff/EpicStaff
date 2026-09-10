@@ -1,4 +1,5 @@
 import pytest
+import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain, AbstractHandler
 from src.shared.models import CodeResultData
 
@@ -60,7 +61,7 @@ COMMON_RUN_KWARGS = dict(
 
 @pytest.mark.asyncio
 async def test_use_storage_true_happy_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager()
     chain, fake = make_chain(tmp_path, manager)
 
@@ -97,7 +98,7 @@ async def test_use_storage_false_skips_credentials(tmp_path):
 
 @pytest.mark.asyncio
 async def test_create_failure_returns_error_result(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager(create_exc=RuntimeError("boom"))
     chain, fake = make_chain(tmp_path, manager)
 
@@ -115,7 +116,7 @@ async def test_create_failure_returns_error_result(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_revoke_runs_on_chain_failure(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager()
     chain, fake = make_chain(tmp_path, manager)
     fake.raise_exc = RuntimeError("chain-fail")
@@ -132,7 +133,7 @@ async def test_revoke_runs_on_chain_failure(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_missing_org_prefix_returns_error_result(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager()
     chain, fake = make_chain(tmp_path, manager)
 

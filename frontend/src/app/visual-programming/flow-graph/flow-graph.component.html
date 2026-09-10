@@ -125,7 +125,6 @@
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
                     (deleteClicked)="onDeleteNode($event)"
-                    (projectExpandToggled)="onProjectExpandToggled($event)"
                 >
                 </app-flow-base-node>
             }
@@ -318,13 +317,14 @@
             </button>
         </div>
     </div>
-    <app-flow-action-panel (undoRedoPerformed)="hasUnarrangedChanges.set(true)"></app-flow-action-panel>
+    <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
 
     @if (showContextMenu()) {
         <app-flow-graph-context-menu
             [position]="contextMenuPosition()"
             [currentFlowId]="currentFlowId"
             (nodeSelected)="onAddNodeFromContextMenu($event)"
+            (closed)="onCloseContextMenu()"
         >
         </app-flow-graph-context-menu>
     }

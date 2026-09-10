@@ -61,3 +61,21 @@ def test_elevenlabs_provider_returns_none_regardless_of_org_id():
     client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
 
     assert client is None
+
+
+def test_openai_transcription_client_defaults_to_hardcoded_ws_url():
+    factory = TranscriptionClientFactory()
+    config = _make_config(rt_provider="openai")
+
+    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
+
+    assert client.base_url == "wss://api.openai.com/v1/realtime"
+
+
+def test_openai_transcription_client_uses_rt_base_url_override():
+    factory = TranscriptionClientFactory()
+    config = _make_config(rt_provider="openai", rt_base_url="https://my-proxy.internal")
+
+    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
+
+    assert client.base_url == "wss://my-proxy.internal/v1/realtime"

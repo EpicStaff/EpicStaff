@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -19,12 +18,10 @@ import { UndoRedoService } from '../../../services/undo-redo.service';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 
 @Component({
-    standalone: true,
     selector: 'app-decision-table-node-panel',
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
-        CommonModule,
         DecisionTableGridComponent,
         MatTooltipModule,
         SelectComponent,

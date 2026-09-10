@@ -3,8 +3,8 @@
 }
 
 .dialog-container {
-    background-color: #1e1e1e;
-    color: rgba(255, 255, 255, 0.9);
+    background-color: var(--graphite-875);
+    color: var(--white-alpha-90);
     display: flex;
     flex-direction: column;
     border-radius: 12px;
@@ -14,20 +14,20 @@
     height: 100%;
     max-height: 90vh;
     box-shadow:
-        0 12px 28px rgba(0, 0, 0, 0.4),
-        0 4px 8px rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+        0 12px 28px var(--black-alpha-40),
+        0 4px 8px var(--black-alpha-20);
+    border: 1px solid var(--white-alpha-10);
 
     .header {
         padding: 20px 24px;
-        background-color: rgba(30, 30, 30, 0.6);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: var(--color-backdrop);
+        border-bottom: 1px solid var(--white-alpha-10);
         display: flex;
         align-items: center;
         justify-content: space-between;
 
         .dialog-title {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--white-alpha-90);
             font-size: 18px;
             font-weight: 600;
             margin: 0;
@@ -41,7 +41,7 @@
         .close-button {
             background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.6);
+            color: var(--white-alpha-60);
             cursor: pointer;
             padding: 4px;
             display: flex;
@@ -51,8 +51,8 @@
             margin-left: 10px;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.9);
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
             }
         }
     }
@@ -64,7 +64,7 @@
 
         .form-section {
             margin-bottom: 24px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid var(--white-alpha-10);
             padding-bottom: 24px;
 
             &:last-child {
@@ -75,7 +75,7 @@
 
             .section-title {
                 font-size: 16px;
-                color: rgba(255, 255, 255, 0.8);
+                color: var(--white-alpha-80);
                 display: flex;
                 align-items: center;
                 gap: 8px;
@@ -90,7 +90,7 @@
     }
 
     .context-list {
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--white-alpha-10);
         border-radius: 6px;
         overflow: hidden;
 
@@ -98,17 +98,17 @@
             display: flex;
             align-items: center;
             padding: 14px 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid var(--white-alpha-10);
             cursor: pointer;
             transition: background-color 0.2s ease;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.05);
+                background-color: var(--white-alpha-5);
             }
 
             &.selected {
-                background-color: rgba(104, 95, 255, 0.1);
-                border-left: 3px solid #685fff;
+                background-color: var(--purple-alpha-10);
+                border-left: 3px solid var(--accent-color);
             }
 
             &:last-child {
@@ -120,7 +120,7 @@
                 font-size: 14px;
                 padding: 4px;
                 margin-right: 12px;
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 text-align: center;
             }
 
@@ -139,7 +139,7 @@
                 margin-left: auto;
 
                 .task-id {
-                    color: rgba(255, 255, 255, 0.5);
+                    color: var(--white-alpha-50);
                     font-size: 12px;
                     margin-right: 12px;
                 }
@@ -157,12 +157,12 @@
                         background-color: transparent;
                         appearance: none;
                         -webkit-appearance: none;
-                        border: 1px solid rgba(255, 255, 255, 0.5);
+                        border: 1px solid var(--white-alpha-50);
                         border-radius: 3px;
 
                         &:checked {
                             background-color: transparent;
-                            border-color: #685fff;
+                            border-color: var(--accent-color);
                         }
 
                         &:focus {
@@ -176,7 +176,7 @@
                         top: 2px;
                         width: 5px;
                         height: 10px;
-                        border: solid #685fff;
+                        border: solid var(--accent-color);
                         border-width: 0 2px 2px 0;
                         transform: rotate(45deg);
                         pointer-events: none;
@@ -189,7 +189,7 @@
     .empty-state {
         padding: 16px;
         text-align: center;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--white-alpha-50);
         font-style: italic;
     }
 }
@@ -199,8 +199,8 @@
     justify-content: flex-end;
     gap: 12px;
     padding: 16px 24px;
-    background-color: rgba(30, 30, 30, 0.6);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: var(--color-backdrop);
+    border-top: 1px solid var(--white-alpha-10);
 
     button {
         padding: 8px 16px;
@@ -212,20 +212,20 @@
         border: none;
 
         &:first-child {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.9);
+            background-color: var(--white-alpha-10);
+            color: var(--white-alpha-90);
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.15);
+                background-color: var(--white-alpha-15);
             }
         }
 
         &:last-child {
-            background-color: #685fff;
-            color: white;
+            background-color: var(--accent-color);
+            color: var(--white);
 
             &:hover {
-                background-color: #7a70ff;
+                background-color: var(--purple-400);
             }
 
             &:disabled {
@@ -244,8 +244,8 @@
         align-items: center;
         justify-content: space-between;
         padding: 12px 16px;
-        background-color: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: var(--white-alpha-2);
+        border: 1px solid var(--white-alpha-10);
         border-radius: 6px;
 
         .setting-label {
@@ -253,27 +253,27 @@
             align-items: center;
             gap: 8px;
             font-size: 14px;
-            color: rgba(255, 255, 255, 0.8);
+            color: var(--white-alpha-80);
             font-weight: 500;
         }
 
         mat-slide-toggle {
             ::ng-deep {
                 .mdc-switch__track {
-                    background-color: rgba(255, 255, 255, 0.2);
+                    background-color: var(--white-alpha-20);
                 }
 
                 .mdc-switch__handle-track {
-                    background-color: rgba(255, 255, 255, 0.3);
+                    background-color: var(--white-alpha-30);
                 }
 
                 &.mdc-switch--checked {
                     .mdc-switch__track {
-                        background-color: #685fff;
+                        background-color: var(--accent-color);
                     }
 
                     .mdc-switch__handle-track {
-                        background-color: #685fff;
+                        background-color: var(--accent-color);
                     }
                 }
             }
@@ -282,7 +282,7 @@
 }
 
 .json-group {
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--white-alpha-10);
     border-radius: 6px;
     overflow: hidden;
 }
@@ -295,16 +295,16 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background-color: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid var(--white-alpha-20);
+    background-color: var(--white-alpha-5);
+    color: var(--white-alpha-80);
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.3);
+        background-color: var(--white-alpha-10);
+        border-color: var(--white-alpha-30);
     }
 
     &:active {
-        background-color: rgba(255, 255, 255, 0.15);
+        background-color: var(--white-alpha-15);
     }
 }

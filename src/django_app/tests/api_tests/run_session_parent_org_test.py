@@ -1,6 +1,6 @@
 """
 Tests for the org-ownership validation of `parent_session_id` on
-POST /api/run-session/ (EST-3285 item 5.2 fix).
+POST /api/run-session/.
 
 A `parent_session_id` must only be accepted when the parent Session's graph
 belongs to the SAME organization as the graph/session being created. This
@@ -9,7 +9,7 @@ later read back, via the recursion-guard walk over GET /api/sessions/<id>/ --
 a session belonging to a different organization by simply passing its id as
 parent_session_id.
 
-NOTE: rewritten for EST-2423 RBAC org-scoping (main). Graph.org is now a
+NOTE: rewritten for RBAC org-scoping (main). Graph.org is now a
 required FK (see migrations 0185/0186) and is the sole org boundary enforced
 by `RunSession.post` -- the older `GraphOrganization` model is unrelated to
 org ownership post-RBAC (it only carries persistent "user_variables" for a
@@ -23,9 +23,6 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from tables.models import (
-    Crew,
-    CrewNode,
-    Edge,
     Graph,
     Organization,
     OrganizationUser,
@@ -71,27 +68,22 @@ def auth_client(member_a, org_a):
     return client
 
 
-def _build_runnable_graph(name: str, crew: Crew, org: Organization) -> Graph:
-    """Mirrors the `session_data` fixture's graph shape (crew_node +
-    start_node + edge) so `create_session_data`/`subgraph_validator` don't
-    reject it."""
+def _build_runnable_graph(name: str, org: Organization) -> Graph:
+    """Mirrors the `session_data` fixture's graph shape (a start node) so
+    `create_session_data`/`subgraph_validator` don't reject it."""
     graph = Graph.objects.create(name=name, org=org)
-    crew_node = CrewNode.objects.create(node_name="crew_node_1", crew=crew, graph=graph)
-    start_node = StartNode.objects.create(graph=graph, variables={})
-    Edge.objects.create(
-        graph=graph, start_node_id=start_node.id, end_node_id=crew_node.id
-    )
+    StartNode.objects.create(graph=graph, variables={})
     return graph
 
 
 @pytest.fixture
-def graph_in_org_a(crew: Crew, org_a: Organization) -> Graph:
-    return _build_runnable_graph("graph-in-org-a", crew, org_a)
+def graph_in_org_a(org_a: Organization) -> Graph:
+    return _build_runnable_graph("graph-in-org-a", org_a)
 
 
 @pytest.fixture
-def graph_in_org_b(crew: Crew, org_b: Organization) -> Graph:
-    return _build_runnable_graph("graph-in-org-b", crew, org_b)
+def graph_in_org_b(org_b: Organization) -> Graph:
+    return _build_runnable_graph("graph-in-org-b", org_b)
 
 
 @pytest.fixture

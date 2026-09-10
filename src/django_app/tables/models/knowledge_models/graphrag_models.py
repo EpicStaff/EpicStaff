@@ -2,13 +2,14 @@ from django.db import models
 from ..crew_models import Task
 
 
+from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
 from ..embedding_models import EmbeddingConfig
 from ..llm_models import LLMConfig
 from .collection_models import BaseRagType, DocumentMetadata
 from ..crew_models import Agent
 
 
-class GraphRag(models.Model):
+class GraphRag(SoftDeleteFields, models.Model):
     class GraphRagStatus(models.TextChoices):
         """
         Status of GraphRag
@@ -68,13 +69,16 @@ class GraphRag(models.Model):
 
     class Meta:
         db_table = "graph_rag"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def update_rag_status(self: "GraphRag"):
         """Update status based on document states."""
         pass
 
 
-class AgentGraphRag(models.Model):
+class AgentGraphRag(SoftDeleteFields, models.Model):
     """
     Link table connecting Agents to GraphRag implementations.
 
@@ -114,6 +118,9 @@ class AgentGraphRag(models.Model):
 
     class Meta:
         db_table = "agent_graph_rag"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     @classmethod
     def check(cls, **kwargs):
@@ -125,7 +132,7 @@ class AgentGraphRag(models.Model):
         return [error for error in errors if error.id != "fields.W342"]
 
 
-class GraphRagDocument(models.Model):
+class GraphRagDocument(SoftDeleteFields, models.Model):
     """
     Link table connecting GraphRag to specific documents.
 
@@ -149,11 +156,14 @@ class GraphRagDocument(models.Model):
 
     class Meta:
         db_table = "graph_rag_document"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["graph_rag", "document"],
                 name="unique_graph_rag_document",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -235,7 +245,27 @@ class GraphRagIndexConfig(models.Model):
         )
 
 
-class GraphRagBasicSearchConfig(models.Model):
+class GraphRagBasicSearchConfigBase(models.Model):
+    prompt = models.TextField(
+        null=True,
+        blank=True,
+        help_text="The basic search prompt to use.",
+        default=None,
+    )
+    k = models.IntegerField(
+        default=10,
+        help_text="The number of text units to include in search context.",
+    )
+    max_context_tokens = models.IntegerField(
+        default=12000,
+        help_text="The maximum tokens.",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class GraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
     """
     The default configuration section for Basic Search.
     Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
@@ -248,23 +278,6 @@ class GraphRagBasicSearchConfig(models.Model):
         help_text="Agent this basic search configuration belongs to",
     )
 
-    prompt = models.TextField(
-        null=True,
-        blank=True,
-        help_text="The basic search prompt to use.",
-        default=None,
-    )
-
-    k = models.IntegerField(
-        default=10,
-        help_text="The number of text units to include in search context.",
-    )
-
-    max_context_tokens = models.IntegerField(
-        default=12000,
-        help_text="The maximum tokens.",
-    )
-
     class Meta:
         db_table = "graph_rag_basic_search_config"
 
@@ -272,19 +285,7 @@ class GraphRagBasicSearchConfig(models.Model):
         return f"GraphRagBasicSearchConfig({self.pk})"
 
 
-class GraphRagLocalSearchConfig(models.Model):
-    """
-    The default configuration section for Local Search.
-    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
-    """
-
-    agent = models.OneToOneField(
-        Agent,
-        on_delete=models.CASCADE,
-        related_name="graph_local_search_config",
-        help_text="Agent this local search configuration belongs to",
-    )
-
+class GraphRagLocalSearchConfigBase(models.Model):
     prompt = models.TextField(
         null=True,
         blank=True,
@@ -323,10 +324,49 @@ class GraphRagLocalSearchConfig(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class GraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
+    """
+    The default configuration section for Local Search.
+    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
+    """
+
+    agent = models.OneToOneField(
+        Agent,
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+        help_text="Agent this local search configuration belongs to",
+    )
+
+    class Meta:
         db_table = "graph_rag_local_search_config"
 
     def __str__(self):
         return f"GraphRagLocalSearchConfig({self.pk})"
+
+
+class KnowledgeNodeGraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode",
+        on_delete=models.CASCADE,
+        related_name="graph_basic_search_config",
+    )
+
+    class Meta:
+        db_table = "knowledge_node_graph_basic_search_config"
+
+
+class KnowledgeNodeGraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode",
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+    )
+
+    class Meta:
+        db_table = "knowledge_node_graph_local_search_config"
 
 
 # class GraphRagGlobalSearchConfig(models.Model):

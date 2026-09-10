@@ -1,15 +1,3 @@
-@use 'sass:color';
-
-$accent-color: var(--accent-color, #685fff);
-$accent-light: var(--accent-light, #8c7fff);
-$background-color: var(--gray-900);
-$card-background: var(--gray-850);
-$border-color: var(--gray-750);
-$text-color: var(--gray-50);
-$muted-text-color: var(--gray-400);
-$error-color: var(--red-500, #ff4444);
-$success-color: var(--green-500, #4caf50);
-
 @keyframes shake {
     0%,
     100% {
@@ -33,15 +21,15 @@ $success-color: var(--green-500, #4caf50);
 @keyframes subtle-glow {
     0%,
     100% {
-        box-shadow: 0 0 0 1px rgba($accent-color, 0.2);
+        box-shadow: 0 0 0 1px var(--purple-alpha-20);
     }
     50% {
-        box-shadow: 0 0 0 2px rgba($accent-color, 0.3);
+        box-shadow: 0 0 0 2px var(--purple-alpha-30);
     }
 }
 
 .panel-content {
-    color: $text-color;
+    color: var(--gray-50);
     padding-inline: 3rem;
     padding-top: 1.5rem;
     padding-bottom: 2rem;
@@ -59,7 +47,7 @@ $success-color: var(--green-500, #4caf50);
             align-items: center;
             justify-content: space-between;
             padding: 12px 16px;
-            background: $card-background;
+            background: var(--gray-850);
             border: 1px solid var(--gray-700);
             border-radius: 8px;
             transition: all 0.25s ease;
@@ -67,7 +55,7 @@ $success-color: var(--green-500, #4caf50);
             max-width: 100%;
             width: auto;
             flex-grow: 0;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 2px 8px var(--black-alpha-15);
         }
 
         // Variable card styling
@@ -75,19 +63,19 @@ $success-color: var(--green-500, #4caf50);
             @extend %card-base;
 
             &.duplicate {
-                border-color: $error-color;
+                border-color: var(--red-500);
                 animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
             }
 
             &:hover {
                 border-color: var(--gray-600);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                box-shadow: 0 4px 12px var(--black-alpha-20);
             }
 
             &.editing {
                 background: var(--gray-800);
-                border-color: $accent-color;
-                box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 1px var(--purple-alpha-30);
                 animation: subtle-glow 2s infinite;
             }
 
@@ -116,7 +104,7 @@ $success-color: var(--green-500, #4caf50);
 
                 .variable-name {
                     font-size: 14px;
-                    color: $text-color;
+                    color: var(--gray-50);
                     background: var(--gray-750);
                     padding: 6px 12px;
                     border-radius: 6px;
@@ -129,14 +117,14 @@ $success-color: var(--green-500, #4caf50);
                 .chain-separator {
                     margin: 0 12px;
                     font-weight: bold;
-                    color: var(--accent-color, #685fff);
+                    color: var(--accent-color);
                     flex-shrink: 0;
                     font-size: 16px;
                 }
 
                 .variable-value {
                     font-size: 14px;
-                    color: $muted-text-color;
+                    color: var(--gray-400);
                     background: var(--gray-800);
                     padding: 6px 12px;
                     border-radius: 6px;
@@ -162,7 +150,7 @@ $success-color: var(--green-500, #4caf50);
                     border: 1px solid var(--gray-600);
                     border-radius: 6px;
                     padding: 6px 12px;
-                    color: $text-color;
+                    color: var(--gray-50);
                     font-size: 14px;
                     transition: all 0.25s ease;
 
@@ -179,18 +167,18 @@ $success-color: var(--green-500, #4caf50);
 
                     &:focus {
                         outline: none;
-                        border-color: $accent-color;
-                        box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
+                        border-color: var(--accent-color);
+                        box-shadow: 0 0 0 1px var(--purple-alpha-30);
                     }
 
                     &.invalid {
-                        border-color: $error-color;
+                        border-color: var(--red-500);
                         animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
                     }
                 }
 
                 .chain-separator {
-                    color: var(--accent-color, #685fff);
+                    color: var(--accent-color);
                     font-weight: bold;
                     font-size: 16px;
                 }
@@ -227,27 +215,27 @@ $success-color: var(--green-500, #4caf50);
                     }
 
                     &.edit-button:hover {
-                        color: $accent-light;
-                        background: rgba($accent-color, 0.1);
+                        color: var(--purple-300);
+                        background: var(--purple-alpha-10);
                     }
 
                     &.save-button {
                         color: var(--gray-300);
 
                         &:hover {
-                            color: $success-color;
-                            background: rgba($success-color, 0.1);
+                            color: var(--green-500);
+                            background: var(--green-500-alpha-10);
                         }
                     }
 
                     &.cancel-button:hover {
-                        color: $error-color;
-                        background: rgba($error-color, 0.1);
+                        color: var(--red-500);
+                        background: var(--red-alpha-10);
                     }
 
                     &.remove-button:hover {
-                        color: $error-color;
-                        background: rgba($error-color, 0.1);
+                        color: var(--red-500);
+                        background: var(--red-alpha-10);
                     }
                 }
             }
@@ -263,11 +251,11 @@ $success-color: var(--green-500, #4caf50);
             &:hover {
                 border-color: var(--gray-600);
 
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                box-shadow: 0 4px 12px var(--black-alpha-20);
             }
 
             &.submitted.invalid {
-                border-color: $error-color;
+                border-color: var(--red-500);
                 animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
             }
 
@@ -283,7 +271,7 @@ $success-color: var(--green-500, #4caf50);
                     border: 1px solid var(--gray-700);
                     border-radius: 6px;
                     padding: 6px 12px;
-                    color: $text-color;
+                    color: var(--gray-50);
                     transition: all 0.25s ease;
                     font-size: 14px;
                     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
@@ -309,20 +297,20 @@ $success-color: var(--green-500, #4caf50);
 
                     &:focus {
                         outline: none;
-                        border-color: $accent-color;
-                        box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
-                        background: var(--gray-725, #1e1e1e);
+                        border-color: var(--accent-color);
+                        box-shadow: 0 0 0 1px var(--purple-alpha-30);
+                        background: var(--graphite-875);
                     }
 
                     &.invalid {
-                        border-color: $error-color;
+                        border-color: var(--red-500);
                         animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
                     }
                 }
 
                 .chain-separator {
                     font-weight: bold;
-                    color: var(--accent-color, #685fff);
+                    color: var(--accent-color);
                     flex-shrink: 0;
                     font-size: 16px;
                 }
@@ -335,7 +323,7 @@ $success-color: var(--green-500, #4caf50);
                 font-size: 14px;
                 font-weight: 500;
                 padding: 6px 12px;
-                background-color: rgba($accent-color, 0.1);
+                background-color: var(--purple-alpha-10);
                 color: var(--gray-200);
                 border: 1px solid var(--gray-700);
                 border-radius: 6px;
@@ -346,14 +334,14 @@ $success-color: var(--green-500, #4caf50);
                 margin-left: 12px;
 
                 &:hover {
-                    background-color: rgba($accent-color, 0.2);
-                    border-color: $accent-color;
-                    color: $text-color;
+                    background-color: var(--purple-alpha-20);
+                    border-color: var(--accent-color);
+                    color: var(--gray-50);
                     transform: translateY(-1px);
                 }
 
                 &:active {
-                    background-color: rgba($accent-color, 0.3);
+                    background-color: var(--purple-alpha-30);
                 }
 
                 i {

@@ -1,43 +1,56 @@
 import csv
+import zlib
+
+from pdfminer.ascii85 import ascii85decode, asciihexdecode
+
 import pdfplumber
 from docx import Document
 from io import BytesIO, StringIO
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from utils.extraction_limits import (
+    ExtractionBudget,
+    ExtractionLimitExceeded,
+    default_budget,
+)
 
-def extract_text_from_binary(binary_content: bytes, file_type: str) -> str:
-    """
-    Universal dispatcher to extract text from binary content based on file type.
-    """
+
+def extract_text_from_binary(
+    binary_content: bytes, file_type: str, budget: ExtractionBudget | None = None
+) -> str:
+    """Universal dispatcher to extract text from binary content based on file type."""
 
     file_type = file_type.lower().lstrip(".")
+    budget = budget or default_budget()
+    budget.check_input_size(binary_content)
+
     try:
         if file_type in ("txt", "md", "json"):
             return extract_text(binary_content)
 
         elif file_type == "pdf":
-            return extract_text_from_pdf(binary_content)
+            return extract_text_from_pdf(binary_content, budget=budget)
 
         elif file_type == "csv":
             return extract_text_from_csv(binary_content)
 
         elif file_type == "docx":
-            return extract_text_from_docx(binary_content)
+            return extract_text_from_docx(binary_content, budget=budget)
 
         elif file_type == "html":
-            return extract_text_from_html(binary_content)
+            return extract_text_from_html(binary_content, budget=budget)
 
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
     except Exception as e:
-        logger.error(f"Failed to extract text from {file_type} file: {e}")
+        logger.error("Failed to extract text from {} file: {}", file_type, e)
         raise
 
 
 def extract_text(binary_content: bytes) -> str:
-    """Extract text from plain text files"""
+    """Extract text from plain text files."""
 
     try:
         return binary_content.decode("utf-8")
@@ -92,11 +105,81 @@ def _extract_page_text(page) -> str:
     return "\n".join(parts).rstrip(" ")
 
 
-def extract_text_from_pdf(binary_content: bytes) -> str:
-    """
-    Extract text from PDF files.
-    Falls back to plain text extraction if the content is not a valid PDF.
-    """
+# ASCII85 and ASCIIHex only ever shrink their input, so neither can hide a bomb;
+# deflate is the one filter that amplifies, and it is inflated through the cap.
+# Anything else (LZW, RunLength) is rare and cannot be bounded, so it is refused.
+_SHRINKING_FILTERS = {
+    "ASCII85Decode": ascii85decode,
+    "A85": ascii85decode,
+    "ASCIIHexDecode": asciihexdecode,
+    "AHx": asciihexdecode,
+}
+_FLATE_FILTERS = ("FlateDecode", "Fl")
+
+
+def _filter_names(resolved) -> list[str]:
+    """Return a stream's /Filter entries in the order the parser will apply them."""
+    declared = resolved.attrs.get("Filter")
+    return [
+        getattr(f, "name", str(f))
+        for f in (declared if isinstance(declared, list) else [declared])
+        if f is not None
+    ]
+
+
+def _bounded_stream_size(raw: bytes, names: list[str], limit: int) -> int:
+    """Return what a stream decodes to, never buffering more than limit + 1 bytes."""
+    data = raw
+
+    # The chain must be walked in order: the real ratio sits behind the last
+    # filter, so measuring an intermediate layer would wave a bomb through.
+    for name in names:
+        if name in _FLATE_FILTERS:
+            try:
+                data = zlib.decompressobj().decompress(data, limit + 1)
+            except zlib.error:
+                # Corrupt stream: let pdfplumber report it, do not mask it here
+                return len(data)
+            if len(data) > limit:
+                return len(data)
+        elif name in _SHRINKING_FILTERS:
+            try:
+                data = _SHRINKING_FILTERS[name](data)
+            except Exception:
+                return len(data)
+        else:
+            raise ExtractionLimitExceeded(
+                f"Page content uses the filter {name!r}, whose decoded size "
+                "cannot be bounded"
+            )
+
+    return len(data)
+
+
+def _decoded_content_size(page, limit: int) -> int:
+    """Return the decoded size of a page's content streams, bounded by limit."""
+    # A PDF declares no decoded size -- /Length is the compressed count -- so
+    # the only way to learn it is to decode, bounded, before layout happens.
+    contents = getattr(page.page_obj, "contents", None)
+    streams = contents if isinstance(contents, list) else [contents]
+    total = 0
+
+    for stream in streams:
+        resolved = stream.resolve() if hasattr(stream, "resolve") else stream
+        raw = getattr(resolved, "rawdata", None) or b""
+        total += _bounded_stream_size(raw, _filter_names(resolved), limit - total)
+        if total > limit:
+            break
+
+    return total
+
+
+def extract_text_from_pdf(
+    binary_content: bytes, budget: ExtractionBudget | None = None
+) -> str:
+    """Extract text from PDF files, falling back to plain text for invalid PDFs."""
+
+    budget = budget or default_budget()
 
     if not _is_valid_pdf(binary_content):
         logger.warning(
@@ -109,6 +192,10 @@ def extract_text_from_pdf(binary_content: bytes) -> str:
     try:
         with pdfplumber.open(BytesIO(binary_content)) as pdf_document:
             for page in pdf_document.pages:
+                budget.count_page()
+                budget.add_content_bytes(
+                    _decoded_content_size(page, budget.max_content_bytes)
+                )
                 page_text = _extract_page_text(page)
                 if page_text:
                     text_parts.append(page_text)
@@ -117,18 +204,15 @@ def extract_text_from_pdf(binary_content: bytes) -> str:
             logger.warning("No text extracted from PDF")
             return ""
 
-        logger.info(text_parts)
         return "\n\n".join(text_parts)
 
     except Exception as e:
-        logger.error(f"PDF text extraction failed: {e}")
+        logger.error("PDF text extraction failed: {}", e)
         raise
 
 
 def extract_text_from_csv(binary_content: bytes) -> str:
-    """
-    Extract text from CSV files.
-    """
+    """Extract text from CSV files."""
 
     try:
         text_content = binary_content.decode("utf-8")
@@ -145,14 +229,18 @@ def extract_text_from_csv(binary_content: bytes) -> str:
         return "\n".join(extracted_rows)
 
     except Exception as e:
-        logger.error(f"CSV text extraction failed: {e}")
+        logger.error("CSV text extraction failed: {}", e)
         raise
 
 
-def extract_text_from_docx(binary_content: bytes) -> str:
-    """
-    Extract text from DOCX files using python-docx.
-    """
+def extract_text_from_docx(
+    binary_content: bytes, budget: ExtractionBudget | None = None
+) -> str:
+    """Extract text from DOCX files using python-docx."""
+
+    budget = budget or default_budget()
+    # Document() materialises the whole package, so this must run before it
+    budget.check_unpacked_size(binary_content)
 
     try:
         docx_file = BytesIO(binary_content)
@@ -167,15 +255,17 @@ def extract_text_from_docx(binary_content: bytes) -> str:
         return "\n".join(paragraphs)
 
     except Exception as e:
-        logger.error(f"DOCX text extraction failed: {e}")
+        logger.error("DOCX text extraction failed: {}", e)
         raise
 
 
-def extract_text_from_html(binary_content: bytes) -> str:
-    """
-    Extract text from HTML files using BeautifulSoup.
-    Removes scripts, styles, and images, keeping only text content.
-    """
+def extract_text_from_html(
+    binary_content: bytes, budget: ExtractionBudget | None = None
+) -> str:
+    """Extract text from HTML files using BeautifulSoup, dropping scripts, styles and images."""
+
+    budget = budget or default_budget()
+    budget.check_html_size(binary_content)
 
     try:
         html_content = binary_content.decode("utf-8")
@@ -189,5 +279,5 @@ def extract_text_from_html(binary_content: bytes) -> str:
         return str(soup)
 
     except Exception as e:
-        logger.error(f"HTML text extraction failed: {e}")
+        logger.error("HTML text extraction failed: {}", e)
         raise

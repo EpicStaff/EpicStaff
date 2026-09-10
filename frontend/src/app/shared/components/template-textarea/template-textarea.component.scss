@@ -1,0 +1,144 @@
+:host {
+    display: block;
+    width: 100%;
+}
+
+:host(.mod-stretch) {
+    height: 100%;
+    min-height: 0;
+
+    .template-textarea,
+    .template-textarea__field {
+        height: 100%;
+        min-height: 0;
+    }
+
+    .template-textarea__input {
+        height: 100%;
+    }
+}
+
+.template-textarea {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.template-textarea__field {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-height: 0;
+    background: var(--color-ks-transparent-black-60);
+    transition: border 0.2s ease;
+    overflow: hidden;
+
+    &--disabled {
+        opacity: 0.7;
+    }
+}
+
+%template-textarea-type {
+    font-size: 0.875rem;
+    line-height: 130%;
+    tab-size: 4;
+}
+
+.template-textarea__gutter {
+    @extend %template-textarea-type;
+
+    flex: 0 0 auto;
+    min-width: 2.25rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+    color: var(--text-secondary-60);
+    text-align: right;
+    user-select: none;
+    overflow: hidden;
+    box-sizing: border-box;
+    border-right: 1px solid var(--color-divider-subtle);
+
+    span {
+        display: block;
+    }
+}
+
+.template-textarea__editor {
+    position: relative;
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.template-textarea__highlight,
+.template-textarea__input {
+    @extend %template-textarea-type;
+
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    background: transparent;
+    // Soft-wrap disabled so every visual row == one logical line,
+    // keeping gutter numbers perfectly aligned. Long lines scroll horizontally.
+    white-space: pre;
+    word-break: normal;
+    overflow-wrap: normal;
+}
+
+.template-textarea__highlight {
+    position: absolute;
+    inset: 0;
+    color: var(--color-ks-text);
+    pointer-events: none;
+    overflow: hidden; // scroll driven by textarea via onScroll()
+}
+
+.template-textarea__input {
+    position: relative;
+    display: block;
+    width: 100%;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: var(--color-ks-text);
+    outline: none;
+    resize: none;
+    overflow: auto;
+
+    &::placeholder {
+        color: var(--text-secondary-60);
+        -webkit-text-fill-color: var(--text-secondary-60);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+    }
+}
+
+// innerHTML content isn't affected by emulated view encapsulation attributes,
+// so ::ng-deep is required to reach the runtime-inserted spans.
+:host ::ng-deep .template-textarea__var {
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.template-textarea__resize-handle {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    cursor: ns-resize;
+    color: var(--color-ks-text);
+    opacity: 0.4;
+    touch-action: none;
+    transition: opacity 0.15s ease;
+    z-index: 2;
+
+    &:hover {
+        opacity: 0.9;
+    }
+}
