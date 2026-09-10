@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -71,6 +72,7 @@ import {
         AgentDocPreviewComponent,
         DetailHeaderComponent,
         AppSvgIconComponent,
+        OverlayModule,
     ],
     templateUrl: './agent-definitions-page.component.html',
     styleUrls: ['./agent-definitions-page.component.scss'],
@@ -260,14 +262,18 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     onSaveAgent(payload: AgentSavePayload): void {
         if (payload.id == null) {
-            this.store.saveNewAgent({
-                name: payload.name,
-                description: payload.description,
-                instructions: payload.instructions,
-                llm_config: payload.llm_config,
-                fcm_llm_config: payload.fcm_llm_config,
-                metadata: { instructions_format: payload.bootIsDoc ? 'markdown' : 'text' },
-            });
+            this.openDocInEdit = !!payload.openBootDocInEdit;
+            this.store.saveNewAgent(
+                {
+                    name: payload.name,
+                    description: payload.description,
+                    instructions: payload.instructions,
+                    llm_config: payload.llm_config,
+                    fcm_llm_config: payload.fcm_llm_config,
+                    metadata: { instructions_format: payload.bootIsDoc ? 'markdown' : 'text' },
+                },
+                !!payload.openBootDocInEdit
+            );
         } else {
             this.store.updateAgent(payload.id, {
                 name: payload.name,
@@ -331,6 +337,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
     }
 
+    openDocInEdit = false;
+
+    onBootDocChange(isDoc: boolean): void {
+        const id = this.store.selectedAgent()?.id;
+        if (id == null) return;
+        if (isDoc) {
+            this.openDocInEdit = true;
+            this.store.createAndOpenBootDoc(id);
+        } else {
+            this.store.setBootDoc(id, false);
+        }
+    }
+
+    onOpenBootDoc(): void {
+        const id = this.store.selectedAgent()?.id;
+        if (id == null) return;
+        this.openDocInEdit = false;
+        this.store.selectAgentDoc(id, 'boot');
+    }
+
     onDeleteAgent(agent: AgentDefinition): void {
         this.onDeleteAgentById(agent.id);
     }
@@ -359,6 +385,37 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         }
         const s = this.store.selectedSurface();
         if (s) this.onDeleteSurface(s.id);
+    }
+
+    readonly headerMenuOpen = signal(false);
+    readonly headerMenuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
+
+    toggleHeaderMenu(event: MouseEvent): void {
+        event.stopPropagation();
+        this.headerMenuOpen.update((open) => !open);
+    }
+
+    closeHeaderMenu(): void {
+        this.headerMenuOpen.set(false);
+    }
+
+    onHeaderDuplicate(): void {
+        this.closeHeaderMenu();
+        const a = this.store.selectedAgent();
+        if (a) {
+            this.store.duplicateAgent(a.id);
+            return;
+        }
+        const s = this.store.selectedSurface();
+        if (s) this.store.duplicateSurface(s.id);
+    }
+
+    onHeaderDelete(): void {
+        this.closeHeaderMenu();
+        this.onDeleteSelected();
     }
 
     onExplorerTreeMenu(event: ExplorerTreeMenuEvent): void {

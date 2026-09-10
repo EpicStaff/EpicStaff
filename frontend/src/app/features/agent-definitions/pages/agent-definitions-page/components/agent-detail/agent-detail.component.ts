@@ -51,6 +51,7 @@ export interface AgentSavePayload {
     description: string;
     instructions: string;
     bootIsDoc: boolean;
+    openBootDocInEdit?: boolean;
     llm_config: number | null;
     fcm_llm_config: number | null;
     max_iter?: number;
@@ -128,7 +129,7 @@ export class AgentDetailComponent implements OnInit {
     readonly openBootDoc = output<void>();
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
+    readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
@@ -431,7 +432,30 @@ export class AgentDetailComponent implements OnInit {
 
     createBootDoc(): void {
         this.bootAsDoc.set(true);
+
+        if (this.isCreating()) {
+            this.createDraftAgentAsBootDoc();
+            return;
+        }
+
         this.bootDocChange.emit(true);
+    }
+
+    private createDraftAgentAsBootDoc(): void {
+        if (this.saving()) return;
+        const v = this.form.getRawValue();
+        const name = v.name.trim();
+        this.savedSnapshot = { ...v, name };
+        this.save.emit({
+            id: null,
+            name,
+            description: v.description ?? '',
+            instructions: v.instructions ?? '',
+            bootIsDoc: true,
+            openBootDocInEdit: true,
+            llm_config: v.llm_config,
+            fcm_llm_config: null,
+        });
     }
 
     removeBootDoc(): void {

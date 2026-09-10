@@ -235,6 +235,15 @@
     font-size: 0.75rem;
 }
 
+.select-dropdown__row-badge {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--accent-color);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
 .select-dropdown__empty {
     margin: 0;
     padding: 0.625rem 0.75rem;
@@ -283,6 +292,11 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.select-dropdown__footer app-button {
+    flex-shrink: 0;
 }
 
 .select-dropdown__clear ::ng-deep .btn {

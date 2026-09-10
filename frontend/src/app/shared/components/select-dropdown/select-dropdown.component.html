@@ -104,7 +104,9 @@
                             />
                         }
                         <span class="select-dropdown__row-name">{{ item.name }}</span>
-                        @if (item.tip) {
+                        @if (tipForItem(item); as checkedTipText) {
+                            <span class="select-dropdown__row-badge">{{ checkedTipText }}</span>
+                        } @else if (item.tip) {
                             <span class="select-dropdown__row-tip">{{ item.tip }}</span>
                         }
                     </button>
@@ -167,7 +169,7 @@
                     type="ghost"
                     (click)="clearFilter()"
                 >
-                    Clear Filter
+                    Clear
                 </app-button>
                 <div class="select-dropdown__footer-right">
                     <app-button
