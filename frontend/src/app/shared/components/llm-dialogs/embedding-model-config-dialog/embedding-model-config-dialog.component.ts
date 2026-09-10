@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
@@ -98,16 +98,6 @@ export class EmbeddingModelConfigDialogComponent {
                     this.isLoading.set(false);
                 },
             });
-    }
-
-    onModelChanged(data: { model: LLMModel; provider: LLMProvider }): void {
-        const nameControl = this.form.get('custom_name');
-
-        if (!nameControl) return;
-
-        if (!nameControl.value) {
-            nameControl.setValue(`${data.provider.name}/${data.model.name}`);
-        }
     }
 
     onCancel(): void {
