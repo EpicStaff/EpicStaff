@@ -29,7 +29,7 @@
         gap: 8px;
         align-items: center;
         background-color: var(--accent-color);
-        color: white;
+        color: var(--white);
         font-weight: 500;
         border-radius: 8px;
         padding: 0.625rem 1.25rem;
@@ -40,7 +40,7 @@
     }
 
     .submit:hover {
-        background-color: #7a70ff;
+        background-color: var(--purple-400);
     }
 
     .submit:disabled {
@@ -53,9 +53,9 @@
 .spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid var(--white-alpha-30);
     border-radius: 50%;
-    border-top-color: white;
+    border-top-color: var(--white);
     animation: spin 0.8s linear infinite;
 }
 

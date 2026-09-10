@@ -31,7 +31,7 @@
         }
 
         &--error {
-            border-color: #ef4444;
+            border-color: var(--crimson-500);
         }
 
         &--disabled {
@@ -41,7 +41,7 @@
     }
 
     &__icon {
-        font-size: 15px;
+        font-size: 0.9375rem;
         color: var(--color-input-text-placeholder);
         flex-shrink: 0;
         pointer-events: none;
@@ -95,7 +95,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 4px 10px var(--black-alpha-12);
         overflow: hidden;
     }
 
@@ -113,9 +113,9 @@
     &__option {
         padding: 0.5rem 1rem;
         text-align: center;
-        font-size: 0.875rem;
-        font-weight: 200;
-        line-height: 130%;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         cursor: pointer;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -146,8 +146,8 @@
     }
 
     &__error {
-        color: #ef4444;
-        font-size: 12px;
+        color: var(--crimson-500);
+        font-size: 0.75rem;
         margin-top: 4px;
         line-height: 1.4;
     }

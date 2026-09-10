@@ -34,5 +34,4 @@ export interface GetRealtimeTranscriptionModelRequest {
 export interface CreateRealtimeTranscriptionModelRequest {
     name: string;
     provider: number;
-    is_custom: boolean;
 }

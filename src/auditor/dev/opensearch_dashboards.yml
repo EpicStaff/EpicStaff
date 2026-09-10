@@ -1,10 +1,10 @@
 ## OpenSearch Dashboards - LOCAL DEVELOPMENT ONLY.
 ##
-## Mounted by the `opensearch-dashboards` service in docker-compose.dev.yaml,
-## which exists purely so a developer can browse `audit_events` in a table view
-## while building the audit browser. It is deliberately absent from
-## docker-compose.yaml - the deployed stack's only read path into OpenSearch is
-## `auditor`'s own query/export routes.
+## Config for an ad-hoc `opensearchproject/opensearch-dashboards` container, run
+## by hand against the `audit` stack so a developer can browse `audit_events` in
+## a table view. There is deliberately no such service in docker-compose.yaml -
+## the deployed stack's only read path into OpenSearch is `auditor`'s own
+## query/export routes.
 ##
 ## Telemetry note: Dashboards is the Kibana-derived component that historically
 ## carried usage collection, so this was checked rather than assumed. In the

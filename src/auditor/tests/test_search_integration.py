@@ -1,8 +1,7 @@
 """
 Integration test against a REAL OpenSearch instance - requires
-`docker compose -f docker-compose.yaml -f docker-compose.dev.yaml
---env-file ./.dev.env up -d --build auditor opensearch` (see docs/auditor's
-dev guide) to be running first. Skipped automatically if unreachable, so
+`docker compose -f docker-compose.yaml --env-file ./.env up -d --build
+auditor opensearch` (see docs/auditor's dev guide) to be running first. Skipped automatically if unreachable, so
 the plain unit-test suite (test_query_language.py /
 test_opensearch_query_compiler.py) is never blocked by this file.
 """

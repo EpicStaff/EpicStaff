@@ -29,10 +29,17 @@ class LLMModel(OrgScopedModel, models.Model):
     tags = models.ManyToManyField(LLMModelTag, blank=True, related_name="llm_models")
 
     class Meta(OrgScopedModel.Meta):
-        unique_together = (
-            "name",
-            "llm_provider",
-        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "llm_provider"],
+                name="unique_llmmodel_name_provider_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["name", "llm_provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_llmmodel_name_provider_builtin",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -121,6 +128,7 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
 # ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
 # ---------------------------------------------------------------------------
 
+
 class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""
 
@@ -131,6 +139,19 @@ class RealtimeModel(OrgScopedModel, models.Model):
         "Provider", on_delete=models.CASCADE, null=True, default=None
     )
     is_custom = models.BooleanField(default=False)
+
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "provider"],
+                name="unique_realtimemodel_name_provider_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["name", "provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_realtimemodel_name_provider_builtin",
+            ),
+        ]
 
 
 class RealtimeConfig(OrgScopedModel, models.Model):
@@ -158,6 +179,19 @@ class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
         "Provider", on_delete=models.CASCADE, null=True, default=None
     )
     is_custom = models.BooleanField(default=False)
+
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "provider"],
+                name="unique_realtimetranscriptionmodel_name_prov_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["name", "provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_realtimetranscriptionmodel_name_prov_builtin",
+            ),
+        ]
 
 
 class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):

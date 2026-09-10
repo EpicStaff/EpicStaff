@@ -1,20 +1,20 @@
-import os
 import pathlib
 import asyncio
 from time import time
 
 from redis.asyncio import Redis
 
+import settings
 from helpers.logger import logger
 from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX, deregister_job
 
 
 def build_export_redis_client() -> Redis:
     return Redis(
-        db=int(os.environ.get("AUDITOR_REDIS_DB", 1)),
-        host=os.environ.get("REDIS_HOST", "localhost"),
-        port=int(os.environ.get("REDIS_PORT", 6379)),
-        password=os.environ.get("REDIS_PASSWORD") or None,
+        db=settings.AUDITOR_REDIS_DB,
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD or None,
         decode_responses=True,
     )
 

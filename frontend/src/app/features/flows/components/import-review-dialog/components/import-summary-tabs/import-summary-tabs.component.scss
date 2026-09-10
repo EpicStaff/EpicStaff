@@ -20,7 +20,7 @@
             flex: 1;
 
             .summary-count {
-                font-weight: 600;
+                font-weight: 500;
                 color: var(--accent-color);
                 margin-left: auto;
             }
@@ -97,8 +97,8 @@
         }
 
         .summary-label {
-            font-size: 0.875rem;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             color: var(--color-ks-transparent-text-60);
             display: flex;
             align-items: center;
@@ -107,8 +107,8 @@
         }
 
         .summary-count {
-            font-size: 0.875rem;
-            font-weight: 600;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             color: var(--accent-color);
             margin-left: auto;
         }

@@ -1,5 +1,4 @@
 from datetime import datetime
-import os
 from typing import Any
 import uuid
 from django.utils import timezone
@@ -13,15 +12,15 @@ from tables.services.secrets import (
 )
 from utils.singleton_meta import SingletonMeta
 
+from django.conf import settings
+
 MAX_STORED_RESULTS = 200
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
-        self.code_exec_task_channel: str = os.environ.get(
-            "CODE_EXEC_TASK_CHANNEL", "code_exec_tasks"
-        )
+        self.code_exec_task_channel: str = settings.CODE_EXEC_CHANNEL
 
     def run_code(
         self,

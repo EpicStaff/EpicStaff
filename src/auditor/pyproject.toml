@@ -1,38 +1,48 @@
 [project]
 name = "auditor"
-version = "0.1.0"
-description = ""
+version = "1.0.0"
+description = "EpicStaff audit trail service"
 authors = [
-    {name = "Your Name",email = "you@example.com"}
+    { name = "EpicStaff" },
 ]
-requires-python = "^3.12"
+requires-python = "==3.12.10"
 dependencies = [
-    "uvicorn (>=0.52.1,<0.53.0)",
-    "fastapi (>=0.141.1,<0.142.0)",
-    "loguru (>=0.7.3,<0.8.0)",
-    "pydantic-settings (>=2.15.0,<3.0.0)",
-    "opensearch-py[async] (>=3.2.0,<4.0.0)",
-    "pyjwt (>=2.13.0,<3.0.0)",
-    "watchfiles (>=1.1.1,<2.0.0)",
-    "redis (>=5.3.1,<5.4.0)"
+    "fastapi>=0.141.1,<0.142.0",
+    "loguru>=0.7.3,<0.8.0",
+    "opensearch-py[async]>=3.2.0,<4.0.0",
+    "pydantic-settings>=2.15.0,<3.0.0",
+    "pyjwt>=2.13.0,<3.0.0",
+    "redis>=5.3.1,<5.4.0",
+    "uvicorn==0.49.0",
+    "watchfiles>=1.1.1,<2.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "fakeredis==2.32.0",
+    "httpx==0.28.1",
+    "pytest-asyncio==0.24.0",
+    "pytest==8.4.2",
+]
+transitive-pins = [
+    "aiohttp==3.14.3",
+    "anyio==4.14.2",
+    "certifi==2026.7.22",
+    "charset-normalizer==3.4.7",
+    "h11==0.16.0",
+    "httpcore==1.0.9",
+    "idna==3.18",
+    "requests==2.34.2",
+    "starlette==1.6.0",
+    "urllib3==2.7.0",
+    "yarl==1.24.5",
+]
 
-[tool.poetry]
-package-mode = false
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.2"
-pytest-asyncio = "^0.24.0"
-fakeredis = "^2.26.1"
-httpx = "^0.28.1"
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 pythonpath = [".", "../.."]
 markers = [
     "integration: requires a live OpenSearch instance (see tests/test_search_integration.py) - skips itself if unreachable",
 ]
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"

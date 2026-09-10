@@ -3,6 +3,7 @@ from rest_framework import serializers
 from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
     OrgVisiblePrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
 )
@@ -25,8 +26,27 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
     class Meta:
         model = EmbeddingModel
-        fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        fields = [
+            "id",
+            "name",
+            "embedding_provider",
+            "deployment",
+            "base_url",
+            "is_visible",
+            "predefined",
+            "is_custom",
+            "tags",
+            "org",
+            "created_by",
+        ]
+        read_only_fields = ["org", "created_by", "is_custom", "predefined"]
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=EmbeddingModel.objects.all(),
+                fields=["name", "embedding_provider"],
+                message="A model with this name already exists for this provider.",
+            )
+        ]
 
 
 class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):

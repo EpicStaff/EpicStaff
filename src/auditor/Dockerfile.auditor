@@ -1,23 +1,39 @@
-FROM python:3.12-slim
+# --- Stage 1: Builder ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-WORKDIR /app/src/auditor
+RUN pip install --no-cache-dir uv==0.11.21
 
-RUN pip install poetry
+ENV UV_NO_BUILD=1 \
+    UV_PROJECT_ENVIRONMENT=/app/src/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    POETRY_NO_INTERACTION=1 \
-    PYTHONPATH=/app
+WORKDIR /app/src
 
-COPY ./auditor/poetry.lock ./auditor/pyproject.toml ./
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction && \
-    rm -rf /root/.cache
+COPY ./auditor/pyproject.toml ./auditor/uv.lock ./
 
-COPY ./auditor .
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
+
+COPY ./auditor /app/src/auditor
 COPY ./shared /app/src/shared
 
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x /app/src/auditor/entrypoint.sh
+
+# --- Stage 2: Runtime ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+
+COPY --from=builder /app /app
+
+ENV PATH="/app/src/.venv/bin:$PATH" \
+    PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/src/auditor
 
 EXPOSE 8060
 
