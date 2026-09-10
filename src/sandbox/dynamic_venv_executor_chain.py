@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import pwd
+import signal
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -51,6 +52,55 @@ def _privilege_drop_kwargs() -> dict[str, object]:
     if not _can_drop_privileges():
         return {}
     return {"user": SANDBOX_UID, "group": SANDBOX_GID, "extra_groups": []}
+
+
+# Bound the post-kill wait for communicate() to drain the pipes. A grandchild
+# that escaped the process group (e.g. one that re-parented itself outside the
+# killed group) could still hold a pipe's write end open, which would keep
+# communicate() from ever seeing EOF; without this bound that would hang again.
+_TIMEOUT_DRAIN_GRACE_SECONDS = 5
+
+
+def _kill_process_tree(process: asyncio.subprocess.Process, execution_id: str) -> bool:
+    """Kill a timed-out execution and every child it spawned.
+
+    The process was started with start_new_session=True, so it leads its own
+    process group; killing that group also kills grandchildren the job spawned,
+    which process.kill() alone would leave running. Falls back to process.kill()
+    on platforms or states where killpg/getpgid is unavailable (Windows) or the
+    process has already exited.
+
+    Never raises: this is called from the timeout path, which must always
+    finish and report a result. A missing capability (e.g. the container
+    lacks CAP_KILL, needed to signal a child running under a different UID
+    than this root parent) makes both killpg and kill() fail with
+    PermissionError; that must be reported to the caller, not propagated.
+
+    Returns True when a kill signal was delivered (or the process was already
+    gone), False when neither attempt could signal the process, meaning it is
+    still running.
+    """
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        return True
+    except ProcessLookupError:
+        return True
+    except (AttributeError, OSError):
+        pass
+
+    try:
+        process.kill()
+        return True
+    except ProcessLookupError:
+        return True
+    except OSError as kill_error:
+        logger.error(
+            "Could not signal timed-out execution {}: {}. Process is still "
+            "running / has leaked; the container is likely missing CAP_KILL.",
+            execution_id,
+            kill_error,
+        )
+        return False
 
 
 class Handler(ABC):
@@ -412,15 +462,33 @@ except Exception:
             stderr=asyncio.subprocess.PIPE,
             env=env,
             cwd=context["work_dir"],
+            start_new_session=True,
             **drop_kwargs,
         )
-        stdout, stderr = await process.communicate()
+
+        secrets = context.get("secrets") or {}
+        mask_secrets = settings.MASK_SECRET
+
+        comm_task = asyncio.ensure_future(process.communicate())
+        done, _ = await asyncio.wait(
+            {comm_task}, timeout=settings.EXECUTION_TIMEOUT_SECONDS
+        )
+
+        if comm_task not in done:
+            return await self._handle_timeout(
+                process=process,
+                comm_task=comm_task,
+                context=context,
+                secrets=secrets,
+                mask_secrets=mask_secrets,
+            )
+
+        stdout, stderr = comm_task.result()
+
         stderr = stderr.decode("utf-8", errors="replace")
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
 
-        secrets = context.get("secrets") or {}
-        mask_secrets = settings.MASK_SECRET
         if mask_secrets:
             stderr = scrub(text=stderr, secrets=secrets)
             stdout = scrub(text=stdout, secrets=secrets)
@@ -455,6 +523,75 @@ except Exception:
             stderr=stderr,
             stdout=stdout,
             returncode=returncode,
+        )
+
+    async def _handle_timeout(
+        self,
+        process: asyncio.subprocess.Process,
+        comm_task: asyncio.Task,
+        context: dict[str, Any],
+        secrets: dict[str, str],
+        mask_secrets: bool,
+    ) -> CodeResultData:
+        """Terminate a hung execution and report it as a timed-out result.
+
+        The job never finishes writing output.txt, so unlike the normal path
+        this never reads the result file: result_data stays None.
+        """
+        timeout_seconds = settings.EXECUTION_TIMEOUT_SECONDS
+        logger.error(
+            "Execution {} exceeded {} seconds; killing process tree.",
+            context["execution_id"],
+            timeout_seconds,
+        )
+
+        killed = _kill_process_tree(process, execution_id=context["execution_id"])
+
+        stdout_bytes, stderr_bytes = b"", b""
+        if killed:
+            done, _ = await asyncio.wait(
+                {comm_task}, timeout=_TIMEOUT_DRAIN_GRACE_SECONDS
+            )
+            if comm_task in done:
+                try:
+                    stdout_bytes, stderr_bytes = comm_task.result()
+                except Exception:
+                    logger.exception(
+                        "Failed to drain partial output for timed-out execution {}",
+                        context["execution_id"],
+                    )
+            else:
+                comm_task.cancel()
+                logger.warning(
+                    "Could not recover partial output for timed-out execution {} "
+                    "within {} seconds; a grandchild may still hold a pipe open.",
+                    context["execution_id"],
+                    _TIMEOUT_DRAIN_GRACE_SECONDS,
+                )
+        else:
+            comm_task.cancel()
+
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+
+        if mask_secrets:
+            stdout = scrub(text=stdout, secrets=secrets)
+            stderr = scrub(text=stderr, secrets=secrets)
+
+        timeout_message = (
+            f"Execution exceeded {timeout_seconds} seconds and was terminated."
+        )
+        if not killed:
+            timeout_message += (
+                " Process could not be terminated and may still be running."
+            )
+        stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
+
+        return CodeResultData(
+            execution_id=context["execution_id"],
+            stdout=stdout,
+            stderr=stderr,
+            returncode=124,
         )
 
 

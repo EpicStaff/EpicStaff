@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(env_file=BASE_DIR / '../.env')
+    env.read_env(env_file=BASE_DIR / "../.env")
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.str("REDIS_PORT")
@@ -29,3 +29,5 @@ STORAGE_SECRET_KEY = env.str("MINIO_PASSWORD")
 STORAGE_BUCKET_NAME = env.str("MINIO_BUCKET")
 
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET")
+
+EXECUTION_TIMEOUT_SECONDS = env.int("SANDBOX_EXECUTION_TIMEOUT_SECONDS", 300)
