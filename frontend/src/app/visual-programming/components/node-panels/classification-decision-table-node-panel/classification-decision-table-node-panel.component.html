@@ -126,7 +126,10 @@
 
                 <!-- Pre-computation Tab -->
                 @if (activeTab() === 'precomputation') {
-                    <div class="computation-section">
+                    <div
+                        class="computation-section"
+                        [class.sidebar-collapsed]="isSidebarCollapsed()"
+                    >
                         <div
                             #preSidebarColumn
                             class="computation-sidebar"
@@ -165,6 +168,9 @@
                             [opposite]="preCodeColumn"
                             [(width)]="sidebarWidth.width"
                             [defaultWidth]="sidebarWidth.defaultWidth"
+                            [collapsible]="true"
+                            [minWidth]="350"
+                            [(collapsed)]="isSidebarCollapsed"
                         />
                         <div
                             #preCodeColumn
@@ -182,7 +188,10 @@
 
                 <!-- Post-computation Tab -->
                 @if (activeTab() === 'postcomputation') {
-                    <div class="computation-section">
+                    <div
+                        class="computation-section"
+                        [class.sidebar-collapsed]="isSidebarCollapsed()"
+                    >
                         <div
                             #postSidebarColumn
                             class="computation-sidebar"
@@ -221,6 +230,9 @@
                             [opposite]="postCodeColumn"
                             [(width)]="sidebarWidth.width"
                             [defaultWidth]="sidebarWidth.defaultWidth"
+                            [collapsible]="true"
+                            [minWidth]="350"
+                            [(collapsed)]="isSidebarCollapsed"
                         />
                         <div
                             #postCodeColumn

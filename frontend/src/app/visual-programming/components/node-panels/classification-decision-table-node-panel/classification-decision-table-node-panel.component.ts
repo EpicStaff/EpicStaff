@@ -100,6 +100,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public activeTab = signal<TabType>('table');
 
     protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
+    protected readonly isSidebarCollapsed = signal<boolean>(false);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});

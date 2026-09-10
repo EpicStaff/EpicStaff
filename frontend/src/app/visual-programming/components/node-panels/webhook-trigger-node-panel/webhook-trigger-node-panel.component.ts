@@ -2,7 +2,6 @@ import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
@@ -25,7 +24,6 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         CustomInputComponent,
         CodeEditorComponent,
         ClipboardModule,
-        MatTooltipModule,
         NodeSecretsFieldComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
@@ -43,8 +41,8 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
 
-    public readonly isCodeEditorFullWidth = signal<boolean>(true);
-    protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 400);
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 406);
 
     pythonCode: string = '';
     initialPythonCode: string = '';
@@ -174,9 +172,5 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
         this.clipboard.copy(url);
         this.copied.set(true);
-    }
-
-    toggleCodeEditorFullWidth(): void {
-        this.isCodeEditorFullWidth.update((value) => !value);
     }
 }
