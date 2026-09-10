@@ -98,6 +98,14 @@
  make docker-generate-certs domain=<domain>
    Generate self-signed SSL certificates for local Nginx.
 
+ make uv-lock
+   Regenerate uv.lock for every backend service in src/.
+   Run after editing any service's pyproject.toml dependencies.
+
+ make uv-lock-<service>
+   Regenerate the lock for one service only.
+   Example: make uv-lock-crew
+
 ================================================================
  TYPICAL WORKFLOW
 ----------------------------------------------------------------
