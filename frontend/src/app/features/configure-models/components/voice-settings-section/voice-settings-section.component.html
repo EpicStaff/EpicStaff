@@ -32,9 +32,9 @@
                             <span class="channel-card__name">{{ channel.name }}</span>
                             <span
                                 class="channel-card__badge"
-                                [class.channel-card__badge--active]="channel.is_active"
-                                [class.channel-card__badge--inactive]="!channel.is_active"
-                                >{{ channel.is_active ? 'Active' : 'Inactive' }}</span
+                                [class.channel-card__badge--active]="channel.is_enabled"
+                                [class.channel-card__badge--inactive]="!channel.is_enabled"
+                                >{{ channel.is_enabled ? 'Enabled' : 'Disabled' }}</span
                             >
                         </div>
                         <div class="channel-card__actions">
@@ -64,19 +64,12 @@
                     </div>
 
                     <div class="channel-card__meta">
-                        @if (channel.realtime_agent && agentMap().has(channel.realtime_agent)) {
-                            <div class="channel-card__meta-item">
-                                <span class="channel-card__meta-label">Agent</span>
-                                <span class="channel-card__meta-value">{{
-                                    agentMap().get(channel.realtime_agent)
-                                }}</span>
-                            </div>
-                        } @else if (
+                        @if (
                             channel.realtime_agent_definition &&
                             agentDefinitionMap().has(channel.realtime_agent_definition)
                         ) {
                             <div class="channel-card__meta-item">
-                                <span class="channel-card__meta-label">Agent Definition</span>
+                                <span class="channel-card__meta-label">Agent</span>
                                 <span class="channel-card__meta-value">{{
                                     agentDefinitionMap().get(channel.realtime_agent_definition)
                                 }}</span>

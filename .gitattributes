@@ -6,3 +6,7 @@
 *.pdf binary
 *.exe binary
 *.gif binary
+
+# uv lock files are generated. Never merge them line-by-line -- on a conflict
+# take either side and re-run `make uv-lock` to regenerate.
+src/**/uv.lock  merge=binary  -diff  linguist-generated=true

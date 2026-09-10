@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -101,7 +100,6 @@ const VARIABLES_SCHEMA_TOOLTIP =
 @Component({
     selector: 'app-create-custom-tool-dialog',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         MatTooltipModule,
         AppSvgIconComponent,

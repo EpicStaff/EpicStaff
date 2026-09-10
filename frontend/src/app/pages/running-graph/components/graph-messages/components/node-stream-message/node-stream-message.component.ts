@@ -273,7 +273,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         .node-name {
             color: var(--gray-100);
             font-size: 1.1rem;
-            font-weight: 600;
+            font-weight: 500;
         }
 
         .status-badge {
@@ -328,7 +328,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             gap: 6px;
             color: var(--stream-color);
             font-size: 0.85rem;
-            font-weight: 600;
+            font-weight: 500;
             margin-bottom: 0.35rem;
         }
 
@@ -391,7 +391,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .tool-call-label {
             color: var(--stream-color);
-            font-weight: 600;
+            font-weight: 500;
             font-size: 0.78rem;
             text-transform: uppercase;
             letter-spacing: 0.02em;

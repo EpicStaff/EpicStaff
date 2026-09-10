@@ -253,7 +253,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return;
         }
         const wrapperEl = this.elRef.nativeElement.querySelector('.grid-wrapper') as HTMLElement | null;
-        const bodyEl = this.elRef.nativeElement.querySelector('.ag-body-viewport') as HTMLElement | null;
+        const bodyEl = this.elRef.nativeElement.querySelector('.ag-grid-viewport') as HTMLElement | null;
         if (!wrapperEl || !bodyEl) {
             this.groupOverlayItems.set([]);
             return;
@@ -605,6 +605,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         backgroundColor: '#1e1e1e',
         foregroundColor: '#d4d4d4',
         headerBackgroundColor: '#27272b',
@@ -613,6 +614,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         borderColor: 'rgba(255, 255, 255, 0.1)',
         rowHoverColor: 'rgba(104, 95, 255, 0.1)',
         columnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
+        pinnedColumnBorder: { style: 'solid', width: 4, color: '#3f4144' },
         fontSize: 14,
     });
 

@@ -36,7 +36,6 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 @Component({
     selector: 'app-decision-table-grid',
-    standalone: true,
     imports: [AgGridModule, ButtonComponent, HelpTooltipComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
@@ -144,6 +143,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         accentColor: '#685fff',
         backgroundColor: '#1e1e20',
         browserColorScheme: 'dark',
@@ -173,7 +173,7 @@ export class DecisionTableGridComponent implements OnInit {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontWeight: '600',
+                fontWeight: '500',
                 color: '#999',
             },
         },

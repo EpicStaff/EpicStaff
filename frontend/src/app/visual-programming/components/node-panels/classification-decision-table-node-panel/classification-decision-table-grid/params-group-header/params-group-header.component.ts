@@ -193,7 +193,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-dropdown-item {
                 padding: 8px 14px;
-                font-size: 13px;
+                font-size: 0.8125rem;
                 color: rgba(255, 255, 255, 0.85);
                 cursor: pointer;
                 white-space: nowrap;

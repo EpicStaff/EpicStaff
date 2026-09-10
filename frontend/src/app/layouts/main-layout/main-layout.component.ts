@@ -1,4 +1,4 @@
-import { Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
@@ -8,7 +8,6 @@ import { LastVisitedTabService } from '../../services/last-visited-tab.service';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
 
 const TABBED_ROUTES: Record<string, string[]> = {
-    '/projects': ['/projects/my', '/projects/templates'],
     '/tools': ['/tools/custom', '/tools/mcp'],
     '/flows': ['/flows/my', '/flows/templates'],
     '/files': ['/files/knowledge-sources', '/files/storage'],
@@ -16,7 +15,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
 
 @Component({
     selector: 'app-main-layout',
-    standalone: true,
     imports: [LeftSidebarComponent, RouterOutlet],
     styles: [
         `
@@ -59,6 +57,7 @@ const TABBED_ROUTES: Record<string, string[]> = {
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: `
         <div class="sidebar-wrapper">
             <app-left-sidebar></app-left-sidebar>

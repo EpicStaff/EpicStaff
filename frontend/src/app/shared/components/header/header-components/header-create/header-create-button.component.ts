@@ -1,8 +1,7 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 @Component({
     selector: 'app-project-create-button',
-    standalone: true,
     template: `
         <button
             class="create-project-button"
@@ -31,14 +30,15 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
             <span>{{ buttonTitle }}</span>
         </button>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .create-project-button {
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
-                font-size: 14px;
-                font-weight: 400;
+                font-size: var(--text-body-size);
+                font-weight: var(--text-body-weight);
                 padding: 0.4rem 1.2rem;
                 height: 36px;
                 line-height: 14px;

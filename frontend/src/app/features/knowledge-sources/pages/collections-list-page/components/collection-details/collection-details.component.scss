@@ -30,8 +30,8 @@
     }
 
     &__header-label {
-        font-size: 14px;
-        color: var(--color-ks-text);
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
     }
 
     &__name-input {
@@ -123,7 +123,7 @@
 
     &__section-title {
         font-size: 0.75rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__section-actions {
@@ -148,8 +148,8 @@
     }
 
     &__empty-text {
-        font-size: 16px;
-        color: rgba(255, 255, 255, 0.8);
+        font-size: 1rem;
+        color: var(--white-alpha-80);
         margin-bottom: 20px;
     }
 
@@ -159,7 +159,7 @@
         align-items: center;
         justify-content: center;
         margin-bottom: 1rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
 
         svg {
             width: 48px;

@@ -4,19 +4,21 @@ Generates scripts/python-notices-partial.md.
 
 Scope: production Python dependencies of every backend microservice under
 src/. For each service that has a pyproject.toml the script reconciles its
-.venv via `python -m poetry install --no-root --without <groups>` (regenerating
-if needed), installs pip-licenses into that venv, scrapes license metadata and
-license texts, then removes pip-licenses.
+.venv via `uv sync --frozen --no-install-project --all-groups --no-group
+<group>` for every dev/test group (regenerating the lock with `uv lock` first
+if none is found), installs pip-licenses into that venv, scrapes license
+metadata and license texts, then removes pip-licenses.
 
-The `--without` groups are computed per service, not hardcoded: the script
-parses each service's own `[tool.poetry.group.<name>.dependencies]` tables and
-excludes only dev/test TOOLING groups (dev, test, tests, lint, typing, docs).
-Non-dev PRODUCTION groups — e.g. knowledge's `graphrag` (pulls networkx,
-pyarrow via a vendored path dependency) or crew's `crew` / `dotdict` — are
-deliberately INCLUDED, because the corresponding Dockerfiles install them too
-(`poetry install` / `--only crew,dotdict` there, not `--only main`). Excluding
-them previously caused real shipped dependencies to be missing from the
-notices. Packages present in multiple services are deduplicated by name +
+The excluded groups are computed per service, not hardcoded: the script reads
+each service's own `[dependency-groups]` table and excludes only dev/test
+TOOLING groups (dev, test, tests, lint, typing, docs). Non-dev PRODUCTION
+groups — e.g. knowledge's `graphrag` (pulls networkx, pyarrow via a vendored
+path dependency), crew's `dotdict`, or the `secfloor` group most services
+declare — are deliberately INCLUDED, because the corresponding Dockerfiles
+install them too (`uv sync --frozen --no-install-project --all-groups`
+there, not a plain `uv sync`, which only installs main + the "dev" group).
+Excluding them previously caused real shipped dependencies to be missing from
+the notices. Packages present in multiple services are deduplicated by name +
 version.
 
 The output is a partial Markdown fragment intended to be stitched into
@@ -26,7 +28,7 @@ overwrites the partial in place.
 Usage (from repository root):
     python scripts/generate-python-notices.py
 
-Requires: Python 3.12+ with poetry installed (`python -m poetry` must work).
+Requires: Python 3.12+ with uv installed (`uv` must be on PATH).
 Only stdlib is imported by this script itself.
 """
 
@@ -49,6 +51,7 @@ OUTPUT_FILE = SCRIPTS_DIR / "python-notices-partial.md"
 SERVICES = [
     "src/django_app",
     "src/crew",
+    "src/agent",
     "src/manager",
     "src/knowledge",
     "src/realtime",
@@ -67,12 +70,16 @@ BOOTSTRAP_PACKAGES = {
     "piplicenses",
 }
 
-FIRST_PARTY_NAMES: frozenset[str] = frozenset({"dotdict"})
+# Vendored / local path dependencies (uv.lock `source = { directory = ... }`,
+# already listed separately under VENDORED below where applicable) that must
+# not also appear as a regular third-party package in the index: "dotdict"
+# (src/shared/dotdict) and "graphrag" (src/knowledge/libraries/graphrag).
+FIRST_PARTY_NAMES: frozenset[str] = frozenset({"dotdict", "graphrag"})
 FIRST_PARTY_AUTHOR_DOMAINS: tuple[str, ...] = ("hys-enterprise.com",)
 
-# Poetry dependency-group names treated as dev/test TOOLING and excluded via
-# `poetry install --without`. Anything else a service declares (graphrag,
-# crew, dotdict, ...) is a production group and stays installed, matching
+# Dependency-group names treated as dev/test TOOLING and excluded via
+# `uv sync --no-group`. Anything else a service declares (graphrag,
+# dotdict, secfloor, ...) is a production group and stays installed, matching
 # what that service's Dockerfile actually ships.
 DEV_GROUP_NAMES: frozenset[str] = frozenset(
     {"dev", "test", "tests", "lint", "typing", "docs"}
@@ -83,27 +90,10 @@ DEV_GROUP_NAMES: frozenset[str] = frozenset(
 SPDX_OVERRIDES: dict[str, str] = {
     "pywin32": "LGPL-2.1",  # metadata says PSF; wheel ships GNU LGPL v2.1 text
     "chroma-hnswlib": "Apache-2.0",  # metadata UNKNOWN; wheel ships Apache-2.0 text
-    "crewai-tools": "MIT",  # metadata UNKNOWN; wheel ships MIT text
     "embedchain": "Apache-2.0",  # metadata Other/Proprietary; wheel ships Apache-2.0 text
 }
 
 VENDORED = [
-    {
-        "name": "crewAI",
-        "version": "vendored fork",
-        "license": "MIT",
-        "copyright": "Copyright (c) 2025 crewAI, Inc.",
-        "source": "https://github.com/crewAIInc/crewAI",
-        "note": "vendored, unmodified",
-    },
-    {
-        "name": "mem0",
-        "version": "vendored fork",
-        "license": "Apache-2.0",
-        "copyright": "Copyright (c) 2024 Mem0 AI",
-        "source": "https://github.com/mem0ai/mem0",
-        "note": "vendored, unmodified",
-    },
     {
         "name": "graphrag",
         "version": "vendored fork (modified)",
@@ -134,7 +124,7 @@ def get_git_sha() -> str:
 
 
 def lock_hash(svc_dir: Path) -> str:
-    lock = svc_dir / "poetry.lock"
+    lock = svc_dir / "uv.lock"
     if not lock.exists():
         return "no-lock"
     return hashlib.sha256(lock.read_bytes()).hexdigest()[:16]
@@ -149,55 +139,54 @@ def load_pyproject(svc_dir: Path) -> dict:
         return tomllib.load(f)
 
 
-def poetry_group_names(svc_dir: Path) -> set[str]:
-    """Names of `[tool.poetry.group.<name>.dependencies]` tables declared by
-    this service's pyproject.toml, e.g. {"dev", "graphrag"} for knowledge,
-    {"dev", "crew", "dotdict"} for crew."""
+def dependency_group_names(svc_dir: Path) -> set[str]:
+    """Names of the `[dependency-groups]` table declared by this service's
+    pyproject.toml, e.g. {"dev", "secfloor", "graphrag"} for knowledge,
+    {"dev", "secfloor", "dotdict"} for crew."""
     data = load_pyproject(svc_dir)
-    groups = data.get("tool", {}).get("poetry", {}).get("group", {})
+    groups = data.get("dependency-groups", {})
     return set(groups.keys())
 
 
-def poetry_without_groups(svc_dir: Path) -> list[str]:
-    """Groups to pass to `poetry install --without` for this service: only
-    the dev/test tooling groups it declares (see DEV_GROUP_NAMES).
-    Production-only groups (graphrag, crew, dotdict, ...) are intentionally
-    kept installed — they ship in the service's Docker image and must be
-    captured in the notices."""
-    declared = poetry_group_names(svc_dir)
+def dev_group_names(svc_dir: Path) -> list[str]:
+    """Groups to pass to `uv sync --no-group` for this service: only the
+    dev/test tooling groups it declares (see DEV_GROUP_NAMES).
+    Production-only groups (graphrag, dotdict, secfloor, ...) are
+    intentionally kept installed — they ship in the service's Docker image
+    and must be captured in the notices."""
+    declared = dependency_group_names(svc_dir)
     excluded = {g for g in declared if g.lower() in DEV_GROUP_NAMES}
     return sorted(excluded)
 
 
-def poetry_root_name(svc_dir: Path) -> str | None:
+def project_name(svc_dir: Path) -> str | None:
     """The service's own root/self package name, e.g. "webhook",
-    "crewai-sheets-ui" for crew, "backend" for realtime, "knowledge",
-    "voice-app". Used to exclude a service's own first-party package from
-    the notices even if it ended up installed in the venv (stale venv
-    predating `--no-root`, or a developer running a plain `poetry install`).
+    "epicstaff-graph" for crew, "realtime", "knowledge", "voice-app". Used to
+    exclude a service's own first-party package from the notices even if it
+    ended up installed in the venv (stale venv predating
+    `--no-install-project`, or a developer running a plain `uv sync
+    --all-groups`).
 
-    Poetry 2.x projects declare the name either the legacy way
-    (`[tool.poetry].name`) or via PEP 621 (`[project].name`, used by e.g.
-    knowledge and voice_app here) — both are checked, legacy takes
-    precedence if a project somehow declares both."""
+    Read from PEP 621 `[project].name` — the only place these projects
+    declare their name."""
     data = load_pyproject(svc_dir)
-    name = data.get("tool", {}).get("poetry", {}).get("name") or data.get(
-        "project", {}
-    ).get("name")
+    name = data.get("project", {}).get("name")
     return normalize_name(name) if name else None
 
 
-def poetry_install_cmd(svc_dir: Path, dry_run: bool = False) -> list[str]:
-    """Build the `poetry install --no-root [--without ...] [--dry-run]`
-    command for this service. Excludes only the dev/test tooling groups it
-    declares, so production-only groups install the same way the service's
-    own Dockerfile installs them."""
-    cmd = [sys.executable, "-m", "poetry", "install", "--no-root"]
-    without = poetry_without_groups(svc_dir)
-    if without:
-        cmd += ["--without", ",".join(without)]
-    if dry_run:
-        cmd.append("--dry-run")
+def uv_sync_cmd(svc_dir: Path) -> list[str]:
+    """Build the `uv sync --frozen --no-install-project --all-groups
+    [--no-group ...]` command for this service.
+
+    `--all-groups` matches what the service's own Dockerfile installs (main +
+    every dependency group) — a plain `uv sync` would install main + the
+    "dev" group only. `--no-group` then strips back out just the dev/test
+    tooling groups this service declares, so production-only groups
+    (graphrag, dotdict, secfloor, ...) install the same way the Dockerfile
+    installs them."""
+    cmd = ["uv", "sync", "--frozen", "--no-install-project", "--all-groups"]
+    for group in dev_group_names(svc_dir):
+        cmd += ["--no-group", group]
     return cmd
 
 
@@ -220,99 +209,67 @@ def venv_python(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python"
 
 
-def poetry_venv_path(svc_dir: Path) -> Path | None:
-    """Ask poetry where the venv for this service lives. Returns None on error."""
-    try:
-        proc = run(
-            [sys.executable, "-m", "poetry", "env", "info", "--path"],
-            cwd=svc_dir,
-            check=True,
-        )
-        p = proc.stdout.strip()
-        return Path(p) if p else None
-    except subprocess.CalledProcessError:
-        return None
-
-
-def uninstall_stale_root_package(venv_dir: Path, svc_dir: Path) -> None:
-    """Best-effort removal of the service's own root package from its venv.
-
-    `--no-root` only stops a *fresh* `poetry install` from installing the
-    root package — it does not retroactively remove one that is already
-    present (e.g. a venv created before this script passed --no-root, or by
-    a developer running a plain `poetry install`). Left in place, that
-    self-package (e.g. webhook 0.1.0) leaks into the notices as a first-party
-    package with no license. Uninstalling it here is idempotent: a no-op if
-    it was never installed."""
-    root_name = poetry_root_name(svc_dir)
-    if not root_name:
-        return
-    py = venv_python(venv_dir)
-    run([str(py), "-m", "pip", "uninstall", "--quiet", "-y", root_name], check=False)
-
-
 def bootstrap_venv(svc_dir: Path) -> Path | None:
     """Ensure the venv has exactly the production dependency groups
-    installed (main + any non-dev/test groups such as graphrag, crew,
-    dotdict) and no leftover root/self package.
+    installed (main + any non-dev/test groups such as graphrag, dotdict,
+    secfloor) and no project/self package.
     Returns the venv directory Path on success, None on failure.
 
     Strategy:
-    1. If lock is outdated (pyproject.toml changed), regenerate with `poetry lock`.
-    2. Install with `poetry install --no-root --without <dev/test groups>`.
-       This always runs, even if a .venv already exists — a stale venv
-       (created before this fix, with the wrong group scope, or with the
-       root package installed) must reconcile to the correct scope rather
-       than being reused as-is.
-    3. Locate the venv via `poetry env info --path` (works whether in-project or cached).
-    4. Remove any stale root-package install left over from before --no-root.
+    1. Sync with `uv sync --frozen --no-install-project --all-groups
+       --no-group <dev/test groups>`. This always runs, even if a .venv
+       already exists — a stale venv (created before this fix, or with the
+       wrong group scope) must reconcile to the correct scope rather than
+       being reused as-is. `--no-install-project` never installs the
+       service's own package, so there is no after-the-fact uninstall step
+       to run.
+    2. If no lock is found, regenerate one with `uv lock` and retry once.
+    3. The venv always lands at the deterministic `.venv` under the service
+       directory — that is where `uv sync` puts it, so there is nothing to
+       query for.
     """
     pyproject = svc_dir / "pyproject.toml"
     if not pyproject.exists():
         log(f"  skip {svc_dir.name}: no pyproject.toml")
         return None
 
-    in_project_venv = svc_dir / ".venv"
-    already_has_venv = (
-        in_project_venv.exists() and venv_python(in_project_venv).exists()
-    )
-    without = poetry_without_groups(svc_dir)
-    without_desc = ",".join(without) if without else "(none)"
+    venv_dir = svc_dir / ".venv"
+    already_has_venv = venv_dir.exists() and venv_python(venv_dir).exists()
+    excluded = dev_group_names(svc_dir)
+    excluded_desc = ",".join(excluded) if excluded else "(none)"
     if already_has_venv:
-        log(f"  {svc_dir.name}: .venv exists — reconciling (--without {without_desc})")
+        log(
+            f"  {svc_dir.name}: .venv exists — reconciling (--no-group {excluded_desc})"
+        )
     else:
-        log(f"  {svc_dir.name}: no .venv — bootstrapping (--without {without_desc})")
+        log(f"  {svc_dir.name}: no .venv — bootstrapping (--no-group {excluded_desc})")
 
-    # If lock is outdated regenerate it (Poetry 2.x dropped --no-update flag).
     try:
-        run(poetry_install_cmd(svc_dir, dry_run=True), cwd=svc_dir)
+        run(uv_sync_cmd(svc_dir), cwd=svc_dir)
+        log(f"  {svc_dir.name}: uv sync done")
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
-        if "poetry.lock was last generated" in stderr or "lock" in stderr.lower():
-            log(f"  {svc_dir.name}: lock outdated — running poetry lock")
-            try:
-                run([sys.executable, "-m", "poetry", "lock"], cwd=svc_dir)
-            except subprocess.CalledProcessError as lock_exc:
-                log(
-                    f"  {svc_dir.name}: poetry lock failed: {lock_exc.stderr.strip()[:400]}"
-                )
-                return None
+        if "lock" not in stderr.lower():
+            log(f"  {svc_dir.name}: uv sync failed: {stderr[:400]}")
+            return None
+        log(f"  {svc_dir.name}: no usable lock — running uv lock")
+        try:
+            run(["uv", "lock"], cwd=svc_dir)
+        except subprocess.CalledProcessError as lock_exc:
+            log(f"  {svc_dir.name}: uv lock failed: {lock_exc.stderr.strip()[:400]}")
+            return None
+        try:
+            run(uv_sync_cmd(svc_dir), cwd=svc_dir)
+            log(f"  {svc_dir.name}: uv sync done")
+        except subprocess.CalledProcessError as retry_exc:
+            log(
+                f"  {svc_dir.name}: uv sync failed after relock: {retry_exc.stderr.strip()[:400]}"
+            )
+            return None
 
-    # Install deps (production groups only).
-    try:
-        run(poetry_install_cmd(svc_dir), cwd=svc_dir)
-        log(f"  {svc_dir.name}: poetry install done")
-    except subprocess.CalledProcessError as exc:
-        log(f"  {svc_dir.name}: poetry install failed: {exc.stderr.strip()[:400]}")
+    if not venv_dir.exists() or not venv_python(venv_dir).exists():
+        log(f"  {svc_dir.name}: could not locate venv after sync")
         return None
-
-    # Locate the venv (may be in-project or in poetry cache).
-    venv_dir = poetry_venv_path(svc_dir)
-    if venv_dir is None or not venv_python(venv_dir).exists():
-        log(f"  {svc_dir.name}: could not locate venv after install")
-        return None
-
-    uninstall_stale_root_package(venv_dir, svc_dir)
 
     log(f"  {svc_dir.name}: venv at {venv_dir}")
     return venv_dir
@@ -355,10 +312,13 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
 
     log(f"  installing pip-licenses into {svc_dir.name}/.venv")
     try:
-        run([str(py), "-m", "pip", "install", "--quiet", "pip-licenses"], check=True)
+        # `uv pip install --python`, not `python -m pip install`: uv-managed
+        # venvs are not seeded with pip by default, so the target venv's own
+        # pip module may not exist at all.
+        run(["uv", "pip", "install", "--python", str(py), "pip-licenses"], check=True)
     except subprocess.CalledProcessError as exc:
         log(
-            f"  pip install pip-licenses failed for {svc_dir.name}: {exc.stderr.strip()[:300]}"
+            f"  pip-licenses install failed for {svc_dir.name}: {exc.stderr.strip()[:300]}"
         )
         return []
 
@@ -373,12 +333,11 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
         try:
             run(
                 [
-                    str(py),
-                    "-m",
+                    "uv",
                     "pip",
                     "uninstall",
-                    "--quiet",
-                    "-y",
+                    "--python",
+                    str(py),
                     "pip-licenses",
                     "prettytable",
                     "wcwidth",
@@ -391,11 +350,11 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
 
 def is_internal_placeholder_package(version: str, entry: dict) -> bool:
     """Secondary safety net for a first-party root/path package that isn't
-    caught by name (FIRST_PARTY_NAMES / a service's own poetry_root_name) or
+    caught by name (FIRST_PARTY_NAMES / a service's own project_name) or
     by author domain — e.g. a future service added without updating those
     lists. Deliberately narrow: internal scaffold packages are version
-    0.1.0 (poetry's default for a new project) AND ship no SPDX license AND
-    no license text. A real PyPI package matching all three simultaneously
+    0.1.0 (the default for a freshly scaffolded project) AND ship no SPDX
+    license AND no license text. A real PyPI package matching all three simultaneously
     would be extremely unusual for something actually used in production."""
     if version != "0.1.0":
         return False
@@ -410,14 +369,14 @@ def collect_packages() -> dict[tuple[str, str], dict]:
     packages: dict[tuple[str, str], dict] = {}
     skipped: list[str] = []
 
-    # Each service's own root package name (e.g. "webhook", "crewai-sheets-ui"
-    # for crew, "backend" for realtime) — read dynamically from each
-    # pyproject.toml rather than hardcoded, so it stays correct if a
-    # service's poetry project name ever changes.
+    # Each service's own project name (e.g. "webhook", "epicstaff-graph" for
+    # crew, "realtime") — read dynamically from each pyproject.toml rather
+    # than hardcoded, so it stays correct if a service's project name ever
+    # changes.
     first_party_root_names = {
         root_name
         for svc_rel in SERVICES
-        if (root_name := poetry_root_name(REPO_ROOT / svc_rel)) is not None
+        if (root_name := project_name(REPO_ROOT / svc_rel)) is not None
     }
 
     for svc_rel in SERVICES:
@@ -512,8 +471,8 @@ def build_markdown(
     lines.append("")
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
-        "(`src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, "
-        "`src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "(`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, "
+        "`src/sandbox`, `src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")
@@ -648,7 +607,7 @@ def main() -> int:
 
     packages = collect_packages()
     md = build_markdown(packages, provenance)
-    OUTPUT_FILE.write_text(md, encoding="utf-8")
+    OUTPUT_FILE.write_text(md, encoding="utf-8", newline="\n")
     log(f"discovered {len(packages)} unique backend packages")
     log(f"wrote {OUTPUT_FILE}")
     return 0

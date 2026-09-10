@@ -1,12 +1,15 @@
 import uuid
 from typing import Protocol
 
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
-from django.contrib.auth.hashers import check_password
 
-from tables.models.base_models import DefaultBaseModel
+from tables.models.base_models import (
+    EnabledToggleFields,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -90,102 +93,60 @@ class LocalhostWebhookConfig(models.Model):
         return self.name
 
 
-class WebhookAuthScheme(models.TextChoices):
-    STATIC_HEADER = "static_header"  # Telegram: literal header value compare
-    HMAC_SHA256 = "hmac_sha256"  # Generic: signed body + one-sided timestamp
-    # window + Redis-backed replay check (see `webhook_routes.handle_webhook`)
+class WebhookTriggerAuthKind(models.TextChoices):
+    WEBHOOK = "webhook"  # EPICSTAFF_API_KEY header, user-settable secret
+    TELEGRAM = "telegram"  # X-Telegram-Bot-Api-Secret-Token, user-settable secret
+    TWILIO = "twilio"
 
 
-class WebhookNodeAuth(models.Model):
-    enabled = models.BooleanField(default=True)
-    scheme = models.CharField(max_length=32, choices=WebhookAuthScheme.choices)
+class WebhookTriggerAuth(SoftDeleteFields):
+    HEADER_NAMES = {
+        WebhookTriggerAuthKind.WEBHOOK: "EPICSTAFF_API_KEY",
+        WebhookTriggerAuthKind.TELEGRAM: "X-Telegram-Bot-Api-Secret-Token",
+    }
 
-    header_name = models.CharField(max_length=128)
-    timestamp_header_name = models.CharField(
-        max_length=128, blank=True, default="X-Webhook-Timestamp"
+    trigger = models.OneToOneField(
+        "WebhookTrigger",
+        on_delete=models.CASCADE,
+        related_name="auth",
     )
-
-    tolerance_seconds = models.PositiveIntegerField(default=300)
-
-    secret_hash = models.CharField(
-        max_length=128,
-        blank=True,
-        null=True,
-        help_text="One-way hash of the token. Never exposed.",
-    )
-    signing_secret = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        help_text="Plaintext or symmetrically encrypted secret required to compute HMAC signatures.",
-    )
-    registered_webhook_url = models.CharField(
-        max_length=500,
+    kind = models.CharField(max_length=16, choices=WebhookTriggerAuthKind.choices)
+    secret = models.ForeignKey(
+        "Secret",
         null=True,
         blank=True,
-        help_text=(
-            "The full callback URL this credential's outbound setWebhook call "
-            "(Telegram only) last targeted. Lets a resync detect a genuine "
-            "tunnel URL change -- even one where the underlying WebhookTrigger "
-            "row is unchanged (e.g. the tunnel's domain rotated) -- vs. an "
-            "unrelated node resave, so ordinary resaves don't re-hit "
-            "Telegram's setWebhook endpoint and rotate the secret needlessly."
-        ),
+        on_delete=models.SET_NULL,
+        related_name="webhook_trigger_auths",
     )
+    registered_webhook_url = models.CharField(max_length=500, null=True, blank=True)
     registered_bot_api_key_secret_id = models.PositiveBigIntegerField(
+        null=True, blank=True
+    )
+    registered_secret_id = models.PositiveBigIntegerField(
         null=True,
         blank=True,
         help_text=(
-            "The Secret id of the `telegram_bot_api_key` this credential's "
-            "outbound setWebhook call (Telegram only) last targeted. Lets a "
-            "resync detect the node being repointed at a different Telegram "
-            "bot even when the URL/tunnel is unchanged, so the new bot still "
-            "gets a real setWebhook call instead of being skipped as "
-            "'already registered'."
+            "The `secret_id` this credential's outbound setWebhook call "
+            "(Telegram only) last targeted. The user can change `secret` at "
+            "any time via the trigger API -- comparing against this lets a "
+            "resync detect that change and re-push to Telegram, even when "
+            "the URL and bot key are both unchanged."
         ),
     )
 
-    telegram_trigger_node = models.OneToOneField(
-        "TelegramTriggerNode",
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="webhook_node_auth",
-    )
-    webhook_trigger_node = models.OneToOneField(
-        "WebhookTriggerNode",
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="webhook_node_auth",
-    )
+    @property
+    def header_name(self) -> str | None:
+        """`None` for `kind=twilio` -- that strategy has no `src/webhook`
+        header check (see `WebhookTriggerAuthKind.TWILIO`)."""
+        return self.HEADER_NAMES.get(self.kind)
 
     class Meta:
-        constraints = [
-            models.CheckConstraint(
-                condition=(
-                    models.Q(
-                        telegram_trigger_node__isnull=False,
-                        webhook_trigger_node__isnull=True,
-                    )
-                    | models.Q(
-                        telegram_trigger_node__isnull=True,
-                        webhook_trigger_node__isnull=False,
-                    )
-                ),
-                name="webhook_node_auth_exactly_one_node",
-            ),
-        ]
-
-    def verify_static_token(self, raw_token: str) -> bool:
-        """Verifies an incoming token against the stored hash."""
-        if not self.secret_hash:
-            return False
-        return check_password(raw_token, self.secret_hash)
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
-        node_id = self.telegram_trigger_node_id or self.webhook_trigger_node_id
-        return f"WebhookNodeAuth({self.scheme}) for node {node_id}"
+        return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"
 
 
 class WebhookTrigger(OrgScopedModel, models.Model):
@@ -233,7 +194,7 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(OrgScopedModel, models.Model):
+class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 
@@ -244,6 +205,10 @@ class RealtimeChannel(OrgScopedModel, models.Model):
     Designed to be extensible: add a new ChannelType and a corresponding
     detail model (e.g. WhatsAppChannel, TelegramChannel) following the
     same OneToOneField pattern as TwilioChannel.
+
+    `is_enabled` (and the `objects`/`enabled_objects` manager split) comes
+    from EnabledToggleFields -- see its docstring for why this is not
+    SoftDeleteFields.
     """
 
     class ChannelType(models.TextChoices):
@@ -254,6 +219,7 @@ class RealtimeChannel(OrgScopedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "realtime_channel"
+        default_manager_name = "objects"
 
     name = models.CharField(max_length=250)
     channel_type = models.CharField(
@@ -274,12 +240,14 @@ class RealtimeChannel(OrgScopedModel, models.Model):
         on_delete=models.SET_NULL,
         related_name="channels",
     )
-    is_active = models.BooleanField(default=True)
 
     def clean(self):
         # A channel answers to exactly one destination — either a staff
         # RealtimeAgent or a RealtimeAgentDefinition — never both.
-        if self.realtime_agent_id is not None and self.realtime_agent_definition_id is not None:
+        if (
+            self.realtime_agent_id is not None
+            and self.realtime_agent_definition_id is not None
+        ):
             raise ValidationError(
                 "A RealtimeChannel may have at most one destination set "
                 "(realtime_agent or realtime_agent_definition)."
@@ -287,6 +255,23 @@ class RealtimeChannel(OrgScopedModel, models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.channel_type})"
+
+    def save(self, *args, **kwargs) -> None:
+        super().save(*args, **kwargs)
+        token = self.token
+        transaction.on_commit(lambda: self._invalidate_realtime_channel_cache(token))
+
+    def delete(self, *args, **kwargs):
+        token = self.token
+        result = super().delete(*args, **kwargs)
+        transaction.on_commit(lambda: self._invalidate_realtime_channel_cache(token))
+        return result
+
+    @staticmethod
+    def _invalidate_realtime_channel_cache(token) -> None:
+        from tables.services.redis_service import RedisService
+
+        RedisService().publish_channel_invalidation(token)
 
     @property
     def webhook_token(self) -> str:
@@ -359,4 +344,3 @@ class TwilioChannel(models.Model):
                 "Use ngrok or a publicly accessible provider."
             )
         return None
-

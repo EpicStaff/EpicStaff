@@ -7,7 +7,6 @@ import { Directive, ElementRef, inject, input, OnDestroy, output } from '@angula
  */
 @Directive({
     selector: '[appDragHover]',
-    standalone: true,
     host: {
         '(dragenter)': 'scheduleHover()',
         '(dragover)': 'scheduleHover()',

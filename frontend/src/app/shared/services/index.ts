@@ -24,6 +24,7 @@ export * from './realtime-voices.service';
 export * from './secrets/secret-declaration-index.service';
 export * from './secrets/secrets-api.service';
 export * from './secrets/secrets-storage.service';
+export * from './section-height.service';
 export * from './sidebar-width.service';
 export * from './transcription-llms/transcription-config.service';
 export * from './transcription-llms/transcription-config-storage.service';

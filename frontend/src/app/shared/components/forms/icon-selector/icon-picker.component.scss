@@ -83,7 +83,7 @@
     background-color: var(--gray-850);
     border: 1px solid var(--gray-700);
     border-radius: 8px;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 16px var(--black-alpha-20);
     z-index: 10;
 }
 
@@ -121,10 +121,10 @@
     }
 
     &.selected {
-        background-color: var(--primary-100);
+        background-color: var(--purple-alpha-15);
 
         ::ng-deep app-icon svg {
-            fill: var(--primary-600);
+            fill: var(--accent-color);
         }
     }
 }
@@ -172,4 +172,41 @@
 
 .icon-picker-footer button:first-child {
     margin-right: 8px;
+}
+
+@keyframes icon-picker-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes icon-picker-fade-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+.icon-picker-enter {
+    animation: icon-picker-fade-in 200ms ease;
+}
+
+.icon-picker-leave {
+    animation: icon-picker-fade-out 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .icon-picker-enter,
+    .icon-picker-leave {
+        animation-duration: 1ms;
+    }
 }

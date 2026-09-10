@@ -26,8 +26,7 @@ class PasswordChangeTicketService:
 
     @property
     def ttl_seconds(self) -> int:
-        return settings.PASSWORD_CHANGE_TICKET_TTL_SECONDS
-
+        return settings.PASSWORD_CHANGE_TICKET_TTL
     def _redis(self):
         return get_redis_connection("default")
 

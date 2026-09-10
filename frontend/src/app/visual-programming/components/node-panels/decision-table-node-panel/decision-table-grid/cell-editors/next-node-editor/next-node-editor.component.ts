@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
@@ -14,37 +13,33 @@ interface NextNodeEditorParams extends ICellEditorParams {
 
 @Component({
     selector: 'app-next-node-editor',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="next-node-editor-popup">
-            <div
-                class="nne-list"
-                *ngIf="options.length > 0"
-            >
-                <div
-                    *ngFor="let option of options"
-                    class="nne-item"
-                    [class.nne-item-selected]="option.value === value"
-                    (click)="select(option.value)"
-                >
-                    {{ option.label }}
+            @if (options.length > 0) {
+                <div class="nne-list">
+                    @for (option of options; track option.value) {
+                        <div
+                            class="nne-item"
+                            [class.nne-item-selected]="option.value === value"
+                            (click)="select(option.value)"
+                        >
+                            {{ option.label }}
+                        </div>
+                    }
                 </div>
-            </div>
-            <div
-                class="nne-empty"
-                *ngIf="options.length === 0"
-            >
-                No other nodes available
-            </div>
-            <button
-                *ngIf="value"
-                type="button"
-                class="nne-clear"
-                (click)="select('')"
-            >
-                Clear
-            </button>
+            } @else {
+                <div class="nne-empty">No other nodes available</div>
+            }
+            @if (value) {
+                <button
+                    type="button"
+                    class="nne-clear"
+                    (click)="select('')"
+                >
+                    Clear
+                </button>
+            }
         </div>
     `,
     styles: [
@@ -83,8 +78,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
                 align-items: center;
                 cursor: pointer;
                 flex-shrink: 0;
-                font-size: 14px;
-                font-family: Inter, sans-serif;
+                font-size: 0.875rem;
                 color: var(--color-text-primary);
                 white-space: nowrap;
                 overflow: hidden;
@@ -100,8 +94,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
             .nne-empty {
                 padding: 12px 0;
                 text-align: center;
-                font-size: 13px;
-                font-family: Inter, sans-serif;
+                font-size: 0.8125rem;
                 color: rgba(217, 217, 222, 0.6);
             }
             .nne-clear {
@@ -115,8 +108,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
                 border: 1px solid var(--accent-color);
                 border-radius: 6px;
                 color: var(--accent-color);
-                font-size: 13px;
-                font-family: Inter, sans-serif;
+                font-size: 0.8125rem;
                 cursor: pointer;
                 box-shadow: none;
                 transition: background 0.15s;

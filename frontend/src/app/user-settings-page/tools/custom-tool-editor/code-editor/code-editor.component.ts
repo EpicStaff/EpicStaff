@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -15,6 +14,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { from, of, Subject, Subscription } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
@@ -30,11 +30,10 @@ const LINT_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-code-editor',
-    imports: [FormsModule, NgIf, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
+    imports: [FormsModule, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
     templateUrl: './code-editor.component.html',
     styleUrls: ['./code-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    standalone: true,
 })
 export class CodeEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
@@ -54,7 +53,7 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
 
     public editorLoaded = false;
 
-    public editorOptions = {
+    public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'python',
         automaticLayout: true,
@@ -62,7 +61,6 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
         scrollBeyondLastLine: false,
         wordWrap: 'on',
         wrappingIndent: 'indent',
-        wordWrapMinified: true,
         formatOnPaste: true,
         formatOnType: true,
         tabSize: 4,

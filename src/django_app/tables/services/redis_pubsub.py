@@ -9,23 +9,14 @@ import redis
 from django.db import close_old_connections, IntegrityError, models, transaction
 from loguru import logger
 
-from django_app.settings import (
-    CODE_RESULT_CHANNEL,
-    GRAPH_MESSAGE_UPDATE_CHANNEL,
-    GRAPH_MESSAGES_CHANNEL,
-    SCHEDULE_CHANNEL,
-    SESSION_STATUS_CHANNEL,
-    STORAGE_MUTATION_CHANNEL,
-    WEBHOOK_MESSAGE_CHANNEL,
-    REQUEST_WEBHOOK_UPDATE_CHANNEL,
-)
+from django.conf import settings
+
 from tables.models import (
     GraphSessionMessage,
     Session,
     SessionStorageFile,
     StorageFile,
 )
-from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
 from tables.models.session_models import SessionTrigger
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
@@ -37,7 +28,6 @@ from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
     StorageMutationEvent,
-    UNAUTHENTICATED_FALLBACK_PRINCIPAL,
     WebhookEventData,
 )
 
@@ -45,22 +35,20 @@ from src.shared.models import (
 class RedisPubSub:
     def __init__(self):
         self.handlers = {}
-        self.buffers = {GRAPH_MESSAGES_CHANNEL: deque(maxlen=1000)}
+        self.buffers = {settings.GRAPH_MESSAGES_CHANNEL: deque(maxlen=1000)}
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
         self.persistent_variables_service = PersistentVariablesService()
 
     @staticmethod
     def _create_redis_client() -> redis.Redis:
-        redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
-        redis_port = int(os.getenv("REDIS_PORT", 6379))
-        redis_password = os.getenv("REDIS_PASSWORD")
-        logger.debug(f"Redis host: {redis_host}")
-        logger.debug(f"Redis port: {redis_port}")
+        logger.debug(f"Redis host: {settings.REDIS_HOST}")
+        logger.debug(f"Redis port: {settings.REDIS_PORT}")
         return redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            password=redis_password,
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            username=settings.REDIS_USER,
+            password=settings.REDIS_PASSWORD,
             decode_responses=True,
         )
 
@@ -187,37 +175,6 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error handling storage_mutations message: {e}")
 
-    @staticmethod
-    def _parse_auth_principal(
-        auth_principal: str | None,
-    ) -> tuple[str | None, int | None] | None:
-        """Split `"<model-label-lower>:<pk>"` (e.g. `"tables.webhooktriggernode:17"`)
-        into `(label, pk)`.
-
-        Three non-error shapes:
-          - `None` -> `(None, None)`: no auth configured anywhere on this
-            path, today's unrestricted fan-out.
-          - `UNAUTHENTICATED_FALLBACK_PRINCIPAL` -> `(sentinel, None)`: must
-            be recognized here, before the `rsplit(":", 1)` below, since it
-            contains no `:` and would otherwise be misclassified as
-            malformed and dropped (fail-closed).
-          - `"<label>:<pk>"` -> `(label, pk)`: restrict dispatch to that one
-            node.
-        Anything else is unparseable -> `None` (caller fails closed).
-        """
-        if auth_principal is None:
-            return (None, None)
-
-        if auth_principal == UNAUTHENTICATED_FALLBACK_PRINCIPAL:
-            return (UNAUTHENTICATED_FALLBACK_PRINCIPAL, None)
-
-        try:
-            label, pk_str = auth_principal.rsplit(":", 1)
-            return (label, int(pk_str))
-        except (ValueError, AttributeError):
-            logger.error(f"Unparseable auth_principal: {auth_principal!r}")
-            return None
-
     def webhook_events_handler(self, message: dict):
         try:
             logger.debug("Received webhook event: {}", message)
@@ -228,69 +185,25 @@ class RedisPubSub:
 
         path = data.path.rstrip("/")
 
-        parsed = self._parse_auth_principal(data.auth_principal)
-        if parsed is None:
-            logger.error(
-                f"Dropping webhook event for path={path}: unparseable auth_principal"
+        try:
+            WebhookTriggerService().handle_webhook_trigger(
+                path=path,
+                payload=data.payload,
+                config_id=data.config_id,
             )
-            return
-        principal_label, principal_pk = parsed
+        except Exception:
+            logger.exception(
+                f"Error in generic webhook_trigger handling for path={path}"
+            )
 
-        if principal_label == UNAUTHENTICATED_FALLBACK_PRINCIPAL:
-            # Mixed-attach path: no credential matched, but at least one
-            # attached node has no enabled auth of its own. Restrict the
-            # generic webhook dispatch to only auth-free nodes; Telegram
-            # auth is mandatory and unconditional, so it always no-ops here
-            # (never treat this sentinel as unrestricted fan-out).
-            try:
-                WebhookTriggerService().handle_webhook_trigger(
-                    path=path,
-                    payload=data.payload,
-                    config_id=data.config_id,
-                    unauthenticated_only=True,
-                )
-            except Exception:
-                logger.exception(
-                    f"Error in generic webhook_trigger handling for path={path}"
-                )
-            try:
-                TelegramTriggerService().handle_telegram_trigger(
-                    path=path,
-                    payload=data.payload,
-                    config_id=data.config_id,
-                    unauthenticated_only=True,
-                )
-            except Exception:
-                logger.exception(
-                    f"Error in telegram_trigger handling for path={path}"
-                )
-            return
-
-        if principal_label is None or principal_label == WebhookTriggerNode._meta.label_lower:
-            try:
-                WebhookTriggerService().handle_webhook_trigger(
-                    path=path,
-                    payload=data.payload,
-                    config_id=data.config_id,
-                    node_id=principal_pk if principal_label is not None else None,
-                )
-            except Exception:
-                logger.exception(
-                    f"Error in generic webhook_trigger handling for path={path}"
-                )
-
-        if principal_label is None or principal_label == TelegramTriggerNode._meta.label_lower:
-            try:
-                TelegramTriggerService().handle_telegram_trigger(
-                    path=path,
-                    payload=data.payload,
-                    config_id=data.config_id,
-                    node_id=principal_pk if principal_label is not None else None,
-                )
-            except Exception:
-                logger.exception(
-                    f"Error in telegram_trigger handling for path={path}"
-                )
+        try:
+            TelegramTriggerService().handle_telegram_trigger(
+                path=path,
+                payload=data.payload,
+                config_id=data.config_id,
+            )
+        except Exception:
+            logger.exception(f"Error in telegram_trigger handling for path={path}")
 
     def request_webhook_update_handler(self, message: dict):
         try:
@@ -420,7 +333,7 @@ class RedisPubSub:
                 logger.warning(f"Session {session_id} was deleted")
                 return
 
-            buffer = self.buffers.setdefault(GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
+            buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
 
             if any(d.get("uuid") == message_uuid for d in buffer):
                 logger.warning("This message already proceeded")
@@ -457,7 +370,7 @@ class RedisPubSub:
 
             # Notify SSE about updates.
             self.redis_client.publish(
-                GRAPH_MESSAGE_UPDATE_CHANNEL,
+                settings.GRAPH_MESSAGE_UPDATE_CHANNEL,
                 json.dumps({"uuid": str(message_uuid), "session_id": session_id}),
             )
 
@@ -504,14 +417,14 @@ class RedisPubSub:
 
     def listen_for_redis_messages_worker(self):
         logger.info(f"Start worker {os.getpid()} listening for Redis messages...")
-        self.set_handler(SESSION_STATUS_CHANNEL, self.session_status_handler)
-        self.set_handler(CODE_RESULT_CHANNEL, self.code_results_handler)
-        self.set_handler(WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
+        self.set_handler(settings.SESSION_STATUS_CHANNEL, self.session_status_handler)
+        self.set_handler(settings.CODE_RESULT_CHANNEL, self.code_results_handler)
+        self.set_handler(settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
         self.set_handler(
-            REQUEST_WEBHOOK_UPDATE_CHANNEL, self.request_webhook_update_handler
+            settings.REQUEST_WEBHOOK_UPDATE_CHANNEL, self.request_webhook_update_handler
         )
-        self.set_handler(SCHEDULE_CHANNEL, self.schedule_channel_handler)
-        self.set_handler(STORAGE_MUTATION_CHANNEL, self.storage_mutations_handler)
+        self.set_handler(settings.SCHEDULE_CHANNEL, self.schedule_channel_handler)
+        self.set_handler(settings.STORAGE_MUTATION_CHANNEL, self.storage_mutations_handler)
 
         def inner_loop():
             while True:
@@ -522,7 +435,7 @@ class RedisPubSub:
     def cache_for_redis_messages_worker(self):
         """Saves to DB a bunch of data"""
         logger.info(f"Start worker {os.getpid()} caching for Redis messages...")
-        self.set_handler(GRAPH_MESSAGES_CHANNEL, self.graph_session_message_handler)
+        self.set_handler(settings.GRAPH_MESSAGES_CHANNEL, self.graph_session_message_handler)
 
         start_time = time.time()
 
@@ -530,7 +443,7 @@ class RedisPubSub:
             nonlocal start_time
             while True:
                 self.listen_for_messages()
-                buffer = self.buffers.get(GRAPH_MESSAGES_CHANNEL)
+                buffer = self.buffers.get(settings.GRAPH_MESSAGES_CHANNEL)
                 if buffer and time.time() - start_time >= 3:
                     self._flush_buffer()
                     start_time = time.time()
@@ -544,7 +457,7 @@ class RedisPubSub:
         by session_id, and bulk-saves each group. Clears the buffer afterwards.
         """
 
-        buffer = self.buffers.get(GRAPH_MESSAGES_CHANNEL)
+        buffer = self.buffers.get(settings.GRAPH_MESSAGES_CHANNEL)
 
         try:
             graph_session_message_list = [
@@ -600,7 +513,7 @@ class RedisPubSub:
             logger.warning(f"Root session {root_session_id} not found")
             return
 
-        buffer = self.buffers.setdefault(GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
+        buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
 
         all_messages = list(
             GraphSessionMessage.objects.filter(session_id=root_session_id).order_by(

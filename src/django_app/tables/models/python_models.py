@@ -2,7 +2,13 @@ from datetime import datetime
 
 from django.db import models
 
-from tables.models.base_models import ContentHashMixin
+from tables.models.base_models import (
+    ActiveManager,
+    ContentHashMixin,
+    SoftDeleteFields,
+    SoftDeleteMixin,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -17,7 +23,10 @@ class PythonCode(ContentHashMixin, models.Model):
         return list(filter(None, self.libraries.split(" ")))
 
 
-class PythonCodeTool(OrgScopedModel, models.Model):
+class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
     name = models.TextField()
     description = models.TextField()
     variables = models.JSONField(default=list, blank=True)
@@ -29,20 +38,27 @@ class PythonCodeTool(OrgScopedModel, models.Model):
     )
 
     class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
+                condition=models.Q(is_soft_deleted=False),
                 name="unique_pythoncodetool_name_per_org",
             ),
         ]
 
 
-class PythonCodeToolConfig(OrgScopedModel, models.Model):
+class PythonCodeToolConfig(OrgScopedModel, SoftDeleteFields):
     name = models.CharField(blank=False, null=False, max_length=255)
     tool = models.ForeignKey("PythonCodeTool", on_delete=models.CASCADE)
     configuration = models.JSONField(default=dict)
 
     class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         unique_together = (
             "org",
             "tool",

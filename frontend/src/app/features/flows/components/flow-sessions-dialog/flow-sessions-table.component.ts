@@ -42,7 +42,6 @@ import { getTriggerDisplay, TriggerDisplay } from './trigger-display.constants';
 import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.component';
 @Component({
     selector: 'app-flow-sessions-table',
-    standalone: true,
     imports: [
         CommonModule,
         CheckboxComponent,
@@ -86,16 +85,15 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                             >
                             </app-flow-session-status-filter-dropdown>
                         </th>
-                        <th
-                            class="col-flow"
-                            *ngIf="showFlowName"
-                        >
-                            <app-flow-name-filter-dropdown
-                                [flows]="flows"
-                                [value]="flowNameFilter"
-                                (valueChange)="flowNameFilterChange.emit($event)"
-                            ></app-flow-name-filter-dropdown>
-                        </th>
+                        @if (showFlowName) {
+                            <th class="col-flow">
+                                <app-flow-name-filter-dropdown
+                                    [flows]="flows"
+                                    [value]="flowNameFilter"
+                                    (valueChange)="flowNameFilterChange.emit($event)"
+                                ></app-flow-name-filter-dropdown>
+                            </th>
+                        }
                         <th class="col-trigger">
                             <app-trigger-filter-dropdown
                                 [value]="trigger"
@@ -153,7 +151,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                             </td>
                         </tr>
                     } @else {
-                        <ng-container *ngFor="let session of sessions; trackBy: trackById">
+                        @for (session of sessions; track trackById($index, session)) {
                             <tr [class.row-expanded]="!externalPreview && expandedSessionId() === session.id">
                                 <td
                                     class="col-select"
@@ -171,22 +169,21 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         [status]="session.status"
                                     ></app-flow-session-status-badge>
                                 </td>
-                                <td
-                                    *ngIf="showFlowName"
-                                    class="col-flow flow-link-td"
-                                >
-                                    <a
-                                        class="flow-link"
-                                        (click)="navigateToFlow(session.graph_id)"
-                                    >
-                                        <app-svg-icon
-                                            icon="flow"
-                                            size="14px"
-                                            class="flow-link-icon"
-                                        ></app-svg-icon>
-                                        <span class="flow-link-name">{{ session.graph_name }}</span>
-                                    </a>
-                                </td>
+                                @if (showFlowName) {
+                                    <td class="col-flow flow-link-td">
+                                        <a
+                                            class="flow-link"
+                                            (click)="navigateToFlow(session.graph_id)"
+                                        >
+                                            <app-svg-icon
+                                                icon="flow"
+                                                size="14px"
+                                                class="flow-link-icon"
+                                            ></app-svg-icon>
+                                            <span class="flow-link-name">{{ session.graph_name }}</span>
+                                        </a>
+                                    </td>
+                                }
                                 <td class="col-trigger">
                                     <span
                                         class="trigger-chip"
@@ -228,52 +225,52 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                                 class="arrow-icon"
                                             />
                                         </button>
-                                        <button
-                                            type="button"
-                                            class="icon-img-btn"
-                                            *ngIf="canStop(session.status)"
-                                            matTooltip="Stop session"
-                                            matTooltipPosition="above"
-                                            (click)="stopSession.emit(session.id)"
-                                        >
-                                            <img
-                                                src="assets/icons/ui/stop-session.svg"
-                                                alt="arrow-icon"
-                                                class="arrow-icon"
-                                            />
-                                        </button>
+                                        @if (canStop(session.status)) {
+                                            <button
+                                                type="button"
+                                                class="icon-img-btn"
+                                                matTooltip="Stop session"
+                                                matTooltipPosition="above"
+                                                (click)="stopSession.emit(session.id)"
+                                            >
+                                                <img
+                                                    src="assets/icons/ui/stop-session.svg"
+                                                    alt="arrow-icon"
+                                                    class="arrow-icon"
+                                                />
+                                            </button>
+                                        }
                                         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
-                                            <app-icon-button
-                                                *ngIf="!canStop(session.status)"
-                                                icon="x"
-                                                size="1.5rem"
-                                                ariaLabel="Delete session"
-                                                tooltip="Delete session"
-                                                (onClick)="deleteSelected.emit([session.id])"
-                                            ></app-icon-button>
+                                            @if (!canStop(session.status)) {
+                                                <app-icon-button
+                                                    icon="x"
+                                                    size="1.5rem"
+                                                    ariaLabel="Delete session"
+                                                    tooltip="Delete session"
+                                                    (onClick)="deleteSelected.emit([session.id])"
+                                                ></app-icon-button>
+                                            }
                                         </ng-container>
                                     </div>
                                 </td>
                             </tr>
-
-                            <tr
-                                *ngIf="!externalPreview && expandedSessionId() === session.id"
-                                class="preview-row"
-                            >
-                                <td
-                                    [attr.colspan]="colspan"
-                                    class="preview-cell"
-                                >
-                                    <div class="preview-content">
-                                        <app-graph-messages
-                                            [graphId]="flow?.id ?? session.graph_id"
-                                            [sessionId]="session.id.toString()"
-                                            [compact]="true"
-                                        ></app-graph-messages>
-                                    </div>
-                                </td>
-                            </tr>
-                        </ng-container>
+                            @if (!externalPreview && expandedSessionId() === session.id) {
+                                <tr class="preview-row">
+                                    <td
+                                        [attr.colspan]="colspan"
+                                        class="preview-cell"
+                                    >
+                                        <div class="preview-content">
+                                            <app-graph-messages
+                                                [graphId]="flow?.id ?? session.graph_id"
+                                                [sessionId]="session.id.toString()"
+                                                [compact]="true"
+                                            ></app-graph-messages>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
                     }
                 </tbody>
             </table>

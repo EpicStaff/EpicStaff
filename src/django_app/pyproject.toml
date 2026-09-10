@@ -1,54 +1,78 @@
-[tool.poetry]
+[project]
 name = "django-app"
-version = "0.1.0"
-description = "backend server"
-authors = ["Ihor Orlenko", "Maksym Yevstratiev"]
-readme = "README.md"
+version = "1.0.0"
+description = "The API gateway for EpicStaff"
+authors = [
+    { name = "EpicStaff" },
+    { name = "Ihor Orlenko" },
+    { name = "Maksym Yevstratiev" },
+    { name = "Artur Drohomeretskyi" },
+    { name = "Vitalii Povoroznyk" },
+    { name = "Bogdan Timchenko" },
+    { name = "Nikita Zaloha" },
+    { name = "Olga Mageria" },
+    { name = "Pavlo Nesteruk" },
+    { name = "Vasyl Cherkes" },
+    { name = "Yaroslav Artiushenko" },
+]
+requires-python = "==3.12.10"
+dependencies = [
+    "apscheduler==3.11.2",
+    "beautifulsoup4==4.14.3",
+    "boto3==1.42.80",
+    "channels-redis==4.3.0",
+    "channels==4.3.2",
+    "cryptography==50.0.1",
+    "django-cors-headers==4.6.0",
+    "django-filter==24.3",
+    "django-health-check==3.18.3",
+    "django-redis==5.4.0",
+    "django==5.1.14",
+    "djangorestframework-simplejwt==5.4.0",
+    "djangorestframework==3.16.0",
+    "drf-spectacular==0.29.0",
+    "gunicorn==23.0.0",
+    "jsonschema==4.25.1",
+    "litellm==1.85.1",
+    "loguru==0.7.3",
+    "pdfplumber==0.11.5",
+    "pgvector==0.3.6",
+    "psycopg2==2.9.12",
+    "pydantic==2.13.4",
+    "python-docx==1.1.2",
+    "redis==5.3.1",
+    "uvicorn==0.49.0",
+    "websockets==16.0",
+    "requests==2.34.2",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<3.13"
-Django = "5.1.7"
-djangorestframework = "3.16.0"
-djangorestframework-simplejwt = "5.4.0"
-psycopg2 = "2.9.10"
-django-filter = "24.3"
-django-cors-headers = "4.6.0"
-redis = "5.2.1"
-loguru = "0.7.3"
-pydantic = ">=2.10.5,<3.0.0"
-pgvector = "0.3.6"
-pdfplumber = "0.11.5"
-python-docx = "1.1.2"
-beautifulsoup4 = "4.13.3"
-django-health-check = "3.18.3"
-litellm = "1.75.7"
-django-redis = "5.4.0"
-uvicorn = "0.34.2"
-websockets = "16.0"
-gunicorn = "23.0.0"
-boto3 = "^1.35.0"
-drf-spectacular = "^0.29.0"
-apscheduler = "^3.10.4"
-channels = "^4.1"
-channels-redis = "^4.3.0"
-jsonschema = "^4.25.1"
-cryptography = "^46.0.3"
+[dependency-groups]
+dev = [
+    "fakeredis==2.32.0",
+    "pytest-asyncio==1.2.0",
+    "pytest-django==4.11.1",
+    "pytest-mock==3.15.1",
+    "pytest==8.4.2",
+]
+transitive-pins = [
+    "aiohttp==3.14.3",
+    "anyio==4.14.2",
+    "certifi==2026.7.22",
+    "charset-normalizer==3.4.7",
+    "idna==3.18",
+    "jinja2==3.1.6",
+    "pyjwt==2.13.0",
+    "python-dotenv==1.2.2",
+    "urllib3==2.7.0",
+    "yarl==1.24.5",
+]
+
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 pythonpath = [".", "../.."]
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.3"
-pytest-mock = "^3.14.0"
-pytest-django = "^4.9.0"
-pytest-asyncio = "^1.0.0"
-fakeredis = "^2.26.0"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
 
 [tool.ruff]
 select = ["E"]

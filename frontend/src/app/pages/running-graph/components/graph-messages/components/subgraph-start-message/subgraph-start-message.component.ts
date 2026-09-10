@@ -1,8 +1,6 @@
-import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
@@ -10,31 +8,22 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
 
 @Component({
     selector: 'app-subgraph-start-message',
-    standalone: true,
-    imports: [
-        CommonModule,
-        NgxJsonViewerModule,
-        AppSvgIconComponent,
-        CopyButtonComponent,
-        ViewNestedMessagesButtonComponent,
-    ],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, ViewNestedMessagesButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
-    animations: [expandCollapseAnimation],
     template: `
         <div class="subgraph-start-container">
             <div
                 class="subgraph-start-header"
                 (click)="toggleMessage()"
             >
-                <div
-                    class="play-arrow"
-                    *ngIf="hasContent()"
-                >
-                    <app-svg-icon
-                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                        size="1.1rem"
-                    />
-                </div>
+                @if (hasContent()) {
+                    <div class="play-arrow">
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
+                    </div>
+                }
                 <div class="icon-container">
                     <app-svg-icon
                         icon="hierarchy-2"
@@ -45,77 +34,76 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                     <span class="node-name">{{ message.name }}</span> subgraph started {{ subgraphName }}
                 </h3>
 
-                <app-view-nested-messages-button
-                    *ngIf="showViewNestedMessages"
-                    [count]="nestedMessagesCount"
-                    [isOpen]="isNestedMessagesOpen"
-                    (clicked)="viewNestedMessages.emit()"
-                ></app-view-nested-messages-button>
+                @if (showViewNestedMessages) {
+                    <app-view-nested-messages-button
+                        [count]="nestedMessagesCount"
+                        [isOpen]="isNestedMessagesOpen"
+                        (clicked)="viewNestedMessages.emit()"
+                    />
+                }
             </div>
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="subgraph-start-content">
                     <!-- Input Parameters Section -->
-                    <div
-                        class="input-container"
-                        *ngIf="hasInput()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleInputs($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Input Parameters
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="input-content">
-                                <app-copy-button [text]="inputJson" />
-                                <ngx-json-viewer
-                                    [json]="getInput()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasInput()) {
+                        <div class="input-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleInputs($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Input Parameters
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputsExpanded"
+                            >
+                                <div class="input-content">
+                                    <app-copy-button [text]="inputJson" />
+                                    <app-json-viewer
+                                        [json]="getInput()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Variables Section -->
-                    <div
-                        class="variables-container"
-                        *ngIf="hasVariables()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleVariables($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Variables
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="variables-content">
-                                <app-copy-button [text]="variablesJson" />
-                                <ngx-json-viewer
-                                    [json]="getVariables()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasVariables()) {
+                        <div class="variables-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleVariables($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Variables
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isVariablesExpanded"
+                            >
+                                <div class="variables-content">
+                                    <app-copy-button [text]="variablesJson" />
+                                    <app-json-viewer
+                                        [json]="getVariables()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- State History Section (commented out) -->
                     <!-- <div class="state-history-container" *ngIf="hasStateHistory()"> ... </div> -->
@@ -123,6 +111,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .subgraph-start-container {
@@ -170,7 +159,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             h3 {
                 color: var(--gray-100);
                 font-size: 1.1rem;
-                font-weight: 600;
+                font-weight: 500;
                 margin: 0;
             }
 
@@ -183,10 +172,6 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .subgraph-start-content {
@@ -262,7 +247,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             .item-index {
                 background-color: #00bfa5;
                 color: var(--gray-900);
-                font-weight: 600;
+                font-weight: 500;
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
                 font-size: 0.85rem;
