@@ -34,7 +34,7 @@
         border: none;
         outline: none;
         background: transparent;
-        font-size: 13px;
+        font-size: 0.8125rem;
         color: var(--color-text-primary);
 
         &::placeholder {
@@ -161,7 +161,7 @@
     color: var(--accent-color);
     font-size: 0.95em;
     margin-left: auto;
-    font-weight: bold;
+    font-weight: 700;
     display: flex;
     align-items: center;
     height: 18px;
@@ -172,8 +172,7 @@
     align-items: center;
     gap: 8px;
     padding: 6px 14px 4px;
-    font-family: 'inter';
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 400;
     color: var(--color-text-secondary);
     text-transform: uppercase;
@@ -182,7 +181,7 @@
     pointer-events: none;
 
     i {
-        font-size: 13px;
+        font-size: 0.8125rem;
     }
 
     &:hover {
@@ -209,9 +208,8 @@
     border: 1px solid var(--accent-color);
     border-radius: 6px;
     color: var(--accent-color);
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
     padding: 6.5px 12px;
     cursor: pointer;
     transition: background 0.15s;
@@ -234,9 +232,8 @@
     border: 1px solid var(--accent-color);
     border-radius: 6px;
     color: var(--accent-color);
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
     padding: 6.5px 12px;
     cursor: pointer;
     transition: background 0.15s;
@@ -251,9 +248,8 @@
     border: none;
     border-radius: 6px;
     color: var(--white);
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
     padding: 6.5px 12px;
     cursor: pointer;
 }

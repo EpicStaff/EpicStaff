@@ -1,16 +1,25 @@
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Wheels only. Installing from an sdist runs setup.py / a PEP 517 backend at
-# install time; a wheel does not. psycopg2 publishes no Linux wheel, so it is
-# the one audited exception -- a service that gains psycopg2 without adding it
-# here will fail the build rather than silently regain source execution.
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_INSTALLER_ONLY_BINARY=":all:" \
-    POETRY_INSTALLER_NO_BINARY="psycopg2" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache \
-    POETRY_REQUESTS_TIMEOUT=100 \
+# Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
+# sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
+# never executes arbitrary Python code. This service has two audited
+# exceptions, both carved out via UV_NO_BINARY_PACKAGE below: psycopg2
+# publishes no Linux wheel, and graphrag is a local first-party path dependency
+# with no wheel of its own -- a service that gains another dependency with no
+# Linux wheel will fail the build rather than silently regain source execution.
+#
+# UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
+# interpreter instead of using the digest-pinned base image above, silently
+# defeating that pin.
+RUN pip install --no-cache-dir uv==0.11.21
+
+ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE="psycopg2 graphrag" \
+    UV_PROJECT_ENVIRONMENT=/app/src/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -24,20 +33,17 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install updated pip, setuptools, wheel and poetry
-RUN pip install --upgrade pip setuptools wheel poetry
-
-# Enable installing via setuptools for legacy packages
-ENV PEP517_BUILD_BACKEND=setuptools.build_meta
-
-# Copy lockfiles first (better layer caching)
-COPY ./knowledge/pyproject.toml ./knowledge/poetry.lock ./
+# Copy only dependency descriptors first (better layer caching)
+COPY ./knowledge/pyproject.toml ./knowledge/uv.lock ./
 
 # Copy local libraries before install (required if pyproject.toml references them)
 COPY ./knowledge/libraries/ ./libraries
 
-# Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root
+# Install dependencies into /app/src/.venv.
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
+# image.
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
 # Pre-cache the gpt2 HF tokenizer (chonkie default chunker) and the tiktoken
 # encodings actually used at runtime (cl100k_base — GraphRAG's TiktokenTokenizer
@@ -46,8 +52,8 @@ RUN poetry install --no-ansi --no-root
 # into the runtime stage.
 ENV HF_HOME=/app/.cache/huggingface \
     TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
-RUN poetry run python -c "from tokenizers import Tokenizer; Tokenizer.from_pretrained('gpt2')" \
-    && poetry run python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+RUN /app/src/.venv/bin/python -c "from tokenizers import Tokenizer; Tokenizer.from_pretrained('gpt2')" \
+ && /app/src/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 # Copy application source
 COPY ./knowledge /app/src/knowledge
@@ -71,7 +77,7 @@ COPY --from=builder /app /app
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see docs/backend-runtime-fetch-audit.md item 7) — knowledge pulls in
-# litellm transitively via the graphrag poetry group.
+# litellm transitively via the graphrag uv dependency group.
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \

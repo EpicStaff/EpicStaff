@@ -42,6 +42,7 @@ x-communication-env: &communication-env
   SESSION_TIMEOUT_CHANNEL: ${SESSION_TIMEOUT_CHANNEL:?}
   CREWAI_OUTPUT_CHANNEL: ${CREWAI_OUTPUT_CHANNEL:?}
   REALTIME_AGENTS_SCHEMA_CHANNEL: ${REALTIME_AGENTS_SCHEMA_CHANNEL:?}
+  REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
 services:
@@ -142,10 +143,6 @@ services:
       DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
       REALTIME_DB_USER: ${REALTIME_DB_USER:?}
       REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
-      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:?}
-      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:?}
-      TWILIO_VOICE_AGENT_ID: ${TWILIO_VOICE_AGENT_ID:?}
-      TWILIO_VOICE_STREAM_URL: ${TWILIO_VOICE_STREAM_URL:?}
     networks:
       - backend-network
     depends_on:
@@ -394,7 +391,7 @@ services:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:-latest}
     container_name: webhook
     build:
       context: .

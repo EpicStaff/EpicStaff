@@ -195,6 +195,7 @@ $section-gutter: 22px;
             padding-top: 0;
             padding-bottom: 0;
             border-radius: 8px;
+            background-color: var(--color-background-body);
         }
     }
 }
@@ -267,7 +268,7 @@ $section-gutter: 22px;
     border-left: 2px solid var(--accent-color);
     border-radius: 4px;
     color: var(--accent-color);
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1.3;
 }
 
