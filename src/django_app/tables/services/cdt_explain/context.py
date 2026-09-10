@@ -92,6 +92,97 @@ def render_table(table: dict) -> str:
     return "\n".join(lines)
 
 
+def _render_computation_fields(block: dict) -> list[str]:
+    lines = _render_mapping("values it receives", block.get("input_map"))
+    path = block.get("output_variable_path")
+    lines.append(f"  result stored as: {path}" if path else "  result stored as: (not kept)")
+    libraries = block.get("libraries") or []
+    if libraries:
+        lines.append(f"  outside tools used: {', '.join(libraries)}")
+    lines.append("  code:")
+    lines.append(_truncate(block.get("code"), CODE_LIMIT))
+    return lines
+
+
+def _render_condition_fields(block: dict) -> list[str]:
+    enabled = block.get("enabled", True)
+    state = "enabled" if enabled else "DISABLED — never checked, nothing in it runs"
+    lines = [f"  rule: {block.get('rule_name')} (position {block.get('order')}, {state})"]
+    lines += _render_conditions(block)
+    on_match = block.get("on_match") or {}
+    prompt = on_match.get("prompt")
+    lines.append(f"  on match, runs the AI prompt: {prompt}" if prompt else "  on match, runs no AI prompt")
+    lines.append(
+        "  on match, changes stored values: yes"
+        if on_match.get("sets_variables")
+        else "  on match, changes stored values: no"
+    )
+    goes_to = on_match.get("goes_to")
+    if goes_to == "default_exit":
+        destination = "the table's default destination"
+    elif goes_to:
+        destination = f'"{goes_to}"'
+    else:
+        destination = "nowhere — nothing is connected, so the table's default destination applies"
+    lines.append(f"  on match, sends the work to: {destination}")
+    lines.append(f"  continue after match: {'on' if block.get('continue_after_match') else 'off'}")
+    if goes_to and goes_to != "default_exit":
+        lines.append(
+            "    (this rule has a destination, so the table stops here when it matches — "
+            "the continue setting has no effect)"
+        )
+    no_match = block.get("on_no_match")
+    lines.append(
+        "  if the test fails: the work goes to the table's default destination (no rule below can match)"
+        if no_match == "default_exit"
+        else "  if the test fails: the next rule is checked"
+    )
+    route_code = block.get("route_code")
+    if route_code:
+        lines.append(f"  outgoing connector label: {route_code} (a label only — it does not affect routing)")
+    return lines
+
+
+def _render_prompt_fields(block: dict) -> list[str]:
+    lines = [
+        f"  belongs to rule: {block.get('rule_name')} — runs only when that rule matches",
+        f"  prompt name: {block.get('prompt_key')}",
+        f"  answered by: {block.get('model') or 'Default LLM'}",
+        f"  answer stored as: {block.get('result_variable')}",
+    ]
+    mappings = block.get("result_mappings")
+    if mappings is None:
+        mappings = block.get("fills")
+    lines += _render_mapping("after the answer returns, these values are filled from its fields", mappings)
+    if block.get("answer_schema"):
+        lines.append("  the answer must come back as structured fields, not free text")
+    lines.append("  prompt text:")
+    lines.append(_truncate(block.get("text"), TEXT_LIMIT))
+    return lines
+
+
+def _render_manipulation_fields(block: dict) -> list[str]:
+    lines = [f"  belongs to rule: {block.get('rule_name')} — runs only when that rule matches"]
+    assignments = (block.get("assignments") or "").strip()
+    field_assignments = block.get("field_assignments") or {}
+    if assignments:
+        lines.append(f"  sets: {assignments}")
+    for name, value in field_assignments.items():
+        lines.append(f"  sets: @{name} = {value}")
+    if not assignments and not field_assignments:
+        lines.append("  sets: nothing — this rule changes no values when it matches")
+    return lines
+
+
+_KIND_RENDERERS = {
+    "pre_computation": _render_computation_fields,
+    "post_computation": _render_computation_fields,
+    "condition": _render_condition_fields,
+    "prompt": _render_prompt_fields,
+    "manipulation": _render_manipulation_fields,
+}
+
+
 def render_block(block: dict, position: int, total: int) -> str:
     kind = block.get("block")
     lines = [
@@ -99,81 +190,7 @@ def render_block(block: dict, position: int, total: int) -> str:
         f"  id: {block['id']}",
         f"  kind: {_KIND_LABELS.get(kind, kind)}",
     ]
-
-    if kind in ("pre_computation", "post_computation"):
-        lines += _render_mapping("values it receives", block.get("input_map"))
-        path = block.get("output_variable_path")
-        lines.append(f"  result stored as: {path}" if path else "  result stored as: (not kept)")
-        libraries = block.get("libraries") or []
-        if libraries:
-            lines.append(f"  outside tools used: {', '.join(libraries)}")
-        lines.append("  code:")
-        lines.append(_truncate(block.get("code"), CODE_LIMIT))
-
-    elif kind == "condition":
-        enabled = block.get("enabled", True)
-        state = "enabled" if enabled else "DISABLED — never checked, nothing in it runs"
-        lines.append(f"  rule: {block.get('rule_name')} (position {block.get('order')}, {state})")
-        lines += _render_conditions(block)
-        on_match = block.get("on_match") or {}
-        prompt = on_match.get("prompt")
-        lines.append(f"  on match, runs the AI prompt: {prompt}" if prompt else "  on match, runs no AI prompt")
-        lines.append(
-            "  on match, changes stored values: yes"
-            if on_match.get("sets_variables")
-            else "  on match, changes stored values: no"
-        )
-        goes_to = on_match.get("goes_to")
-        if goes_to == "default_exit":
-            destination = "the table's default destination"
-        elif goes_to:
-            destination = f'"{goes_to}"'
-        else:
-            destination = "nowhere — nothing is connected, so the table's default destination applies"
-        lines.append(f"  on match, sends the work to: {destination}")
-        lines.append(f"  continue after match: {'on' if block.get('continue_after_match') else 'off'}")
-        if goes_to and goes_to != "default_exit":
-            lines.append(
-                "    (this rule has a destination, so the table stops here when it matches — "
-                "the continue setting has no effect)"
-            )
-        no_match = block.get("on_no_match")
-        lines.append(
-            "  if the test fails: the work goes to the table's default destination (no rule below can match)"
-            if no_match == "default_exit"
-            else "  if the test fails: the next rule is checked"
-        )
-        route_code = block.get("route_code")
-        if route_code:
-            lines.append(f"  outgoing connector label: {route_code} (a label only — it does not affect routing)")
-
-    elif kind == "prompt":
-        lines.append(f"  belongs to rule: {block.get('rule_name')} — runs only when that rule matches")
-        lines.append(f"  prompt name: {block.get('prompt_key')}")
-        lines.append(f"  answered by: {block.get('model') or 'Default LLM'}")
-        lines.append(f"  answer stored as: {block.get('result_variable')}")
-        # `fills` is the old name for the same value; the handoff misdescribed it
-        # as an input map (contract D1). Accept both keys, label it correctly.
-        mappings = block.get("result_mappings")
-        if mappings is None:
-            mappings = block.get("fills")
-        lines += _render_mapping("after the answer returns, these values are filled from its fields", mappings)
-        if block.get("answer_schema"):
-            lines.append("  the answer must come back as structured fields, not free text")
-        lines.append("  prompt text:")
-        lines.append(_truncate(block.get("text"), TEXT_LIMIT))
-
-    elif kind == "manipulation":
-        lines.append(f"  belongs to rule: {block.get('rule_name')} — runs only when that rule matches")
-        assignments = (block.get("assignments") or "").strip()
-        field_assignments = block.get("field_assignments") or {}
-        if assignments:
-            lines.append(f"  sets: {assignments}")
-        for name, value in field_assignments.items():
-            lines.append(f"  sets: @{name} = {value}")
-        if not assignments and not field_assignments:
-            lines.append("  sets: nothing — this rule changes no values when it matches")
-
+    lines += _KIND_RENDERERS[kind](block)
     return "\n".join(lines)
 
 

@@ -1,24 +1,25 @@
 ### Condition blocks
 
-A condition block is the deciding part of one rule: the test, and everything that follows from the
-test passing.
+[Role & Objective]
+Explain the deciding part of one rule — the test, and everything that follows once it passes — in
+business terms, prioritizing routing outcomes over implementation quirks.
 
-- `expression` and `field_expressions` are the test. Combine them with **and** and describe the
-  resulting check once, in business terms. They often say the same thing twice — that is a quirk of
-  how the table is edited, not two separate checks. Both empty means the rule always matches, which
-  is worth saying outright.
-- `order` and `enabled` place the rule in the queue. Mention what is checked before it only when it
-  matters — a rule near the bottom is reached less often than the reader may assume.
-- `on_match.prompt` names an AI prompt that runs when the rule matches. Name it; the prompt's own
-  block explains what it asks.
-- `on_match.sets_variables` tells you the rule changes stored values when it matches. Say that it
-  does; the assignments block says what changes.
-- `on_match.goes_to` is where the work goes when this rule matches. This is the sentence the reader
-  most often came for, so do not bury it.
-- `continue_after_match` matters **only when `goes_to` is empty**. When there is a destination, the
-  table stops regardless, and saying otherwise is wrong. When there is no destination and continue is
-  off, the rule matches, does its work, and then hands over to the table's default destination.
-- `on_no_match` says what happens when the test fails: on to the next rule, or out to the default
-  destination because this was the last rule that could have matched.
-- `route_code` is the connector label only. You may name it as the outgoing connector. Never present
-  it as a reason the work goes anywhere.
+[Field-by-Field Rules]
+1. `expression` & `field_expressions` — the test. Combine with AND and describe the resulting check
+   once, in business terms. They often restate each other — a quirk of how the table is edited, not
+   two separate checks. Both empty means the rule always matches — say so outright.
+2. `order` & `enabled` — place the rule in the queue. Mention what runs before it only when it
+   matters (a rule near the bottom is reached less often than the reader may assume).
+3. `on_match.prompt` — the AI prompt that runs when the rule matches. Name it; its own block
+   explains what it asks.
+4. `on_match.sets_variables` — whether the rule changes stored values on match. Say that it does;
+   the assignments block says what changes.
+5. `on_match.goes_to` — where the work goes when this rule matches. This is usually the sentence the
+   reader most came for — do not bury it.
+6. `continue_after_match` — matters only when `goes_to` is empty. With a destination, the table
+   stops regardless of this setting. Without one, and continue off, the rule matches, does its work,
+   and hands over to the table's default destination.
+7. `on_no_match` — what happens when the test fails: on to the next rule, or out to the default
+   destination if this was the last rule that could have matched.
+8. `route_code` — the outgoing connector label only. You may name it as such; never present it as a
+   reason the work goes anywhere.
