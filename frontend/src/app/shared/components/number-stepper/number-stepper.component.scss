@@ -81,7 +81,6 @@
         border: none;
         color: var(--color-text-primary, #d9d9de);
         text-align: center;
-        font-family: 'Inter', sans-serif;
         outline: none;
 
         // Hide native number input spinners
@@ -114,8 +113,8 @@
         }
 
         &--lg {
-            font-size: 0.875rem;
-            font-weight: 400;
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
             padding: 0 0.75rem;
         }
     }
@@ -124,6 +123,5 @@
         margin-top: 0.25rem;
         font-size: 0.75rem;
         color: var(--crimson-500);
-        font-family: 'Inter', sans-serif;
     }
 }

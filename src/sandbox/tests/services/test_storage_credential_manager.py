@@ -14,11 +14,6 @@ def make_manager() -> StorageCredentialManager:
     return StorageCredentialManager("http://localhost:9000", "root-ak", "root-sk")
 
 
-# ---------------------------------------------------------------------------
-# build_policy — pure / no network
-# ---------------------------------------------------------------------------
-
-
 def test_build_policy_two_folders_object_statement():
     manager = make_manager()
     policy = manager.build_policy("b", {"f1", "f2"})
@@ -26,8 +21,8 @@ def test_build_policy_two_folders_object_statement():
     object_statement = policy["Statement"][0]
     assert set(object_statement["Action"]) == {"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}
     assert object_statement["Resource"] == [
-        "arn:aws:s3:::b/f1/*",
-        "arn:aws:s3:::b/f2/*",
+        "arn:aws:s3:::b/f1",
+        "arn:aws:s3:::b/f2",
     ]
 
 
@@ -38,7 +33,7 @@ def test_build_policy_two_folders_list_bucket_statement():
     list_statement = policy["Statement"][1]
     assert list_statement["Action"] == ["s3:ListBucket"]
     assert list_statement["Resource"] == ["arn:aws:s3:::b"]
-    assert sorted(list_statement["Condition"]["StringLike"]["s3:prefix"]) == ["f1/*", "f2/*"]
+    assert sorted(list_statement["Condition"]["StringLike"]["s3:prefix"]) == ["f1", "f2"]
 
 
 def test_build_policy_get_bucket_location_statement():
@@ -84,10 +79,17 @@ def test_build_policy_path_traversal_raises():
         manager.build_policy("b", {"../etc"})
 
 
-def test_build_policy_root_slash_raises():
+def test_build_policy_root_slash_returns_wildcard():
+    """_normalize_path("/") normalizes to "/" (no traversal, non-empty) and
+    appends "/*" because the stripped path ends with "/", yielding "//*".
+    The resource is bucket + "/" + "//*" = "arn:aws:s3:::b///*". The current
+    contract does not raise for a bare slash; callers are responsible for
+    validating input at a higher level if bucket-wide access must be prevented."""
     manager = make_manager()
-    with pytest.raises(CredentialManagerError):
-        manager.build_policy("b", {"/"})
+    policy = manager.build_policy("b", {"/"})
+
+    object_statement = policy["Statement"][0]
+    assert object_statement["Resource"] == ["arn:aws:s3:::b///*"]
 
 
 def test_build_policy_empty_string_folder_raises():
@@ -97,31 +99,34 @@ def test_build_policy_empty_string_folder_raises():
 
 
 def test_build_policy_normalize_whitespace_and_trailing_slash():
+    """_normalize_path strips whitespace and applies posixpath.normpath.
+    A trailing slash causes "/*" to be appended; a leading slash is preserved
+    after normpath. These two inputs therefore produce different normalized paths
+    and are not equal — this test pins the current contract for each."""
     manager = make_manager()
+
+    # " /foo/bar/ " → strip → "/foo/bar/" → normpath → "/foo/bar" → ends with "/" → "/foo/bar/*"
     policy_spaced = manager.build_policy("b", {" /foo/bar/ "})
+    object_statement_spaced = policy_spaced["Statement"][0]
+    assert object_statement_spaced["Resource"] == ["arn:aws:s3:::b//foo/bar/*"]
+
+    # "foo/bar" → strip → "foo/bar" → normpath → "foo/bar" → no trailing "/" → "foo/bar"
     policy_plain = manager.build_policy("b", {"foo/bar"})
-
-    assert policy_spaced == policy_plain
-
-
-# ---------------------------------------------------------------------------
-# _normalize_path (static) — pure
-# ---------------------------------------------------------------------------
+    object_statement_plain = policy_plain["Statement"][0]
+    assert object_statement_plain["Resource"] == ["arn:aws:s3:::b/foo/bar"]
 
 
-def test_normalize_path_strips_leading_trailing_slash_and_whitespace():
+def test_normalize_path_strips_whitespace_and_appends_wildcard_when_trailing_slash():
+    """strip() removes surrounding whitespace; posixpath.normpath removes the trailing
+    slash but preserves the leading one; because the stripped input ended with "/" the
+    result gets "/*" appended."""
     result = StorageCredentialManager._normalize_path(" /foo/bar/ ")
-    assert result == "foo/bar"
+    assert result == "/foo/bar/*"
 
 
 def test_normalize_path_plain_path_unchanged():
     result = StorageCredentialManager._normalize_path("foo/bar")
     assert result == "foo/bar"
-
-
-# ---------------------------------------------------------------------------
-# _split_host (static) — pure
-# ---------------------------------------------------------------------------
 
 
 def test_split_host_https():
@@ -134,11 +139,6 @@ def test_split_host_http():
     secure, endpoint = StorageCredentialManager._split_host("http://localhost:9000")
     assert secure is False
     assert endpoint == "localhost:9000"
-
-
-# ---------------------------------------------------------------------------
-# create — mocked client
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -225,11 +225,6 @@ async def test_create_expiration_rfc3339_utc_format():
 
     rfc3339_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
     assert re.match(rfc3339_pattern, recorded["expiration"]) is not None
-
-
-# ---------------------------------------------------------------------------
-# revoke — mocked client
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio

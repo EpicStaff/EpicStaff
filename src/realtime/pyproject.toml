@@ -1,55 +1,57 @@
-[tool.poetry]
-name = "backend"
-version = "0.1.0"
+[project]
+name = "realtime"
+version = "1.0.0"
 description = "FastAPI WebSocket Audio Backend"
-authors = ["Your Name <your.email@example.com>"]
-readme = "README.md"
-packages = [{include = "api", from = "src"}, {include = "ai", from = "src"}]
-package-mode = false
+authors = [
+    { name = "EpicStaff" },
+    { name = "Maksym Yevstratiev" },
+    { name = "Nikita Zaloha" },
+]
+requires-python = "==3.12.10"
+dependencies = [
+    "aiohttp==3.14.3",
+    "asyncpg==0.30.0",
+    "fastapi==0.141.1",
+    "google-genai==1.19.0",
+    "httpx==0.28.1",
+    "loguru==0.7.3",
+    "numpy==1.26.4",
+    "openai==1.58.1",
+    "psycopg2==2.9.12",
+    "pydantic-settings==2.12.0",
+    "pydantic[email]==2.13.4",
+    "python-dotenv==1.2.2",
+    "python-multipart==0.0.32",
+    "redis==5.3.1",
+    "sqlalchemy==2.0.49",
+    "tiktoken==0.9.0",
+    "uvicorn[standard]==0.49.0",
+    "websockets==13.1",
+]
 
+[dependency-groups]
+dev = [
+    "pytest-asyncio==0.23.0",
+    "pytest-cov==4.1.0",
+    "pytest==7.4.0",
+]
+transitive-pins = [
+    "anyio==4.14.2",
+    "certifi==2026.7.22",
+    "charset-normalizer==3.4.7",
+    "cryptography==50.0.1",
+    "idna==3.18",
+    "pyjwt==2.13.0",
+    "requests==2.34.2",
+    "urllib3==2.7.0",
+    "yarl==1.24.5",
+    "starlette==1.6.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-fastapi = "==0.120.1"
-uvicorn = {extras = ["standard"], version = "==0.49.0"}
-websockets = "13.1"
-python-multipart = "==0.0.32"
-openai = "1.58.1"
-python-dotenv = "==1.2.2"
-pydantic = {extras = ["email"], version = "==2.13.4"}
-loguru = "0.7.3"
-redis = "==5.3.1"
-httpx = "0.28.1"
-aiohttp = "==3.14.3"
-sqlalchemy = "==2.0.49"
-psycopg2 = "2.9.10"
-asyncpg = "0.30.0"
-tiktoken = "0.9.0"
-pydantic-settings = "^2.12.0"
-google-genai = ">=1.7.0,<1.20.0"
-numpy = "1.26.4"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "7.4.0"
-pytest-asyncio = "0.23.0"
-pytest-cov = "4.1.0"
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 # "." = src/realtime (resolves api, services, ai, ...)
 # "../.." = project root crewai-sheetsui (resolves src.shared)
 pythonpath = [".", "../.."]
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.group.secfloor.dependencies]
-urllib3 = "==2.7.0"
-requests = "==2.34.2"
-certifi = "==2026.7.22"
-cryptography = "==50.0.1"
-idna = "==3.18"
-pyjwt = "==2.13.0"
-charset-normalizer = "==3.4.7"
-yarl = "==1.24.5"
-anyio = "==4.14.2"
