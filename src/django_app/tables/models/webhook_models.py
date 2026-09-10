@@ -1,11 +1,15 @@
 import uuid
 from typing import Protocol
 
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 
-from tables.models.base_models import DefaultBaseModel
+from tables.models.base_models import (
+    EnabledToggleFields,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -95,7 +99,7 @@ class WebhookTriggerAuthKind(models.TextChoices):
     TWILIO = "twilio"
 
 
-class WebhookTriggerAuth(models.Model):
+class WebhookTriggerAuth(SoftDeleteFields):
     HEADER_NAMES = {
         WebhookTriggerAuthKind.WEBHOOK: "EPICSTAFF_API_KEY",
         WebhookTriggerAuthKind.TELEGRAM: "X-Telegram-Bot-Api-Secret-Token",
@@ -135,6 +139,11 @@ class WebhookTriggerAuth(models.Model):
         """`None` for `kind=twilio` -- that strategy has no `src/webhook`
         header check (see `WebhookTriggerAuthKind.TWILIO`)."""
         return self.HEADER_NAMES.get(self.kind)
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
         return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"
@@ -185,7 +194,7 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(OrgScopedModel, models.Model):
+class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 
@@ -196,6 +205,10 @@ class RealtimeChannel(OrgScopedModel, models.Model):
     Designed to be extensible: add a new ChannelType and a corresponding
     detail model (e.g. WhatsAppChannel, TelegramChannel) following the
     same OneToOneField pattern as TwilioChannel.
+
+    `is_enabled` (and the `objects`/`enabled_objects` manager split) comes
+    from EnabledToggleFields -- see its docstring for why this is not
+    SoftDeleteFields.
     """
 
     class ChannelType(models.TextChoices):
@@ -206,6 +219,7 @@ class RealtimeChannel(OrgScopedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "realtime_channel"
+        default_manager_name = "objects"
 
     name = models.CharField(max_length=250)
     channel_type = models.CharField(
@@ -226,7 +240,6 @@ class RealtimeChannel(OrgScopedModel, models.Model):
         on_delete=models.SET_NULL,
         related_name="channels",
     )
-    is_active = models.BooleanField(default=True)
 
     def clean(self):
         # A channel answers to exactly one destination — either a staff
@@ -242,6 +255,23 @@ class RealtimeChannel(OrgScopedModel, models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.channel_type})"
+
+    def save(self, *args, **kwargs) -> None:
+        super().save(*args, **kwargs)
+        token = self.token
+        transaction.on_commit(lambda: self._invalidate_realtime_channel_cache(token))
+
+    def delete(self, *args, **kwargs):
+        token = self.token
+        result = super().delete(*args, **kwargs)
+        transaction.on_commit(lambda: self._invalidate_realtime_channel_cache(token))
+        return result
+
+    @staticmethod
+    def _invalidate_realtime_channel_cache(token) -> None:
+        from tables.services.redis_service import RedisService
+
+        RedisService().publish_channel_invalidation(token)
 
     @property
     def webhook_token(self) -> str:

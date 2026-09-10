@@ -8,6 +8,7 @@ import {
     CustomInputComponent,
     SelectComponent,
     SelectItem,
+    ToggleSwitchComponent,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
 import { SecretsStorageService, WebhookTriggerService } from '@shared/services';
@@ -38,6 +39,7 @@ export interface AddEditChannelDialogData {
         SelectComponent,
         ButtonComponent,
         WebhookTriggerFieldComponent,
+        ToggleSwitchComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -101,7 +103,7 @@ export class AddEditChannelDialogComponent implements OnInit {
         this.form = this.fb.group({
             name: [ch?.name ?? '', Validators.required],
             realtime_agent_definition: [ch?.realtime_agent_definition ?? null],
-            is_active: [ch?.is_active ?? true],
+            is_enabled: [ch?.is_enabled ?? true],
             account_sid: [tw?.account_sid ?? '', Validators.required],
             auth_token_secret_id: [tw?.auth_token_secret_id ?? null, [Validators.required]],
             phone_number: [tw?.phone_number ?? ''],
@@ -161,7 +163,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                     name: v.name,
                     channel_type: 'twilio',
                     realtime_agent_definition: v.realtime_agent_definition ?? null,
-                    is_active: v.is_active,
+                    is_enabled: v.is_enabled,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
@@ -188,7 +190,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                     id: saved.id,
                     name: v.name,
                     realtime_agent_definition: v.realtime_agent_definition ?? null,
-                    is_active: v.is_active,
+                    is_enabled: v.is_enabled,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
@@ -197,7 +199,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                             ...saved,
                             name: v.name,
                             realtime_agent_definition: v.realtime_agent_definition ?? null,
-                            is_active: v.is_active,
+                            is_enabled: v.is_enabled,
                         });
                         this.channelService.channelsChanged$.next();
                         this.saveTwilioChannel(

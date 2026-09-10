@@ -1,5 +1,4 @@
 import asyncio
-import os
 import signal
 
 from db.config import AsyncSessionLocal
@@ -16,26 +15,30 @@ from services.audit_export_cleanup_service import (
 )
 from helpers.logger import logger
 
+import settings
 
-redis_service = RedisService()
+redis_service = RedisService(
+    settings.REDIS_HOST,
+    settings.REDIS_PORT,
+    settings.REDIS_USER,
+    settings.REDIS_PASSWORD,
+)
 redis_export_service = build_export_redis_client()
 
 session_repository = SessionRepository(AsyncSessionLocal)
 
 session_timeout_service = SessionTimeoutService(
     redis_service=redis_service,
-    session_schema_channel=os.environ.get("SESSION_SCHEMA_CHANNEL", "sessions:schema"),
-    session_timeout_channel=os.environ.get(
-        "SESSION_TIMEOUT_CHANNEL", "sessions:timeout"
-    ),
+    session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
+    session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
     session_repository=session_repository,
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
 export_cleanup_service = ExportCleanupService(
     redis_client=redis_export_service,
-    sweep_interval_seconds=int(os.environ.get("EXPORT_SWEEP_INTERVAL_SECONDS", 60)),
-    export_data_dir=os.environ.get("EXPORT_DATA_DIR", "/app/export_data"),
+    sweep_interval_seconds=settings.EXPORT_SWEEP_INTERVAL_SECONDS,
+    export_data_dir=settings.EXPORT_DATA_DIR,
 )
 
 

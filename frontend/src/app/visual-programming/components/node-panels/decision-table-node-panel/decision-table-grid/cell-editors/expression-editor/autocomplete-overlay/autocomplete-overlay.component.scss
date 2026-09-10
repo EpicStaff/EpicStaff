@@ -1,10 +1,10 @@
 :host {
     display: block;
     width: 280px;
-    background-color: #27272b;
-    border: 1px solid var(--color-divider-subtle, #333);
+    background-color: var(--graphite-800);
+    border: 1px solid var(--color-divider-subtle);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px var(--black-alpha-40);
     position: relative;
 }
 
@@ -33,10 +33,10 @@
     display: flex;
     align-items: center;
     padding: 8px 10px;
-    background-color: #1e1e20;
-    border-bottom: 1px solid var(--color-divider-subtle, #333);
-    font-size: 11px;
-    color: #888;
+    background-color: var(--graphite-878);
+    border-bottom: 1px solid var(--color-divider-subtle);
+    font-size: 0.6875rem;
+    color: var(--gray-540);
     overflow-x: auto;
     white-space: nowrap;
     gap: 4px;
@@ -52,20 +52,20 @@
         width: 22px;
         height: 22px;
         border-radius: 4px;
-        background: rgba(104, 95, 255, 0.15);
-        color: #685fff;
+        background: var(--purple-alpha-15);
+        color: var(--accent-color);
         cursor: pointer;
         transition: all 0.15s ease;
         flex-shrink: 0;
         margin-right: 4px;
 
         i {
-            font-size: 14px;
+            font-size: 0.875rem;
         }
 
         &:hover {
-            background: rgba(104, 95, 255, 0.3);
-            color: #fff;
+            background: var(--purple-alpha-30);
+            color: var(--white);
         }
     }
 
@@ -76,14 +76,14 @@
         transition: all 0.15s ease;
 
         &:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+            background: var(--white-alpha-10);
         }
     }
 
     .separator {
         margin: 0 2px;
-        color: #555;
+        color: var(--gray-555);
     }
 }
 
@@ -93,9 +93,9 @@
     padding: 4px;
     max-height: 220px;
     overflow-y: auto;
-    color: #d9d9de;
+    color: var(--fog-200);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
 
     li {
         padding: 8px 10px;
@@ -109,20 +109,20 @@
 
         &.active,
         &:hover {
-            background-color: rgba(104, 95, 255, 0.2);
-            color: #fff;
+            background-color: var(--purple-alpha-20);
+            color: var(--white);
 
             .drill-arrow {
-                background: rgba(104, 95, 255, 0.4);
-                color: #fff;
+                background: var(--purple-alpha-40);
+                color: var(--white);
             }
         }
 
         &.no-results {
-            color: #9ca3af;
+            color: var(--slate-460);
             font-style: normal;
             font-family: inherit;
-            font-size: 12px;
+            font-size: 0.75rem;
             justify-content: flex-start;
             cursor: default;
             padding: 12px 14px;
@@ -130,8 +130,8 @@
             line-height: 1.4;
 
             i {
-                font-size: 16px;
-                color: #685fff;
+                font-size: 1rem;
+                color: var(--accent-color);
                 flex-shrink: 0;
                 margin-top: 1px;
             }
@@ -142,7 +142,7 @@
 
             &:hover {
                 background-color: transparent;
-                color: #9ca3af;
+                color: var(--slate-460);
             }
         }
 
@@ -155,16 +155,16 @@
         }
 
         .item-key {
-            font-weight: 600;
-            color: #a5a5ff;
+            font-weight: 500;
+            color: var(--lavender-460);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .item-type {
-            font-size: 10px;
-            color: #666;
+            font-size: 0.625rem;
+            color: var(--gray-605);
             flex-shrink: 0;
         }
 
@@ -175,19 +175,19 @@
             width: 24px;
             height: 24px;
             border-radius: 4px;
-            background: rgba(255, 255, 255, 0.08);
-            color: #888;
+            background: var(--white-alpha-8);
+            color: var(--gray-540);
             cursor: pointer;
             transition: all 0.15s ease;
             flex-shrink: 0;
 
             i {
-                font-size: 16px;
+                font-size: 1rem;
             }
 
             &:hover {
-                background: #685fff;
-                color: #fff;
+                background: var(--accent-color);
+                color: var(--white);
                 transform: translateX(2px);
             }
         }
@@ -198,7 +198,7 @@
         width: 6px;
     }
     &::-webkit-scrollbar-thumb {
-        background: #444;
+        background: var(--gray-440);
         border-radius: 3px;
     }
     &::-webkit-scrollbar-track {

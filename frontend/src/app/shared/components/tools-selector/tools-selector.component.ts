@@ -427,8 +427,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                                 overflow: hidden;
 
                                 .tool-name {
-                                    font-size: 0.875rem;
-                                    font-weight: 500;
+                                    font-size: var(--text-body-medium-size);
+                                    font-weight: var(--text-body-medium-weight);
                                     color: var(--color-text-primary);
                                     margin-bottom: 0.25rem;
                                 }
@@ -461,8 +461,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     button {
                         padding: 0.5rem 1rem;
                         border-radius: 6px;
-                        font-size: 0.875rem;
-                        font-weight: 500;
+                        font-size: var(--text-body-medium-size);
+                        font-weight: var(--text-body-medium-weight);
                         cursor: pointer;
                         transition: all 0.2s ease;
 

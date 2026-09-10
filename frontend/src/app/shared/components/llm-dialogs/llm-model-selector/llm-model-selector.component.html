@@ -138,7 +138,7 @@
                                         @if (model.predefined && !model.is_visible) {
                                             <span class="model-selector__model-deprecated">Deprecated</span>
                                         }
-                                        @if (model.predefined === false || model.is_custom) {
+                                        @if (model.is_custom) {
                                             <app-icon-button
                                                 icon="edit"
                                                 size="2rem"

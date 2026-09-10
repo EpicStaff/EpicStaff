@@ -9,18 +9,20 @@ from helpers.logger import logger
 
 
 class RedisService:
-    def __init__(self):
+    def __init__(self, host: str, port: int, user: str = "", password: str = ""):
         self.aioredis_client = None
         self._retry = Retry(backoff=ExponentialBackoff(cap=3), retries=10)
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
 
     async def init_redis(self):
-        host = os.environ.get("REDIS_HOST", "localhost")
-        port = os.environ.get("REDIS_PORT", 6379)
-        password = os.environ.get("REDIS_PASSWORD")
         self.aioredis_client = await aioredis.from_url(
-            f"redis://{host}:{port}",
+            f"redis://{self.host}:{self.port}",
             retry=self._retry,
-            password=password,
+            username=self.user,
+            password=self.password,
         )
 
     async def async_subscribe(self, channel: str) -> PubSub:

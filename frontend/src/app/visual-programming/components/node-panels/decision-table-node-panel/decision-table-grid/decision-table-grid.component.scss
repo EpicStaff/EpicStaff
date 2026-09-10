@@ -20,12 +20,33 @@
 
     h3 {
         margin: 0;
-        color: #ffffffb3;
+        color: var(--white-alpha-70);
         font-size: 1rem;
         font-weight: 400;
         display: flex;
         align-items: center;
         gap: 0.4rem;
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            color: var(--accent-color);
+            background: var(--purple-alpha-10);
+            font-size: 0.75rem;
+            cursor: help;
+            transition:
+                background 0.2s ease,
+                color 0.2s ease;
+
+            &:hover {
+                color: var(--white);
+                background: var(--purple-alpha-35);
+            }
+        }
     }
 }
 
@@ -39,24 +60,29 @@
         }
 
         .ti-trash {
-            color: #ff3b30;
+            color: var(--red-410);
             font-size: 1.1rem;
             transition: all 0.2s ease;
             cursor: pointer;
         }
 
         .ti-trash:hover {
-            color: #ff5449 !important;
+            color: var(--red-415) !important;
             transform: scale(1.1);
         }
 
         .cell-warning {
-            background-color: rgba(255, 59, 48, 0.15) !important;
-            border: 1px solid #ff3b30 !important;
+            background-color: var(--red-410-alpha-15) !important;
+            border: 1px solid var(--red-410) !important;
         }
 
         // Fix for "No Rows To Show" message being cut off - only when empty
         &.empty-state {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
+            }
+
             .ag-overlay {
                 overflow: visible !important;
             }
@@ -82,6 +108,24 @@
                     margin: 0 !important;
                     height: auto !important;
                 }
+            }
+        }
+    }
+
+    // Handle autoHeight layout - let AG Grid handle overflow naturally
+    .ag-layout-auto-height {
+        .ag-center-cols-container,
+        .ag-center-cols-viewport {
+            min-height: 0px !important;
+        }
+    }
+
+    // When empty: min-height 150px
+    .decision-grid.empty-state {
+        .ag-layout-auto-height {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
             }
         }
     }

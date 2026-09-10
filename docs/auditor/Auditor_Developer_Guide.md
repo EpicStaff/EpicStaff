@@ -177,21 +177,21 @@ Remember `kind="session"`/`kind="node"` wrapper docs always have `status: null` 
 
 ## How to run the dev stack locally
 
-`opensearch` + `auditor` are gated behind the `audit` compose profile. Bring them up with the **full explicit chain** — a bare `docker compose up -d --build <service>` silently drops the dev override (port exposure, hot-reload mounts):
+`opensearch` + `auditor` are gated behind the `audit` compose profile, so a bare `docker compose up -d` skips them. Name them explicitly:
 
 ```bash
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up -d --build auditor opensearch
+docker compose -f docker-compose.yaml --env-file ./.env up -d --build auditor opensearch
 ```
 
-**If OpenSearch calls start 401-ing**, don't trust the literal value in `.dev.env` — an unescaped `$` in a password (e.g. `OPENSEARCH_PASSWORD=Q7$mR2!vK9@xP4`) gets partially stripped by compose's variable interpolation, so the real runtime value differs from the file. Get the actual value from inside the container before debugging further:
+**If OpenSearch calls start 401-ing**, don't trust the literal value in `.env` — an unescaped `$` in a password (e.g. `OPENSEARCH_PASSWORD=Q7$mR2!vK9@xP4`) gets partially stripped by compose's variable interpolation, so the real runtime value differs from the file. Get the actual value from inside the container before debugging further:
 
 ```bash
 docker compose exec auditor sh -lc 'echo $OPENSEARCH_PASSWORD'
 ```
 
-Use *that* value for manual `curl`s. (Fix at the source by escaping as `$$` in `.dev.env` if this keeps biting you.)
+Use *that* value for manual `curl`s. (Fix at the source by escaping as `$$` in `.env` if this keeps biting you.)
 
-A dev-only table browser (`opensearch-dashboards`, pgAdmin-equivalent, port `OPENSEARCH_DASHBOARDS_PORT` default 5601) is available under the same `audit` profile via `docker-compose.dev.yaml` — not present in prod.
+There is no `opensearch-dashboards` service in compose. To browse the indices ad-hoc, run the image directly against the `audit` network, mounting `src/auditor/dev/opensearch_dashboards.yml` as its config.
 
 ---
 

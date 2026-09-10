@@ -157,12 +157,12 @@ class TwilioService(metaclass=SingletonMeta):
             raise TwilioNotFoundError()
 
         try:
-            channel = RealtimeChannel.objects.select_related(
+            channel = RealtimeChannel.enabled_objects.select_related(
                 "twilio__webhook_trigger__ngrok", "twilio__webhook_trigger__localhost"
             ).get(token=token)
         except RealtimeChannel.DoesNotExist:
             logger.warning(
-                f"configure-webhook: channel not found for token={channel_token}"
+                f"configure-webhook: channel not found or disabled for token={channel_token}"
             )
             raise TwilioNotFoundError()
 

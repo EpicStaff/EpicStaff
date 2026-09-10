@@ -26,8 +26,8 @@
     }
 
     &__title {
-        font-size: 1.5rem;
-        font-weight: bold;
+        font-size: var(--text-h1-size);
+        font-weight: var(--text-h1-weight);
         color: var(--color-ks-button-activated);
         margin-bottom: 1rem;
     }
