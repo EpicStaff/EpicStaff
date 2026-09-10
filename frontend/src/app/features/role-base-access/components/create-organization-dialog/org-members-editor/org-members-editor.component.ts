@@ -160,17 +160,19 @@ export class OrgMembersEditorComponent implements OnInit {
 
         if (!isSuperadmin && !canReadRoles) return;
 
-        const params = canReadRoles ? { orgIds: [orgId!] } : {};
-        this.rolesService
-            .loadRoles(params)
+        const load$ = canReadRoles
+            ? this.rolesService.loadAssignableRoles(orgId!)
+            : this.rolesService.loadAssignableRoles();
+
+        load$
             .pipe(
                 catchError(() => EMPTY),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((res) => {
-                const assignableBuiltIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN);
+                const builtIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN);
                 const items: SelectItem[] = [
-                    ...assignableBuiltIns.map(roleToSelectItem),
+                    ...builtIns.map(roleToSelectItem),
                     ...(canReadRoles ? res.results.map(roleToSelectItem) : []),
                 ];
                 this.roleItems.set(items);

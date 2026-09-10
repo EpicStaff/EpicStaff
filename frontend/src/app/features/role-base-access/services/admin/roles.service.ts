@@ -75,6 +75,23 @@ export class RolesService implements StorageService {
             );
     }
 
+    loadAssignableRoles(orgId?: number): Observable<RolesListResponse> {
+        let params = new HttpParams().set('page_size', '200');
+        if (orgId !== undefined) {
+            params = params.set('assignable_org_ids', String(orgId));
+        }
+        return this.http.get<RolesListResponse>(this.apiUrl, {
+            params,
+            context: withCrossOrgPermission<RolesListResponse>(ResourceCode.Roles, ActionCode.Read, {
+                built_in_roles: [],
+                results: [],
+                count: 0,
+                next: null,
+                previous: null,
+            }),
+        });
+    }
+
     /** GET /api/admin/roles/{id}/ */
     getRoleById(id: number): Observable<GetRoleResponse> {
         return this.http.get<GetRoleResponse>(`${this.apiUrl}${id}/`);
