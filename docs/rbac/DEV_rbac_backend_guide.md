@@ -289,7 +289,19 @@ transactions with `SELECT FOR UPDATE`:
 
 - `assert_not_last_active_superadmin` / `assert_not_last_org_admin` /
   `assert_role_is_assignable` / `assert_batch_preserves_org_admin`
-  (`user_management_guards.py`)
+  (`user_management_guards.py`). `role_is_assignable` is the same rule as a
+  predicate, for the assignable-roles filter.
+- **the escalation ceiling** — `assert_within_ceiling`
+  (`services/rbac/permission_assert.py`) over
+  `EffectivePermissions.covers`: you cannot grant authority you do not hold.
+  One comparison, two call paths — authoring a custom role
+  (`RoleManagementService.create_role` / `update_role`, the bits written in) and
+  assigning any role (`MembershipManagementService.add_member` / `change_role`,
+  the bits it grants). It never inspects `is_built_in`, so built-in Org Admin
+  and an over-ceiling custom role are refused identically, and it compares only
+  the catalog's grantable action bits (`GRANTABLE_ACTION_BITS`) so ungranted
+  `use`/`list` seed data cannot block a legitimate grant. Superadmin bypasses
+  inside `covers`.
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
@@ -538,9 +550,10 @@ path — the default org is only for bootstrap and data migrations.
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
 | Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs / API keys |
 | Org management (list/read/rename permission-aware; create/deactivate superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
-| Membership management (cross-org, MEMBERSHIPS-gated) + assignable-user lookup | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
+| Membership management (cross-org, MEMBERSHIPS-gated, assignment ceiling) + assignable-user lookup | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
 | User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
-| Roles CRUD + ceiling + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Escalation ceiling (shared by authoring and assignment) | `services/rbac/permission_assert.py` (`assert_within_ceiling`), `services/rbac/effective_permissions.py` (`covers`, `bits_of`) |
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `services/rbac/api_key/management_service.py`, `views/api_key_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `services/rbac/permission_assert.py` |

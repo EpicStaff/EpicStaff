@@ -25,6 +25,7 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/admin/roles/` | CREATE in body `org_id` + ceiling |
 | PATCH | `/api/admin/roles/{id}/` | UPDATE in role's org + ceiling |
 | DELETE | `/api/admin/roles/{id}/` | DELETE in role's org |
+| GET | `/api/admin/roles/?assignable_org_ids=1,2` | same as list — filters to roles the caller may assign |
 
 ---
 
@@ -563,6 +564,66 @@ The same rule applies on `/api/admin/memberships/`,
 
 ---
 
+## The ceiling rule
+
+**You cannot grant authority you do not hold.** The rule applies wherever
+permissions are handed out, and it is the same comparison in both:
+
+| Where | What is compared |
+|---|---|
+| `POST` / `PATCH` `/api/admin/roles/` | the `permissions[]` being written into the role |
+| `POST` / `PATCH` `/api/admin/memberships/` | the permissions the assigned role grants |
+
+A grant is allowed when **every action it carries, on every resource type, is
+within the caller's own permissions in that organization**. Equality is allowed
+— an Org Admin can assign Org Admin. Exceeding it on any single resource is
+`403 permission_escalation_denied`. **Superadmin bypasses.**
+
+The rule **never looks at whether the role is built-in**. Promoting someone to
+the built-in Org Admin and assigning a custom role that exceeds you are refused
+identically. Built-in roles cannot be authored at all (see immutability below),
+so for them only the assignment side applies.
+
+Only the actions in the catalog's `actions[]` are compared. `use` and `list`
+exist in the `Permission` enum and appear in some built-in seeds, but they are
+not grantable through the catalog and nothing enforces them, so they are ignored
+here — otherwise dead seed data would refuse legitimate grants.
+
+**Consequence worth planning for.** A role holding only `memberships` and
+`roles` can assign **nothing**: every built-in grants workspace permissions such
+a role does not hold, so the ceiling refuses all of them. A role that must
+onboard people has to hold the permissions it hands out — typically the `read`
+action on the workspace resources — or be Org Admin.
+
+### Listing only what you can assign
+
+```
+GET /api/admin/roles/?assignable_org_ids=10
+GET /api/admin/roles/?assignable_org_ids=10,20
+```
+
+Comma-separated org ids, parsed exactly like `?org_ids=`. The response shape is
+**identical** to the unfiltered call (`count` / `next` / `previous` / `results`
+/ `built_in_roles`); only the rows narrow. Use it to populate a role picker so
+it never offers a role the write would refuse.
+
+- Omitting the parameter filters nothing — that is the roles **management** list,
+  where `ROLES.read` means "see roles", not "see roles I may assign".
+- `assignable_org_ids` also defines the org scope, so it supersedes `?org_ids=`
+  when both are sent.
+- Custom roles are compared against **their own** organization.
+- `built_in_roles` is one global list, so a built-in is included when it is
+  assignable in **at least one** requested org. **One org gives an exact answer;
+  several give a superset** — query per org when you need to know precisely
+  where a role is assignable.
+- The global **Superadmin** role is never included: it is not an assignable
+  membership role at all.
+- Superadmin callers get no filtering.
+- A malformed value → `400 org_context_required`; an org the caller cannot read
+  roles in → `403` for the whole request, the same fail-loud as `?org_ids=`.
+
+---
+
 ## Built-in immutability
 
 Built-in roles (`is_built_in: true`) can never be edited or deleted —
@@ -639,9 +700,15 @@ organization at all, and `?org_ids=` raises it for a forbidden org id.
 }
 ```
 
-Raised by `POST` / `PATCH` on `/api/admin/roles/` when the submitted
-`permissions[]` includes a bit the caller does not hold themselves in
-that org — the ceiling rule. Superadmin bypasses it.
+The **ceiling rule**, raised in the two places authority is handed out:
+
+- `POST` / `PATCH` on `/api/admin/roles/` — the submitted `permissions[]`
+  includes a bit the caller does not hold in that org (**authoring**);
+- `POST` / `PATCH` on `/api/admin/memberships/` — the role being
+  assigned grants a bit the caller does not hold in that org
+  (**assignment**).
+
+Superadmin bypasses both. See "The ceiling rule" below.
 
 ### `400 role_name_conflict`
 
