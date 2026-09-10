@@ -17,9 +17,8 @@ _SECRET_ID_SUFFIX = "_secret_id"
 _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
 
-# Third convention: `epicstaff_secret(<name>)` markers embedded in header string
-# values. The value keeps the marker in the persisted graph_schema; only the
-# resolve_payload copy (bound for Redis/upstream) gets the plaintext.
+# Third convention: `epicstaff_secret(<name>)` markers embedded in header
+# string values.
 _HEADER_FIELDS = frozenset({"extra_headers"})
 _SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
 
