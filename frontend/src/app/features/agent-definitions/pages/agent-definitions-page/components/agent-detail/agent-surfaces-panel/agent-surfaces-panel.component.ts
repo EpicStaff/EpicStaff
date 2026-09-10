@@ -201,8 +201,30 @@ export class AgentSurfacesPanelComponent {
     }
 
     onViewSummary(category: SurfaceCategoryId): void {
-        const surfaceIds = (this.surfacesByCategory().get(category) ?? []).map((s) => s.id);
+        const own = (this.surfacesByCategory().get(category) ?? []).map((s) => s.id);
+        const everyPlace = (this.surfacesByCategory().get('every-place') ?? []).map((s) => s.id);
+        const surfaceIds = [...new Set([...everyPlace, ...own])];
         if (surfaceIds.length) this.viewSummary.emit({ place: category, surfaceIds });
+    }
+
+    private readonly summaryAvailableByCategory = computed<Map<SurfaceCategoryId, boolean>>(() => {
+        const rows = this.defaultSurfaces();
+        const hasEveryPlace = rows.some((ds) => ds.place === 'all');
+        const map = new Map<SurfaceCategoryId, boolean>();
+        for (const category of this.categories) {
+            if (category.id === 'every-place') {
+                map.set(category.id, false);
+                continue;
+            }
+            const targetPlace = categoryToPlace(category.id);
+            const own = new Set(rows.filter((ds) => ds.place === targetPlace).map((ds) => ds.surface));
+            map.set(category.id, hasEveryPlace || own.size >= 2);
+        }
+        return map;
+    });
+
+    canViewSummary(category: SurfaceCategoryId): boolean {
+        return this.summaryAvailableByCategory().get(category) ?? false;
     }
 
     isShared(surface: Surface): boolean {
@@ -276,6 +298,8 @@ export class AgentSurfacesPanelComponent {
     }
 
     private readonly draftSurfaceCard = viewChild('draftSurfaceCard', { read: SurfaceCardComponent });
+
+    readonly anyDragActive = computed<boolean>(() => this.dragging() || this.surfaceDrag.isDragging());
 
     isDrafting(categoryId: SurfaceCategoryId): boolean {
         return this.draftCategoryId() === categoryId;

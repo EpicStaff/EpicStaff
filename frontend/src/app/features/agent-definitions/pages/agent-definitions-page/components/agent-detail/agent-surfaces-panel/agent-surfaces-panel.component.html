@@ -54,6 +54,7 @@
                                 [appCollapseOnOverflow]="true"
                                 collapseOnOverflowTarget=".surface-category__btn-label"
                                 collapseOnOverflowClass="surface-category__btn--icon-only"
+                                [disabled]="!canViewSummary(category.id)"
                                 (click)="onViewSummary(category.id)"
                             >
                                 <app-svg-icon
@@ -168,7 +169,7 @@
                     (cdkDropListDropped)="onSurfaceDropped($event, category.id)"
                     cdkDropList
                 >
-                    @if (categorySurfaces.length === 0 && !isDrafting(category.id)) {
+                    @if (categorySurfaces.length === 0 && !isDrafting(category.id) && !anyDragActive()) {
                         <p class="surface-category__empty">No surfaces detected. Create one up to get started.</p>
                     }
                     @for (surface of categorySurfaces; track surfaceTrackBy($index, surface)) {
