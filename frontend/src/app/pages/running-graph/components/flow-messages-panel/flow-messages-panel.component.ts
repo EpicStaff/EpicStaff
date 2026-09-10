@@ -21,6 +21,7 @@ import {
     GraphSessionStatus,
     isTerminalSessionStatus,
 } from '../../../../features/flows/services/flows-sessions.service';
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StopSessionButtonComponent } from '../../../../shared/components/buttons/stop-session-button/stop-session-button.component';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
@@ -55,7 +56,8 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     constructor(
         private readonly graphSessionService: GraphSessionService,
         private readonly cdr: ChangeDetectorRef,
-        private readonly router: Router
+        private readonly router: Router,
+        private readonly toast: ToastService
     ) {}
 
     public ngOnInit(): void {
@@ -117,6 +119,9 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
                             : s
                     );
                     this.cdr.markForCheck();
+                },
+                error: (err) => {
+                    this.toast.error(err.error?.detail || 'Failed to stop session');
                 },
             });
     }

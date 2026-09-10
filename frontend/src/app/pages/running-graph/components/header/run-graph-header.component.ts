@@ -91,7 +91,9 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
     ) {}
 
     public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['graphId'] && this.graphId != null && isFinite(this.graphId)) {
+        const graphIdChanged = !!changes['graphId'] && this.graphId != null && isFinite(this.graphId);
+        const sessionIdChanged = !!changes['sessionId'] && !changes['sessionId'].firstChange;
+        if (graphIdChanged || sessionIdChanged) {
             this.loadSessions();
         }
     }
