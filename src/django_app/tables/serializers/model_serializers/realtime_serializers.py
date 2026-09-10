@@ -26,7 +26,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from tables.services.secrets import secret_resolver
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):

@@ -27,7 +27,7 @@ from tables.serializers.base_serializer import (
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 
 

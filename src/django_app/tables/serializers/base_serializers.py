@@ -13,7 +13,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from rest_framework import serializers
 from utils.logger import logger
 

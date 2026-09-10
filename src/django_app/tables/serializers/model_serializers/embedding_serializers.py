@@ -8,7 +8,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueValidator,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.models.secret_models import Secret
 from tables.models.embedding_models import (
     EmbeddingConfig,

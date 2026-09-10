@@ -12,7 +12,7 @@ from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):

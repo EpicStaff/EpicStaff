@@ -11,6 +11,7 @@ from tables.models.graph_models import Graph, PythonNode
 from tables.models.python_models import PythonCode
 from tables.models.rbac_models import OrganizationUser, Role, RolePermission
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
 from tables.services.secrets.reference_guard import secret_reference_guard
 
@@ -18,7 +19,9 @@ NEUTRAL_CODE = "def main(**kwargs):\n    return 1\n"
 
 #: Fields deliberately left ungated. Each entry is ("SerializerClassName", "field_name")
 #: and must come with a written reason in a comment here explaining why an org-scoped
-#: secrets:USE gate does not apply to it.
+#: secrets:USE gate does not apply to it. A subclass that NARROWS its guarded fields via
+#: get_secret_reference_fields() lands here too: widening a path's coverage is free, but
+#: removing protection from one has to be justified in writing. See guide section 5.6.
 EXEMPT: set[tuple[str, str]] = set()
 
 #: Serializer classes it is fine for `_try_instantiate`/`_secret_fields_of` to be unable
@@ -54,7 +57,7 @@ MINIMUM_DISCOVERED_SECRET_FIELDS = 17
 
 
 def _all_serializer_classes():
-    """Every BaseSerializer subclass reachable once `tables.urls` has been imported."""
+    """Every production BaseSerializer subclass reachable once `tables.urls` has been imported."""
     from tables import urls  # noqa: F401  -- importing registers every serializer
 
     seen = set()
@@ -65,7 +68,12 @@ def _all_serializer_classes():
             if sub not in seen:
                 seen.add(sub)
                 stack.append(sub)
-    return seen
+    # `__subclasses__()` sees every serializer the interpreter has imported, which in a
+    # whole-suite run includes throwaway fixtures defined inside other test modules. Those
+    # are not API surface, and judging them would make this check's result depend on which
+    # test files happened to be collected first -- a deliberately-unguarded fixture in a
+    # sibling module would fail Check 1 below for a serializer no request can ever reach.
+    return {cls for cls in seen if not cls.__module__.startswith("tests.")}
 
 
 def _try_instantiate(serializer_class):
@@ -97,6 +105,18 @@ def _secret_fields_of(instance):
             yield name
 
 
+def _guarded_fields_of(instance):
+    """The guarded field names this serializer INSTANCE reports, honouring a per-path override."""
+    # Asked of the instance, not the class: SecretReferenceGuardMixin exposes
+    # get_secret_reference_fields() so a per-path subclass can narrow or widen what its
+    # siblings guard. Reading the class attribute here would let such an override slip
+    # outside both coverage checks below -- the exact silent-gap this file exists to close.
+    getter = getattr(instance, "get_secret_reference_fields", None)
+    if getter is not None:
+        return set(getter())
+    return set(getattr(instance, "secret_reference_fields", ()))
+
+
 # ---------------------------------------------------------------------------
 # Check 1 -- every Secret-targeting writable field is registered
 # ---------------------------------------------------------------------------
@@ -124,7 +144,7 @@ def test_every_secret_field_is_guarded_or_exempt():
             skipped.append(serializer_class.__name__)
             continue
 
-        guarded = set(getattr(serializer_class, "secret_reference_fields", ()))
+        guarded = _guarded_fields_of(instance)
         for name in fields:
             discovered.append(f"{serializer_class.__name__}.{name}")
             if name in guarded:
@@ -284,19 +304,25 @@ def test_guard_is_reached_through_every_guarded_serializers_validate(mocker):
         wraps=secret_reference_guard.assert_unchanged_or_permitted,
     )
 
-    guarded_classes = [
+    # Candidates are pre-filtered by class only to avoid instantiating every serializer
+    # in the project; whether each one is actually guarded is then asked of the INSTANCE,
+    # because get_secret_reference_fields() may differ from the class attribute per path.
+    # Carrying the mixin is enough to be a candidate even with an empty class attribute --
+    # otherwise a subclass that guards a field only via the override would never be checked.
+    candidates = [
         cls
         for cls in _all_serializer_classes()
-        if getattr(cls, "secret_reference_fields", ())
+        if issubclass(cls, SecretReferenceGuardMixin)
+        or getattr(cls, "secret_reference_fields", ())
     ]
-    assert guarded_classes, (
-        "No serializer declares secret_reference_fields -- discovery is broken."
-    )
 
     unreached = []
+    guarded_names = []
 
-    for serializer_class in sorted(guarded_classes, key=lambda c: c.__name__):
+    for serializer_class in sorted(candidates, key=lambda c: c.__name__):
         instance, error = _try_instantiate(serializer_class)
+        if instance is None and serializer_class.__name__ in KNOWN_SKIPS:
+            continue
         if instance is None:
             # A guarded serializer that cannot even be bare-instantiated is itself a
             # failure here -- there is no way to prove its guard is reachable, and
@@ -306,6 +332,10 @@ def test_guard_is_reached_through_every_guarded_serializers_validate(mocker):
                 f"{serializer_class.__name__} (could not instantiate: {error})"
             )
             continue
+
+        if not _guarded_fields_of(instance):
+            continue
+        guarded_names.append(serializer_class.__name__)
 
         spy.reset_mock()
         try:
@@ -324,8 +354,12 @@ def test_guard_is_reached_through_every_guarded_serializers_validate(mocker):
             unreached.append(serializer_class.__name__)
 
     print(
-        f"Guarded serializers checked ({len(guarded_classes)}): "
-        f"{sorted(c.__name__ for c in guarded_classes)}"
+        f"Guarded serializers checked ({len(guarded_names)}): {sorted(guarded_names)}"
+    )
+
+    assert guarded_names, (
+        "No serializer reported any guarded field -- discovery is broken, and every "
+        "assertion below would pass vacuously."
     )
 
     assert not unreached, (

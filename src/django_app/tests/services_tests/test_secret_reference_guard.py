@@ -9,7 +9,7 @@ from tables.models import Secret
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
 
 
@@ -194,3 +194,61 @@ class TestNarrowedSubclassFieldIsSkippedNotFatal:
         assert serializer.validate({"api_key_secret": secret_a}) == {
             "api_key_secret": secret_a
         }
+
+
+class _PerPathUnguardedSerializer(_GuardedSerializer):
+    """A per-path subclass that opts its own path out of the guard without touching its base."""
+
+    def get_secret_reference_fields(self):
+        """No field is guarded on this path."""
+        return ()
+
+
+class _PerPathWidenedSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    """A per-path subclass that guards a field its class attribute does not name."""
+
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
+
+    def get_secret_reference_fields(self):
+        """Guard the field on this path even though secret_reference_fields is empty."""
+        return ("api_key_secret_id",)
+
+
+@pytest.mark.django_db
+class TestPerPathFieldOverride:
+    """A subclass may diverge from its base's guarded-field list for its own request path."""
+
+    def test_subclass_may_opt_its_own_path_out(self, user_without_use, secret_a):
+        serializer = _PerPathUnguardedSerializer(
+            _Holder(),
+            data={"api_key_secret_id": secret_a.id},
+            context={"request": user_without_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_the_base_class_stays_guarded(self, user_without_use, secret_a):
+        # The point of the override is that it is scoped to the subclass: narrowing one
+        # request path must not quietly relax the path the base class still serves.
+        serializer = _GuardedSerializer(
+            _Holder(),
+            data={"api_key_secret_id": secret_a.id},
+            context={"request": user_without_use},
+        )
+        assert not serializer.is_valid()
+        assert "api_key_secret_id" in serializer.errors
+
+    def test_subclass_may_guard_a_field_its_class_attribute_omits(
+        self, user_without_use, secret_a
+    ):
+        serializer = _PerPathWidenedSerializer(
+            _Holder(),
+            data={"api_key_secret_id": secret_a.id},
+            context={"request": user_without_use},
+        )
+        assert not serializer.is_valid()
+        assert "api_key_secret_id" in serializer.errors

@@ -24,7 +24,7 @@ from tables.serializers.org_scoped_fields import (
 
 
 from ..utils.mixins import TagHandlingMixin
-from ..utils.secret_reference_guard import SecretReferenceGuardMixin
+from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeModelSerializer(serializers.ModelSerializer):

@@ -11,7 +11,7 @@ from tables.serializers.model_serializers.llm_serializers import (
 from tables.models.provider import Provider
 from tables.models.secret_models import Secret
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
-from tables.serializers.utils.secret_reference_guard import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class QuickstartSerializer(SecretReferenceGuardMixin, serializers.Serializer):
