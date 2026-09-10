@@ -22,7 +22,10 @@ DATABASE_DNS = env.dns(
     "DB_NAME",
 )
 
-MINIO_HOST = env.str("MINIO_HOST")
+MINIO_ENDPOINT = (
+    f"{'https' if env.bool('MINIO_SSL') else 'http'}://"
+    f"{env.str('MINIO_HOST')}:{env.int('MINIO_PORT')}"
+)
 MINIO_ACCESS_KEY = env.str("MINIO_USER")
 MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
 MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
