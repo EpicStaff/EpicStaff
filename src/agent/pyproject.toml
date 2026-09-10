@@ -1,43 +1,46 @@
-[tool.poetry]
+[project]
 name = "agent"
-version = "0.1.0"
+version = "1.0.0"
 description = "EpicStaff agent execution runtime"
-authors = ["EpicStaff"]
-package-mode = false
+authors = [
+    { name = "EpicStaff" },
+    { name = "Vitalii Povroznyk "},
+]
+requires-python = "==3.12.10"
+dependencies = [
+    "fastmcp==3.4.7",
+    "jsonschema==4.26.0",
+    "litellm==1.85.1",
+    "loguru==0.7.3",
+    "pydantic==2.13.4",
+    "redis==5.3.1",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12.10,<3.13"
-litellm = "==1.85.1"
-loguru = "0.7.3"
-redis = "==5.3.1"
-pydantic = "==2.13.4"
-jsonschema = "4.26.0"
-fastmcp = "==3.4.7"
+[dependency-groups]
+dev = [
+    "pytest-asyncio==1.4.0",
+    "pytest==9.0.3",
+]
+transitive-pins = [
+    "aiohttp==3.14.3",
+    "anyio==4.14.2",
+    "authlib==1.7.2",
+    "certifi==2026.7.22",
+    "charset-normalizer==3.4.7",
+    "cryptography==50.0.1",
+    "idna==3.18",
+    "jinja2==3.1.6",
+    "pyjwt==2.13.0",
+    "python-dotenv==1.2.2",
+    "python-multipart==0.0.32",
+    "requests==2.34.2",
+    "urllib3==2.7.0",
+    "uvicorn==0.49.0",
+    "yarl==1.24.5",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "9.0.3"
-pytest-asyncio = "1.4.0"
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-
-[build-system]
-requires = ["poetry-core==2.4.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.group.secfloor.dependencies]
-urllib3 = "==2.7.0"
-requests = "==2.34.2"
-jinja2 = "==3.1.6"
-certifi = "==2026.7.22"
-aiohttp = "==3.14.3"
-cryptography = "==50.0.1"
-python-dotenv = "==1.2.2"
-idna = "==3.18"
-pyjwt = "==2.13.0"
-charset-normalizer = "==3.4.7"
-yarl = "==1.24.5"
-anyio = "==4.14.2"
-authlib = "==1.7.2"
-uvicorn = "==0.49.0"
-python-multipart = "==0.0.32"
