@@ -131,7 +131,7 @@
     .expanded & {
         height: 100%;
         min-height: 0;
-        overflow: visible;
+        overflow: hidden;
         @include mixins.editor-pane-corner;
     }
 

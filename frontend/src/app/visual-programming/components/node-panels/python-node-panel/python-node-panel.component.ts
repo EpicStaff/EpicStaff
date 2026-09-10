@@ -300,7 +300,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                     flex: 1;
                     height: 100%;
                     min-height: 0;
-                    overflow: visible;
+                    overflow: hidden;
                     @include mixins.editor-pane-corner;
                 }
 
