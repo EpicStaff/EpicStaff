@@ -1,6 +1,6 @@
 ## Embedded assets (prebuilt epicchat-widget)
 
-The prebuilt EpicChat widget shipped at `frontend/public/epicchat-widget/` embeds third-party assets directly in its bundle files (they are not resolved via `frontend/package.json`, so the frontend npm section above does not cover them). This section is maintained by hand in `scripts/embedded-assets-notices.md` and re-stitched into this file by `scripts/merge-notices.py`.
+The prebuilt EpicChat widget shipped at `frontend/public/epicchat-widget/` embeds third-party assets directly in its bundle files (they are not resolved via `frontend/package.json`, so the frontend npm section above does not cover them). This section is maintained by hand in `frontend/scripts/embedded-assets-notices.md` and inlined into this file by `frontend/scripts/generate-third-party-notices.mjs`.
 
 Components were identified from license banners and bundler path comments inside the prebuilt files (`@license Angular v20.3.10`, `// node_modules/<pkg>/` markers, `SheetJS -- http://sheetjs.com`, and the base64 `@font-face` blocks in `styles.css`).
 
