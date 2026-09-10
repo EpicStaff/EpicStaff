@@ -5,8 +5,9 @@ import { generateUuid } from '@shared/utils';
 import { NodeType } from '../core/enums/node-type';
 import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
+import { CdtSection } from '../core/models/cdt-section.model';
 import { ConnectionModel } from '../core/models/connection.model';
-import { DecisionTableNodeModel, NodeModel } from '../core/models/node.model';
+import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
 import { FlowService } from './flow.service';
 
@@ -116,6 +117,9 @@ export class ClipboardService {
             const newData = oldNode.data ? JSON.parse(JSON.stringify(oldNode.data)) : oldNode.data;
             // DT next-node refs are repopulated below via FlowService.addConnection's hook
             this.clearDecisionTableNextNodeRefs(oldNode.type, newData);
+            // CDT sections must get fresh ids on paste so they don't collide with the
+            // copied node's sections within the same graph.
+            this.regenerateCdtSectionIds(oldNode.type, newData);
 
             const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type, newData);
 
@@ -197,6 +201,29 @@ export class ClipboardService {
         if (Array.isArray(table.condition_groups)) {
             for (const group of table.condition_groups) {
                 group.next_node = null;
+            }
+        }
+    }
+
+    private regenerateCdtSectionIds(type: NodeType, data: NodeModel['data'] | null): void {
+        if (type !== NodeType.CLASSIFICATION_TABLE || !data) return;
+
+        const table = (data as ClassificationDecisionTableNodeModel['data']).table;
+        if (!table) return;
+
+        const sections: CdtSection[] = Array.isArray(table.sections) ? table.sections : [];
+        if (sections.length === 0) return;
+
+        const idMap = new Map<string, string>();
+        table.sections = sections.map((section: CdtSection) => {
+            const newId = generateUuid();
+            idMap.set(section.id, newId);
+            return { ...section, id: newId };
+        });
+
+        if (Array.isArray(table.condition_groups)) {
+            for (const group of table.condition_groups) {
+                group.section = group.section ? (idMap.get(group.section) ?? null) : null;
             }
         }
     }

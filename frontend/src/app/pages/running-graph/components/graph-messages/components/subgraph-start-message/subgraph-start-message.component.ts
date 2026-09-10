@@ -4,10 +4,11 @@ import { JsonViewerComponent } from '@shared/components';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
+import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-button/view-nested-messages-button.component';
 
 @Component({
     selector: 'app-subgraph-start-message',
-    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, ViewNestedMessagesButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
         <div class="subgraph-start-container">
@@ -34,23 +35,11 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 </h3>
 
                 @if (showViewNestedMessages) {
-                    <button
-                        class="view-nested-button"
-                        type="button"
-                        (click)="onViewNestedMessages($event)"
-                        [class.show-nested-btn--open]="isNestedMessagesOpen"
-                    >
-                        {{ nestedMessagesCount }} messages
-                        <div
-                            class="play-nested-arrow"
-                            [class.play-nested-arrow--open]="isNestedMessagesOpen"
-                        >
-                            <app-svg-icon
-                                icon="caret-right-filled"
-                                size="1rem"
-                            />
-                        </div>
-                    </button>
+                    <app-view-nested-messages-button
+                        [count]="nestedMessagesCount"
+                        [isOpen]="isNestedMessagesOpen"
+                        (clicked)="viewNestedMessages.emit()"
+                    />
                 }
             </div>
 
@@ -304,52 +293,6 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 overflow: auto;
                 max-height: 300px;
             }
-
-            .view-nested-button {
-                margin-left: auto;
-                background-color: rgb(0, 191, 165);
-                color: rgb(255, 255, 255);
-                border: 2px solid rgba(0, 191, 165, 0.4);
-                border-radius: 6px;
-                padding: 0.5rem 0.75rem;
-                font-weight: 500;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 0.5rem;
-                white-space: nowrap;
-                flex-shrink: 0;
-                cursor: pointer;
-                transition:
-                    background-color 0.2s ease,
-                    border-color 0.2s ease;
-            }
-
-            .view-nested-button:hover {
-                background-color: transparent;
-                color: rgb(0, 191, 165);
-                border-color: rgb(0, 191, 165);
-            }
-
-            .show-nested-btn--open {
-                background-color: transparent;
-            }
-
-            .play-nested-arrow {
-                margin-top: 2px;
-                display: inline-block;
-                transform: rotate(0deg);
-                transition: transform 0.2s ease;
-                color: white;
-            }
-
-            .play-nested-arrow--open {
-                transition:
-                    transform 0.2s ease,
-                    color 0.2s ease;
-                transform: rotate(90deg);
-                color: rgb(0, 191, 165);
-            }
         `,
     ],
 })
@@ -375,11 +318,6 @@ export class SubgraphStartMessageComponent {
     toggleMessage(): void {
         if (!this.hasContent()) return;
         this.isMessageExpanded = !this.isMessageExpanded;
-    }
-
-    onViewNestedMessages(event: Event): void {
-        event.stopPropagation();
-        this.viewNestedMessages.emit();
     }
 
     toggleInputs(event: Event): void {

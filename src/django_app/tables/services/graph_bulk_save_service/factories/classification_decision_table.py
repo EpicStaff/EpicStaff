@@ -18,6 +18,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
 
     def preprocess_data(self, data: dict, payload_temp_ids: set) -> tuple[dict, dict]:
         condition_groups_data = data.pop("condition_groups", None)
+        sections_data = data.pop("sections", None)
 
         routing_errors: list[str] = []
         node_routing_refs: dict[str, NodeRef | None] = {}
@@ -63,6 +64,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
 
         extra = {
             "condition_groups": condition_groups_data,
+            "sections": sections_data,
             "node_routing_refs": node_routing_refs,
             "group_routing_refs": group_routing_refs,
             "routing_errors": routing_errors,
@@ -73,6 +75,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
         return ClassificationDecisionTableNodeSaveable(
             serializer,
             extra.get("condition_groups"),
+            extra.get("sections"),
             instance=instance,
         )
 
