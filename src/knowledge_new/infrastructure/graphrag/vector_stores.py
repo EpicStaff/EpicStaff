@@ -10,7 +10,7 @@ def create_vector_store_config(
     subdir: str | None = None,
     vector_size: int = 1536,
     type: str = "minio_lancedb",
-    host: str = settings.MINIO_HOST,
+    endpoint: str = settings.MINIO_ENDPOINT,
     bucket: str = settings.MINIO_BUCKET,
     access_key: str = settings.MINIO_ACCESS_KEY,
     secret_key: str = settings.MINIO_SECRET_KEY,
@@ -23,22 +23,22 @@ def create_vector_store_config(
         type=type,
         vector_size=vector_size,
         db_uri=db_uri,
-        host=host,
+        endpoint=endpoint,
         access_key=access_key,
         secret_key=secret_key,
     )
 
 
 def _build_storage_options(
-    host: str,
+    endpoint: str,
     access_key: str | None,
     secret_key: str | None,
 ) -> dict[str, str]:
-    secure = host.startswith("https")
+    secure = endpoint.startswith("https")
     return {
         "aws_access_key_id": access_key or "",
         "aws_secret_access_key": secret_key or "",
-        "aws_endpoint": host,
+        "aws_endpoint": endpoint,
         "allow_http": "false" if secure else "true",
     }
 
@@ -47,15 +47,15 @@ class MinioLanceDBVectorStore(LanceDBVectorStore):
     def __init__(
         self,
         *,
-        host: str | None = None,
+        endpoint: str | None = None,
         access_key: str | None = None,
         secret_key: str | None = None,
         storage_options: dict[str, str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if storage_options is None and host is not None:
-            storage_options = _build_storage_options(host, access_key, secret_key)
+        if storage_options is None and endpoint is not None:
+            storage_options = _build_storage_options(endpoint, access_key, secret_key)
         self._storage_options = storage_options
 
     def connect(self) -> None:

@@ -22,7 +22,7 @@ def create_storage_config(
     return StorageConfig(
         type="minio",
         prefix=prefix,
-        host=settings.MINIO_HOST,
+        endpoint=settings.MINIO_ENDPOINT,
         bucket=settings.MINIO_BUCKET,
         access_key=settings.MINIO_ACCESS_KEY,
         secret_key=settings.MINIO_SECRET_KEY,
@@ -35,7 +35,7 @@ class MinioStorage(Storage):
 
     def __init__(
         self,
-        host: str,
+        endpoint: str,
         bucket: str,
         prefix: str,
         encoding: str,
@@ -43,14 +43,14 @@ class MinioStorage(Storage):
         secret_key: str,
         **kwargs: Any,
     ) -> None:
-        self._host = host
+        self._endpoint = endpoint
         self._bucket = bucket
         self._prefix = prefix
         self._encoding = encoding
         self._access_key = access_key
         self._secret_key = secret_key
 
-        secure, endpoint = self._parse_host(self._host)
+        secure, endpoint = self._parse_endpoint(self._endpoint)
         self._client: Minio = Minio(
             endpoint=endpoint,
             secure=secure,
@@ -78,9 +78,9 @@ class MinioStorage(Storage):
         return object_name
 
     @staticmethod
-    def _parse_host(host: str):
-        protocol, endpoint = host.split("//")
-        return protocol == "https", endpoint
+    def _parse_endpoint(endpoint: str):
+        protocol, host_and_port = endpoint.split("//")
+        return protocol == "https", host_and_port
 
     def find(self, file_pattern: re.Pattern[str]) -> Iterator[str]:
         async def _collect() -> list[str]:
@@ -167,7 +167,7 @@ class MinioStorage(Storage):
             return self
 
         return MinioStorage(
-            host=self._host,
+            endpoint=self._endpoint,
             bucket=self._bucket,
             prefix=self._full_key(name),
             encoding=self._encoding,
