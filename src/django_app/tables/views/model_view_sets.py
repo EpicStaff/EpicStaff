@@ -218,6 +218,11 @@ from tables.services.rbac.permissions import (
 )
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.cdt_explain.service import CdtExplainService
+from tables.serializers.cdt_explain_serializers import (
+    CdtExplainRequestSerializer,
+    CdtExplainResponseSerializer,
+)
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
@@ -522,7 +527,11 @@ class PythonCodeToolViewSet(
     copy_service_class = PythonCodeToolCopyService
     copy_serializer_class = PythonCodeToolSerializer
 
-    queryset = PythonCodeTool.objects.all().select_related("python_code")
+    queryset = (
+        PythonCodeTool.objects.all()
+        .select_related("python_code")
+        .prefetch_related("python_code__secrets")
+    )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = PythonCodeToolFilter
@@ -710,7 +719,9 @@ class GraphViewSet(
             .prefetch_related(
                 Prefetch(
                     "python_node_list",
-                    queryset=PythonNode.objects.select_related("python_code"),
+                    queryset=PythonNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "file_extractor_node_list", queryset=FileExtractorNode.objects.all()
@@ -722,14 +733,26 @@ class GraphViewSet(
                 Prefetch("edge_list", queryset=Edge.objects.all()),
                 Prefetch(
                     "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code"),
+                    queryset=ConditionalEdge.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "webhook_trigger_node_list",
-                    queryset=WebhookTriggerNode.objects.all(),
+                    queryset=WebhookTriggerNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()
+                ),
+                Prefetch(
+                    "classification_decision_table_node_list",
+                    queryset=ClassificationDecisionTableNode.objects.select_related(
+                        "pre_python_code", "post_python_code"
+                    ).prefetch_related(
+                        "pre_python_code__secrets", "post_python_code__secrets"
+                    ),
                 ),
                 Prefetch(
                     "subgraph_node_list",
@@ -1584,7 +1607,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     def end(self, request):
         """Mark a RealtimeAgentChat as ended.
 
-        Called server-to-server by the `realtime`/`voice_app` services
+        Called server-to-server by the `realtime` service
         (`voice_call_service._patch_agent_chat`) once a call ends. That caller
         has no logged-in user/org context and identifies the target chat by
         its opaque `connection_key` alone, so this action cannot be scoped
@@ -1671,7 +1694,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     def lookup_by_token(self, request):
         """Resolve a channel by its unique `token`, unscoped by org.
 
-        Used only by the `realtime`/`voice_app` services to route an inbound
+        Used only by the `realtime` service to route an inbound
         Twilio call (POST /voice/{token}) to the right agent — that caller has
         no logged-in user and cannot supply `X-Organization-Id`. The token
         itself (an unguessable UUID) is the lookup/authorization key, so the
@@ -1769,7 +1792,7 @@ class ConversationRecordingViewSet(
     - An authenticated org member (JWT) or a self-issued USER API key, sending
       `X-Organization-Id` as usual — org-scoping is enforced via
       `_assert_parent_in_active_org` exactly like any other child resource.
-    - The `realtime`/`voice_app` services (`voice_call_service._post_recording`),
+    - The `realtime` service (`voice_call_service._post_recording`),
       authenticated with a `key_type=SYSTEM` API key, once a call ends. That
       caller has no logged-in user/org context and can never supply
       `X-Organization-Id`, and identifies its target purely by the opaque
@@ -1819,7 +1842,7 @@ class ConversationRecordingViewSet(
                 )
             serializer.validated_data["rt_agent_chat"] = rt_agent_chat
 
-        # A trusted SYSTEM API key (the realtime/voice_app services) has no
+        # A trusted SYSTEM API key (the realtime service) has no
         # X-Organization-Id to check against — skip the org assertion for it,
         # same trust boundary as RealtimeAgentChatViewSet.end. Any other
         # caller (JWT session or a self-issued USER key) still goes through
@@ -2032,9 +2055,15 @@ class ClassificationDecisionTableNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "export": Permission.EXPORT}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "export": Permission.EXPORT,
+        "explain": Permission.READ,
+    }
     org_filter_path = "graph__org_id"
-    queryset = ClassificationDecisionTableNode.objects.all()
+    queryset = ClassificationDecisionTableNode.objects.select_related(
+        "pre_python_code", "post_python_code"
+    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets")
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
@@ -2042,6 +2071,7 @@ class ClassificationDecisionTableNodeModelViewSet(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._node_service = ClassificationDecisionTableNodeService()
+        self._explain_service = CdtExplainService()
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -2089,6 +2119,34 @@ class ClassificationDecisionTableNodeModelViewSet(
         response = HttpResponse(result.content, content_type=result.content_type)
         response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
         return response
+
+    @extend_schema(
+        request=CdtExplainRequestSerializer,
+        responses={200: CdtExplainResponseSerializer},
+        description=(
+            "Generate plain-language explanations of one or more steps of this "
+            "Classification Decision Table. Send a single block to explain one step, "
+            "or every block to explain them all. Step content is read from the request "
+            "body, not the database, so unsaved panel edits are explained as shown."
+        ),
+    )
+    @action(detail=True, methods=["post"], url_path="explain")
+    def explain(self, request, pk=None):
+        serializer = CdtExplainRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self._explain_service.explain(
+            pk=pk,
+            org_id=self.get_active_org_id(),
+            llm_config_id=data["llm_config"],
+            table=data["table"],
+            blocks=data["blocks"],
+        )
+        return Response(
+            {"explanations": result.explanations, "failures": result.failures},
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(
@@ -2518,7 +2576,12 @@ class SecretViewSet(
     def usage(self, request, pk=None):
         """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
-        return Response(secret_usage_service.summary(secret=secret))
+        effective = PermissionResolver().resolve(
+            user=request.user, org_id=self.get_active_org_id()
+        )
+        return Response(
+            secret_usage_service.summary(secret=secret, effective=effective)
+        )
 
 
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):

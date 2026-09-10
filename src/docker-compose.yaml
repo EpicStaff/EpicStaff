@@ -57,8 +57,8 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
-      DJANGO_DB_USER: ${DB_USER:?}
-      DJANGO_DB_PASSWORD: ${DB_PASSWORD:?}
+      DB_USER: ${DB_USER:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
       DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}

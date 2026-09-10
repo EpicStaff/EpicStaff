@@ -12,9 +12,12 @@ from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class McpToolSerializer(serializers.ModelSerializer):
+class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_secret_id",)
+
     auth_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="auth_secret",
