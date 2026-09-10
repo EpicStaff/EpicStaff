@@ -1,34 +1,37 @@
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache \
-    POETRY_REQUESTS_TIMEOUT=100 \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
+# Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
+# sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
+# never executes arbitrary Python code. A service that gains a dependency with
+# no Linux wheel will fail the build rather than silently regain source
+# execution.
+#
+# UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
+# interpreter instead of using the digest-pinned base image above, silently
+# defeating that pin.
+RUN pip install --no-cache-dir uv==0.11.21
+
+ENV UV_NO_BUILD=1 \
+    UV_PROJECT_ENVIRONMENT=/app/src/knowledge/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app/src
 
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
-    g++ \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Copy only dependency descriptors first (better layer caching)
+COPY ./knowledge_new/pyproject.toml ./knowledge_new/uv.lock ./knowledge/
 
-# Install updated pip, setuptools, wheel and poetry
-RUN pip install --upgrade pip setuptools wheel poetry
+WORKDIR /app/src/knowledge
 
-# Enable installing via setuptools for legacy packages
-ENV PEP517_BUILD_BACKEND=setuptools.build_meta
-
-# Copy lockfiles first (better layer caching)
-COPY ./knowledge_new/pyproject.toml ./knowledge_new/poetry.lock ./
-
-# Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root
+# Install dependencies into /app/src/knowledge/.venv.
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
+# image.
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
 # Copy application source
 COPY ./knowledge_new /app/src/knowledge
@@ -37,18 +40,25 @@ COPY ./shared /app/src/shared
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
-# libpq-dev are required for psycopg2 https://www.psycopg.org/docs/install.html
+# libpq-dev is required for psycopg https://www.psycopg.org/docs/install.html
 RUN apt-get update && apt-get install -y libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built app from builder
 COPY --from=builder /app /app
 
-# Add virtualenv to PATH
-ENV PATH="/app/src/.venv/bin:$PATH" \
-    PYTHONPATH=/app \
+# Add virtualenv to PATH.
+# PYTHONSAFEPATH=1 stops Python from adding the process CWD to sys.path: nltk's
+# import-security hook (nltk>=3.9) refuses to import `regex` while the CWD is
+# searchable. That also drops the implicit path entry the app relied on to find
+# its top-level modules (main, bootstrap, settings, ...), so /app/src/knowledge
+# is added to PYTHONPATH explicitly; /app stays on the path for `src.shared`.
+ENV PATH="/app/src/knowledge/.venv/bin:$PATH" \
+    PYTHONPATH=/app:/app/src/knowledge \
+    PYTHONSAFEPATH=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/app/src/knowledge/.venv
 
 WORKDIR /app/src/knowledge
 
