@@ -47,6 +47,7 @@
     min-height: 0;
     overflow: hidden;
     display: flex;
+    background: var(--background-tertiary-60, rgba(21, 21, 21, 0.6));
 }
 
 .doc-editor {
@@ -62,6 +63,14 @@
         width: 100% !important;
         height: 100% !important;
     }
+
+    ::ng-deep .monaco-editor,
+    ::ng-deep .monaco-editor .overflow-guard,
+    ::ng-deep .monaco-editor .monaco-editor-background,
+    ::ng-deep .monaco-editor .margin,
+    ::ng-deep .monaco-editor-background {
+        background: transparent !important;
+    }
 }
 
 .doc-rendered {
@@ -70,6 +79,6 @@
     overflow-y: auto;
     padding: 1rem 1.875rem;
     color: var(--color-text-primary);
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     line-height: 1.6;
 }
