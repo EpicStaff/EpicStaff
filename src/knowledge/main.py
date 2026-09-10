@@ -1,6 +1,7 @@
 import functools
 import asyncio
 import json
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
@@ -387,6 +388,9 @@ async def searching(
 
 async def main():
     """Runs both tasks concurrently"""
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
+
     redis_service = RedisService(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,

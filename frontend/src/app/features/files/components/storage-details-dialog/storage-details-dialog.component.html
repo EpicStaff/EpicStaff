@@ -23,7 +23,7 @@
                 @if (data.type !== 'folder') {
                     <div class="storage-details-dialog__cell">
                         <span class="storage-details-dialog__label">Size</span>
-                        <span class="storage-details-dialog__value">{{ sizeLabel }}</span>
+                        <span class="storage-details-dialog__value">{{ sizeBytes | fileSize: 'auto' }}</span>
                     </div>
                     <div class="storage-details-dialog__cell">
                         <span class="storage-details-dialog__label">Type</span>
