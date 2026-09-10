@@ -44,7 +44,6 @@
                         tooltipText="The AI provider and model this configuration will use"
                         [provider]="ModelTypes.LLM"
                         [required]="true"
-                        (modelChanged)="onModelChanged($event)"
                     />
                     <app-validation-errors [control]="llmForm.get('model')!" />
                 </div>
@@ -64,6 +63,7 @@
                         placeholder="Enter a custom name"
                         tooltipText="A friendly name to identify this configuration across the app"
                         [required]="true"
+                        autocomplete="off"
                     />
                     <app-validation-errors [control]="llmForm.get('custom_name')!" />
                 </div>
