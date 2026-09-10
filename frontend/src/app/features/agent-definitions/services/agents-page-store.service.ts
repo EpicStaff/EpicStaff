@@ -457,6 +457,48 @@ export class AgentsPageStore {
         this.assignSurfaceToAgent(surfaceId, agentId, category ? categoryToPlace(category) : 'all');
     }
 
+    setSharedSurfacesInCategory(surfaceIds: number[], agentId: number, category: SurfaceCategoryId): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent) return;
+
+        const place = categoryToPlace(category);
+        const shared = this.sharedSurfaceIdSet();
+        const wanted = new Set(surfaceIds);
+        const rows: AgentDefaultSurface[] = [];
+
+        for (const ds of agent.default_surfaces) {
+            if (!shared.has(ds.surface)) {
+                rows.push(ds);
+                continue;
+            }
+            if (ds.place === place) {
+                if (wanted.has(ds.surface)) rows.push(ds);
+                continue;
+            }
+            if (place !== 'all' && ds.place === 'all' && wanted.has(ds.surface)) continue;
+            rows.push(ds);
+        }
+
+        for (const surfaceId of wanted) {
+            if (!shared.has(surfaceId)) continue;
+            if (rows.some((ds) => ds.surface === surfaceId && ds.place === place)) continue;
+            if (place === 'all') {
+                const kept = rows.filter((ds) => ds.surface !== surfaceId);
+                rows.length = 0;
+                rows.push(...kept);
+            }
+            rows.push({ surface: surfaceId, place });
+        }
+
+        const key = (list: AgentDefaultSurface[]) =>
+            list
+                .map((ds) => `${ds.surface}:${ds.place}`)
+                .sort()
+                .join('|');
+        if (key(rows) === key(agent.default_surfaces)) return;
+        this.patchAgentDefaultSurfaces(agentId, rows);
+    }
+
     dropSharedSurfaceOnAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;

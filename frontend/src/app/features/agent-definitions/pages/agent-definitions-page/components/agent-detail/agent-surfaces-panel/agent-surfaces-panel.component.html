@@ -65,12 +65,13 @@
                         }
                         <app-select-dropdown
                             mode="list"
-                            selectionMode="single"
+                            selectionMode="multiple"
                             searchPlaceholder="Search shared surface..."
                             emptyText="No shared surfaces available"
-                            [minPanelWidth]="280"
-                            [items]="addableSharedFor(category.id)"
-                            [selected]="[]"
+                            [minPanelWidth]="420"
+                            [items]="sharedItemsFor()"
+                            [selected]="attachedSharedFor(category.id)"
+                            [checkedTip]="sharedTipFor(category.id)"
                             (selectionChange)="onAddFromShared($event, category.id)"
                         >
                             <button

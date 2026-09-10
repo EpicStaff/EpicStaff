@@ -129,7 +129,7 @@ export class AgentDetailComponent implements OnInit {
     readonly openBootDoc = output<void>();
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
+    readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();

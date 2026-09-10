@@ -70,7 +70,7 @@ export class AgentSurfacesPanelComponent {
     surfaceCreateErrorTick = input<number>(0);
 
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
+    readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
@@ -209,25 +209,55 @@ export class AgentSurfacesPanelComponent {
         return this.sharedSurfaceIds().has(surface.id);
     }
 
-    // Per-category "Add From Shared" list. Concrete blocks exclude a surface that already
-    // has that place or 'all'; Every-Place excludes anything assigned at all (so we never
-    // create an 'all'+concrete combination).
-    addableSharedFor(category: SurfaceCategoryId): SelectDropdownListItem<number>[] {
+    private readonly sharedItems = computed<SelectDropdownListItem<number>[]>(() => {
         const shared = this.sharedSurfaceIds();
-        const targetPlace = categoryToPlace(category);
         return this.surfaces()
-            .filter((s) => {
-                if (!shared.has(s.id)) return false;
-                const rows = this.placesForSurface(s.id);
-                if (category === 'every-place') return rows.length === 0;
-                return !rows.some((p) => p === targetPlace || p === 'all');
-            })
+            .filter((s) => shared.has(s.id))
             .map((s) => ({ name: s.name, value: s.id }));
+    });
+
+    private readonly attachedSharedByCategory = computed<Map<SurfaceCategoryId, number[]>>(() => {
+        const shared = this.sharedSurfaceIds();
+        const map = new Map<SurfaceCategoryId, number[]>();
+        for (const category of this.categories) {
+            const targetPlace = categoryToPlace(category.id);
+            map.set(
+                category.id,
+                this.defaultSurfaces()
+                    .filter((ds) => shared.has(ds.surface) && ds.place === targetPlace)
+                    .map((ds) => ds.surface)
+            );
+        }
+        return map;
+    });
+
+    private readonly tipResolvers = new Map<SurfaceCategoryId, (value: unknown) => string | null>();
+
+    sharedItemsFor(): SelectDropdownListItem<number>[] {
+        return this.sharedItems();
+    }
+
+    attachedSharedFor(category: SurfaceCategoryId): number[] {
+        return this.attachedSharedByCategory().get(category) ?? [];
+    }
+
+    sharedTipFor(category: SurfaceCategoryId): (value: unknown) => string | null {
+        const cached = this.tipResolvers.get(category);
+        if (cached) return cached;
+        const resolver = (value: unknown): string | null => {
+            if (typeof value !== 'number' || category === 'every-place') return null;
+            const places = this.placesForSurface(value);
+            if (!places.includes('all')) return null;
+            const label = this.categories.find((c) => c.id === category)?.label ?? '';
+            return `Place in Only ${label}`;
+        };
+        this.tipResolvers.set(category, resolver);
+        return resolver;
     }
 
     onAddFromShared(values: unknown[], category: SurfaceCategoryId): void {
-        const id = values[0] as number | undefined;
-        if (id != null) this.addFromShared.emit({ surfaceId: id, category });
+        const surfaceIds = values.filter((v): v is number => typeof v === 'number');
+        this.setSharedInCategory.emit({ surfaceIds, category });
     }
 
     onDragStarted(): void {

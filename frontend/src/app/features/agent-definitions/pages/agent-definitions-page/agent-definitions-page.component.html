@@ -206,9 +206,9 @@
                             (createSurface)="
                                 store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
                             "
-                            (addFromShared)="
-                                store.attachSharedSurfaceToAgent(
-                                    $event.surfaceId,
+                            (setSharedInCategory)="
+                                store.setSharedSurfacesInCategory(
+                                    $event.surfaceIds,
                                     store.selectedAgent()!.id,
                                     $event.category
                                 )
@@ -243,9 +243,9 @@
                             (createSurface)="
                                 store.createSurfaceForAgent(store.surfacesOnlyAgent()!.id, $event.body, $event.place)
                             "
-                            (addFromShared)="
-                                store.attachSharedSurfaceToAgent(
-                                    $event.surfaceId,
+                            (setSharedInCategory)="
+                                store.setSharedSurfacesInCategory(
+                                    $event.surfaceIds,
                                     store.surfacesOnlyAgent()!.id,
                                     $event.category
                                 )
