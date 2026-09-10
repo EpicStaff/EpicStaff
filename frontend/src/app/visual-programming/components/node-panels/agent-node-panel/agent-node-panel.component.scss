@@ -67,7 +67,7 @@
 }
 
 .form-layout.expanded:not(.form-collapsed) app-column-resize-divider {
-    @include mixins.resize-divider-bleed;
+    @include mixins.resize-divider-bleed($v-gap: 1.25rem);
 }
 
 .field {
@@ -248,7 +248,7 @@
     @include mixins.editor-pane-corner;
 
     .expanded:not(.form-collapsed) & {
-        @include mixins.editor-pane-bleed;
+        @include mixins.editor-pane-bleed($v-gap: 1.25rem);
     }
 
     &__header {
