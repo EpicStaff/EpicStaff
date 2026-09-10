@@ -1,16 +1,24 @@
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Wheels only. Installing from an sdist runs setup.py / a PEP 517 backend at
-# install time; a wheel does not. psycopg2 publishes no Linux wheel, so it is
-# the one audited exception -- a service that gains psycopg2 without adding it
-# here will fail the build rather than silently regain source execution.
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_INSTALLER_ONLY_BINARY=":all:" \
-    POETRY_INSTALLER_NO_BINARY="psycopg2" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache \
-    POETRY_REQUESTS_TIMEOUT=100 \
+# Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
+# sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
+# never executes arbitrary Python code. psycopg2 publishes no Linux wheel, so
+# it is the one audited exception in this repo, carved out via
+# UV_NO_BINARY_PACKAGE below -- a service that gains another dependency with no
+# Linux wheel will fail the build rather than silently regain source execution.
+#
+# UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
+# interpreter instead of using the digest-pinned base image above, silently
+# defeating that pin.
+RUN pip install --no-cache-dir uv==0.11.21
+
+ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE=psycopg2 \
+    UV_PROJECT_ENVIRONMENT=/app/src/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -24,17 +32,14 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install updated pip, setuptools, wheel and poetry
-RUN pip install --upgrade pip setuptools wheel poetry
+# Copy only dependency descriptors first (better layer caching)
+COPY ./realtime/pyproject.toml ./realtime/uv.lock ./
 
-# Enable installing via setuptools for legacy packages
-ENV PEP517_BUILD_BACKEND=setuptools.build_meta
-
-# Copy lockfiles first (better layer caching)
-COPY ./realtime/pyproject.toml ./realtime/poetry.lock ./
-
-# Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root
+# Install dependencies into /app/src/.venv.
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
+# image.
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
 # Pre-cache the tiktoken encoding used by the chat-buffer tokenizer
 # (utils/tokenizer.py -> tiktoken.encoding_for_model, hardcoded default
@@ -43,7 +48,7 @@ RUN poetry install --no-ansi --no-root
 # must live under /app since nothing outside it is copied into the runtime
 # stage below.
 ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
-RUN poetry run python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
+RUN /app/src/.venv/bin/python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
 
 # Copy application source
 COPY ./realtime /app/src/realtime

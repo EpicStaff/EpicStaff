@@ -1,32 +1,38 @@
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Wheels only. Installing from an sdist runs setup.py / a PEP 517 backend at
-# install time; a wheel does not. psycopg2 publishes no Linux wheel, so it is
-# the one audited exception -- a service that gains psycopg2 without adding it
-# here will fail the build rather than silently regain source execution.
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_INSTALLER_ONLY_BINARY=":all:" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache \
-    POETRY_REQUESTS_TIMEOUT=100 \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
+# Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
+# sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
+# never executes arbitrary Python code. A service that gains a dependency with
+# no Linux wheel (psycopg2 is the audited exception elsewhere in this repo, via
+# UV_NO_BINARY_PACKAGE) will fail the build rather than silently regain source
+# execution.
+#
+# UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
+# interpreter instead of using the digest-pinned base image above, silently
+# defeating that pin.
+RUN pip install --no-cache-dir uv==0.11.21
+
+ENV UV_NO_BUILD=1 \
+    UV_PROJECT_ENVIRONMENT=/app/src/agent/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app/src
 
-# Install pip tools and pinned Poetry
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir "poetry==2.4.1"
-
-# Copy only dependency descriptors first (better caching)
-COPY ./agent/pyproject.toml ./agent/poetry.lock ./agent/
+# Copy only dependency descriptors first (better layer caching)
+COPY ./agent/pyproject.toml ./agent/uv.lock ./agent/
 
 WORKDIR /app/src/agent
 
-# Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root --without dev
+# Install dependencies into /app/src/agent/.venv.
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
+# image.
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
 # Copy application source
 COPY ./agent /app/src/agent
@@ -34,8 +40,6 @@ COPY ./shared /app/src/shared
 
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
-
-RUN pip install --no-cache-dir "poetry==2.4.1"
 
 # Copy built app from builder
 COPY --from=builder /app /app
@@ -56,4 +60,4 @@ WORKDIR /app/src/agent
 
 USER app
 
-CMD ["poetry", "run", "python3", "/app/src/agent/main.py"]
+CMD ["python3", "/app/src/agent/main.py"]

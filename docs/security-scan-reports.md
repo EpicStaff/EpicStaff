@@ -144,10 +144,12 @@ up to nine places and nothing reported whether it landed in all of them, so real
 exposure was set by the oldest pin while everyone read the newest.
 
 `.github/dependency-floor.toml` pins a minimum version for the shared
-security-critical packages. Poetry has no constraints-file mechanism and most of
-these packages are transitive, so the floor is not consumed by the resolver --
-`.github/scripts/check_dependency_floor.py` enforces it by reading every
-`src/*/poetry.lock` and failing the build when a service resolves below it.
+security-critical packages. No service's own dependency resolver enforces a
+floor shared across other services' independently-resolved lockfiles, and
+most of these packages are transitive, so the floor is not consumed by any
+resolver -- `.github/scripts/check_dependency_floor.py` enforces it by
+reading every `src/*/uv.lock` and failing the build when a service resolves
+below it.
 
 Floors are set to a version **already shipped somewhere in this repository**, so
 raising a lagging service to the floor adds no new supply-chain surface.

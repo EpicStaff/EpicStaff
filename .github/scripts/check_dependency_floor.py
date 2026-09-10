@@ -1,6 +1,6 @@
-#Enforce the shared dependency floor across every service lockfile.
+# Enforce the shared dependency floor across every service lockfile.
 
-#Run with --update to force rewriting recorded floors to what is currently shipped.
+# Run with --update to force rewriting recorded floors to what is currently shipped.
 
 from __future__ import annotations
 
@@ -16,19 +16,25 @@ from packaging.version import InvalidVersion, Version
 FLOOR_FILE = os.path.join(os.path.dirname(__file__), "..", "dependency-floor.toml")
 PACKAGE_RE = re.compile(r"^name = \"(.+?)\"", re.M)
 VERSION_RE = re.compile(r"^version = \"(.+?)\"", re.M)
+SOURCE_RE = re.compile(r"^source = \{ (\w+) = ", re.M)
 
 
 def read_locks(root: str = "src") -> dict[str, dict[str, str]]:
-    """service -> {package: resolved version} for every poetry.lock under root."""
+    """service -> {package: resolved version} for every uv.lock under root."""
     out: dict[str, dict[str, str]] = {}
-    for path in sorted(glob.glob(f"{root}/**/poetry.lock", recursive=True)):
+    for path in sorted(glob.glob(f"{root}/**/uv.lock", recursive=True)):
         service = os.path.relpath(os.path.dirname(path), root).replace(os.sep, "/")
         text = open(path, encoding="utf-8", errors="replace").read()
         versions: dict[str, str] = {}
         for block in re.split(r"\n(?=\[\[package\]\])", text):
             name = PACKAGE_RE.search(block)
             ver = VERSION_RE.search(block)
-            if name and ver:
+            source = SOURCE_RE.search(block)
+            # Only registry-sourced packages are real dependency floors. uv.lock
+            # also carries the root project entry (source = virtual/editable)
+            # and first-party path dependencies (source = directory), neither
+            # of which is a versioned registry package.
+            if name and ver and source and source.group(1) == "registry":
                 versions[name.group(1).lower()] = ver.group(1)
         out[service] = versions
     return out
@@ -46,7 +52,9 @@ def update_floors(locks: dict[str, dict[str, str]], floor: dict[str, str]) -> in
     text = open(FLOOR_FILE, encoding="utf-8").read()
     changed = []
     for pkg, want in floor.items():
-        present = [v for versions in locks.values() if (v := versions.get(pkg)) and parse(v)]
+        present = [
+            v for versions in locks.values() if (v := versions.get(pkg)) and parse(v)
+        ]
         if not present:
             continue
         highest = max(present, key=lambda v: parse(v))
@@ -82,7 +90,7 @@ def main() -> int:
 
     locks = read_locks()
     if not locks:
-        print("::error::no poetry.lock files found under src/", file=sys.stderr)
+        print("::error::no uv.lock files found under src/", file=sys.stderr)
         return 1
 
     if "--update" in sys.argv:
@@ -96,7 +104,10 @@ def main() -> int:
     for pkg, want in sorted(floor.items()):
         want_v = parse(want)
         if want_v is None:
-            print(f"::error::floor for {pkg} is not a valid version: {want}", file=sys.stderr)
+            print(
+                f"::error::floor for {pkg} is not a valid version: {want}",
+                file=sys.stderr,
+            )
             return 1
 
         present = {
@@ -137,7 +148,11 @@ def main() -> int:
             if got is None or (got_v and want_v and got_v >= want_v):
                 unused_exceptions.append(
                     f"{pkg}/{service} is excused but "
-                    + ("no longer present" if got is None else f"now at {got}, at or above the floor")
+                    + (
+                        "no longer present"
+                        if got is None
+                        else f"now at {got}, at or above the floor"
+                    )
                 )
 
     for pkg, hits in sorted(excused_hits.items()):
@@ -147,7 +162,10 @@ def main() -> int:
     if unused_exceptions:
         print()
         for line in unused_exceptions:
-            print(f"::error::stale exception -- {line}. Remove it from dependency-floor.toml.", file=sys.stderr)
+            print(
+                f"::error::stale exception -- {line}. Remove it from dependency-floor.toml.",
+                file=sys.stderr,
+            )
 
     if drift_only:
         print()

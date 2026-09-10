@@ -144,8 +144,48 @@ async def _run_forever(coro_fn, name: str, restart_delay: float = 2.0):
         await asyncio.sleep(restart_delay)
 
 
+def _handle_channel_invalidation_message(raw_data: str) -> None:
+    """Evict a single stale `_channel_cache` entry (see `get_channel_config()`).
+
+    Published by Django whenever a `RealtimeChannel` is saved/deleted -- e.g.
+    `is_active` toggled off -- so the 60s TTL isn't the only way a stale
+    entry clears. Pops only the affected token, never the whole cache.
+    """
+    try:
+        data = json.loads(raw_data)
+        token = data["token"]
+        _channel_cache.pop(token, None)
+        logger.info(f"Invalidated cached channel config for token={token}")
+    except Exception as e:
+        logger.error(f"Error processing channel invalidation: {e}")
+
+
+def _handle_agent_chat_message(raw_data: str) -> None:
+    """Store a freshly published `RealtimeAgentChatData` session snapshot."""
+    try:
+        data = json.loads(raw_data)
+        realtime_agent_chat_data = RealtimeAgentChatData(**data)
+        connection_repository.save_connection(
+            realtime_agent_chat_data.connection_key, realtime_agent_chat_data
+        )
+
+        logger.info(f"Saved connection: {realtime_agent_chat_data.connection_key}")
+
+    except Exception as e:
+        logger.error(f"Error processing embedding: {e}")
+
+
 async def redis_listener():
-    """Listen to Redis channel and store connection data."""
+    """Listen to Redis channels and store connection data / evict stale
+    per-channel config cache entries.
+
+    Subscribed on the same pubsub connection (no separate listener task):
+    - `REALTIME_AGENTS_SCHEMA_CHANNEL`: session snapshots -> ConnectionRepository.
+    - `REALTIME_CHANNELS_INVALIDATE_CHANNEL`: cross-process cache invalidation
+      for `_channel_cache` (see `get_channel_config()`), published by Django
+      whenever a `RealtimeChannel` is saved/deleted -- e.g. `is_active`
+      toggled off -- so the 60s TTL isn't the only way a stale entry clears.
+    """
 
     redis_service = RedisService(
         host=config.REDIS_HOST,
@@ -155,22 +195,23 @@ async def redis_listener():
     await redis_service.connect()
     logger.info("redis_listener: connected to Redis")
 
-    pubsub = await redis_service.async_subscribe(config.REALTIME_AGENTS_SCHEMA_CHANNEL)
-    logger.info(f"Subscribed to channel '{config.REALTIME_AGENTS_SCHEMA_CHANNEL}'")
+    pubsub = await redis_service.async_subscribe(
+        config.REALTIME_AGENTS_SCHEMA_CHANNEL
+    )
+    await pubsub.subscribe(config.REALTIME_CHANNELS_INVALIDATE_CHANNEL)
+    logger.info(
+        f"Subscribed to channels '{config.REALTIME_AGENTS_SCHEMA_CHANNEL}', "
+        f"'{config.REALTIME_CHANNELS_INVALIDATE_CHANNEL}'"
+    )
 
     async for message in pubsub.listen():
-        if message["type"] == "message":
-            try:
-                data = json.loads(message["data"])
-                realtime_agent_chat_data = RealtimeAgentChatData(**data)
-                connection_repository.save_connection(
-                    realtime_agent_chat_data.connection_key, realtime_agent_chat_data
-                )
+        if message["type"] != "message":
+            continue
 
-                logger.info("Saved connection")
-
-            except Exception as e:
-                logger.error(f"Error processing embedding: {e}")
+        if message["channel"] == config.REALTIME_CHANNELS_INVALIDATE_CHANNEL:
+            _handle_channel_invalidation_message(message["data"])
+        else:
+            _handle_agent_chat_message(message["data"])
 
 
 async def init_db():
