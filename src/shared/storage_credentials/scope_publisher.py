@@ -8,11 +8,10 @@ writes this scope, keyed by `execution_id`, for the credential issuer running
 in `django_app` to read back via `GETDEL` when it mints a temporary MinIO
 service account.
 
-Two entry points exist because publishers use two different Redis clients:
-django's "Test run" path publishes over sync `redis.Redis`, while `crew`,
-`agent`, and `realtime` are fully async. Both write the identical key/TTL/
-JSON shape; a single function would have to branch on client type, which is
-worse than two thin siblings doing one thing each.
+Two entry points exist only because publishers use different Redis clients
+(sync for django's "Test run", async for others); both
+share the same key/JSON/TTL (`CREDENTIAL_SCOPE_TTL_SECONDS`), so two thin
+siblings beat one function branching on client type.
 """
 
 import json
@@ -21,9 +20,9 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
 from ..models.tools import CodeTaskData
+from .constants import CREDENTIAL_SCOPE_TTL_SECONDS
 
 CREDENTIAL_SCOPE_KEY_PREFIX = "storage_credential_scope"
-CREDENTIAL_SCOPE_TTL_SECONDS = 900
 
 
 def _scope_key(execution_id: str) -> str:

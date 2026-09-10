@@ -26,9 +26,8 @@ from src.shared.redis_streams import RedisStreamClient, StreamEnvelope
 from src.shared.storage_credentials.constants import (
     STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
     STORAGE_CREDENTIAL_REQUEST_STREAM,
+    STORAGE_CREDENTIAL_WAIT_TIMEOUT_S,
 )
-
-STORAGE_CREDENTIAL_WAIT_TIMEOUT_S = 15
 
 
 class StorageCredentialRequestError(Exception):

@@ -2,8 +2,10 @@
 issuance."""
 
 from src.shared.storage_credentials.constants import (
+    CREDENTIAL_SCOPE_TTL_SECONDS,
     STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
     STORAGE_CREDENTIAL_REQUEST_STREAM,
+    STORAGE_CREDENTIAL_WAIT_TIMEOUT_S,
 )
 
 # `Secret(system=True, name=...)` that stores one organization's org-level
@@ -17,10 +19,6 @@ ORG_USER_POLICY_NAME_PREFIX = "org_storage_user_policy"
 TEMPORARY_CREDENTIAL_TTL_SECONDS_DEFAULT = 1200
 TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX = 3600
 
-# How long the trusted scope written by a publisher survives before a
-# never-consumed request is presumed abandoned.
-CREDENTIAL_SCOPE_TTL_SECONDS = 900
-
 # How long an issued response waits in its List key for sandbox to BLPOP it.
 CREDENTIAL_RESPONSE_TTL_SECONDS = 300
 
@@ -31,10 +29,6 @@ TTL_RECONCILIATION_INTERVAL_SECONDS = 900
 # (4 missed cycles before /ht/ reports unhealthy).
 ISSUER_HEARTBEAT_INTERVAL_SECONDS = 5
 ISSUER_HEARTBEAT_KEY_TTL_SECONDS = 20
-
-# How long sandbox's credential-wait client blocks on BLPOP before treating
-# the issuer as unreachable and failing closed.
-STORAGE_CREDENTIAL_WAIT_TIMEOUT_S = 15
 
 # Consumer group over STORAGE_CREDENTIAL_REQUEST_STREAM (imported above from
 # `src.shared.storage_credentials.constants`, shared with `sandbox` since
