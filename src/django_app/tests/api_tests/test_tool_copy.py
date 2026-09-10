@@ -266,6 +266,37 @@ def test_python_code_tool_copy_name_avoids_built_in_collision(client_a, org_a):
     assert copy.name == "Duplicated #3"
 
 
+# ---- EST-4002: a concurrent-copy name race must surface cleanly, not leak
+# raw DB internals ----
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_race_on_name_returns_clean_400(
+    client_a, org_a, monkeypatch
+):
+    """Simulates the name-check/create race: `ensure_unique_identifier`
+    hands back a name that collides by the time `create()` runs (e.g. a
+    concurrent copy of the same source just took it), raising IntegrityError.
+    The client must get a clean 400 message, not the raw DB constraint
+    error text."""
+    source = _make_tool(org=org_a, built_in=False, name="RaceTool")
+    # Pre-create the row the "unique" name generator will (wrongly) hand back,
+    # so the service's create() collides on the unique constraint.
+    _make_tool(org=org_a, built_in=False, name="RaceTool #2")
+
+    monkeypatch.setattr(
+        "tables.services.copy_services.python_code_tool_copy_service.ensure_unique_identifier",
+        lambda base_name, existing_names: "RaceTool #2",
+    )
+
+    resp = client_a.post(f"/api/python-code-tool/{source.id}/copy/", {}, format="json")
+    assert resp.status_code == 400
+    assert "message" in resp.data
+    # Must not leak raw DB internals (constraint/table/column names).
+    assert "constraint" not in str(resp.data).lower()
+    assert "duplicate key" not in str(resp.data).lower()
+
+
 @pytest.mark.django_db
 def test_mcp_tool_copy_numbering_is_not_inflated_by_other_orgs(
     client_a, client_b, org_a, org_b

@@ -120,7 +120,7 @@ def test_used_python_tool_has_correct_surface_counts(client_a, used_setup):
         "id": python_tool.id,
         "agent_surface_count": 1,
         "shared_surface_count": 0,
-        "inline_count": 0,
+        "inline_surface_count": 0,
         "is_built_in": False,
     }
 
@@ -136,7 +136,7 @@ def test_used_mcp_tool_has_correct_surface_counts(client_a, used_setup):
         "id": mcp_tool.id,
         "agent_surface_count": 1,
         "shared_surface_count": 0,
-        "inline_count": 0,
+        "inline_surface_count": 0,
         "is_built_in": False,
     }
 
@@ -151,7 +151,7 @@ def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
         "id": unused_python_tool.id,
         "agent_surface_count": 0,
         "shared_surface_count": 0,
-        "inline_count": 0,
+        "inline_surface_count": 0,
         "is_built_in": False,
     }
 
@@ -254,8 +254,8 @@ def test_counts_span_all_three_families(
     # catalog surface (shared, owner_agent null) -> shared_surface_count
     assert row["shared_surface_count"] == 1
     assert row["agent_surface_count"] == 0
-    # task-node inline + agent-node inline both collapse into inline_count
-    assert row["inline_count"] == 2
+    # task-node inline + agent-node inline both collapse into inline_surface_count
+    assert row["inline_surface_count"] == 2
 
 
 # ---- deny mode never counts ----
@@ -277,7 +277,7 @@ def test_deny_mode_row_not_counted(client_a, org_a, unused_python_tool):
     row = rows[unused_python_tool.id]
     assert row["agent_surface_count"] == 0
     assert row["shared_surface_count"] == 0
-    assert row["inline_count"] == 0
+    assert row["inline_surface_count"] == 0
 
 
 # ---- `ids` request-body filter ----
@@ -307,6 +307,33 @@ def test_ids_omitted_preserves_full_list_behavior(client_a, used_setup):
 
 
 @pytest.mark.django_db
+def test_ids_empty_list_returns_everything(client_a, used_setup):
+    """`{"ids": []}` must behave like an omitted `ids` — return every visible
+    row, not an empty result (the documented contract is "omitted or empty
+    returns all rows")."""
+    resp_omitted = client_a.post(PYTHON_USAGE_URL)
+    resp_empty = client_a.post(PYTHON_USAGE_URL, {"ids": []}, format="json")
+    assert resp_omitted.status_code == 200
+    assert resp_empty.status_code == 200
+    assert {r["id"] for r in resp_empty.data} == {r["id"] for r in resp_omitted.data}
+    assert len(resp_empty.data) >= 1
+
+
+@pytest.mark.django_db
+def test_ids_omitted_over_cap_returns_400_not_truncated(client_a, used_setup, monkeypatch):
+    """When `ids` is omitted (or empty) and the unscoped result would exceed
+    the cap, the endpoint must reject the request rather than silently
+    truncate the response."""
+    from tables.views.mixins import ToolUsageActionsMixin
+
+    monkeypatch.setattr(ToolUsageActionsMixin, "MAX_USAGE_IDS", 0)
+
+    resp = client_a.post(PYTHON_USAGE_URL)
+    assert resp.status_code == 400
+    assert "ids" in str(resp.data)
+
+
+@pytest.mark.django_db
 def test_ids_over_max_count_returns_400(client_a, monkeypatch):
     # MAX_USAGE_IDS is intentionally tied to api_settings.PAGE_SIZE (currently
     # 500000) — patch the mixin's class attribute directly rather than
@@ -323,6 +350,15 @@ def test_ids_over_max_count_returns_400(client_a, monkeypatch):
 @pytest.mark.django_db
 def test_ids_non_list_returns_400(client_a):
     resp = client_a.post(MCP_USAGE_URL, {"ids": "not-a-list"}, format="json")
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_ids_bool_entries_returns_400(client_a):
+    """`bool` is an `int` subclass in Python — without excluding it
+    explicitly, `{"ids": [true]}` would silently pass validation and get
+    treated as tool id `1`."""
+    resp = client_a.post(MCP_USAGE_URL, {"ids": [True]}, format="json")
     assert resp.status_code == 400
 
 
@@ -380,4 +416,4 @@ def test_agent_specific_surface_and_unrelated_shared_surface_both_count(
     row = rows[unused_python_tool.id]
     assert row["agent_surface_count"] == 1
     assert row["shared_surface_count"] == 1
-    assert row["inline_count"] == 0
+    assert row["inline_surface_count"] == 0

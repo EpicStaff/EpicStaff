@@ -7,6 +7,7 @@ from tables.models.base_models import (
     ContentHashMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TimestampMixin,
     soft_delete_consistency_constraint,
 )
 from tables.models.rbac_models.org_scoped import OrgScopedModel
@@ -23,7 +24,7 @@ class PythonCode(ContentHashMixin, models.Model):
         return list(filter(None, self.libraries.split(" ")))
 
 
-class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
+class PythonCodeTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin, models.Model):
     objects = ActiveManager()
     all_objects = models.Manager()
 
@@ -36,8 +37,6 @@ class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
     labels = models.ManyToManyField(
         "Label", blank=True, related_name="python_code_tools"
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta(OrgScopedModel.Meta):
         default_manager_name = "objects"

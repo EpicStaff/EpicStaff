@@ -101,7 +101,7 @@ def unused_mcp_tool(org_a, mcp_tool_factory) -> McpTool:
 
 
 def _empty_buckets() -> dict:
-    return {"agent_surface": [], "shared_surface": [], "inline": []}
+    return {"agent_surface": [], "shared_surface": [], "inline_surface": []}
 
 
 @pytest.mark.django_db
@@ -185,9 +185,11 @@ def test_surface_entry_agent_specific(client_a, org_a, unused_python_tool):
 
     resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
-    assert resp.data["agent_surface"] == [{"id": surface.id, "name": surface.name}]
+    assert resp.data["agent_surface"] == [
+        {"id": surface.id, "name": surface.name, "node_id": None}
+    ]
     assert resp.data["shared_surface"] == []
-    assert resp.data["inline"] == []
+    assert resp.data["inline_surface"] == []
 
 
 @pytest.mark.django_db
@@ -202,9 +204,11 @@ def test_surface_entry_agent_specific_mcp(client_a, org_a, unused_mcp_tool):
 
     resp = client_a.get(mcp_usage_detail_url(unused_mcp_tool.id))
     assert resp.status_code == 200
-    assert resp.data["agent_surface"] == [{"id": surface.id, "name": surface.name}]
+    assert resp.data["agent_surface"] == [
+        {"id": surface.id, "name": surface.name, "node_id": None}
+    ]
     assert resp.data["shared_surface"] == []
-    assert resp.data["inline"] == []
+    assert resp.data["inline_surface"] == []
 
 
 # ---- shared_surface: catalog Surface with owner_agent null ----
@@ -228,9 +232,11 @@ def test_surface_entry_shared_regardless_of_agent_default_surface_assignment(
 
     resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
-    assert resp.data["shared_surface"] == [{"id": surface.id, "name": surface.name}]
+    assert resp.data["shared_surface"] == [
+        {"id": surface.id, "name": surface.name, "node_id": None}
+    ]
     assert resp.data["agent_surface"] == []
-    assert resp.data["inline"] == []
+    assert resp.data["inline_surface"] == []
 
 
 @pytest.mark.django_db
@@ -244,12 +250,14 @@ def test_surface_entry_shared_without_any_agent_assignment(
 
     resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
-    assert resp.data["shared_surface"] == [{"id": surface.id, "name": surface.name}]
+    assert resp.data["shared_surface"] == [
+        {"id": surface.id, "name": surface.name, "node_id": None}
+    ]
     assert resp.data["agent_surface"] == []
-    assert resp.data["inline"] == []
+    assert resp.data["inline_surface"] == []
 
 
-# ---- inline: InlineSurface / AgentInlineSurface ----
+# ---- inline_surface: InlineSurface / AgentInlineSurface ----
 
 
 @pytest.mark.django_db
@@ -267,8 +275,12 @@ def test_surface_entry_from_task_node_inline_surface(
 
     resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
-    assert resp.data["inline"] == [
-        {"id": graph.id, "name": f"{graph.name} - {task_node.node_name}"}
+    assert resp.data["inline_surface"] == [
+        {
+            "id": graph.id,
+            "name": f"{graph.name} - {task_node.node_name}",
+            "node_id": task_node.id,
+        }
     ]
     assert resp.data["agent_surface"] == []
     assert resp.data["shared_surface"] == []
@@ -289,11 +301,48 @@ def test_surface_entry_from_agent_node_inline_surface(
 
     resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
-    assert resp.data["inline"] == [
-        {"id": graph.id, "name": f"{graph.name} - {agent_node.node_name}"}
+    assert resp.data["inline_surface"] == [
+        {
+            "id": graph.id,
+            "name": f"{graph.name} - {agent_node.node_name}",
+            "node_id": agent_node.id,
+        }
     ]
     assert resp.data["agent_surface"] == []
     assert resp.data["shared_surface"] == []
+
+
+@pytest.mark.django_db
+def test_inline_entries_from_two_nodes_in_same_graph_share_id_but_differ_by_node_id(
+    client_a, org_a, unused_python_tool
+):
+    """Two different nodes in the same graph both attaching the same tool
+    inline produce two `inline_surface` entries with the same `id` (the graph is the
+    navigation target) — `node_id` is what actually distinguishes them."""
+    graph = Graph.objects.create(name="Graph-collision", org=org_a)
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node_x")
+    inline_surface = InlineSurface.objects.create(task_node=task_node)
+    InlineSurfacePythonTool.objects.create(
+        inline_surface=inline_surface,
+        python_tool=unused_python_tool,
+        mode=ToolMode.ALLOW,
+    )
+
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node_x")
+    agent_inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=agent_inline_surface,
+        python_tool=unused_python_tool,
+        mode=ToolMode.ALLOW,
+    )
+
+    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
+    assert resp.status_code == 200
+    entries = resp.data["inline_surface"]
+    assert len(entries) == 2
+    assert {e["id"] for e in entries} == {graph.id}
+    assert {e["node_id"] for e in entries} == {task_node.id, agent_node.id}
 
 
 # ---- mode="deny" never counts as usage ----

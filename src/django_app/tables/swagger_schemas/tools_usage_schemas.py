@@ -30,7 +30,7 @@ def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> d
             "active org, computed against the surfaces attaching the tool. "
             "For each tool: `agent_surface_count` (catalog surfaces with a "
             "non-null `owner_agent`), `shared_surface_count` (catalog "
-            "surfaces with a null `owner_agent`), `inline_count` (task-node "
+            "surfaces with a null `owner_agent`), `inline_surface_count` (task-node "
             "and agent-node inline surfaces combined) — see the usage-detail "
             "endpoint for the per-entry breakdown — and `is_built_in` so the "
             "FE can gate orphan-highlighting on `!is_built_in`. "
@@ -40,7 +40,10 @@ def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> d
             "Optional `ids` in the request body: a list of numeric ids to "
             "scope the response to only those tools, e.g. after the FE "
             "paginates its own tools list. Omitted or empty returns all rows "
-            "for the active org (default, backward-compatible behavior). "
+            "for the active org (default, backward-compatible behavior), "
+            f"UNLESS that unscoped result would exceed {api_settings.PAGE_SIZE} "
+            "rows, in which case the request is rejected with a 400 rather "
+            "than silently truncated — pass explicit `ids` instead. "
             f"Maximum number of ids is {api_settings.PAGE_SIZE}."
         ),
         request=_USAGE_REQUEST,
@@ -56,7 +59,7 @@ def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> d
                                 "id": example_id,
                                 "agent_surface_count": 0,
                                 "shared_surface_count": 0,
-                                "inline_count": 0,
+                                "inline_surface_count": 0,
                                 "is_built_in": False,
                             },
                         ],
@@ -67,7 +70,10 @@ def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> d
             400: OpenApiResponse(
                 response=OpenApiTypes.STR,
                 description=(
-                    f"`ids` is not a list of integers, or more than {api_settings.PAGE_SIZE} ids given."
+                    "`ids` is not a list of integers, more than "
+                    f"{api_settings.PAGE_SIZE} ids given, or `ids` was omitted/"
+                    f"empty and the org has more than {api_settings.PAGE_SIZE} "
+                    "visible tools (pass explicit `ids` to scope the request)."
                 ),
             ),
         },
@@ -84,9 +90,13 @@ def _usage_detail_get_schema(*, model_name: str) -> dict:
             "names instead of counts, split into three separate lists: "
             "`agent_surface` (a catalog `Surface` with a non-null "
             "`owner_agent`), `shared_surface` (a catalog `Surface` with a "
-            "null `owner_agent`), and `inline` (a `TaskNode`/`AgentNode` "
-            "inline surface, `id` is the owning graph's id). Does not "
-            "exclude built-in tools."
+            "null `owner_agent`), and `inline_surface` (a `TaskNode`/`AgentNode` "
+            "inline surface, `id` is the owning graph's id — a navigation "
+            "target, NOT a unique row key: two different nodes in the same "
+            "graph attaching the tool inline produce two `inline_surface` entries "
+            "with the same `id`; `node_id` (the `TaskNode`/`AgentNode` id, "
+            "null for `agent_surface`/`shared_surface`) disambiguates them). "
+            "Does not exclude built-in tools."
         ),
         responses={
             200: OpenApiResponse(
@@ -97,13 +107,17 @@ def _usage_detail_get_schema(*, model_name: str) -> dict:
                         "Usage detail",
                         value={
                             "agent_surface": [
-                                {"id": 5, "name": "Research Bundle"},
+                                {"id": 5, "name": "Research Bundle", "node_id": None},
                             ],
                             "shared_surface": [
-                                {"id": 6, "name": "Shared Bundle"},
+                                {"id": 6, "name": "Shared Bundle", "node_id": None},
                             ],
-                            "inline": [
-                                {"id": 8, "name": "My Flow - task_node_3"},
+                            "inline_surface": [
+                                {
+                                    "id": 8,
+                                    "name": "My Flow - task_node_3",
+                                    "node_id": 42,
+                                },
                             ],
                         },
                         response_only=True,

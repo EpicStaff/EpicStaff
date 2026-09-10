@@ -1,9 +1,10 @@
 from django.db import models
 
+from tables.models.base_models import TimestampMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class McpTool(OrgScopedModel, models.Model):
+class McpTool(OrgScopedModel, TimestampMixin, models.Model):
     """
     Configuration for a FastMCP client connecting to remote MCP tools via SSE.
     """
@@ -31,8 +32,6 @@ class McpTool(OrgScopedModel, models.Model):
         help_text="Timeout for session initialization. Optional, default is 10 seconds.",
     )
     labels = models.ManyToManyField("Label", blank=True, related_name="mcp_tools")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta(OrgScopedModel.Meta):
         verbose_name = "MCP Tool Data"
