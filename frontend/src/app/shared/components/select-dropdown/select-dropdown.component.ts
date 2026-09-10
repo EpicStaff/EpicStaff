@@ -73,6 +73,7 @@ export class SelectDropdownComponent {
     /** Panel max-height. Number => px; string passed through (e.g. '80vh'). Null keeps the CSS default. */
     maxPanelHeight = input<string | number | null>(null);
     emptyText = input<string>('No results');
+    checkedTip = input<((value: unknown) => string | null) | null>(null);
 
     /**
      * Opt-in in-panel tabs. When non-empty the panel header renders a tab strip
@@ -346,6 +347,12 @@ export class SelectDropdownComponent {
         const base = this.orderedItems();
         return q ? base.filter((i) => i.name.toLowerCase().includes(q)) : base;
     });
+
+    tipForItem(item: SelectDropdownListItem): string | null {
+        const fn = this.checkedTip();
+        if (!fn || !this.isItemSelected(item)) return null;
+        return fn(item.value);
+    }
 
     isItemSelected(item: SelectDropdownListItem): boolean {
         return this.activeSet().has(item.value);
