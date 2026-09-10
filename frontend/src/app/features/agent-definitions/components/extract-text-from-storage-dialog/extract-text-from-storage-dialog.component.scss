@@ -118,7 +118,7 @@
     &__item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 2px;
         height: 28px;
         padding-right: 1rem;
         cursor: pointer;
@@ -143,7 +143,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: var(--color-text-secondary);
+        color: var(--color-text-primary);
         padding: 0;
         flex-shrink: 0;
         transition: transform 0.15s;
@@ -160,13 +160,14 @@
     }
 
     &__file-icon {
-        color: var(--color-text-secondary);
+        color: var(--color-text-primary);
         flex-shrink: 0;
     }
 
     &__item-name {
         flex: 1 1 auto;
         min-width: 0;
+        margin-left: 6px;
         font-size: 0.875rem;
         color: var(--color-text-primary);
         white-space: nowrap;

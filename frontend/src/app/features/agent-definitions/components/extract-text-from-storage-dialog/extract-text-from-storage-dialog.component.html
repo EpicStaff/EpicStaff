@@ -40,7 +40,7 @@
                 @for (node of visibleNodes(); track node.path) {
                     <div
                         class="picker__item"
-                        [style.padding-left.px]="20 + node.level * 20"
+                        [style.padding-left.px]="8 + node.level * 20"
                         (click)="onNodeClick(node)"
                     >
                         @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
@@ -61,7 +61,7 @@
                         <app-svg-icon
                             class="picker__file-icon"
                             [icon]="getFileIcon(node)"
-                            size="12px"
+                            size="13px"
                         />
 
                         <span
