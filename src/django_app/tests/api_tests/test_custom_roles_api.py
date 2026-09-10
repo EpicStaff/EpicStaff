@@ -315,3 +315,192 @@ def test_patch_role_with_read_but_no_update_is_403(
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
     assert resp.json()["code"] == "permission_denied"
+
+
+# ---- ?assignable_org_ids= : only roles the caller may actually assign ----
+#
+# Same response shape as the unfiltered call; the parameter is opt-in so the
+# Roles management list is unaffected. Parsed exactly like ?org_ids=.
+
+ROLES_URL = "/api/admin/roles/"
+
+
+def _names(payload, key):
+    return {row["name"] for row in payload[key]}
+
+
+@pytest.fixture
+def member_manager(db, django_user_model, acme, beta, role_org_admin):
+    """Delegated admin of acme holding only the admin resources, plus Org Admin
+    of beta so the door gate passes."""
+    role = Role.objects.create(name="Member Manager-af", org=acme, is_built_in=False)
+    for resource in ("memberships", "roles"):
+        RolePermission.objects.create(
+            role=role,
+            resource_type=resource,
+            permissions=int(
+                Permission.CREATE
+                | Permission.READ
+                | Permission.UPDATE
+                | Permission.DELETE
+            ),
+        )
+    user = django_user_model.objects.create_user(
+        email="member-manager-af@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role)
+    return user
+
+
+@pytest.mark.django_db
+def test_assignable_filter_excludes_every_built_in_for_an_admin_only_role(
+    auth_client, member_manager, acme
+):
+    """An admin-only role holds none of the workspace bits the built-ins grant,
+    so all four are filtered out — the visible form of the accepted consequence
+    that such a role cannot onboard anyone.
+
+    Its own role is still offered: equal bits are within the ceiling.
+    """
+    resp = auth_client(member_manager).get(f"{ROLES_URL}?assignable_org_ids={acme.id}")
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["built_in_roles"] == []
+    assert _names(body, "results") == {"Member Manager-af"}
+
+
+@pytest.mark.django_db
+def test_assignable_filter_excludes_the_superadmin_role(auth_client, admin_acme, acme):
+    """The Superadmin role carries zero permission rows, so the ceiling alone
+    would consider it assignable — only the structural guard removes it."""
+    resp = auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids={acme.id}")
+
+    names = _names(resp.json(), "built_in_roles")
+    assert "Superadmin" not in names
+    assert {"Org Admin", "Member", "Viewer"} <= names
+
+
+@pytest.mark.django_db
+def test_unfiltered_list_still_returns_all_four_built_ins(auth_client, admin_acme):
+    """The management-list contract: without the parameter nothing is filtered."""
+    resp = auth_client(admin_acme).get(ROLES_URL)
+
+    assert _names(resp.json(), "built_in_roles") == {
+        "Superadmin",
+        "Org Admin",
+        "Member",
+        "Viewer",
+    }
+
+
+@pytest.mark.django_db
+def test_assignable_filter_unions_across_requested_orgs(
+    auth_client, django_user_model, acme, beta, role_org_admin
+):
+    """Org Admin of acme, roles-reader in beta. A built-in is included when it
+    is assignable in at least one requested org, matching how ?org_ids= unions."""
+    reader = Role.objects.create(name="Roles Reader-af", org=beta, is_built_in=False)
+    RolePermission.objects.create(
+        role=reader, resource_type="roles", permissions=int(Permission.READ)
+    )
+    user = django_user_model.objects.create_user(
+        email="union-af@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=beta, role=reader)
+    client = auth_client(user)
+
+    both = client.get(f"{ROLES_URL}?assignable_org_ids={acme.id},{beta.id}").json()
+    beta_only = client.get(f"{ROLES_URL}?assignable_org_ids={beta.id}").json()
+
+    assert "Org Admin" in _names(both, "built_in_roles")
+    assert "Org Admin" not in _names(beta_only, "built_in_roles")
+
+
+@pytest.mark.django_db
+def test_assignable_filter_compares_custom_roles_against_their_own_org(
+    auth_client, django_user_model, acme, beta, role_org_admin
+):
+    """Every custom role belongs to one org, so each is compared there."""
+    reader = Role.objects.create(name="Roles Reader-af2", org=beta, is_built_in=False)
+    RolePermission.objects.create(
+        role=reader, resource_type="roles", permissions=int(Permission.READ)
+    )
+    user = django_user_model.objects.create_user(
+        email="own-org-af@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=beta, role=reader)
+
+    in_acme = Role.objects.create(name="Acme Helper-af", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=in_acme, resource_type="flows", permissions=int(Permission.READ)
+    )
+    in_beta = Role.objects.create(name="Beta Power-af", org=beta, is_built_in=False)
+    RolePermission.objects.create(
+        role=in_beta, resource_type="flows", permissions=int(Permission.CREATE)
+    )
+
+    body = (
+        auth_client(user)
+        .get(f"{ROLES_URL}?assignable_org_ids={acme.id},{beta.id}")
+        .json()
+    )
+
+    names = _names(body, "results")
+    assert "Acme Helper-af" in names  # within the caller's acme bits
+    assert "Beta Power-af" not in names  # above the caller's beta bits
+
+
+@pytest.mark.django_db
+def test_assignable_filter_does_not_filter_for_superadmin(
+    auth_client, superadmin_user, acme
+):
+    resp = auth_client(superadmin_user).get(f"{ROLES_URL}?assignable_org_ids={acme.id}")
+
+    assert _names(resp.json(), "built_in_roles") == {
+        "Superadmin",
+        "Org Admin",
+        "Member",
+        "Viewer",
+    }
+
+
+@pytest.mark.django_db
+def test_assignable_filter_response_shape_is_unchanged(auth_client, admin_acme, acme):
+    plain = auth_client(admin_acme).get(ROLES_URL).json()
+    filtered = (
+        auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids={acme.id}").json()
+    )
+
+    assert set(plain.keys()) == set(filtered.keys())
+
+
+@pytest.mark.django_db
+def test_assignable_filter_non_integer_is_400(auth_client, admin_acme):
+    resp = auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids=abc")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "org_context_required"
+
+
+@pytest.mark.django_db
+def test_assignable_filter_forbidden_org_is_403(auth_client, admin_acme, beta):
+    """Same fail-loud posture as a forbidden ?org_ids= entry."""
+    resp = auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids={beta.id}")
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_assignable_org_ids_supersedes_org_ids(auth_client, member_manager, acme, beta):
+    """When both are given the assignable parameter defines the scope, so the
+    result is the filtered one rather than beta's unfiltered rows."""
+    resp = auth_client(member_manager).get(
+        f"{ROLES_URL}?org_ids={beta.id}&assignable_org_ids={acme.id}"
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["built_in_roles"] == []

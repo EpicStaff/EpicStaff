@@ -19,9 +19,11 @@ from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 _FORBIDDEN_403 = OpenApiResponse(
     description=(
         "Caller lacks the required MEMBERSHIPS permission on a row they can "
-        "see (permission_denied — a row they cannot see is a 404), a "
-        "forbidden ?org_ids= entry, or an attempt to modify one's own "
-        "membership (cannot_modify_self_membership)."
+        "see (permission_denied — a row they cannot see is a 404), the role "
+        "being assigned grants authority the caller does not hold "
+        "(permission_escalation_denied), a forbidden ?org_ids= entry, or an "
+        "attempt to modify one's own membership "
+        "(cannot_modify_self_membership)."
     )
 )
 

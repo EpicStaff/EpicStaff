@@ -17,11 +17,13 @@ from tables.models.rbac_models import (
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
+from tables.services.rbac.effective_permissions import EffectivePermissions
+from tables.services.rbac.permission_assert import assert_within_ceiling
+from tables.services.rbac.user_management_guards import UserManagementGuards
 from tables.services.rbac.rbac_exceptions import (
     BuiltInRoleImmutableError,
     OrganizationNotFoundError,
     OrgMembershipRequiredError,
-    PermissionEscalationError,
     RoleNameConflictError,
     RoleNotFoundError,
 )
@@ -223,16 +225,60 @@ class RoleManagementService(CrossOrgResourceService):
 
     # ---- cross-org list ----
 
-    def list_built_in_roles(self) -> list[Role]:
+    def list_built_in_roles(self, assignable_in=None) -> list[Role]:
+        """The four built-in templates. `assignable_in` (a
+        {org_id: EffectivePermissions} map, or None for no filtering) keeps
+        only the ones the caller may assign — by **union** across the
+        requested orgs, since the list is global while assignability is
+        per-org. A single requested org therefore gives an exact answer and
+        several give a superset."""
         roles = list(
             Role.objects.filter(is_built_in=True, org__isnull=True)
             .order_by("name")
             .prefetch_related("permissions_set")
         )
+        if assignable_in is not None:
+            roles = [
+                role
+                for role in roles
+                if any(
+                    self.is_assignable_by(effective, role, org_id)
+                    for org_id, effective in assignable_in.items()
+                )
+            ]
         self.attach_role_display(roles=roles)
         return roles
 
-    def list_custom_roles(self, actor, org_ids, scopes=None):
+    def is_assignable_by(self, effective, role, org_id) -> bool:
+        """Whether `effective` may assign `role` in `org_id`: a structurally
+        valid membership target, and within the caller's escalation ceiling.
+
+        The boolean twin of the two assertions `MembershipManagementService`
+        runs before a write, so the picker cannot offer a role the write
+        would refuse."""
+        return UserManagementGuards.role_is_assignable(
+            role, org_id
+        ) and effective.covers(EffectivePermissions.bits_of(role))
+
+    def resolve_assignable_scopes(self, actor, org_ids, scopes=None):
+        """{org_id: EffectivePermissions} for the assignability filter, or None
+        when no filtering applies — the parameter was absent, or the caller is
+        a superadmin who may assign anything.
+
+        Reuses the door gate's per-request `_rbac_org_scopes` cache, so the
+        filter costs no additional query."""
+        if org_ids is None or getattr(actor, "is_superadmin", False):
+            return None
+        if scopes is None:
+            scopes = self._org_access.resolve_all(user=actor)
+        requested = set(org_ids)
+        return {
+            scope.org.id: scope.effective
+            for scope in scopes
+            if scope.org.id in requested
+        }
+
+    def list_custom_roles(self, actor, org_ids, scopes=None, assignable_in=None):
         """Return a queryset of custom roles across the orgs the actor may
         READ. `org_ids` (list) restricts to those orgs — a forbidden id
         raises PermissionDenied (fail-loud). `org_ids=None` means every
@@ -245,13 +291,26 @@ class RoleManagementService(CrossOrgResourceService):
             .prefetch_related("permissions_set")
             .order_by("org__name", "name")
         )
-        return self.apply_org_scope(
+        scoped = self.apply_org_scope(
             actor=actor,
             org_ids=org_ids,
             base_qs=base_qs,
             org_field="org_id",
             scopes=scopes,
         )
+        if assignable_in is None:
+            return scoped
+        # Each custom role lives in exactly one org, so it is compared there.
+        # Filtered in Python because a bitmask-subset test across a role's
+        # several permission rows is not a clean SQL predicate, and before
+        # pagination so pages stay full and consistent. The candidate set is
+        # only the requested orgs' custom roles.
+        return [
+            role
+            for role in scoped
+            if role.org_id in assignable_in
+            and self.is_assignable_by(assignable_in[role.org_id], role, role.org_id)
+        ]
 
     # ---- display attributes ----
 
@@ -304,15 +363,15 @@ class RoleManagementService(CrossOrgResourceService):
             )
 
     def _assert_within_ceiling(self, effective, permissions) -> None:
-        """Ceiling rule: every requested bit must be within the caller's own
-        effective permissions. Takes an already-resolved `effective` from
-        the caller. Superadmin bypasses."""
-        if effective.is_superadmin:
-            return
-        for entry in permissions:
-            caller_mask = effective.by_resource.get(entry["resource_type"], 0)
-            if entry["bitmask"] & ~caller_mask:
-                raise PermissionEscalationError()
+        """Ceiling rule for authoring: every requested bit must be within the
+        caller's own effective permissions. Adapts the validator's
+        `[{resource_type, bitmask}]` shape onto the shared assertion, which
+        role assignment uses too. Collapsing the list into a mapping cannot
+        lose an entry -- RoleValidationService rejects a duplicate
+        resource_type. Superadmin bypasses."""
+        assert_within_ceiling(
+            effective, {e["resource_type"]: e["bitmask"] for e in permissions}
+        )
 
     @staticmethod
     def _assert_name_available(org_id, name, exclude_role_id) -> None:

@@ -59,7 +59,9 @@ ROLES_LIST_GET = dict(
     description=(
         "Built-in templates (once, in `built_in_roles`) plus custom roles "
         "(`results`, paginated) from every org the caller can read. Filter "
-        "with ?org_ids=; omit for all readable orgs."
+        "with ?org_ids=; omit for all readable orgs. Use "
+        "?assignable_org_ids= instead to list only the roles the caller may "
+        "assign — the response shape is identical."
     ),
     parameters=[
         OpenApiParameter(
@@ -70,6 +72,20 @@ ROLES_LIST_GET = dict(
             description=(
                 "Comma-separated org ids to include, e.g. `10,20`. A "
                 "forbidden org → 403. Omit for every org the caller can read."
+            ),
+        ),
+        OpenApiParameter(
+            name="assignable_org_ids",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.STR,
+            required=False,
+            description=(
+                "Comma-separated org ids, parsed like ?org_ids=, restricting "
+                "the response to roles the caller may actually assign in "
+                "those orgs — the escalation ceiling applied as a filter. "
+                "Supersedes ?org_ids= when both are sent. Built-in roles are "
+                "included when assignable in at least one requested org, so "
+                "one org gives an exact answer and several give a superset."
             ),
         ),
         OpenApiParameter(
@@ -89,7 +105,11 @@ ROLES_LIST_GET = dict(
     ],
     responses={
         200: RoleListResponseSerializer,
-        400: OpenApiResponse(description="Malformed org_ids (org_context_required)."),
+        400: OpenApiResponse(
+            description=(
+                "Malformed org_ids or assignable_org_ids " "(org_context_required)."
+            )
+        ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _FORBIDDEN_403,
     },

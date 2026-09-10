@@ -8,6 +8,8 @@ from rest_framework.exceptions import PermissionDenied
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
+from tables.services.rbac.effective_permissions import EffectivePermissions
+from tables.services.rbac.permission_assert import assert_within_ceiling
 from tables.services.rbac.rbac_exceptions import (
     MembershipAlreadyExistsError,
     MembershipNotFoundError,
@@ -28,10 +30,13 @@ class MembershipManagementService(CrossOrgResourceService):
     Account creation is NOT here — it stays a superadmin-only operation on
     /api/admin/users/. `add_member` only LINKS an existing account.
 
-    Invariants (per the spec):
-      - No general assignment ceiling — any existing role may be assigned to
-        others (assert_role_is_assignable still blocks the global Superadmin
-        role and foreign-org custom roles).
+    Invariants:
+      - Escalation ceiling on assignment — a role may only be assigned if every
+        grantable bit it carries is within the caller's own permissions in that
+        org. Applied identically to built-in and custom roles: holding
+        MEMBERSHIPS does not let you hand out authority you lack. Superadmin
+        bypasses. `assert_role_is_assignable` still runs first and blocks the
+        global Superadmin role and foreign-org custom roles.
       - A non-superadmin cannot change or remove their OWN membership.
       - No last-org-admin guard — superadmin is the rescue backstop.
     """
@@ -132,6 +137,7 @@ class MembershipManagementService(CrossOrgResourceService):
         UserManagementGuards.assert_user_is_assignable_member(target)
         role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(role, org_id=org_id)
+        assert_within_ceiling(effective, EffectivePermissions.bits_of(role))
         if OrganizationUser.objects.filter(user=target, org_id=org_id).exists():
             raise MembershipAlreadyExistsError()
         try:
@@ -173,6 +179,7 @@ class MembershipManagementService(CrossOrgResourceService):
         UserManagementGuards.assert_role_is_assignable(
             new_role, org_id=membership.org_id
         )
+        assert_within_ceiling(effective, EffectivePermissions.bits_of(new_role))
         if membership.role_id != new_role.pk:
             membership.role = new_role
             membership.save(update_fields=["role"])
@@ -250,7 +257,11 @@ class MembershipManagementService(CrossOrgResourceService):
 
     @staticmethod
     def _resolve_role(role_id):
-        role = Role.objects.filter(pk=role_id).first()
+        """Fetch the target role with its permission rows prefetched — the
+        assignment ceiling reads them via `EffectivePermissions.bits_of`."""
+        role = (
+            Role.objects.prefetch_related("permissions_set").filter(pk=role_id).first()
+        )
         if role is None:
             raise RoleNotFoundError()
         return role

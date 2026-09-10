@@ -19,7 +19,8 @@ from tables.swagger_schemas.role_admin_schema import (
 class RoleAdminViewSet(CrossOrgAdminViewSet):
     """Flat, permission-gated role management surface.
 
-    list:            GET    /api/admin/roles/            (?org_ids= filter)
+    list:            GET    /api/admin/roles/            (?org_ids= or
+                                                  ?assignable_org_ids= filter)
     retrieve:        GET    /api/admin/roles/{id}/
     create:          POST   /api/admin/roles/            (org_id in body)
     partial_update:  PATCH  /api/admin/roles/{id}/
@@ -45,10 +46,25 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**ROLES_LIST_GET)
     def list(self, request):
-        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
+        # `assignable_org_ids` is `org_ids` plus the assignability filter, so
+        # when present it defines the org scope as well.
+        assignable_ids = self.parse_org_ids(
+            request.query_params.get("assignable_org_ids")
+        )
+        org_ids = (
+            assignable_ids
+            if assignable_ids is not None
+            else self.parse_org_ids(request.query_params.get("org_ids"))
+        )
         scopes = getattr(request, "_rbac_org_scopes", None)
+        assignable_in = self._service.resolve_assignable_scopes(
+            actor=request.user, org_ids=assignable_ids, scopes=scopes
+        )
         custom_qs = self._service.list_custom_roles(
-            actor=request.user, org_ids=org_ids, scopes=scopes
+            actor=request.user,
+            org_ids=org_ids,
+            scopes=scopes,
+            assignable_in=assignable_in,
         )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(custom_qs, request, view=self)
@@ -56,7 +72,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
         response = paginator.get_paginated_response(
             RoleResponseSerializer(page, many=True).data
         )
-        built_ins = self._service.list_built_in_roles()
+        built_ins = self._service.list_built_in_roles(assignable_in=assignable_in)
         response.data["built_in_roles"] = RoleResponseSerializer(
             built_ins, many=True
         ).data
