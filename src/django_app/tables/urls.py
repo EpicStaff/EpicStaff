@@ -242,7 +242,7 @@ urlpatterns = [
         name="admin-org-roles-list",
     ),
     path(
-        "organizations/me/settings/",
+        "admin/organizations/settings/",
         OrganizationSelfServiceViewSet.as_view({"patch": "partial_update"}),
         name="organization-self-settings",
     ),
