@@ -18,18 +18,31 @@ from src.shared.models import SessionAuditEvent
 # current exit path already clears it correctly, this is a backstop, not
 # the primary mechanism.
 _org_id_by_session: TTLCache = TTLCache(maxsize=10_000, ttl=3600)
+_flow_name_by_session: TTLCache = TTLCache(maxsize=10_000, ttl=3600)
 
 
 def register_session_org(session_id: int, org_id: int) -> None:
     _org_id_by_session[session_id] = org_id
 
 
+def register_session_flow_name(session_id: int, flow_name: str) -> None:
+    _flow_name_by_session[session_id] = flow_name
+
+
 def get_session_org(session_id: int) -> int | None:
     return _org_id_by_session.get(session_id)
 
 
+def get_session_flow_name(session_id: int) -> str | None:
+    return _flow_name_by_session.get(session_id)
+
+
 def clear_session_org(session_id: int) -> None:
     _org_id_by_session.pop(session_id, None)
+
+
+def clear_session_flow_name(session_id: int) -> None:
+    _flow_name_by_session.pop(session_id, None)
 
 
 @lru_cache(maxsize=1)
@@ -93,7 +106,11 @@ def emit_session_audit_event(data: dict) -> None:
     except add_start_message which is cache-only and synchronous.
     """
     session_id = data.get("session_id")
-    org_id = get_session_org(session_id) if session_id is not None else None
+    org_id, flow_name = None, None
+    if session_id is not None:
+        org_id = get_session_org(session_id)
+        flow_name = get_session_flow_name(session_id) or ""
+
     if org_id is None:
         return
 
@@ -110,6 +127,7 @@ def emit_session_audit_event(data: dict) -> None:
             writer.add_start_message(
                 session_id=session_id,
                 org_id=org_id,
+                flow_name=flow_name,
                 node_name=node_name,
                 node_type=node_type,
                 execution_order=execution_order,
@@ -122,6 +140,7 @@ def emit_session_audit_event(data: dict) -> None:
             writer.add_finish_message(
                 session_id=session_id,
                 org_id=org_id,
+                flow_name=flow_name,
                 node_name=node_name,
                 node_type=node_type,
                 execution_order=execution_order,
@@ -141,6 +160,7 @@ def emit_session_audit_event(data: dict) -> None:
             writer.add_error_message(
                 session_id=session_id,
                 org_id=org_id,
+                flow_name=flow_name,
                 node_name=node_name,
                 node_type=node_type,
                 execution_order=execution_order,
@@ -153,6 +173,7 @@ def emit_session_audit_event(data: dict) -> None:
             writer.add_custom_message(
                 session_id=session_id,
                 org_id=org_id,
+                flow_name=flow_name,
                 node_name=node_name,
                 execution_order=execution_order,
                 message_data=message_data,

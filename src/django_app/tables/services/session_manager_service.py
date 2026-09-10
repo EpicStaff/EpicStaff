@@ -319,6 +319,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             async_to_sync(get_session_audit_writer().add_custom_message)(
                 session_id=session.id,
                 org_id=session.graph.org_id,
+                flow_name=session.graph.name,
                 node_name=graph_session_message_data.name,
                 execution_order=graph_session_message_data.execution_order,
                 message_data=graph_session_message_data.message_data,

@@ -36,7 +36,9 @@ def _derive_node_id(session_id: int, node_name: str, execution_order: int) -> st
     one level down: (session_id, node_name, execution_order) uniquely
     identifies one node execution within one session.
     """
-    return derive_root_id(AUDIT_NAMESPACE, f"{session_id}:{node_name}:{execution_order}")
+    return derive_root_id(
+        AUDIT_NAMESPACE, f"{session_id}:{node_name}:{execution_order}"
+    )
 
 
 class SessionAuditWriter:
@@ -78,6 +80,7 @@ class SessionAuditWriter:
         *,
         session_id: int,
         org_id: int,
+        flow_name: str,
         node_name: str,
         execution_order: int,
         input_: dict,
@@ -109,6 +112,7 @@ class SessionAuditWriter:
             parent_id=session_parent_id,
             session_id=session_id,
             name=node_name,
+            flow_name=flow_name,
             node_type=node_type,
             status=None,
             event_time=datetime.now(timezone.utc),
@@ -123,6 +127,7 @@ class SessionAuditWriter:
             kind="event",
             status="completed",
             name=node_name,
+            flow_name=flow_name,
             node_type=node_type,
             input_=input_,
             details={"message_type": "start"},
@@ -152,6 +157,7 @@ class SessionAuditWriter:
         *,
         session_id: int,
         org_id: int,
+        flow_name: str,
         node_name: str,
         execution_order: int,
         output: dict,
@@ -175,6 +181,7 @@ class SessionAuditWriter:
             kind="event",
             status="completed",
             name=node_name,
+            flow_name=flow_name,
             node_type=node_type,
             input_=input_,
             output=output,
@@ -186,6 +193,7 @@ class SessionAuditWriter:
         *,
         session_id: int,
         org_id: int,
+        flow_name: str,
         node_name: str,
         execution_order: int,
         error: Exception | str,
@@ -210,6 +218,7 @@ class SessionAuditWriter:
             kind="event",
             status="failed",
             name=node_name,
+            flow_name=flow_name,
             node_type=node_type,
             input_=input_,
             error=str(error),
@@ -221,6 +230,7 @@ class SessionAuditWriter:
         *,
         session_id: int,
         org_id: int,
+        flow_name: str,
         node_name: str,
         execution_order: int,
         message_data: dict,
@@ -243,6 +253,7 @@ class SessionAuditWriter:
             kind="event",
             status="completed",
             name=node_name,
+            flow_name=flow_name,
             details=message_data,
         )
 
@@ -256,6 +267,7 @@ class SessionAuditWriter:
         kind: str,
         status: str,
         name: str,
+        flow_name: str,
         node_type: str = "",
         session_message_id: str | None = None,
         input_: dict | None = None,
@@ -276,8 +288,11 @@ class SessionAuditWriter:
             kind=kind,
             parent_id=parent_id,
             session_id=session_id,
-            session_message_id=session_message_id if session_message_id is not None else id,
+            session_message_id=session_message_id
+            if session_message_id is not None
+            else id,
             name=name,
+            flow_name=flow_name,
             node_type=node_type,
             status=status,
             event_time=datetime.now(timezone.utc),
@@ -337,6 +352,7 @@ class SessionAuditWriter:
             kind="event",
             status="completed",
             name="Session Start",
+            flow_name=flow_name,
             details={"message_type": "session_start"},
         )
 
@@ -345,6 +361,7 @@ class SessionAuditWriter:
         *,
         session_id: int,
         org_id: int,
+        flow_name: str,
         event_id: str,
         status: str,
         session_message_id: str | None = None,
@@ -367,6 +384,7 @@ class SessionAuditWriter:
         event = SessionAuditEvent(
             id=event_id,
             org_id=org_id,
+            flow_name=flow_name,
             kind="event",
             parent_id=parent_id,
             session_id=session_id,

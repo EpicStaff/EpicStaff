@@ -22,10 +22,13 @@ from settings import DEFAULT_TOKEN_BUDGET
 from src.shared.models import SessionData, StopSessionMessage
 from src.crew.services.graph.session_audit_provider import (
     clear_session_org,
+    clear_session_flow_name,
+    get_session_org,
+    get_session_flow_name,
+    register_session_org,
+    register_session_flow_name,
     emit_session_audit_event,
     get_session_audit_writer,
-    get_session_org,
-    register_session_org,
     track_audit_task,
 )
 
@@ -118,6 +121,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         try:
             session_id = session_data.id
             register_session_org(session_id, session_data.org_id)
+            register_session_flow_name(session_id, session_data.graph.name)
             track_audit_task(
                 get_session_audit_writer().add_session_start(
                     session_id=session_id,
@@ -257,6 +261,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        flow_name=get_session_flow_name(session_id) or "",
                         event_id=graph_end_message_data["uuid"],
                         status="completed",
                         output=end_node_result,
@@ -272,6 +277,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             # Cleanup shared variables
             clear_session_org(session_id)
+            clear_session_flow_name(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:
@@ -283,6 +289,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": "timeout"},
@@ -290,6 +297,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     )
                 )
             clear_session_org(session_id)
+            clear_session_flow_name(session_id)
         except StopSession as e:
             status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
@@ -301,6 +309,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": e.reason or "stopped"},
@@ -308,6 +317,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     )
                 )
             clear_session_org(session_id)
+            clear_session_flow_name(session_id)
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
@@ -321,6 +331,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"error": str(e)},
@@ -328,6 +339,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     )
                 )
             clear_session_org(session_id)
+            clear_session_flow_name(session_id)
 
     async def _listen_callback(self, message: dict[str, Any]):
         try:

@@ -21,9 +21,6 @@ class OrganizationConfig(models.Model):
         primary_key=True,
         related_name="config",
     )
-    # EST-3341: free-form retention window for the audit browser. 0
-    # (default) = unlimited, per the epic's explicit AC. Query-time filter
-    # only in auditor - never deletes underlying session data.
     audit_retention_days = models.PositiveIntegerField(default=0)
 
     class Meta:
