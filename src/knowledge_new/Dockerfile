@@ -12,8 +12,14 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 # defeating that pin.
 RUN pip install --no-cache-dir uv==0.11.21
 
+# The venv lives at /app/.venv, OUTSIDE the app dir (/app/src/knowledge, the
+# runtime WORKDIR/CWD). nltk>=3.9 ships an import-security hook that blocks any
+# module whose files resolve *underneath* the process CWD (CWE-427 mitigation);
+# a venv nested inside the WORKDIR would make every site-packages module (e.g.
+# `regex`, pulled by nltk) look CWD-local and get blocked. Keeping it a sibling
+# of the app dir avoids that while a single `COPY /app` still carries both.
 ENV UV_NO_BUILD=1 \
-    UV_PROJECT_ENVIRONMENT=/app/src/knowledge/.venv \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
     UV_CACHE_DIR=/tmp/uv_cache \
@@ -27,7 +33,7 @@ COPY ./knowledge_new/pyproject.toml ./knowledge_new/uv.lock ./knowledge/
 
 WORKDIR /app/src/knowledge
 
-# Install dependencies into /app/src/knowledge/.venv.
+# Install dependencies into /app/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is
 # not installed by default. --no-group dev deliberately excludes dev from this
 # image.
@@ -44,21 +50,20 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 RUN apt-get update && apt-get install -y libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy built app from builder
+# Copy built app (and the /app/.venv beside it) from builder
 COPY --from=builder /app /app
 
 # Add virtualenv to PATH.
-# PYTHONSAFEPATH=1 stops Python from adding the process CWD to sys.path: nltk's
-# import-security hook (nltk>=3.9) refuses to import `regex` while the CWD is
-# searchable. That also drops the implicit path entry the app relied on to find
-# its top-level modules (main, bootstrap, settings, ...), so /app/src/knowledge
-# is added to PYTHONPATH explicitly; /app stays on the path for `src.shared`.
-ENV PATH="/app/src/knowledge/.venv/bin:$PATH" \
+# The app's top-level modules (main, bootstrap, settings, ...) live in the
+# WORKDIR and `src.shared` resolves from /app, so both are on PYTHONPATH
+# explicitly rather than relying on the CWD being searched. PYTHONSAFEPATH=1
+# keeps the CWD off sys.path so spawn-based workers inherit nltk's CWD isolation.
+ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app:/app/src/knowledge \
     PYTHONSAFEPATH=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/app/src/knowledge/.venv
+    VIRTUAL_ENV=/app/.venv
 
 WORKDIR /app/src/knowledge
 
