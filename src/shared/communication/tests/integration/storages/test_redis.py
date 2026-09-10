@@ -4,7 +4,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-from communication.storages.redis_ import RedisStorage
+from communication.storages.redis_storage import RedisStorage
 
 
 @pytest.fixture

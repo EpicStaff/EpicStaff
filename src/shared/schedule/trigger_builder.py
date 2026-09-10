@@ -12,8 +12,8 @@ from datetime import datetime, timezone as _tz, tzinfo
 
 from apscheduler.triggers.base import BaseTrigger
 
-from src.shared.models import ScheduleTriggerNodePayload
-from src.shared.schedule.trigger_strategies import (
+from ..models import ScheduleTriggerNodePayload
+from .trigger_strategies import (
     ONCE_STRATEGY,
     UNIT_STRATEGIES,
     ScheduleTriggerContext,

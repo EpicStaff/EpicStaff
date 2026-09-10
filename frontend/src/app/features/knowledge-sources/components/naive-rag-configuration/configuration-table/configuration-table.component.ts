@@ -20,11 +20,14 @@ import {
     SelectItem,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { MATERIAL_FORMS } from '@shared/material-forms';
 
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
-import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentDtoRequest } from '../../../models/naive-rag-document.model';
+import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
+import { RunNaiveRagDocumentChunkingRequest } from '../../../models/naive-rag-document.model';
+import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
-import { DocFieldChange, TableDocument } from './configuration-table.interface';
+import { DocumentStatusFilter, TableDocument } from './configuration-table.interface';
 
 @Component({
     selector: 'app-configuration-table',
@@ -38,6 +41,7 @@ import { DocFieldChange, TableDocument } from './configuration-table.interface';
         CheckboxComponent,
         MultiSelectComponent,
         KeyValuePipe,
+        MATERIAL_FORMS,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -48,16 +52,30 @@ export class ConfigurationTableComponent {
     chunkStrategySelectItems: SelectItem[] = CHUNK_STRATEGIES_SELECT_ITEMS;
 
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
+    private collectionsStorage = inject(CollectionsStorageService);
 
     searchTerm = input<string>('');
     showBulkRow = input<boolean>(false);
+    statusFilter = input<DocumentStatusFilter>('all');
     ragId = input.required<number>();
     documents = this.documentsStorageService.documents;
+    pendingDocIds = this.documentsStorageService.pendingDocIds;
+    processingConfigIds = this.collectionsStorage.processingConfigIds;
     selectedRagDocId = model<number | null>(null);
 
+    // Backend never finalizes a document's own `status` when indexing is cancelled
+    // (it stays 'processing' forever) — fall back to the rag-level status, which the
+    // "Stop indexing" button already relies on, so the per-row spinner disappears in
+    // step with the button once the rag itself is no longer processing. Matches
+    // NaiveRagStrategy/GraphRagStrategy.isIndexing's not-found convention (`false`) —
+    // safe because startIndexing() optimistically marks the rag via
+    // markRagAsProcessing() in the same tick a document can first become 'processing'.
+    private ragIsProcessing = computed(
+        () => this.collectionsStorage.getRagStatus(this.ragId(), 'naive') === 'processing'
+    );
+
     docsCheckChange = output<number[]>();
-    docFieldChange = output<DocFieldChange>();
-    applyBulkUpdate = output<UpdateNaiveRagDocumentDtoRequest>();
+    applyBulkUpdate = output<Partial<RunNaiveRagDocumentChunkingRequest>>();
     onTuneChunk = output<{ ragDocumentId: number; allDocumentIds: number[] }>();
 
     bulkChunkStrategy = signal<string | null>(null);
@@ -83,6 +101,7 @@ export class ConfigurationTableComponent {
         data = this.applyFileNameFilter(data);
         data = this.applyFileTypeFilter(data);
         data = this.applyChunkStrategyFilter(data);
+        data = this.applyStatusFilter(data);
 
         return data;
     });
@@ -93,13 +112,31 @@ export class ConfigurationTableComponent {
         });
     }
 
-    onDocFieldChange(document: TableDocument, field: keyof NaiveRagDocumentConfig, value: string | number | null) {
-        this.docFieldChange.emit({
-            documentId: document.naive_rag_document_id,
-            documentName: document.file_name,
-            field,
-            value,
-        });
+    isRowProcessing(d: TableDocument): boolean {
+        if (!this.ragIsProcessing()) return false;
+        if (d.status === 'completed' || d.status === 'failed' || d.status === 'outdated') return false;
+        return this.processingConfigIds().has(d.naive_rag_document_id) || d.status === 'processing';
+    }
+
+    onDocFieldChange(
+        document: TableDocument,
+        field: keyof RunNaiveRagDocumentChunkingRequest,
+        value: string | number | null
+    ): void {
+        this.documentsStorageService.setPendingField(document.naive_rag_document_id, field, value);
+    }
+
+    onChunkStrategyChange(document: TableDocument, value: unknown): void {
+        if (typeof value !== 'string') return;
+        this.onDocFieldChange(document, 'chunk_strategy', value);
+    }
+
+    revert(documentId: number): void {
+        this.documentsStorageService.clearPending([documentId]);
+    }
+
+    hasPending(documentId: number): boolean {
+        return this.pendingDocIds().has(documentId);
     }
 
     onFileTypeFilterChange(value: unknown[]): void {
@@ -110,14 +147,10 @@ export class ConfigurationTableComponent {
         this.chunkStrategyFilter.set(value.filter((v): v is string => typeof v === 'string'));
     }
 
-    onChunkStrategyChange(document: TableDocument, value: unknown): void {
-        if (typeof value !== 'string') return;
-        this.onDocFieldChange(document, 'chunk_strategy', value);
-    }
-
     toggleAll() {
         const all = this.allChecked();
-        this.documentsStorageService.toggleAll(all);
+        const ids = this.filteredDocuments().map((d) => d.naive_rag_document_id);
+        this.documentsStorageService.toggleAll(all, ids);
     }
 
     toggleDocument(item: TableDocument) {
@@ -140,21 +173,18 @@ export class ConfigurationTableComponent {
     }
 
     onApplyBulkEdit() {
-        const dto = {
-            ...(this.bulkChunkStrategy() && {
-                chunk_strategy: this.bulkChunkStrategy(),
-            }),
+        const patch: Partial<RunNaiveRagDocumentChunkingRequest> = {};
 
-            ...(this.bulkChunkSize() !== null && {
-                chunk_size: this.bulkChunkSize(),
-            }),
+        const strategy = this.bulkChunkStrategy();
+        if (strategy) patch.chunk_strategy = strategy as NaiveRagChunkStrategy;
 
-            ...(this.bulkChunkOverlap() !== null && {
-                chunk_overlap: this.bulkChunkOverlap(),
-            }),
-        } as UpdateNaiveRagDocumentDtoRequest;
+        const size = this.bulkChunkSize();
+        if (size !== null) patch.chunk_size = size;
 
-        this.applyBulkUpdate.emit(dto);
+        const overlap = this.bulkChunkOverlap();
+        if (overlap !== null) patch.chunk_overlap = overlap;
+
+        this.applyBulkUpdate.emit(patch);
     }
 
     // ================= FILTER LOGIC START =================
@@ -182,6 +212,19 @@ export class ConfigurationTableComponent {
         if (!strategyFilter.length) return data;
 
         return data.filter((d) => strategyFilter.includes(d.chunk_strategy));
+    }
+
+    private applyStatusFilter(data: TableDocument[]): TableDocument[] {
+        switch (this.statusFilter()) {
+            case 'issues':
+                return data.filter((d) => d.status === 'failed' || d.status === 'outdated');
+            case 'not_indexed':
+                return data.filter((d) => d.status !== 'completed' && d.status !== 'failed' && d.status !== 'outdated');
+            case 'indexed':
+                return data.filter((d) => d.status === 'completed');
+            default:
+                return data;
+        }
     }
 
     // ================= FILTER LOGIC END =================

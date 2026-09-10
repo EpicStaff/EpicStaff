@@ -735,6 +735,8 @@
                         <app-surface-knowledge-advanced
                             [collections]="selectedCollections()"
                             [knowledge]="knowledgeItems()"
+                            [llmConfigId]="llmConfigId()"
+                            [suggestionsDisabled]="isShared()"
                             (knowledgeChange)="onKnowledgeConfigChange($event)"
                         />
                     }

@@ -45,6 +45,19 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
+#x-communication-env: &communication_env
+#  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
+#  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
+#  COMMUNICATION_BROKER_HOST: ${COMMUNICATION_BROKER_HOST}
+#  COMMUNICATION_BROKER_PORT: ${COMMUNICATION_BROKER_PORT}
+#  COMMUNICATION_BROKER_NAME: ${COMMUNICATION_BROKER_NAME}
+#
+#  COMMUNICATION_STORAGE_USER: ${COMMUNICATION_STORAGE_USER}
+#  COMMUNICATION_STORAGE_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
+#  COMMUNICATION_STORAGE_HOST: ${COMMUNICATION_STORAGE_HOST}
+#  COMMUNICATION_STORAGE_PORT: ${COMMUNICATION_STORAGE_PORT}
+#  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
+
 services:
   django_app:
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:-latest}
@@ -150,8 +163,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      knowledge:
-        condition: service_started
+#      knowledge_new:
+#        condition: service_started
       django_app:
         condition: service_healthy
 
@@ -311,34 +324,34 @@ services:
       redis:
         condition: service_healthy
 
-  knowledge:
-    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: ./knowledge/Dockerfile.knowledge
-    container_name: knowledge
-    environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
-      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
-      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
-      KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE:?}
-      KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE:?}
-      KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE:?}
-      KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE:?}
-      KNOWLEDGE_MAX_EXTRACTION_PAGES: ${KNOWLEDGE_MAX_EXTRACTION_PAGES:?}
-      KNOWLEDGE_GRAPH_DATA_DIR: ${KNOWLEDGE_GRAPH_DATA_DIR:?}
-      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
-    volumes:
-      - graph_data:/home/user/root/app/graph_data
-    networks:
-      - backend-network
-    tty: true
-    stdin_open: true
-    depends_on:
-      crewdb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+#  knowledge:
+#    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
+#    build:
+#      context: .
+#      dockerfile: ./knowledge/Dockerfile.knowledge
+#    container_name: knowledge
+#    environment:
+#      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+#      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
+#      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
+#      KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE:?}
+#      KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE:?}
+#      KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE:?}
+#      KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE:?}
+#      KNOWLEDGE_MAX_EXTRACTION_PAGES: ${KNOWLEDGE_MAX_EXTRACTION_PAGES:?}
+#      KNOWLEDGE_GRAPH_DATA_DIR: ${KNOWLEDGE_GRAPH_DATA_DIR:?}
+#      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
+#    volumes:
+#      - graph_data:/home/user/root/app/graph_data
+#    networks:
+#      - backend-network
+#    tty: true
+#    stdin_open: true
+#    depends_on:
+#      crewdb:
+#        condition: service_healthy
+#      redis:
+#        condition: service_healthy
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
@@ -461,7 +474,7 @@ services:
       - "8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
-  
+
   agent:
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:-latest}
     container_name: agent
@@ -470,6 +483,8 @@ services:
       dockerfile: ./agent/Dockerfile.agent
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
+      KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
@@ -488,6 +503,31 @@ services:
       - backend-network
 
 
+  knowledge_new:
+    container_name: knowledge_new
+    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./knowledge_new/Dockerfile
+    networks:
+      - backend-network
+    depends_on:
+      crewdb:
+        condition: service_healthy
+      django_app:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      <<: [*docker-env, *database-env, *minio-env]
+      KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
+      KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
+      KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
+      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
+      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
+      KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}
+      KNOWLEDGE_MINIO_BUCKET: ${KNOWLEDGE_MINIO_BUCKET:?}
+
 volumes:
   sandbox_venvs:
     external: true
@@ -496,6 +536,7 @@ volumes:
   media_data:
     external: true
   redis_data: {}
+  code_instances: {}
   minio_data: {}
 
   graph_data:

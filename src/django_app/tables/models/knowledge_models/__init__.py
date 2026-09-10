@@ -27,6 +27,8 @@ from .graphrag_models import (
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
     GraphRagLocalSearchConfig,
+    GraphRagGlobalSearchConfig,
+    GraphRagDriftSearchConfig,
 )
 
 KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS = {
@@ -59,6 +61,8 @@ __all__ = [
     "GraphRagIndexConfig",
     "GraphRagBasicSearchConfig",
     "GraphRagLocalSearchConfig",
+    "GraphRagGlobalSearchConfig",
+    "GraphRagDriftSearchConfig",
     "KnowledgeNodeGraphRagLocalSearchConfig",
     "KnowledgeNodeGraphRagBasicSearchConfig",
     "KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS",

@@ -30,4 +30,184 @@
     &:last-child {
         margin-bottom: 0;
     }
+
+    &--narrow {
+        width: 258px;
+        flex: none;
+    }
+}
+
+// Sits inside a .form-group-container row — even when it's the row's only
+// (and therefore also "last") child, it isn't the last field in the section,
+// so it must keep its bottom margin regardless of the :last-child reset above.
+.form-group.form-group--narrow,
+.form-group.form-group--keep-margin {
+    margin-bottom: 1rem;
+}
+
+.lock-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    background: var(--color-input-background);
+    color: var(--color-text-secondary, var(--color-text-primary));
+    font-size: 0.875rem;
+}
+
+.metadata-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    background: var(--color-input-background);
+    font-size: 0.875rem;
+
+    &--error {
+        color: var(--color-ks-status-failed);
+    }
+
+    &__spinner {
+        display: inline-block;
+        width: 1rem;
+        height: 1rem;
+        flex-shrink: 0;
+        border-radius: 50%;
+        border: 2px solid var(--color-divider-subtle);
+        border-top-color: var(--accent-color);
+        animation: rag-tab-spin 0.8s linear infinite;
+    }
+
+    &__retry {
+        margin-left: auto;
+        border: none;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 600;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+}
+
+@keyframes rag-tab-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.max-context-tokens-anchor {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+
+    app-input-number {
+        width: 258px;
+        flex: none;
+    }
+
+    &__apply {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 42px;
+        height: 42px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: var(--accent-color);
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition:
+            background-color 0.2s,
+            color 0.2s;
+
+        &:hover:not(:disabled) {
+            background: var(--accent-color-hover);
+        }
+
+        &:active:not(:disabled) {
+            background: var(--accent-color-active);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    }
+}
+
+.suggested-params-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+
+    .suggest-status {
+        &.error {
+            color: var(--color-ks-status-failed);
+        }
+    }
+}
+
+.advanced-settings {
+    margin-bottom: 1rem;
+
+    &__summary {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        width: 100%;
+        border: none;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        text-align: left;
+        margin-bottom: 1rem;
+
+        .chevron {
+            transform: rotate(-90deg);
+            transition: transform 0.2s ease;
+        }
+    }
+
+    &--open &__summary .chevron {
+        transform: rotate(0deg);
+    }
+
+    &__content-wrapper {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.25s ease;
+    }
+
+    &--open &__content-wrapper {
+        grid-template-rows: 1fr;
+    }
+
+    &__content {
+        overflow: hidden;
+        min-height: 0;
+
+        > .form-group,
+        > .form-group-container {
+            margin-bottom: 1.5rem;
+        }
+
+        // Nested fields inside a row container must not add their own
+        // margin-bottom on top of the row's — flex containers don't collapse
+        // child margins, so it would otherwise stack on every multi-field row.
+        > .form-group-container > .form-group {
+            margin-bottom: 0;
+        }
+    }
 }

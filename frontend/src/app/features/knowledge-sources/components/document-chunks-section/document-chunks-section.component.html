@@ -17,12 +17,47 @@
                 </div>
             }
             @case ('chunking') {
+                <ng-container
+                    *ngTemplateOutlet="
+                        chunksHeader;
+                        context: {
+                            disabled: false,
+                            statusText: 'Chunking',
+                            statusClass: 'chunking',
+                            statusIcon: 'clock',
+                            btnText: 'Cancel',
+                            btnAction: 'cancel',
+                        }
+                    "
+                ></ng-container>
                 <app-spinner
                     class="chunks__loader"
                     text="Running chunking process..."
                     [isOverlay]="false"
                 />
             }
+            @case ('chunking_timeout') {
+                <ng-container
+                    *ngTemplateOutlet="
+                        chunksHeader;
+                        context: {
+                            disabled: false,
+                            statusText: 'Timeout',
+                            statusClass: 'outdated',
+                            statusIcon: 'clock',
+                            btnText: 'Retry chunk',
+                        }
+                    "
+                ></ng-container>
+                <div class="chunks__empty">
+                    <app-svg-icon
+                        icon="file-checked"
+                        size="3rem"
+                    />
+                    <span>Chunking is taking longer than expected. Check status later or retry.</span>
+                </div>
+            }
+
             @case ('chunking_failed') {
                 <ng-container
                     *ngTemplateOutlet="
@@ -136,6 +171,7 @@
     let-statusClass="statusClass"
     let-statusIcon="statusIcon"
     let-btnText="btnText"
+    let-btnAction="btnAction"
 >
     <div class="chunks__header">
         <span>Chunk Preview</span>
@@ -150,15 +186,27 @@
         }
 
         <ng-content>
-            <app-button
-                class="chunks__action-btn"
-                type="primary"
-                mod="small"
-                (click)="runChunking()"
-                [disabled]="disabled"
-            >
-                {{ btnText }}
-            </app-button>
+            @if (btnAction === 'cancel') {
+                <app-button
+                    class="chunks__action-btn"
+                    type="secondary"
+                    mod="small"
+                    (click)="stopChunking()"
+                    [disabled]="disabled"
+                >
+                    {{ btnText }}
+                </app-button>
+            } @else {
+                <app-button
+                    class="chunks__action-btn"
+                    type="primary"
+                    mod="small"
+                    (click)="runChunking()"
+                    [disabled]="disabled"
+                >
+                    {{ btnText }}
+                </app-button>
+            }
         </ng-content>
     </div>
 </ng-template>

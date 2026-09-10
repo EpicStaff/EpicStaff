@@ -1,0 +1,33 @@
+from pathlib import Path
+
+from src.shared.envtools import Env
+
+BASE_DIR: Path = Path(__file__).resolve().parent
+
+env = Env()
+
+if not env.bool("RUN_IN_DOCKER", False):
+    env.read_env(BASE_DIR / '../.env')
+
+DEBUG = env.bool("KNOWLEDGE_DEBUG")
+
+MAX_PROCESS_WORKERS = env.int("KNOWLEDGE_MAX_PROCESS_WORKERS")
+
+DATABASE_DNS = env.dns(
+    "postgresql+psycopg",
+    "DB_HOST",
+    "DB_PORT",
+    "KNOWLEDGE_DB_USER",
+    "KNOWLEDGE_DB_PASSWORD",
+    "DB_NAME",
+)
+
+MINIO_ENDPOINT = (
+    f"{'https' if env.bool('MINIO_SSL') else 'http'}://"
+    f"{env.str('MINIO_HOST')}:{env.int('MINIO_PORT')}"
+)
+MINIO_ACCESS_KEY = env.str("MINIO_USER")
+MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
+MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
+
+GRAPHRAG_ENCODING = "utf-8"

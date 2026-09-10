@@ -116,6 +116,25 @@
         height: 20px;
         display: flex;
         align-items: center;
+
+        &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 0.25rem;
+            background-image: repeating-linear-gradient(
+                to right,
+                rgba(217, 217, 222, 0.4) 0,
+                rgba(217, 217, 222, 0.4) 8px,
+                transparent 8px,
+                transparent 13px
+            );
+            z-index: 0;
+            pointer-events: none;
+        }
     }
 
     &__track {

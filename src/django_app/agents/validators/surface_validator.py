@@ -101,6 +101,8 @@ class SurfaceValidator:
         naive_config = item.get("naive_search_config")
         graph_basic_config = item.get("graph_basic_search_config")
         graph_local_config = item.get("graph_local_search_config")
+        graph_global_config = item.get("graph_global_search_config")
+        graph_drift_config = item.get("graph_drift_search_config")
 
         if naive_config is not None and BaseRagType.RagType.NAIVE not in rag_types:
             raise SurfaceValidationError(
@@ -134,6 +136,32 @@ class SurfaceValidator:
                     "knowledge": (
                         f"Collection {collection.pk} does not have a graph RAG type; "
                         "graph_local_search_config is not allowed."
+                    )
+                }
+            )
+
+        if (
+            graph_global_config is not None
+            and BaseRagType.RagType.GRAPH not in rag_types
+        ):
+            raise SurfaceValidationError(
+                detail={
+                    "knowledge": (
+                        f"Collection {collection.pk} does not have a graph RAG type; "
+                        "graph_global_search_config is not allowed."
+                    )
+                }
+            )
+
+        if (
+            graph_drift_config is not None
+            and BaseRagType.RagType.GRAPH not in rag_types
+        ):
+            raise SurfaceValidationError(
+                detail={
+                    "knowledge": (
+                        f"Collection {collection.pk} does not have a graph RAG type; "
+                        "graph_drift_search_config is not allowed."
                     )
                 }
             )

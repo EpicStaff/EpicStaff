@@ -1,21 +1,22 @@
-from typing import Any, AsyncIterable, Iterable
+from typing import Any, AsyncIterator, Iterator
 
 from communication.brokers.abstract import AbstractBroker
 from communication.storages.abstract import AbstractStorage
 
 
 class FakeBroker(AbstractBroker):
-    """In-memory broker that records sent messages and replays seeded frames.
+    """In-memory broker that records sends and replays seeded frames.
 
     Args:
-        frames: Optional list of dicts to replay from receive/areceive.
-            Each dict is copied before yielding so tests can mutate freely.
+        frames: Frames to hand back. `receive`/`areceive` return them one per
+            call (then `None`); `stream`/`astream` yield them all. Each frame is
+            copied before being handed out so tests can mutate freely.
     """
 
     def __init__(self, frames: list[dict[str, Any]] | None = None):
         self.sent: list[tuple[str, dict[str, Any]]] = []
         self.async_sent: list[tuple[str, dict[str, Any]]] = []
-        self._frames: list[dict[str, Any]] = frames if frames is not None else []
+        self._frames: list[dict[str, Any]] = list(frames) if frames is not None else []
 
     def send(self, channel: str, data: dict[str, Any]):
         self.sent.append((channel, data))
@@ -23,11 +24,19 @@ class FakeBroker(AbstractBroker):
     async def asend(self, channel: str, data: dict[str, Any]):
         self.async_sent.append((channel, data))
 
-    def receive(self, channel: str) -> Iterable[dict[str, Any]]:
+    def receive(self, channel: str, timeout: float = 5.0) -> dict[str, Any] | None:
+        return dict(self._frames.pop(0)) if self._frames else None
+
+    async def areceive(
+        self, channel: str, timeout: float = 5.0
+    ) -> dict[str, Any] | None:
+        return dict(self._frames.pop(0)) if self._frames else None
+
+    def stream(self, channel: str) -> Iterator[dict[str, Any]]:
         for frame in self._frames:
             yield dict(frame)
 
-    async def areceive(self, channel: str) -> AsyncIterable[dict[str, Any]]:
+    async def astream(self, channel: str) -> AsyncIterator[dict[str, Any]]:
         for frame in self._frames:
             yield dict(frame)
 

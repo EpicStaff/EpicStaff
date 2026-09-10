@@ -1,9 +1,9 @@
 import json
 from os import getenv
 
-from communication.message import Message
-from communication.brokers import AbstractBroker
-from communication.storages import AbstractStorage
+from .message import Message
+from .brokers import AbstractBroker
+from .storages import AbstractStorage
 
 
 DEFAULT_PAYLOAD_SIZE_THRESHOLD = int(

@@ -61,6 +61,7 @@ from tables.views.views import (
     NotifyEmailView,
     InitRealtimeAPIView,
     ProcessRagIndexingView,
+    CancelRagIndexingView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
     SessionViewSet,
@@ -88,6 +89,7 @@ from tables.views.knowledge_views.naive_rag_views import (
     NaiveRagViewSet,
     NaiveRagDocumentConfigViewSet,
     ProcessNaiveRagDocumentChunkingView,
+    CancelNaiveRagDocumentChunkingView,
     NaiveRagChunkViewSet,
     NaiveRagChunkPreviewView,
     NaiveRagChunkSearchView,
@@ -95,6 +97,10 @@ from tables.views.knowledge_views.naive_rag_views import (
 )
 from tables.views.knowledge_views.graph_rag_views import (
     GraphRagViewSet,
+)
+from tables.views.knowledge_views.search_config_views import (
+    GraphRagSuggestParamsView,
+    NaiveRagSuggestParamsView,
 )
 
 
@@ -281,6 +287,11 @@ urlpatterns = [
         name="process-document-chunking",
     ),
     path(
+        "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/process-chunking/cancel/",
+        CancelNaiveRagDocumentChunkingView.as_view(),
+        name="cancel-document-chunking",
+    ),
+    path(
         "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/chunks/search/",
         NaiveRagChunkSearchView.as_view(),
         name="naive-rag-chunks-search",
@@ -299,6 +310,11 @@ urlpatterns = [
         "process-rag-indexing/",
         ProcessRagIndexingView.as_view(),
         name="process-rag-indexing",
+    ),
+    path(
+        "process-rag-indexing/<str:rag_type>/<int:rag_id>/cancel/",
+        CancelRagIndexingView.as_view(),
+        name="cancel-rag-indexing",
     ),
     path(
         "documents/source-collection/<str:collection_id>/upload/",
@@ -402,6 +418,16 @@ urlpatterns = [
         "twilio/configure-webhook/",
         TwilioConfigureWebhookView.as_view(),
         name="twilio-configure-webhook",
+    ),
+    path(
+        "naive-rag/suggest-search-params/",
+        NaiveRagSuggestParamsView.as_view(),
+        name="naive-rag-suggest-search-params",
+    ),
+    path(
+        "graph-rag/suggest-search-params/",
+        GraphRagSuggestParamsView.as_view(),
+        name="graph-rag-suggest-search-params",
     ),
     # Flow Assistant endpoints
     path(

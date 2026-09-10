@@ -11,10 +11,15 @@ import { ChangeDetectionStrategy, Component, ContentChild, input, TemplateRef } 
 export class ListComponent<T> {
     items = input.required<T[]>();
     width = input<string | null>(null);
+    emptyTitle = input<string | null>(null);
+    emptyDescription = input<string | null>(null);
+    trackBy = input<(index: number, item: T) => unknown>((index) => index);
 
     @ContentChild(TemplateRef)
     rowTemplate!: TemplateRef<{
         $implicit: T;
         index: number;
     }>;
+
+    protected trackItem = (index: number, item: T): unknown => this.trackBy()(index, item);
 }

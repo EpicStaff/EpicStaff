@@ -1,3 +1,5 @@
+import { GraphDriftSearchConfig, GraphGlobalSearchConfig } from '@shared/models';
+
 export type ToolMode = 'allow' | 'deny';
 
 export interface SurfaceSaveError {
@@ -28,12 +30,14 @@ export interface SurfaceStorageItem {
 export interface SurfaceNaiveSearchConfig {
     search_limit: number;
     similarity_threshold: string | number;
+    is_suggested?: boolean;
 }
 
 export interface SurfaceGraphBasicSearchConfig {
     prompt?: string | null;
     k: number;
     max_context_tokens: number;
+    is_suggested?: boolean;
 }
 
 export interface SurfaceGraphLocalSearchConfig {
@@ -44,6 +48,7 @@ export interface SurfaceGraphLocalSearchConfig {
     top_k_entities: number;
     top_k_relationships: number;
     max_context_tokens: number;
+    is_suggested?: boolean;
 }
 
 export interface SurfaceKnowledge {
@@ -51,6 +56,8 @@ export interface SurfaceKnowledge {
     naive_search_config?: SurfaceNaiveSearchConfig | null;
     graph_basic_search_config?: SurfaceGraphBasicSearchConfig | null;
     graph_local_search_config?: SurfaceGraphLocalSearchConfig | null;
+    graph_global_search_config?: GraphGlobalSearchConfig | null;
+    graph_drift_search_config?: GraphDriftSearchConfig | null;
 }
 
 export interface Surface {

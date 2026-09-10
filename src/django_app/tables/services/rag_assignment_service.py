@@ -10,6 +10,8 @@ from tables.models.knowledge_models.graphrag_models import (
     AgentGraphRag,
     GraphRagBasicSearchConfig,
     GraphRagLocalSearchConfig,
+    GraphRagGlobalSearchConfig,
+    GraphRagDriftSearchConfig,
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
 )
@@ -193,9 +195,8 @@ class RagAssignmentService:
         # Create M2M link
         AgentGraphRag.objects.create(agent=agent, graph_rag=graph_rag)
 
-        # Create both search configs with defaults
-        GraphRagBasicSearchConfig.objects.get_or_create(agent=agent)
-        GraphRagLocalSearchConfig.objects.get_or_create(agent=agent)
+        # Create all graph search configs with defaults (basic/local/global/drift)
+        SearchConfigService.create_default_graph_search_configs(agent)
 
         return graph_rag
 
@@ -273,6 +274,7 @@ class SearchConfigService:
         return {
             "search_limit": config.search_limit,
             "similarity_threshold": round(float(config.similarity_threshold), 2),
+            "is_suggested": config.is_suggested,
         }
 
     @staticmethod
@@ -293,8 +295,10 @@ class SearchConfigService:
         """
         basic = GraphRagBasicSearchConfig.objects.filter(agent=agent).first()
         local = GraphRagLocalSearchConfig.objects.filter(agent=agent).first()
+        global_ = GraphRagGlobalSearchConfig.objects.filter(agent=agent).first()
+        drift = GraphRagDriftSearchConfig.objects.filter(agent=agent).first()
 
-        if basic is None and local is None:
+        if basic is None and local is None and global_ is None and drift is None:
             return None
 
         # search_method from AgentGraphRag if assigned, null if no graph rag
@@ -308,6 +312,7 @@ class SearchConfigService:
                 "prompt": basic.prompt,
                 "k": basic.k,
                 "max_context_tokens": basic.max_context_tokens,
+                "is_suggested": basic.is_suggested,
             }
         else:
             result["basic"] = None
@@ -321,9 +326,59 @@ class SearchConfigService:
                 "top_k_entities": local.top_k_entities,
                 "top_k_relationships": local.top_k_relationships,
                 "max_context_tokens": local.max_context_tokens,
+                "is_suggested": local.is_suggested,
             }
         else:
             result["local"] = None
+
+        if global_ is not None:
+            result["global"] = {
+                "map_prompt": global_.map_prompt,
+                "reduce_prompt": global_.reduce_prompt,
+                "knowledge_prompt": global_.knowledge_prompt,
+                "max_context_tokens": global_.max_context_tokens,
+                "data_max_tokens": global_.data_max_tokens,
+                "map_max_length": global_.map_max_length,
+                "reduce_max_length": global_.reduce_max_length,
+                "dynamic_community_selection": global_.dynamic_community_selection,
+                "dynamic_search_threshold": global_.dynamic_search_threshold,
+                "dynamic_search_keep_parent": global_.dynamic_search_keep_parent,
+                "dynamic_search_num_repeats": global_.dynamic_search_num_repeats,
+                "dynamic_search_use_summary": global_.dynamic_search_use_summary,
+                "dynamic_search_max_level": global_.dynamic_search_max_level,
+                "is_suggested": global_.is_suggested,
+            }
+        else:
+            result["global"] = None
+
+        if drift is not None:
+            result["drift"] = {
+                "prompt": drift.prompt,
+                "reduce_prompt": drift.reduce_prompt,
+                "data_max_tokens": drift.data_max_tokens,
+                "reduce_max_tokens": drift.reduce_max_tokens,
+                "reduce_temperature": drift.reduce_temperature,
+                "reduce_max_completion_tokens": drift.reduce_max_completion_tokens,
+                "concurrency": drift.concurrency,
+                "drift_k_followups": drift.drift_k_followups,
+                "primer_folds": drift.primer_folds,
+                "primer_llm_max_tokens": drift.primer_llm_max_tokens,
+                "n_depth": drift.n_depth,
+                "community_level": drift.community_level,
+                "local_search_text_unit_prop": drift.local_search_text_unit_prop,
+                "local_search_community_prop": drift.local_search_community_prop,
+                "local_search_top_k_mapped_entities": drift.local_search_top_k_mapped_entities,
+                "local_search_top_k_relationships": drift.local_search_top_k_relationships,
+                "local_search_max_data_tokens": drift.local_search_max_data_tokens,
+                "local_search_temperature": drift.local_search_temperature,
+                "local_search_top_p": drift.local_search_top_p,
+                "local_search_n": drift.local_search_n,
+                "local_search_llm_max_gen_tokens": drift.local_search_llm_max_gen_tokens,
+                "local_search_llm_max_gen_completion_tokens": drift.local_search_llm_max_gen_completion_tokens,
+                "is_suggested": drift.is_suggested,
+            }
+        else:
+            result["drift"] = None
 
         return result
 
@@ -400,6 +455,16 @@ class SearchConfigService:
         if local_config:
             SearchConfigService.update_graph_local_search_config(agent, **local_config)
 
+        global_config = config.get("global")
+        if global_config:
+            SearchConfigService.update_graph_global_search_config(
+                agent, **global_config
+            )
+
+        drift_config = config.get("drift")
+        if drift_config:
+            SearchConfigService.update_graph_drift_search_config(agent, **drift_config)
+
     @staticmethod
     def create_default_search_config(agent: Agent) -> NaiveRagSearchConfig:
         """
@@ -418,7 +483,7 @@ class SearchConfigService:
 
     @staticmethod
     def update_search_config(
-        agent: Agent, search_limit=None, similarity_threshold=None
+        agent: Agent, search_limit=None, similarity_threshold=None, is_suggested=None
     ):
         """
         Update agent's search config. Creates if doesn't exist.
@@ -431,8 +496,14 @@ class SearchConfigService:
             config.search_limit = search_limit
         if similarity_threshold is not None:
             config.similarity_threshold = similarity_threshold
+        if is_suggested is not None:
+            config.is_suggested = is_suggested
 
-        if search_limit is not None or similarity_threshold is not None:
+        if (
+            search_limit is not None
+            or similarity_threshold is not None
+            or is_suggested is not None
+        ):
             config.save()
 
         return config
@@ -441,9 +512,11 @@ class SearchConfigService:
 
     @staticmethod
     def create_default_graph_search_configs(agent: Agent):
-        """Create both basic and local search configs with defaults."""
+        """Create basic, local, global and drift search configs with defaults."""
         GraphRagBasicSearchConfig.objects.get_or_create(agent=agent)
         GraphRagLocalSearchConfig.objects.get_or_create(agent=agent)
+        GraphRagGlobalSearchConfig.objects.get_or_create(agent=agent)
+        GraphRagDriftSearchConfig.objects.get_or_create(agent=agent)
 
     @staticmethod
     def update_graph_search_method(agent: Agent, search_method: str):
@@ -451,10 +524,9 @@ class SearchConfigService:
         AgentGraphRag.objects.filter(agent=agent).update(search_method=search_method)
 
     @staticmethod
-    def update_graph_basic_search_config(agent: Agent, **kwargs):
-        """Update basic search config. Creates if doesn't exist."""
-        config, _ = GraphRagBasicSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = SearchConfigService._BASIC_FIELDS
+    def _upsert_search_config(model_cls, agent: Agent, valid_fields, **kwargs):
+        """Get-or-create the config for agent, apply a partial update, save if changed."""
+        config, _ = model_cls.objects.get_or_create(agent=agent)
         updated = False
         for field, value in kwargs.items():
             if field in valid_fields and value is not None:
@@ -463,63 +535,94 @@ class SearchConfigService:
         if updated:
             config.save()
         return config
+
+    @staticmethod
+    def update_graph_basic_search_config(agent: Agent, **kwargs):
+        """Update basic search config. Creates if doesn't exist."""
+        return SearchConfigService._upsert_search_config(
+            GraphRagBasicSearchConfig,
+            agent,
+            ("prompt", "k", "max_context_tokens", "is_suggested"),
+            **kwargs,
+        )
 
     @staticmethod
     def update_graph_local_search_config(agent: Agent, **kwargs):
         """Update local search config. Creates if doesn't exist."""
-        config, _ = GraphRagLocalSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = SearchConfigService._LOCAL_FIELDS
-        updated = False
-        for field, value in kwargs.items():
-            if field in valid_fields and value is not None:
-                setattr(config, field, value)
-                updated = True
-        if updated:
-            config.save()
-        return config
-
-    # ---- Node-bound search configs (partial merge, mirror of the agent methods) ----
-
-    @staticmethod
-    def apply_node_search_configs(node, search_configs_data: dict):
-        """Partial-merge node search configs from validated nested data.
-
-        Only provided rag types / fields are touched — omitted blocks keep their
-        stored values (unlike the bulk-save replace-on-write path).
-        """
-        for rag_type, config in search_configs_data.items():
-            if rag_type == "naive":
-                SearchConfigService.update_node_naive_search_config(node, **config)
-            elif rag_type == "graph":
-                SearchConfigService.apply_node_graph_search_configs(node, config)
+        return SearchConfigService._upsert_search_config(
+            GraphRagLocalSearchConfig,
+            agent,
+            (
+                "prompt",
+                "text_unit_prop",
+                "community_prop",
+                "conversation_history_max_turns",
+                "top_k_entities",
+                "top_k_relationships",
+                "max_context_tokens",
+                "is_suggested",
+            ),
+            **kwargs,
+        )
 
     @staticmethod
-    def apply_node_graph_search_configs(node, config: dict):
-        """Apply graph search config to a node: search_method lives on the node,
-        basic/local params on their own node-bound rows."""
-        search_method = config.get("search_method")
-        if search_method:
-            node.search_method = search_method
-            node.save(update_fields=["search_method"])
-        basic = config.get("basic")
-        if basic:
-            SearchConfigService.update_node_graph_basic_search_config(node, **basic)
-        local = config.get("local")
-        if local:
-            SearchConfigService.update_node_graph_local_search_config(node, **local)
+    def update_graph_global_search_config(agent: Agent, **kwargs):
+        """Update global search config. Creates if doesn't exist."""
+        return SearchConfigService._upsert_search_config(
+            GraphRagGlobalSearchConfig,
+            agent,
+            (
+                "map_prompt",
+                "reduce_prompt",
+                "knowledge_prompt",
+                "max_context_tokens",
+                "data_max_tokens",
+                "map_max_length",
+                "reduce_max_length",
+                "dynamic_community_selection",
+                "dynamic_search_threshold",
+                "dynamic_search_keep_parent",
+                "dynamic_search_num_repeats",
+                "dynamic_search_use_summary",
+                "dynamic_search_max_level",
+                "is_suggested",
+            ),
+            **kwargs,
+        )
 
     @staticmethod
-    def _update_node_config(model, node, valid_fields, kwargs):
-        """get_or_create the node-bound row and set only provided non-None fields."""
-        config, _ = model.objects.get_or_create(knowledge_node=node)
-        updated = False
-        for field, value in kwargs.items():
-            if field in valid_fields and value is not None:
-                setattr(config, field, value)
-                updated = True
-        if updated:
-            config.save()
-        return config
+    def update_graph_drift_search_config(agent: Agent, **kwargs):
+        """Update drift search config. Creates if doesn't exist."""
+        return SearchConfigService._upsert_search_config(
+            GraphRagDriftSearchConfig,
+            agent,
+            (
+                "prompt",
+                "reduce_prompt",
+                "data_max_tokens",
+                "reduce_max_tokens",
+                "reduce_temperature",
+                "reduce_max_completion_tokens",
+                "concurrency",
+                "drift_k_followups",
+                "primer_folds",
+                "primer_llm_max_tokens",
+                "n_depth",
+                "community_level",
+                "local_search_text_unit_prop",
+                "local_search_community_prop",
+                "local_search_top_k_mapped_entities",
+                "local_search_top_k_relationships",
+                "local_search_max_data_tokens",
+                "local_search_temperature",
+                "local_search_top_p",
+                "local_search_n",
+                "local_search_llm_max_gen_tokens",
+                "local_search_llm_max_gen_completion_tokens",
+                "is_suggested",
+            ),
+            **kwargs,
+        )
 
     @staticmethod
     def update_node_naive_search_config(node, **kwargs):

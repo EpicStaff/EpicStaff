@@ -1,4 +1,6 @@
-@if (!hideTrigger()) {
+<ng-content select="[appMultiSelectTrigger]" />
+
+@if (!projectedTriggerEl() && !hideTrigger()) {
     <div
         #triggerBtn
         class="multi-select__btn"
@@ -18,9 +20,7 @@
     </div>
 }
 
-@if (hideTrigger()) {
-    <!-- Projected custom trigger. Use [appMultiSelectTrigger]="msRef" to open the dropdown. -->
-    <ng-content></ng-content>
+@if (!projectedTriggerEl() && hideTrigger()) {
     <span
         #triggerBtn
         style="display: none"

@@ -1,7 +1,7 @@
 """Broker implementations and the AbstractBroker contract."""
 
 from .abstract import AbstractBroker
-from .redis_ import RedisPubSubBroker
+from .redis_broker import RedisPubSubBroker
 
 __all__ = [
     "AbstractBroker",

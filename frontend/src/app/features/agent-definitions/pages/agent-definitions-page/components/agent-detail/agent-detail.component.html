@@ -256,6 +256,7 @@
                 <app-agent-surfaces-panel
                     [surfaces]="surfaces()"
                     [agentId]="agent()?.id ?? null"
+                    [llmConfigId]="liveLlmConfigId()"
                     [defaultSurfaces]="agent()?.default_surfaces ?? []"
                     [sharedSurfaceIds]="sharedSurfaceIds()"
                     [saving]="saving()"

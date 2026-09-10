@@ -5,6 +5,8 @@ from rest_framework import serializers
 from agents.models.surface_models import (
     Surface,
     SurfaceGraphBasicSearchConfig,
+    SurfaceGraphDriftSearchConfig,
+    SurfaceGraphGlobalSearchConfig,
     SurfaceGraphLocalSearchConfig,
     SurfaceKnowledge,
     SurfaceMcpTool,
@@ -48,13 +50,13 @@ class SurfaceStorageItemReadSerializer(serializers.ModelSerializer):
 class SurfaceNaiveSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = SurfaceNaiveSearchConfig
-        fields = ["search_limit", "similarity_threshold"]
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
 
 
 class SurfaceGraphBasicSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = SurfaceGraphBasicSearchConfig
-        fields = ["prompt", "k", "max_context_tokens"]
+        fields = ["prompt", "k", "max_context_tokens", "is_suggested"]
 
 
 class SurfaceGraphLocalSearchConfigReadSerializer(serializers.ModelSerializer):
@@ -68,6 +70,58 @@ class SurfaceGraphLocalSearchConfigReadSerializer(serializers.ModelSerializer):
             "top_k_entities",
             "top_k_relationships",
             "max_context_tokens",
+            "is_suggested",
+        ]
+
+
+class SurfaceGraphGlobalSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SurfaceGraphGlobalSearchConfig
+        fields = [
+            "map_prompt",
+            "reduce_prompt",
+            "knowledge_prompt",
+            "max_context_tokens",
+            "data_max_tokens",
+            "map_max_length",
+            "reduce_max_length",
+            "dynamic_community_selection",
+            "dynamic_search_threshold",
+            "dynamic_search_keep_parent",
+            "dynamic_search_num_repeats",
+            "dynamic_search_use_summary",
+            "dynamic_search_max_level",
+            "is_suggested",
+        ]
+
+
+class SurfaceGraphDriftSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SurfaceGraphDriftSearchConfig
+        fields = [
+            "prompt",
+            "reduce_prompt",
+            "data_max_tokens",
+            "reduce_max_tokens",
+            "reduce_temperature",
+            "reduce_max_completion_tokens",
+            "concurrency",
+            "drift_k_followups",
+            "primer_folds",
+            "primer_llm_max_tokens",
+            "n_depth",
+            "community_level",
+            "local_search_text_unit_prop",
+            "local_search_community_prop",
+            "local_search_top_k_mapped_entities",
+            "local_search_top_k_relationships",
+            "local_search_max_data_tokens",
+            "local_search_temperature",
+            "local_search_top_p",
+            "local_search_n",
+            "local_search_llm_max_gen_tokens",
+            "local_search_llm_max_gen_completion_tokens",
+            "is_suggested",
         ]
 
 
@@ -79,6 +133,12 @@ class SurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
     graph_local_search_config = SurfaceGraphLocalSearchConfigReadSerializer(
         read_only=True
     )
+    graph_global_search_config = SurfaceGraphGlobalSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_drift_search_config = SurfaceGraphDriftSearchConfigReadSerializer(
+        read_only=True
+    )
 
     class Meta:
         model = SurfaceKnowledge
@@ -87,6 +147,8 @@ class SurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
             "naive_search_config",
             "graph_basic_search_config",
             "graph_local_search_config",
+            "graph_global_search_config",
+            "graph_drift_search_config",
         ]
 
 
@@ -123,12 +185,14 @@ class SurfaceNaiveSearchConfigWriteSerializer(serializers.Serializer):
     similarity_threshold = serializers.DecimalField(
         default="0.20", max_digits=3, decimal_places=2, min_value=0, max_value=1
     )
+    is_suggested = serializers.BooleanField(default=False)
 
 
 class SurfaceGraphBasicSearchConfigWriteSerializer(serializers.Serializer):
     prompt = serializers.CharField(required=False, allow_null=True, default=None)
     k = serializers.IntegerField(default=10)
     max_context_tokens = serializers.IntegerField(default=12000)
+    is_suggested = serializers.BooleanField(default=False)
 
 
 class SurfaceGraphLocalSearchConfigWriteSerializer(serializers.Serializer):
@@ -139,6 +203,60 @@ class SurfaceGraphLocalSearchConfigWriteSerializer(serializers.Serializer):
     top_k_entities = serializers.IntegerField(default=10)
     top_k_relationships = serializers.IntegerField(default=10)
     max_context_tokens = serializers.IntegerField(default=12000)
+    is_suggested = serializers.BooleanField(default=False)
+
+
+class SurfaceGraphGlobalSearchConfigWriteSerializer(serializers.Serializer):
+    map_prompt = serializers.CharField(required=False, allow_null=True, default=None)
+    reduce_prompt = serializers.CharField(required=False, allow_null=True, default=None)
+    knowledge_prompt = serializers.CharField(
+        required=False, allow_null=True, default=None
+    )
+    max_context_tokens = serializers.IntegerField(default=12000)
+    data_max_tokens = serializers.IntegerField(default=12000)
+    map_max_length = serializers.IntegerField(default=1000)
+    reduce_max_length = serializers.IntegerField(default=2000)
+    dynamic_community_selection = serializers.BooleanField(default=False)
+    dynamic_search_threshold = serializers.IntegerField(default=1)
+    dynamic_search_keep_parent = serializers.BooleanField(default=False)
+    dynamic_search_num_repeats = serializers.IntegerField(default=1)
+    dynamic_search_use_summary = serializers.BooleanField(default=False)
+    dynamic_search_max_level = serializers.IntegerField(default=2)
+    is_suggested = serializers.BooleanField(default=False)
+
+
+class SurfaceGraphDriftSearchConfigWriteSerializer(serializers.Serializer):
+    prompt = serializers.CharField(required=False, allow_null=True, default=None)
+    reduce_prompt = serializers.CharField(required=False, allow_null=True, default=None)
+    data_max_tokens = serializers.IntegerField(default=12000)
+    reduce_max_tokens = serializers.IntegerField(
+        required=False, allow_null=True, default=None
+    )
+    reduce_temperature = serializers.FloatField(default=0.0)
+    reduce_max_completion_tokens = serializers.IntegerField(
+        required=False, allow_null=True, default=None
+    )
+    concurrency = serializers.IntegerField(default=32)
+    drift_k_followups = serializers.IntegerField(default=20)
+    primer_folds = serializers.IntegerField(default=5)
+    primer_llm_max_tokens = serializers.IntegerField(default=12000)
+    n_depth = serializers.IntegerField(default=3)
+    community_level = serializers.IntegerField(default=2)
+    local_search_text_unit_prop = serializers.FloatField(default=0.9)
+    local_search_community_prop = serializers.FloatField(default=0.1)
+    local_search_top_k_mapped_entities = serializers.IntegerField(default=10)
+    local_search_top_k_relationships = serializers.IntegerField(default=10)
+    local_search_max_data_tokens = serializers.IntegerField(default=12000)
+    local_search_temperature = serializers.FloatField(default=0.0)
+    local_search_top_p = serializers.FloatField(default=1.0)
+    local_search_n = serializers.IntegerField(default=1)
+    local_search_llm_max_gen_tokens = serializers.IntegerField(
+        required=False, allow_null=True, default=None
+    )
+    local_search_llm_max_gen_completion_tokens = serializers.IntegerField(
+        required=False, allow_null=True, default=None
+    )
+    is_suggested = serializers.BooleanField(default=False)
 
 
 class SurfaceKnowledgeWriteSerializer(serializers.Serializer):
@@ -152,6 +270,12 @@ class SurfaceKnowledgeWriteSerializer(serializers.Serializer):
         required=False, allow_null=True, default=None
     )
     graph_local_search_config = SurfaceGraphLocalSearchConfigWriteSerializer(
+        required=False, allow_null=True, default=None
+    )
+    graph_global_search_config = SurfaceGraphGlobalSearchConfigWriteSerializer(
+        required=False, allow_null=True, default=None
+    )
+    graph_drift_search_config = SurfaceGraphDriftSearchConfigWriteSerializer(
         required=False, allow_null=True, default=None
     )
 

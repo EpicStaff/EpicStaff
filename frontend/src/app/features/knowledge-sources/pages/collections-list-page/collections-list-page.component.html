@@ -13,12 +13,11 @@
                 <app-collections-list-sidebar
                     [collections]="collections()"
                     (onCreateCollection)="createCollection()"
-                    [(selectedCollectionId)]="selectedCollectionId"
                 />
             </div>
 
             <div class="collections-page__content">
-                <app-collection-details [selectedCollectionId]="selectedCollectionId()" />
+                <app-collection-details />
             </div>
         }
     </div>

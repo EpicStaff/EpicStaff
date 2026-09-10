@@ -12,12 +12,16 @@ _SURFACE_PREFETCH_FIELDS = (
     "surface_list__knowledge__naive_search_config",
     "surface_list__knowledge__graph_basic_search_config",
     "surface_list__knowledge__graph_local_search_config",
+    "surface_list__knowledge__graph_global_search_config",
+    "surface_list__knowledge__graph_drift_search_config",
     "inline_surface__python_tools",
     "inline_surface__mcp_tools",
     "inline_surface__storage_items",
     "inline_surface__knowledge__naive_search_config",
     "inline_surface__knowledge__graph_basic_search_config",
     "inline_surface__knowledge__graph_local_search_config",
+    "inline_surface__knowledge__graph_global_search_config",
+    "inline_surface__knowledge__graph_drift_search_config",
 )
 
 
@@ -25,9 +29,9 @@ class SurfaceKnowledgeWarningService:
     """Flags surfaces whose knowledge collection has no search config set.
 
     Mirrors BaseNodePayloadService._build_collection_spec exactly: a
-    CombinedSurfaceKnowledgeData entry with all three search-config fields
-    None is silently dropped there, so it must be surfaced here as a
-    session-start warning instead.
+    CombinedSurfaceKnowledgeData entry with all search-config fields None is
+    silently dropped there, so it must be surfaced here as a session-start
+    warning instead.
     """
 
     def build_warnings(self, graph: Graph) -> list[dict]:
@@ -69,6 +73,8 @@ class SurfaceKnowledgeWarningService:
             knowledge.naive_search_config is None
             and knowledge.graph_basic_search_config is None
             and knowledge.graph_local_search_config is None
+            and knowledge.graph_global_search_config is None
+            and knowledge.graph_drift_search_config is None
         )
 
     def _resolve_collection_names(

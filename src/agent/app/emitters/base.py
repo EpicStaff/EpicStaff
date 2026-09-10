@@ -103,9 +103,11 @@ class Emitter(ABC):
         """
         return None
 
-    async def on_knowledge_search(self, response: object) -> None:
+    async def on_knowledge_search(
+        self, target: object, query: str, result: object
+    ) -> None:
         """Optional hook: called after a knowledge-search executor gets a
-        successful response, carrying the full structured search result.
+        successful response, carrying the search target, query, and result.
 
         Default is a no-op; implementations that publish a dedicated
         ``agent.knowledge_search`` envelope override it.

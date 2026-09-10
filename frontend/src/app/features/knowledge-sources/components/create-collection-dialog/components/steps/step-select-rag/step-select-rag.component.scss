@@ -75,4 +75,8 @@
         color: var(--accent-color);
         margin-right: 1.875rem;
     }
+
+    &__config-select {
+        flex: 1;
+    }
 }

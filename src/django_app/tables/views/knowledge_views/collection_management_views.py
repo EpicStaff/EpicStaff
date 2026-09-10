@@ -1,3 +1,4 @@
+from django.db.models import Count
 from rest_framework import viewsets, status
 from drf_spectacular.utils import (
     extend_schema,
@@ -79,7 +80,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         queryset = SourceCollection.objects.filter(org_id=self.get_active_org_id())
 
         if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents")
+            queryset = queryset.prefetch_related("documents").annotate(document_count=Count("documents"))
 
         return queryset
 
@@ -271,8 +272,8 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 collection.collection_id
             )
 
-            # Get status filter from query params (default to completed,warning)
-            status_filter = request.query_params.get("status", "completed,warning,new")
+            # Get status filter from query params (default to completed,new)
+            status_filter = request.query_params.get("status", "completed,new")
             allowed_statuses = [
                 s.strip() for s in status_filter.split(",") if s.strip()
             ]
