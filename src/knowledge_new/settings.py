@@ -17,9 +17,9 @@ DATABASE_DNS = env.dns(
     "postgresql+psycopg",
     "DB_HOST",
     "DB_PORT",
-    "DB_NAME",
-    "KNOWLEDGE_DB_BACKEND",
     "KNOWLEDGE_DB_USER",
+    "KNOWLEDGE_DB_PASSWORD",
+    "DB_NAME",
 )
 
 MINIO_HOST = env.str("MINIO_HOST")
