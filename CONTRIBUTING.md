@@ -65,19 +65,19 @@ These steps start the dev stack with Docker Compose directly. If you prefer `mak
     ```bash
     git checkout -b your-feature-branch-name
     ```
-4.  **Create the dev environment file `src/.dev.env`.** It is gitignored, so it does not exist on a fresh clone — pick one option:
+4.  **Create the environment file `src/.env`.** It is gitignored, so it does not exist on a fresh clone — pick one option:
 
-    - **With Python** (recommended) — generate it from `src/env.yaml`, the single source of truth:
+    - **With Python** (recommended) — generate it from `src/env.yaml`, the single source of truth, using the dev defaults:
       ```bash
-      python scripts/generate_env.py --env dev
+      python scripts/envtool.py --dev
       ```
-      Re-run this whenever `src/env.yaml` changes. Do not hand-edit the generated file.
+      This writes `src/.env` with development values (e.g. `DJANGO_DEBUG=true`, `DJANGO_FIRST_SETUP_MODE=open`, `SANDBOX_MASK_SECRET=false`). Re-run it whenever `src/env.yaml` changes. Do not hand-edit the generated file.
 
     - **Without Python** — copy the example template:
       ```bash
-      cp src/.env.example src/.dev.env
+      cp src/.env.example src/.env
       ```
-      `.env.example` is the **production** template, so edit `src/.dev.env` afterwards: fill in every value marked `CHANGE ME`, and set the local-dev flags `DEBUG=True` and `LOAD_DEBUG_ENV=True`.
+      `.env.example` is the **production** template, so edit `src/.env` afterwards: fill in every value marked `CHANGE ME`.
 
 5.  **Create the external Docker volumes and network** (one time per machine — Compose will not create these automatically):
     ```bash
@@ -87,16 +87,17 @@ These steps start the dev stack with Docker Compose directly. If you prefer `mak
     docker volume create graph_data
     docker network create mcp-network
     ```
-6.  **Start the dev stack** (live-reload, mapped ports). Run from the `src/` directory:
+6.  **Start the stack.** Run from the `src/` directory:
     ```bash
     cd src
-    docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file=.dev.env up -d
+    docker compose -f docker-compose.yaml --env-file ./.env up -d
     ```
+    From the repo root, `make up` does the same thing and also creates the external volumes and network for you.
 7.  Open **http://localhost** in your browser. The Angular live-reload dev server is also directly accessible at **http://localhost:4200**.
 8.  **Make your changes and run tests.**
 9.  **Commit and push your changes**, then **submit a Pull Request.**
 
-To tail logs, run (from `src/`) `docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file=.dev.env logs -f`. To stop the stack, replace `logs -f` with `down`.
+To tail logs, run (from `src/`) `docker compose -f docker-compose.yaml --env-file ./.env logs -f`. To stop the stack, replace `logs -f` with `down`. (`make logs` and `make down` from the repo root are equivalent.)
 
 ### Pull Request Process
 
