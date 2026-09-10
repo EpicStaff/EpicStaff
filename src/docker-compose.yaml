@@ -324,35 +324,6 @@ services:
       redis:
         condition: service_healthy
 
-#  knowledge:
-#    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
-#    build:
-#      context: .
-#      dockerfile: ./knowledge/Dockerfile.knowledge
-#    container_name: knowledge
-#    environment:
-#      <<: [*docker-env, *database-env, *redis-env, *communication-env]
-#      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
-#      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
-#      KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_INPUT_SIZE:?}
-#      KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_UNPACKED_SIZE:?}
-#      KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_CONTENT_SIZE:?}
-#      KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE: ${KNOWLEDGE_MAX_EXTRACTION_HTML_SIZE:?}
-#      KNOWLEDGE_MAX_EXTRACTION_PAGES: ${KNOWLEDGE_MAX_EXTRACTION_PAGES:?}
-#      KNOWLEDGE_GRAPH_DATA_DIR: ${KNOWLEDGE_GRAPH_DATA_DIR:?}
-#      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
-#    volumes:
-#      - graph_data:/home/user/root/app/graph_data
-#    networks:
-#      - backend-network
-#    tty: true
-#    stdin_open: true
-#    depends_on:
-#      crewdb:
-#        condition: service_healthy
-#      redis:
-#        condition: service_healthy
-
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: minio
@@ -502,10 +473,9 @@ services:
     networks:
       - backend-network
 
-
   knowledge_new:
     container_name: knowledge_new
-    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
+    image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
@@ -538,9 +508,6 @@ volumes:
   redis_data: {}
   code_instances: {}
   minio_data: {}
-
-  graph_data:
-    external: true
 
 networks:
   backend-network:

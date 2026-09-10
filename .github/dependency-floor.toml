@@ -43,13 +43,7 @@ blocked_at = "2025.11.12"
 reason = "miniopy-async 1.23.5 requires certifi >=2025.1.31,<2026.0.0. Needs a miniopy-async upgrade."
 
 [[exception]]
-package = "litellm"
-services = ["knowledge"]
-blocked_at = "1.80.0"
-reason = "litellm >=1.83 requires openai >=2.8, but knowledge declares openai <2.0.0. Blocked behind the openai 2.x migration."
-
-[[exception]]
 package = "openai"
-services = ["knowledge", "realtime"]
+services = ["realtime"]
 blocked_at = "1.58.1"
-reason = "openai 1.x -> 2.x is a breaking major. knowledge declares openai <2.0.0; realtime pins 1.58.1. Needs its own migration."
+reason = "openai 1.x -> 2.x is a breaking major. realtime pins 1.58.1. Needs its own migration."
