@@ -48,7 +48,7 @@
             justify-content: center;
 
             .plus-icon {
-                font-size: 8px;
+                font-size: 0.5rem;
                 opacity: 0;
                 transition: opacity 0.2s;
                 pointer-events: none;
@@ -69,13 +69,13 @@
             justify-content: center;
 
             i {
-                font-size: 22px;
+                font-size: 1.375rem;
             }
         }
 
         .title {
-            font-size: 15px;
-            font-weight: 600;
+            font-size: 0.9375rem;
+            font-weight: 500;
             color: var(--white);
             overflow: hidden;
             text-overflow: ellipsis;
@@ -108,7 +108,7 @@
 
         .group-name {
             color: var(--white);
-            font-size: 13px;
+            font-size: 0.8125rem;
             font-weight: 500;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -117,7 +117,7 @@
 
             .group-status {
                 margin-left: 6px;
-                font-size: 11px;
+                font-size: 0.6875rem;
                 font-weight: 400;
                 color: var(--white-alpha-55);
             }
@@ -156,7 +156,7 @@
                 justify-content: center;
 
                 .plus-icon {
-                    font-size: 8px;
+                    font-size: 0.5rem;
                     opacity: 0;
                     transition: opacity 0.2s;
                     pointer-events: none;
@@ -169,7 +169,7 @@
         padding: 1rem;
         text-align: center;
         color: var(--gray-595);
-        font-size: 13px;
+        font-size: 0.8125rem;
     }
 }
 

@@ -2,10 +2,7 @@ import time
 
 from loguru import logger
 
-from django_app.settings import (
-    REDIS_TUNNEL_CONFIG_CHANNEL,
-    TUNNEL_URLS_HASH_KEY,
-)
+from django.conf import settings
 from tables.models.graph_models import WebhookTriggerNode
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
@@ -177,14 +174,14 @@ class WebhookTriggerService(metaclass=SingletonMeta):
 
         redis_client = self.redis_service.redis_client
         delivered_n = redis_client.publish(
-            channel=REDIS_TUNNEL_CONFIG_CHANNEL, message=data.model_dump_json()
+            channel=settings.REDIS_TUNNEL_CONFIG_CHANNEL, message=data.model_dump_json()
         )
         return delivered_n > 0
 
     def _get_tunnel_url(self, config: "TunnelConfig") -> str | None:
         """Read the tunnel URL written by the webhook service directly from Redis."""
         unique_id = config.get_redis_key()
-        url = self.redis_service.redis_client.hget(TUNNEL_URLS_HASH_KEY, unique_id)
+        url = self.redis_service.redis_client.hget(settings.TUNNEL_URLS_HASH_KEY, unique_id)
         if isinstance(url, bytes):
             url = url.decode("utf-8")
         return url

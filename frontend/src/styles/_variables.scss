@@ -519,32 +519,6 @@
     --space-5xl: 48px;
 
     // ------------------------------------------------------------------
-    // PRIMITIVES — typography
-    // ------------------------------------------------------------------
-    --font-family-base: 'Inter', 'Roboto', 'Helvetica Neue', sans-serif;
-    --font-family-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-
-    --font-size-2xs: 0.625rem; // 10px
-    --font-size-xs: 0.75rem; // 12px
-    --font-size-sm: 0.8125rem; // 13px
-    --font-size-md: 0.875rem; // 14px
-    --font-size-lg: 1rem; // 16px
-    --font-size-xl: 1.125rem; // 18px
-    --font-size-2xl: 1.25rem; // 20px
-    --font-size-3xl: 1.5rem; // 24px
-    --font-size-4xl: 1.75rem; // 28px
-    --font-size-5xl: 2rem; // 32px — page/display titles
-
-    --font-weight-light: 300;
-    --font-weight-regular: 400;
-    --font-weight-medium: 500;
-    --font-weight-semibold: 600;
-    --font-weight-bold: 700;
-
-    --line-height-tight: 1.2;
-    --line-height-base: 1.5;
-
-    // ------------------------------------------------------------------
     // SEMANTIC — surfaces
     // ------------------------------------------------------------------
     --color-background-body: var(--graphite-900);
@@ -684,6 +658,9 @@
     --color-error: #f54242;
     --color-findings: #f5a623;
     --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
+    --shadow-panel-elevated: 0 4px 16px rgba(0, 0, 0, 0.3);
+
+    //ui-kit colors
     --orange: rgba(255, 143, 63, 1);
     --red: rgba(245, 66, 66, 1);
     --inactive-purple: rgba(104, 95, 255, 0.4);

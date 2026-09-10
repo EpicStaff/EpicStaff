@@ -1,12 +1,16 @@
 import asyncio
+import sys
 import uvicorn
 from app.core.settings import settings
 from app.main import create_app
 from loguru import logger
 
 async def main():
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
+
     app = create_app()
-    
+
     config = uvicorn.Config(
         app, 
         host="0.0.0.0", 
