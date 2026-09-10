@@ -128,6 +128,10 @@ export class AgentsPageStore {
         }
     }
 
+    activateStorage(): void {
+        this.storageActivated.set(true);
+    }
+
     setVisibleSections(ids: Set<ExplorerSectionId>): void {
         const next = new Set(ids);
         next.add('agents');

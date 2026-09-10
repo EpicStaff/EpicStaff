@@ -186,6 +186,13 @@
         border-radius: 10px;
     }
 
+    &__list-content {
+        display: flex;
+        flex-direction: column;
+        width: max-content;
+        min-width: 100%;
+    }
+
     &__state {
         display: flex;
         align-items: center;
@@ -203,7 +210,8 @@
         padding-right: 1rem;
         cursor: pointer;
         flex-shrink: 0;
-        min-width: max-content;
+        min-width: 100%;
+        width: max-content;
 
         &:nth-child(even) {
             background-color: var(--color-ks-transparent-black-28);
