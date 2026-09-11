@@ -60,8 +60,6 @@ import {
     InstructionsView,
     InstructionsViewToggleComponent,
 } from '../shared/instructions-view-toggle/instructions-view-toggle.component';
-import { LlmChangedWarningComponent } from '../shared/llm-changed-warning/llm-changed-warning.component';
-import { LlmChangedWarningState } from '../shared/llm-changed-warning/llm-changed-warning.state';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 import { AgentTasksTableComponent } from './agent-tasks-table/agent-tasks-table.component';
@@ -86,7 +84,6 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ValidationErrorsComponent,
         VariableHighlightTextareaComponent,
         InstructionsViewToggleComponent,
-        LlmChangedWarningComponent,
         MarkdownComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
@@ -103,9 +100,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly tasks = signal<AgentNodeTaskUi[]>([]);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
-
-    private readonly llmChangedWarningState = new LlmChangedWarningState();
-    public readonly llmChangedWarning = this.llmChangedWarningState.active;
 
     /** Both `<app-multi-select>` instances (compact + expanded views) for the surfaces
      *  dropdown — used to force-close whichever is open after the local-surface dialog
@@ -296,13 +290,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     }
 
     onAgentSelectionChange(values: unknown[]): void {
-        const previousLlmConfigId = this.selectedAgentLlmConfigId();
-
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
 
-        const nextLlmConfigId = this.selectedAgentLlmConfigId();
-        this.llmChangedWarningState.checkAgentChange(previousLlmConfigId, nextLlmConfigId, this.inlineSurface());
         const agentControl = this.form.get('agent_definition');
         agentControl?.setValue(id);
         agentControl?.markAsTouched();
@@ -328,7 +318,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         // Unchecking the local item removes it. Creation only happens via the "+" dialog.
         if (this.hasLocalSurface() && !values.includes(LOCAL_SURFACE_VALUE)) {
             this.inlineSurface.set(null);
-            this.llmChangedWarningState.clear();
         }
 
         this.sidePanelService.triggerAutosave();
@@ -342,7 +331,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             .subscribe((result) => {
                 if (result) {
                     this.inlineSurface.set(result);
-                    this.llmChangedWarningState.clear();
                     this.sidePanelService.triggerAutosave();
                     this.notifyExternalChange();
                 }
@@ -357,7 +345,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             .subscribe((result) => {
                 if (result) {
                     this.inlineSurface.set(result);
-                    this.llmChangedWarningState.clear();
                     this.sidePanelService.triggerAutosave();
                     this.notifyExternalChange();
                 }

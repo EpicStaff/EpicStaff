@@ -13,13 +13,11 @@ from src.shared.models.search_config_suggestion import (
 from tables.exceptions import (
     CollectionNotFoundException,
     GraphRagIndexNotReadyException,
-    LLMConfigNotFoundException,
     NaiveRagIndexNotReadyException,
     NoGraphRagForCollectionException,
     NoNaiveRagForCollectionException,
 )
 from tables.models import SourceCollection
-from tables.models.llm_models import LLMConfig
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.search_config_serializers import (
     GraphRagSuggestInputSerializer,
@@ -41,6 +39,7 @@ from tables.services.knowledge_services.search_config_service import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.utils.litellm_model_info import resolve_context_window
 
 
@@ -57,19 +56,24 @@ def _validation_error_response(exc: ValidationError) -> Response:
     )
 
 
-def _resolve_llm_ctx(llm_config_id: int) -> tuple[int, str, str | None, bool]:
-    """Resolve (effective_ctx, resolved_llm_name, warning, is_trusted) for an LLMConfig ID.
+def _resolve_graph_llm_ctx(collection_id: int) -> tuple[int, str, str | None, bool]:
+    """Resolve the graph-suggest context window from the collection's own GraphRag.
 
-    `is_trusted=True` when ctx came from litellm; False when it came from
-    LLMConfig.context_window override or the global fallback.
+    The budget is sized against `GraphRag.llm` — the LLM that runs the search's
+    synthesis — not a caller-supplied id, so the KnowledgeNode surface (no owning
+    agent) needs nothing extra. When GraphRag has no llm, fall back to the default
+    context window (is_trusted=False → custom values pass through with the same
+    relaxed clamping as before).
     """
-    try:
-        cfg = LLMConfig.objects.select_related("model").get(pk=llm_config_id)
-    except LLMConfig.DoesNotExist:
-        raise LLMConfigNotFoundException(llm_config_id)
-
-    model_name = cfg.model.name if cfg.model else ""
-    user_override = getattr(cfg, "context_window", None)
+    graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
+    if graph_rag is None:
+        raise NoGraphRagForCollectionException(collection_id)
+    llm_cfg = graph_rag.llm
+    if llm_cfg is not None:
+        model_name = llm_cfg.model.name if llm_cfg.model else ""
+        user_override = getattr(llm_cfg, "context_window", None)
+    else:
+        model_name, user_override = "", None
     ctx, warning, is_trusted = resolve_context_window(model_name, user_override)
     return ctx, model_name, warning, is_trusted
 
@@ -91,7 +95,9 @@ def _build_response(
         llm_resolution_warning=warning,
         effective_llm_context_window=ctx,
         safe_token_budget=(
-            effective_budget
+            None
+            if ctx is None
+            else effective_budget
             if effective_budget is not None
             else safe_budget(ctx, is_trusted)
         ),
@@ -126,17 +132,15 @@ class NaiveRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
         )
 
         try:
-            ctx, llm_name, warning, is_trusted = _resolve_llm_ctx(req.llm_config_id)
             metrics = CollectionManagementService.get_collection_metrics(
                 req.knowledge_collection_id, "naive"
             )
             suggested, clamped = build_naive_params(metrics, req.user_custom_params)
-            return _build_response(
-                metrics, ctx, llm_name, warning, suggested, clamped, is_trusted
-            )
+            # Naive params derive only from the corpus (chunk count); no LLM /
+            # context window is involved, so the ctx-based response fields are null.
+            return _build_response(metrics, None, None, None, suggested, clamped, False)
         except (
             CollectionNotFoundException,
-            LLMConfigNotFoundException,
             NoNaiveRagForCollectionException,
             NaiveRagIndexNotReadyException,
         ) as exc:
@@ -175,7 +179,9 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            ctx, llm_name, warning, is_trusted = _resolve_llm_ctx(req.llm_config_id)
+            ctx, llm_name, warning, is_trusted = _resolve_graph_llm_ctx(
+                req.knowledge_collection_id
+            )
             metrics = CollectionManagementService.get_collection_metrics(
                 req.knowledge_collection_id, "graph"
             )
@@ -198,7 +204,6 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
             )
         except (
             CollectionNotFoundException,
-            LLMConfigNotFoundException,
             NoGraphRagForCollectionException,
             GraphRagIndexNotReadyException,
         ) as exc:

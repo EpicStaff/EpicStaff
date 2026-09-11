@@ -210,9 +210,6 @@ export class RagTabComponent implements OnInit {
     // them, incorrectly turning the toggle back off.
     private lastNonPromptSnapshot: string | null = null;
 
-    featureAvailable = computed<boolean>(() => this.llmConfigId() != null);
-    manualConfigAvailable = computed<boolean>(() => this.featureAvailable() || this.suggestionsDisabled());
-
     tokenLimitsLoading = signal<boolean>(false);
     tokenLimitsError = signal<string | null>(null);
     effectiveLlmContextWindow = signal<number | null>(null);
@@ -221,30 +218,22 @@ export class RagTabComponent implements OnInit {
     // method, so unlike effectiveLlmContextWindow (a true LLM-level constant)
     // it must be tracked per method. A single shared signal here previously
     // leaked one method's custom budget into every other method's warning/max.
-    private safeTokenBudgetByKey = signal<Partial<Record<SuggestKey, number>>>({});
+    private safeTokenBudgetByKey = signal<Partial<Record<SuggestKey, number | null>>>({});
 
     safeTokenBudget = computed<number | null>(() => this.safeTokenBudgetByKey()[this.activeKey()] ?? null);
 
-    private baselineSafeTokenBudgetByKey = signal<Partial<Record<SuggestKey, number>>>({});
+    private baselineSafeTokenBudgetByKey = signal<Partial<Record<SuggestKey, number | null>>>({});
 
     baselineSafeTokenBudget = computed<number | null>(
         () => this.baselineSafeTokenBudgetByKey()[this.activeKey()] ?? null
     );
 
-    private setSafeTokenBudget(key: SuggestKey, value: number, isCustomAnchor = false): void {
+    private setSafeTokenBudget(key: SuggestKey, value: number | null, isCustomAnchor = false): void {
         this.safeTokenBudgetByKey.update((map) => ({ ...map, [key]: value }));
         if (!isCustomAnchor) {
             this.baselineSafeTokenBudgetByKey.update((map) => ({ ...map, [key]: value }));
         }
     }
-
-    searchParamsReady = computed<boolean>(
-        () =>
-            this.featureAvailable() &&
-            !this.tokenLimitsLoading() &&
-            this.tokenLimitsError() == null &&
-            this.effectiveLlmContextWindow() != null
-    );
 
     tokenWarningMsg = computed<string>(() => {
         const safe = this.safeTokenBudget();
@@ -264,19 +253,9 @@ export class RagTabComponent implements OnInit {
         return ctx != null ? `Must be between 100 and ${ctx.toLocaleString()} tokens.` : '';
     });
 
-    // Cache the LLM's context window per llm_config_id — this is a true LLM-level
-    // constant, safe to share across methods. safe_token_budget is NOT cached here
-    // (see safeTokenBudgetByKey above) since it depends on the per-method anchor.
-    private tokenLimitsCache = new Map<number, { ctx: number }>();
-    // Cache full suggest responses per (collection, llm, ragType, method) so opting
-    // into "Use Suggested Params" right after the background metadata fetch already
-    // ran doesn't fire a second, identical request to the same endpoint.
+    private tokenLimitsCache = new Map<string, { ctx: number | null }>();
     private suggestResponseCache = new Map<string, SuggestResponse>();
     private fetchToken = 0;
-    private lastLlmConfigId: number | null = null;
-
-    // Guard so the initial recommendation fetch fires once per
-    // (collection, llm, ragType) triple, not on every signal touch.
     private lastRecommendationKey: string | null = null;
 
     searchConfigsFormGroup: FormGroup | null = null;
@@ -322,14 +301,6 @@ export class RagTabComponent implements OnInit {
     driftLocalCommunityPropControl!: FormControl;
 
     constructor() {
-        effect(() => {
-            const id = this.llmConfigId();
-            if (id !== this.lastLlmConfigId) {
-                this.lastLlmConfigId = id;
-                this.maybeFetchSearchMetadata();
-            }
-        });
-
         // Force off even if a surface saved before this policy existed loaded as suggested.
         effect(() => {
             if (this.suggestionsDisabled()) {
@@ -346,6 +317,7 @@ export class RagTabComponent implements OnInit {
         if (ragControlValue) {
             this.selectedRagType.set(ragControlValue.rag_type);
             this.initSearchConfigsFormGroup(ragControlValue.rag_type);
+            this.maybeFetchSearchMetadata();
         }
 
         ragControl?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((rag) => {
@@ -368,12 +340,6 @@ export class RagTabComponent implements OnInit {
                 this.resetSuggestState();
                 this.maybeFetchSearchMetadata();
             });
-
-        // No explicit "first mount" fetch here: the constructor's llmConfigId
-        // effect always runs at least once on creation (lastLlmConfigId starts
-        // null), so it already covers "everything's already there on mount" —
-        // a second explicit call here would just be a duplicate trigger for the
-        // exact same fetch.
     }
 
     private initSearchConfigsFormGroup(ragType: string): void {
@@ -812,7 +778,7 @@ export class RagTabComponent implements OnInit {
         const collectionId = this.collectionId;
         const llmConfigId = this.llmConfigId();
         const value = this.activeMaxContextTokensControl?.value;
-        if (collectionId == null || llmConfigId == null || value == null) return;
+        if (collectionId == null || value == null) return;
 
         this.suggestingFor.set(key);
         this.suggestErrorFor.set(null);
@@ -826,7 +792,7 @@ export class RagTabComponent implements OnInit {
         this.agentsService
             .suggestGraphSearchParams({
                 knowledge_collection_id: collectionId,
-                llm_config_id: llmConfigId,
+                ...(llmConfigId != null ? { llm_config_id: llmConfigId } : {}),
                 search_method: key,
                 user_custom_params: { max_context_tokens: value },
             })
@@ -834,12 +800,7 @@ export class RagTabComponent implements OnInit {
             .subscribe({
                 next: (response) => {
                     if (token !== this.fetchToken || this.suggestingFor() !== key) return;
-                    // Deliberately NOT written to suggestResponseCache — that cache is keyed
-                    // only by (collection, llm, ragType, method), with no room for the custom
-                    // anchor value. Caching a customized response there would make a later
-                    // plain toggle-off/on for this method silently replay this override
-                    // instead of fetching the neutral default suggestion.
-                    this.applyResponse(key, response, llmConfigId, true);
+                    this.applyResponse(key, response, collectionId, true);
                 },
                 error: () => {
                     if (token !== this.fetchToken || this.suggestingFor() !== key) return;
@@ -850,14 +811,9 @@ export class RagTabComponent implements OnInit {
     }
 
     canToggleSuggested(): boolean {
-        if (this.llmConfigId() == null) return false;
         if (this.collectionId == null) return false;
         if (this.selectedRagType() === 'graph' && !this.activeGraphMethod) return false;
         return !!this.searchConfigsFormGroup;
-    }
-
-    lockReason(): string {
-        return 'Assign an LLM to this agent so we know which model will run these searches.';
     }
 
     onSuggestedParamsToggle(checked: boolean): void {
@@ -876,14 +832,14 @@ export class RagTabComponent implements OnInit {
     private fetchAndApply(key: SuggestKey): void {
         const collectionId = this.collectionId;
         const llmConfigId = this.llmConfigId();
-        if (collectionId == null || llmConfigId == null) {
+        if (collectionId == null) {
             return;
         }
 
         const cacheKey = this.metadataKeyFor(key);
         const cachedResponse = cacheKey ? this.suggestResponseCache.get(cacheKey) : undefined;
         if (cachedResponse) {
-            this.applyResponse(key, cachedResponse, llmConfigId);
+            this.applyResponse(key, cachedResponse, collectionId);
             return;
         }
 
@@ -898,11 +854,10 @@ export class RagTabComponent implements OnInit {
             key === 'naive'
                 ? this.agentsService.suggestNaiveSearchParams({
                       knowledge_collection_id: collectionId,
-                      llm_config_id: llmConfigId,
                   })
                 : this.agentsService.suggestGraphSearchParams({
                       knowledge_collection_id: collectionId,
-                      llm_config_id: llmConfigId,
+                      ...(llmConfigId != null ? { llm_config_id: llmConfigId } : {}),
                       search_method: key,
                   });
 
@@ -913,7 +868,7 @@ export class RagTabComponent implements OnInit {
                 // ignore this stale response so it can't stomp on a currently-active
                 // or already-superseded request.
                 if (token !== this.fetchToken || this.suggestingFor() !== key) return;
-                this.applyResponse(key, response, llmConfigId);
+                this.applyResponse(key, response, collectionId);
             },
             error: () => {
                 if (token !== this.fetchToken || this.suggestingFor() !== key) return;
@@ -928,7 +883,7 @@ export class RagTabComponent implements OnInit {
     private applyResponse(
         key: SuggestKey,
         response: SuggestResponse,
-        requestLlmConfigId: number | null,
+        requestCollectionId: number | null,
         isCustomAnchor = false
     ): void {
         const target =
@@ -957,18 +912,13 @@ export class RagTabComponent implements OnInit {
         target.patchValue(params, { emitEvent: false });
         target.get('is_suggested')?.setValue(true, { emitEvent: false });
         target.markAsPristine();
-        // safe_token_budget reflects default_budget, which shifts with whatever
-        // max_context_tokens anchor was just submitted — refresh it (and the
-        // llm-keyed cache) so other fields' warningMax/tokenErrorMsg stay in
-        // sync with the budget this very response was computed against.
         this.effectiveLlmContextWindow.set(response.effective_llm_context_window);
         this.setSafeTokenBudget(key, response.safe_token_budget, isCustomAnchor);
-        // Cache under the llmConfigId the REQUEST was made for, not whatever
-        // this.llmConfigId() reads now — if the user switched LLMs while this
-        // request was in flight, those would differ and this response's window
-        // would otherwise poison the cache entry for the new LLM.
-        if (requestLlmConfigId != null) {
-            this.tokenLimitsCache.set(requestLlmConfigId, { ctx: response.effective_llm_context_window });
+        if (requestCollectionId != null) {
+            const ragType = key === 'naive' ? 'naive' : 'graph';
+            this.tokenLimitsCache.set(`${requestCollectionId}|${ragType}`, {
+                ctx: response.effective_llm_context_window,
+            });
         }
         if (key === 'global') {
             this.syncDynamicCommunityDependents(!!this.globalGroup?.get('dynamic_community_selection')?.value);
@@ -989,10 +939,9 @@ export class RagTabComponent implements OnInit {
 
     private metadataKeyFor(key: SuggestKey): string | null {
         const collectionId = this.collectionId;
-        const llmConfigId = this.llmConfigId();
-        if (collectionId == null || llmConfigId == null) return null;
+        if (collectionId == null) return null;
         const ragType = key === 'naive' ? 'naive' : 'graph';
-        return `${collectionId}|${llmConfigId}|${ragType}|${key}`;
+        return `${collectionId}|${ragType}|${key}`;
     }
 
     retryMetadataFetch(): void {
@@ -1002,11 +951,10 @@ export class RagTabComponent implements OnInit {
     }
 
     private maybeFetchSearchMetadata(): void {
-        if (!this.featureAvailable()) return;
         const collectionId = this.collectionId;
         const llmConfigId = this.llmConfigId();
         const ragType = this.selectedRagType();
-        if (collectionId == null || llmConfigId == null || !ragType) return;
+        if (collectionId == null || !ragType) return;
         if (!this.searchConfigsFormGroup) return;
         if (ragType === 'graph' && !this.activeGraphMethod) return;
 
@@ -1015,7 +963,7 @@ export class RagTabComponent implements OnInit {
         const key = this.metadataKeyFor(suggestKey);
         if (!key) return;
 
-        const cached = this.tokenLimitsCache.get(llmConfigId);
+        const cached = this.tokenLimitsCache.get(`${collectionId}|${ragType}`);
         const cachedResponse = this.suggestResponseCache.get(key);
         if (cached) {
             this.effectiveLlmContextWindow.set(cached.ctx);
@@ -1038,18 +986,19 @@ export class RagTabComponent implements OnInit {
             ragType === 'naive'
                 ? this.agentsService.suggestNaiveSearchParams({
                       knowledge_collection_id: collectionId,
-                      llm_config_id: llmConfigId,
                   })
                 : this.agentsService.suggestGraphSearchParams({
                       knowledge_collection_id: collectionId,
-                      llm_config_id: llmConfigId,
+                      ...(llmConfigId != null ? { llm_config_id: llmConfigId } : {}),
                       search_method: method,
                   });
 
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (response) => {
                 if (token !== this.fetchToken) return;
-                this.tokenLimitsCache.set(llmConfigId, { ctx: response.effective_llm_context_window });
+                this.tokenLimitsCache.set(`${collectionId}|${ragType}`, {
+                    ctx: response.effective_llm_context_window,
+                });
                 this.suggestResponseCache.set(key, response);
                 this.effectiveLlmContextWindow.set(response.effective_llm_context_window);
                 this.setSafeTokenBudget(suggestKey, response.safe_token_budget);
@@ -1063,9 +1012,7 @@ export class RagTabComponent implements OnInit {
             error: () => {
                 if (token !== this.fetchToken) return;
                 this.tokenLimitsLoading.set(false);
-                this.tokenLimitsError.set(
-                    "Couldn't load token limits for this LLM. Check your connection and try again."
-                );
+                this.tokenLimitsError.set("Couldn't load token limits. Check your connection and try again.");
                 this.lastRecommendationKey = null;
             },
         });

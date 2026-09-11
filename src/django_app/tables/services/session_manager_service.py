@@ -333,6 +333,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             "naive_search_config",
             "graph_basic_search_config",
             "graph_local_search_config",
+            "graph_global_search_config",
+            "graph_drift_search_config",
         )
         file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(
