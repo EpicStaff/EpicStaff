@@ -499,7 +499,7 @@ export class CreateCustomToolDialogComponent {
 
         this.isCopying.set(true);
         this.customToolsService
-            .copyPythonCodeTool(original.id, { name: original.name })
+            .copyPythonCodeTool(original.id)
             .pipe(
                 tap((created) => {
                     this.toolsEvents.emitCustomToolCreated(created);
@@ -561,9 +561,7 @@ export class CreateCustomToolDialogComponent {
 
         const request$ =
             action === 'fork' && editingTool
-                ? this.customToolsService.copyPythonCodeTool(editingTool.id, {
-                      name: payload.name,
-                  })
+                ? this.customToolsService.copyPythonCodeTool(editingTool.id)
                 : editingTool
                   ? this.customToolsService.updatePythonCodeToolV2(editingTool.id, payload)
                   : this.customToolsService.createPythonCodeToolV2(payload);
@@ -604,7 +602,7 @@ export class CreateCustomToolDialogComponent {
 
             return timer(500).pipe(
                 switchMap(() =>
-                    this.customToolsService.getPythonCodeTools().pipe(
+                    this.customToolsService.getPythonCodeTools({ name: value }).pipe(
                         map((tools) => (tools.some((tool) => tool.name === value) ? { uniqueName: true } : null)),
                         catchError(() => of(null))
                     )

@@ -229,7 +229,7 @@ export class ToolsListComponent implements OnInit {
                 return;
             case 'duplicate':
                 this.port
-                    .copy(payload.tool.id, { name: payload.tool.name })
+                    .copy(payload.tool.id)
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: (copy) => this.addNewTool(copy),
@@ -478,8 +478,7 @@ export class ToolsListComponent implements OnInit {
     private handleBulkDuplicate(): void {
         const ids = Array.from(this.viewState.selectedIds());
         const requests = ids.map((id) => {
-            const source = this.findToolById(id);
-            return this.port.copy(id, { name: source?.name ?? '' });
+            return this.port.copy(id);
         });
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,

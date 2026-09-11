@@ -29,11 +29,16 @@ export class CustomToolsService {
         return `${this.configService.apiUrl}python-code-tool/`;
     }
 
-    getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
-        // TODO: replace the auto-fetch-all fallback with real pagination.
-        // TODO: replace `{ name }`-based uniqueness checks with a dedicated backend validator.
+    getPythonCodeTools(params?: { name?: string }): Observable<GetPythonCodeToolRequest[]> {
+        // TODO: replace the auto-fetch-all behaviour with real pagination.
         const LIMIT = 50;
-        return this.fetchToolsSlice(LIMIT, 0).pipe(
+        const fetchSlice = (offset: number) => {
+            let httpParams = new HttpParams().set('limit', String(LIMIT)).set('offset', String(offset));
+            if (params?.name) httpParams = httpParams.set('name', params.name);
+            return this.http.get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, { params: httpParams });
+        };
+
+        return fetchSlice(0).pipe(
             switchMap((first) => {
                 if (first.results.length >= first.count) return of(first.results);
                 const remainingOffsets: number[] = [];
@@ -41,17 +46,10 @@ export class CustomToolsService {
                     remainingOffsets.push(offset);
                 }
                 if (remainingOffsets.length === 0) return of(first.results);
-                const rest$ = remainingOffsets.map((offset) =>
-                    this.fetchToolsSlice(LIMIT, offset).pipe(map((slice) => slice.results))
-                );
+                const rest$ = remainingOffsets.map((offset) => fetchSlice(offset).pipe(map((slice) => slice.results)));
                 return forkJoin(rest$).pipe(map((slices) => [first.results, ...slices].flat()));
             })
         );
-    }
-
-    private fetchToolsSlice(limit: number, offset: number): Observable<ApiGetRequest<GetPythonCodeToolRequest>> {
-        const params = new HttpParams().set('limit', String(limit)).set('offset', String(offset));
-        return this.http.get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, { params });
     }
 
     createPythonCodeTool(tool: CreatePythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {
@@ -71,10 +69,14 @@ export class CustomToolsService {
         });
     }
 
-    copyPythonCodeTool(toolId: number, body: { name: string }): Observable<GetPythonCodeToolRequest> {
-        return this.http.post<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/copy/`, body, {
-            headers: this.httpHeaders,
-        });
+    copyPythonCodeTool(toolId: number): Observable<GetPythonCodeToolRequest> {
+        return this.http.post<GetPythonCodeToolRequest>(
+            `${this.baseUrl}${toolId}/copy/`,
+            {},
+            {
+                headers: this.httpHeaders,
+            }
+        );
     }
 
     exportPythonCodeTool(toolId: number): Observable<Blob> {

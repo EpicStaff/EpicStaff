@@ -51,8 +51,8 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
     public getAll(): Observable<GetMcpToolRequest[]> {
         return this.service.getMcpTools();
     }
-    public copy(id: number, body: { name: string }): Observable<GetMcpToolRequest> {
-        return this.service.copyMcpTool(id, body);
+    public copy(id: number): Observable<GetMcpToolRequest> {
+        return this.service.copyMcpTool(id);
     }
     public exportOne(id: number): Observable<Blob> {
         return this.service.exportMcpTool(id);

@@ -31,7 +31,7 @@ export interface ToolsListPort<
 
     // service delegates
     getAll(): Observable<T[]>;
-    copy(id: number, body: { name: string }): Observable<T>;
+    copy(id: number): Observable<T>;
     exportOne(id: number): Observable<Blob>;
     bulkExport(ids: number[]): Observable<Blob>;
     patchLabels(id: number, labelIds: number[]): Observable<T>;

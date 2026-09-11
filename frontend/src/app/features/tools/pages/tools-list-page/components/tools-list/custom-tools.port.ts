@@ -51,8 +51,8 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     public getAll(): Observable<GetPythonCodeToolRequest[]> {
         return this.service.getPythonCodeTools();
     }
-    public copy(id: number, body: { name: string }): Observable<GetPythonCodeToolRequest> {
-        return this.service.copyPythonCodeTool(id, body);
+    public copy(id: number): Observable<GetPythonCodeToolRequest> {
+        return this.service.copyPythonCodeTool(id);
     }
     public exportOne(id: number): Observable<Blob> {
         return this.service.exportPythonCodeTool(id);
