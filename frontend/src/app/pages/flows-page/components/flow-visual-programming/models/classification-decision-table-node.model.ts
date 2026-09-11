@@ -1,3 +1,5 @@
+import { DeclaredSecretRef } from '../../../../../features/tools/models/python-code.model';
+
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;
@@ -59,6 +61,7 @@ export interface CDTPythonCodeBlock {
     global_kwargs: Record<string, unknown>;
     content_hash?: string;
     secret_ids?: number[];
+    secrets?: DeclaredSecretRef[];
 }
 
 export interface GetClassificationDecisionTableNodeRequest {
