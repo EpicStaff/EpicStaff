@@ -44,6 +44,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [id]="id"
                     [name]="name"
                     [attr.autocomplete]="effectiveAutocomplete"
+                    [attr.spellcheck]="spellcheck"
                     [placeholder]="placeholder"
                     [(ngModel)]="value"
                     (focus)="focused.set(true)"
@@ -206,6 +207,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() id: string = '';
     @Input() name: string = '';
     @Input() autocomplete: string | null = null;
+    @Input() spellcheck: boolean = false;
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
     @Input() icon: string = 'help';
