@@ -23,6 +23,10 @@
     gap: 1rem;
 }
 
+.form-group-container--align-inputs {
+    align-items: flex-end;
+}
+
 .form-group {
     margin-bottom: 1rem;
     width: 100%;
@@ -32,7 +36,7 @@
     }
 
     &--narrow {
-        width: 258px;
+        width: calc(50% - 0.5rem);
         flex: none;
     }
 }
@@ -43,17 +47,6 @@
 .form-group.form-group--narrow,
 .form-group.form-group--keep-margin {
     margin-bottom: 1rem;
-}
-
-.lock-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: 4px;
-    background: var(--color-input-background);
-    color: var(--color-text-secondary, var(--color-text-primary));
-    font-size: 0.875rem;
 }
 
 .metadata-status {
@@ -107,7 +100,7 @@
     gap: 0.5rem;
 
     app-input-number {
-        width: 258px;
+        width: calc(50% - 0.5rem);
         flex: none;
     }
 
