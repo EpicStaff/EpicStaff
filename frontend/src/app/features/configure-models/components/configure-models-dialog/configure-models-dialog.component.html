@@ -20,7 +20,7 @@
 
     <nav class="configure-models-dialog__tabs">
         @for (tab of tabs; track tab.id) {
-            @if (tab.isPermitted) {
+            @if (tab.isPermitted()) {
                 <button
                     type="button"
                     class="configure-models-dialog__tab"

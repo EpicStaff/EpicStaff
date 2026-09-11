@@ -59,7 +59,7 @@ def test_org_with_multiple_admins_returns_all_in_join_order(
 
     resp = _auth(api_client, superadmin_jwt).get(_list_url())
     assert resp.status_code == 200
-    payload = next(o for o in resp.json() if o["id"] == org.id)
+    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
     assert [a["email"] for a in payload["admins"]] == [
         "a1@example.com",
         "a2@example.com",
@@ -79,7 +79,7 @@ def test_org_with_no_admins_falls_back_to_oldest_active_superadmin(
     org = Organization.objects.create(name="NoAdminsOrg")
 
     resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    payload = next(o for o in resp.json() if o["id"] == org.id)
+    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
     assert len(payload["admins"]) == 1
     assert payload["admins"][0]["id"] == superadmin_user.id
 
@@ -92,7 +92,7 @@ def test_multiple_orgs_without_admins_share_same_fallback(
     Organization.objects.create(name="OrgY")
 
     resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    targets = [o for o in resp.json() if o["name"] in ("OrgX", "OrgY")]
+    targets = [o for o in resp.json()["results"] if o["name"] in ("OrgX", "OrgY")]
     assert len(targets) == 2
     for o in targets:
         assert len(o["admins"]) == 1
@@ -111,7 +111,7 @@ def test_inactive_superadmin_not_used_as_fallback(
     org = Organization.objects.create(name="FallbackCheck")
 
     resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    payload = next(o for o in resp.json() if o["id"] == org.id)
+    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
     assert len(payload["admins"]) == 1
     assert payload["admins"][0]["id"] == superadmin_user.id
 
@@ -131,7 +131,7 @@ def test_no_active_superadmin_returns_empty_admins(
             "Auth layer rejects inactive superadmin token — the HTTP path "
             "for this edge case is unreachable in this environment."
         )
-    payload = next(o for o in resp.json() if o["id"] == org.id)
+    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
     assert payload["admins"] == []
 
 
@@ -156,7 +156,7 @@ def test_avatar_url_is_absolute_when_set_and_null_when_unset(
 
     try:
         resp = _auth(api_client, superadmin_jwt).get(_list_url())
-        payload = next(o for o in resp.json() if o["id"] == org.id)
+        payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
         by_email = {a["email"]: a for a in payload["admins"]}
         assert by_email["noava@example.com"]["avatar_url"] is None
         assert by_email["ava@example.com"]["avatar_url"].startswith("http")

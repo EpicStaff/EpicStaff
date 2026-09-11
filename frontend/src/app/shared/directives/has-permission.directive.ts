@@ -35,3 +35,23 @@ export class HasPermissionDirective {
         });
     }
 }
+
+@Directive({ selector: '[appHasPermissionInAnyOrg]' })
+export class HasPermissionInAnyOrgDirective {
+    private readonly tpl = inject(TemplateRef<unknown>);
+    private readonly vcr = inject(ViewContainerRef);
+    private readonly perms = inject(PermissionsService);
+
+    public appHasPermissionInAnyOrg = input.required<[ResourceCode, ActionCode | ActionCode[]]>();
+
+    constructor() {
+        effect(() => {
+            const [resource, action] = this.appHasPermissionInAnyOrg();
+            this.vcr.clear();
+            const allowed = Array.isArray(action)
+                ? action.some((a) => this.perms.canInAnyOrg(resource, a))
+                : this.perms.canInAnyOrg(resource, action);
+            if (allowed) this.vcr.createEmbeddedView(this.tpl);
+        });
+    }
+}

@@ -65,17 +65,15 @@
         <!--            <app-avatar-upload (imageChange)="form.patchValue({ picture: $event })" />-->
         <!--        </div>-->
     </div>
-    @if (canToggleSuperadmin()) {
-        <div class="secondary">
-            <label class="label">
-                Make Superadmin
-                <app-help-tooltip
-                    [text]="'Superadmins have full access to all organizations and system settings.'"
-                    position="right"
-                ></app-help-tooltip>
-            </label>
+    <div class="secondary">
+        <label class="label">
+            Make Superadmin
+            <app-help-tooltip
+                [text]="'Superadmins have full access to all organizations and system settings.'"
+                position="right"
+            ></app-help-tooltip>
+        </label>
 
-            <app-toggle-switch formControlName="superadmin" />
-        </div>
-    }
+        <app-toggle-switch formControlName="superadmin" />
+    </div>
 </form>

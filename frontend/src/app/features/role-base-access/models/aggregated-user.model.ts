@@ -1,16 +1,12 @@
 import { FullMembership } from '@shared/models';
-import { Observable } from 'rxjs';
 
-export interface NormalizedUser {
+/** UI-shape used by the Users tab and the create/edit user dialog. */
+export interface AggregatedUser {
     id: number;
     email: string;
-    avatarUrl: string | null;
     displayName: string | null;
+    avatarUrl: string | null;
     isSuperadmin: boolean;
     isActive: boolean;
     memberships: FullMembership[];
-}
-
-export interface UserFetchStrategy {
-    fetchUsers(): Observable<NormalizedUser[]>;
 }

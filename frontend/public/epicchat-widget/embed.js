@@ -30,6 +30,8 @@
   var link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = basePath + "styles.css";
+  link.integrity = "";
+  link.crossOrigin = "anonymous";
   document.head.appendChild(link);
 
   // Load main.js directly — the widget is zoneless, so there is no zone.js
@@ -37,6 +39,8 @@
   var main = document.createElement("script");
   main.type = "module";
   main.src = basePath + "main.js";
+  main.integrity = "";
+  main.crossOrigin = "anonymous";
 
   main.onerror = function () {
     console.error("[epic-chat] Failed to load main.js from " + basePath);

@@ -36,6 +36,7 @@
         </div>
         @if (item() && !readOnly()) {
             <app-button
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
                 class="storage-preview__add-to-flow"
                 type="outline-primary"
                 mod="small"
@@ -73,7 +74,7 @@
                 [style.top.px]="kebabMenuPosition().top"
             >
                 <button
-                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('download')"
                 >
@@ -146,7 +147,7 @@
                         ></app-svg-icon>
                         <p>{{ previewError() }}</p>
                         <app-button
-                            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+                            *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
                             type="ghost"
                             (click)="onDownload()"
                             >Download file</app-button
@@ -257,7 +258,7 @@
                                     <p class="storage-preview__unsupported-size">{{ item()!.size | number }} bytes</p>
                                 }
                                 <app-button
-                                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+                                    *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
                                     type="ghost"
                                     [leftIcon]="'download'"
                                     (click)="onDownload()"

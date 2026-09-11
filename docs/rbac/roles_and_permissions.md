@@ -3,9 +3,11 @@
 The permissions surface FE consumes to render role tables, gate UI
 actions, and resolve the caller's effective access inside an active
 organization. This doc covers the permission catalog, the per-user
-effective-permissions endpoint, the role read endpoints, and the
-`X-Organization-Id` header contract. Built-in roles are immutable.
-Custom roles are out of scope for this iteration.
+effective-permissions endpoints (single-org and cross-org), the flat
+role management surface (list / detail / create / update / delete),
+and the `X-Organization-Id` header contract. Built-in roles are
+immutable; custom roles are organization-scoped and fully manageable
+by anyone holding the relevant ROLES permission in that org.
 
 Base URL in examples: `http://localhost:8000`.
 
@@ -13,13 +15,17 @@ Base URL in examples: `http://localhost:8000`.
 
 ## Quick reference
 
-| Method | Path | Auth | Org transport |
-|---|---|---|---|
-| GET | `/api/permissions/catalog/` | required (JWT or API key) | none |
-| GET | `/api/permissions/me/` | required (JWT or API key) | `X-Organization-Id` header |
-| GET | `/api/admin/roles/` | `HasOrgPermission(ROLES, READ)` | `X-Organization-Id` header |
-| GET | `/api/admin/roles/{id}/` | `HasOrgPermission(ROLES, READ)` | `X-Organization-Id` header |
-| GET | `/api/admin/organizations/{org_id}/roles/` | `HasOrgPermission(ROLES, READ)` | URL kwarg |
+| Method | Path | Auth |
+|---|---|---|
+| GET | `/api/permissions/catalog/` | required |
+| GET | `/api/permissions/me/` | required + `X-Organization-Id` |
+| GET | `/api/permissions/me/orgs/` | required |
+| GET | `/api/admin/roles/` | `HasResourcePermissionAnywhere(ROLES, READ)` |
+| GET | `/api/admin/roles/{id}/` | READ in the role's org |
+| POST | `/api/admin/roles/` | CREATE in body `org_id` + ceiling |
+| PATCH | `/api/admin/roles/{id}/` | UPDATE in role's org + ceiling |
+| DELETE | `/api/admin/roles/{id}/` | DELETE in role's org |
+| GET | `/api/admin/roles/?assignable_org_ids=1,2` | same as list — filters to roles the caller may assign |
 
 ---
 
@@ -38,12 +44,17 @@ session-persisted setting. Two distinct concepts:
   admins to operate on one specific org without switching active
   context.
 
-Required on every active-context endpoint
-(`/api/permissions/me/`, `/api/admin/roles/`, `/api/admin/roles/{id}/`,
-and future resource endpoints). Missing or non-integer value →
+Required on `/api/permissions/me/` and other active-context resource
+endpoints outside this doc's scope. Missing or non-integer value →
 `400 org_context_required`. Header points to an org the caller is not
 a member of (and is not superadmin) → `403 org_membership_required`.
 Superadmin sets any `org_id` and bypasses the membership check.
+
+The role management endpoints below do **not** consult this header at
+all. `GET /api/admin/roles/` is cross-org by design (see its own
+section below); detail/create/update/delete resolve their org from
+the role row itself (detail/update/delete) or from `org_id` in the
+request body (create) — never from a header.
 
 `/api/profile/` is the **soft-fail exception** — when the header is
 absent, malformed, or points to an inaccessible org, both
@@ -53,7 +64,8 @@ reachable for zero-membership users and users whose only orgs are
 deactivated.
 
 `/api/permissions/catalog/` ignores the header — the taxonomy is
-static and global.
+static and global. So does `/api/permissions/me/orgs/` — it is
+inherently multi-org.
 
 ---
 
@@ -69,16 +81,17 @@ of caller and org. Cache-friendly.
 ```json
 {
   "actions": [
-    { "code": "create", "label": "Create", "bit": 1 },
     { "code": "read",   "label": "View",   "bit": 2 },
+    { "code": "create", "label": "Create", "bit": 1 },
     { "code": "update", "label": "Edit",   "bit": 4 },
     { "code": "delete", "label": "Delete", "bit": 8 },
     { "code": "export", "label": "Export", "bit": 16 }
   ],
   "resource_types": [
-    { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Create, rename, deactivate organizations",       "applicable_actions": ["create", "read", "update", "delete"] },
-    { "code": "users",             "label": "Users",               "group": "admin",     "description": "Add/remove members, assign roles within org",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Rename and manage organization settings",        "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"] },
+    { "code": "memberships",       "label": "Members",             "group": "admin",     "description": "Add, remove, and re-role members within an org", "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "api_keys",          "label": "API Keys",            "group": "admin",     "description": "Members' personal API keys — view and revoke",   "applicable_actions": ["read", "delete"] },
     { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete"] },
@@ -86,17 +99,98 @@ of caller and org. Cache-friendly.
     { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
-    { "code": "secrets",           "label": "API Keys / Secrets",  "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "update", "delete"] }
+    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider credentials and sensitive configuration", "applicable_actions": ["create", "read", "update", "delete"] }
   ]
 }
 ```
 
-`actions[]` is the full verb set. Each
+`actions[]` is the full verb set, **in matrix column order** — render the
+columns in the order given rather than sorting client-side. Each
 `resource_types[].applicable_actions` is the subset of actions that
-make sense for that resource — the matrix is resource rows × action
-columns, and cells outside `applicable_actions` render as `—` (cannot
-be checked). `group` (`admin` / `workspace` / `config`) sections the
-matrix in the UI.
+make sense for that resource **and are grantable into a custom role** —
+the matrix is resource rows × action columns, and cells outside
+`applicable_actions` render as `—` (cannot be checked). `group`
+(`admin` / `workspace` / `config`) sections the matrix in the UI.
+
+Every resource also carries **`platform_actions`** — global,
+superadmin-only actions that are **never grantable** into a custom role.
+It is `[]` for every resource except `organizations`, whose `create`
+(create a new org) and `delete` (deactivate/reactivate) are platform-level.
+Render `platform_actions` cells as disabled / "superadmin-only". Submitting
+a platform action in a role's `permissions[]` is a `400 invalid`
+("platform-level … cannot be granted").
+
+Each entry additionally carries **`recommended_with`**, elided from the
+listing above for brevity — see the next section.
+
+### `recommended_with`
+
+Permissions worth granting alongside another. **Advisory only** — nothing
+here is enforced, and a role that ignores every recommendation saves
+normally. It exists so the matrix UI can nudge the author toward a
+coherent role instead of one that grants edit rights without the read
+access needed to use them.
+
+```json
+{
+  "code": "flows",
+  "applicable_actions": ["create", "read", "update", "delete", "export"],
+  "platform_actions": [],
+  "recommended_with": {
+    "create": [
+      { "resource_type": "flows",       "action": "read" },
+      { "resource_type": "projects",    "action": "read" },
+      { "resource_type": "llm_configs", "action": "read" }
+    ],
+    "read": [
+      { "resource_type": "projects",    "action": "read" },
+      { "resource_type": "llm_configs", "action": "read" }
+    ],
+    "update": [
+      { "resource_type": "flows",       "action": "read" },
+      { "resource_type": "projects",    "action": "read" },
+      { "resource_type": "llm_configs", "action": "read" }
+    ],
+    "delete": [{ "resource_type": "flows", "action": "read" }],
+    "export": [{ "resource_type": "flows", "action": "read" }]
+  }
+}
+```
+
+Keys are action codes; values are the cells to suggest when that action is
+checked. **Every action in `applicable_actions` is a key** — an empty list
+where nothing is recommended — so you can index without nil-checks. Actions
+in `platform_actions` never appear: they cannot be granted, so a suggestion
+on them is unreachable.
+
+The shape of the advice:
+
+- **Reading** a resource suggests reading whatever it references — a flow
+  points at projects and LLM configs, an agent at knowledge sources, tools
+  and LLM configs.
+- **Creating or editing** suggests the resource's own `read` plus everything
+  that read suggests. You cannot sensibly author what you cannot see.
+- **Deleting and exporting** suggest only the resource's own `read`.
+
+Suggestions are direct, not transitive: `projects:create` recommends
+`flows:create`, and `flows:create` has recommendations of its own. Look up
+each cell as the user accepts it and the chain unfolds one step at a time,
+which keeps the initial suggestion short and lets the user stop early.
+
+The shape holds however small the resource is. `api_keys` has only two
+applicable actions and one recommendation:
+
+```json
+{
+  "code": "api_keys",
+  "applicable_actions": ["read", "delete"],
+  "platform_actions": [],
+  "recommended_with": {
+    "read": [],
+    "delete": [{ "resource_type": "api_keys", "action": "read" }]
+  }
+}
+```
 
 ---
 
@@ -115,7 +209,7 @@ gating.
   "is_superadmin": false,
   "role": { "id": 3, "name": "Member" },
   "permissions": {
-    "USERS": ["READ"],
+    "MEMBERSHIPS": ["READ"],
     "ROLES": ["READ"],
     "ORGANIZATIONS": ["READ"],
     "PROJECTS": ["CREATE", "READ", "UPDATE"],
@@ -146,126 +240,424 @@ and skip per-action gating.
 
 ---
 
+## `GET /api/permissions/me/orgs/`
+
+The caller's effective permissions across **every** organization they
+belong to, in one round trip. Used by multi-org UI (org switcher, an
+"all my orgs" view) so the FE doesn't have to call
+`/api/permissions/me/` once per org.
+
+**Auth:** required. **Header:** none — the endpoint is inherently
+multi-org, so there is no single active org to select.
+
+**Response 200 — superadmin caller:**
+
+```json
+{ "is_superadmin": true, "permissions": "*" }
+```
+
+Superadmin short-circuits to the wildcard without enumerating orgs —
+`orgs` is omitted entirely.
+
+**Response 200 — non-superadmin caller:**
+
+```json
+{
+  "is_superadmin": false,
+  "orgs": [
+    {
+      "org": { "id": 1, "name": "Acme" },
+      "role": { "id": 2, "name": "Org Admin" },
+      "permissions": {
+        "roles": ["create", "read", "update", "delete"],
+        "flows": ["create", "read", "update", "delete", "export"]
+      }
+    },
+    {
+      "org": { "id": 2, "name": "Beta" },
+      "role": { "id": 3, "name": "Member" },
+      "permissions": { "roles": [], "flows": ["create", "read", "update"] }
+    }
+  ]
+}
+```
+
+One entry per organization the caller has a membership row in. Each
+entry's `permissions` uses the same per-resource action-list shape as
+`/api/permissions/me/`, just nested under its own org.
+
+**Errors:** none beyond the standard 401 for unauthenticated callers.
+
+---
+
 ## `GET /api/admin/roles/`
 
-List roles visible in the active organization. Returns built-in roles
-plus any org-scoped custom roles (when those land later).
+List roles visible to the caller — every built-in role, plus every
+custom role in an organization the caller can READ. Cross-org by
+design: there is one caller-wide list, not one list per org, and no
+active-org selection is involved.
 
-**Auth:** `HasOrgPermission(ROLES, READ)`.
-**Header:** `X-Organization-Id` required.
+**Auth:** `HasResourcePermissionAnywhere(ROLES, READ)` — passes if the
+caller is superadmin, or holds READ on ROLES in **at least one** org.
+This is a coarse door gate; which orgs' custom roles actually come
+back is then resolved per-org inside the query (see `?org_ids=`
+below). **Header:** none.
+
+**Query params:**
+
+- `?org_ids=1,2` — restrict the custom-role results to these org ids
+  (comma-separated integers). Requesting an org id the caller cannot
+  READ roles in (and is not superadmin) fails loud — `403
+  permission_denied` for the whole request. It never silently drops
+  the forbidden id and returns the rest.
+- Omitted — every custom role in every org the caller can READ.
+  Superadmin gets every custom role in every org, unfiltered.
+- `?page=`, `?page_size=` — standard pagination over `results` only
+  (default page size 50, max 200).
 
 **Response 200:**
 
 ```json
-[
-  {
-    "id": 1,
-    "name": "Superadmin",
-    "description": "Global administrator. Bypasses every permission check.",
-    "is_built_in": true,
-    "scope": "global",
-    "org_id": null,
-    "assigned_count": 0,
-    "permissions": []
-  },
-  {
-    "id": 2,
-    "name": "Org Admin",
-    "description": "Full administrative authority within the organization.",
-    "is_built_in": true,
-    "scope": "org",
-    "org_id": null,
-    "assigned_count": 4,
-    "permissions": [
-      { "resource_type": "USERS",         "actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-      { "resource_type": "ROLES",         "actions": ["READ"] },
-      { "resource_type": "ORGANIZATIONS", "actions": ["READ", "UPDATE"] },
-      { "resource_type": "PROJECTS",      "actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-      { "resource_type": "GRAPHS",        "actions": ["CREATE", "READ", "UPDATE", "DELETE", "EXECUTE"] },
-      { "resource_type": "SESSIONS",      "actions": ["READ", "EXECUTE"] },
-      { "resource_type": "LLM_CONFIGS",   "actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-      { "resource_type": "API_KEYS",      "actions": ["CREATE", "READ", "DELETE"] }
-    ]
-  },
-  {
-    "id": 3,
-    "name": "Member",
-    "description": "Default workspace member.",
-    "is_built_in": true,
-    "scope": "org",
-    "org_id": null,
-    "assigned_count": 27,
-    "permissions": [
-      { "resource_type": "PROJECTS", "actions": ["CREATE", "READ", "UPDATE"] },
-      { "resource_type": "GRAPHS",   "actions": ["CREATE", "READ", "UPDATE", "EXECUTE"] },
-      { "resource_type": "SESSIONS", "actions": ["READ", "EXECUTE"] }
-    ]
-  }
-]
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 5,
+      "name": "Billing Manager",
+      "description": "Manage billing and secrets",
+      "is_built_in": false,
+      "scope": "org",
+      "org_id": 1,
+      "org": { "id": 1, "name": "Acme Inc" },
+      "assigned_count": 2,
+      "assigned_by_org": [{ "org": { "id": 1, "name": "Acme Inc" }, "count": 2 }],
+      "permissions": [
+        { "resource_type": "secrets", "actions": ["read", "update"] }
+      ]
+    }
+  ],
+  "built_in_roles": [
+    {
+      "id": 1,
+      "name": "Superadmin",
+      "description": "Global administrator. Bypasses every permission check.",
+      "is_built_in": true,
+      "scope": "global",
+      "org_id": null,
+      "org": null,
+      "assigned_count": 0,
+      "assigned_by_org": [],
+      "permissions": []
+    },
+    {
+      "id": 2,
+      "name": "Org Admin",
+      "description": "Full administrative authority within the organization.",
+      "is_built_in": true,
+      "scope": "org",
+      "org_id": null,
+      "org": null,
+      "assigned_count": 3,
+      "assigned_by_org": [
+        { "org": { "id": 1, "name": "Acme Inc" }, "count": 2 },
+        { "org": { "id": 2, "name": "Beta" }, "count": 1 }
+      ],
+      "permissions": [
+        { "resource_type": "flows", "actions": ["create", "read", "update", "delete", "export"] }
+      ]
+    }
+  ]
+}
 ```
 
 Field notes:
 
+- `results` — **custom roles only** (`is_built_in: false`), paginated.
+  `count` / `next` / `previous` describe this list alone.
+- `built_in_roles` — always the full, unpaginated set of the four
+  built-in roles (Superadmin, Org Admin, Member, Viewer). Not affected
+  by `?org_ids=` or pagination — every caller who passes the door gate
+  sees all four.
+  Their `assigned_count` and `assigned_by_org` do vary by caller and by
+  `?org_ids=`, because those describe holders rather than the role itself.
 - `is_built_in: true` — protected from edit / delete (see "Built-in
   immutability" below).
-- `scope` — `"global"` for system-wide roles (Superadmin), `"org"`
-  for org-scoped roles.
-- `org_id` — `null` for built-in roles; set to the owning org id for
-  future custom roles.
-- `assigned_count` — `OrganizationUser` rows referencing this role in
-  the active org. For the **Superadmin role this is typically 0**:
-  superadmin authority comes from `User.is_superadmin`, not from a
-  membership row. The FE should source the "global superadmins" count
-  from the user-list, not from this field.
+- `scope` — `"global"` for Superadmin, `"org"` for every other role.
+- `org` / `org_id` — `null` for built-in roles; the owning org for
+  custom roles.
+- `assigned_count` — how many people hold this role **in the organizations
+  this response covers**: the `?org_ids=` selection when you send one,
+  otherwise every organization where you hold `roles` `read`. A superadmin is
+  unfiltered. It is always the sum of `assigned_by_org[].count`.
+- `assigned_by_org` — the same figure broken down per organization, ordered by
+  organization name, case-insensitively. Organizations with no holders are omitted, so an
+  unassigned role comes back with `[]`. A custom role has at most one entry —
+  its own organization, omitted entirely when the role has no holders. A built-in role has
+  one entry per organization in scope, because the same role row is shared by
+  every organization.
+- The **Superadmin** row always reports `assigned_count: 0` and
+  `assigned_by_org: []`. Superadmin authority is the account's
+  `is_superadmin` flag, not a membership row, so a count there would be
+  meaningless. To count superadmins, use
+  `GET /api/admin/users/?is_superadmin=true` (superadmin only).
 - `permissions[]` for the Superadmin row is **empty** — authority is
-  the flag, not the bitmask. The FE should render Superadmin as "all
-  cells checked" without consulting `permissions`.
+  the flag, not the bitmask. Render Superadmin as "all cells checked"
+  without consulting `permissions`.
 
-**Errors:** `400 org_context_required`, `403 permission_denied`,
-`403 org_membership_required`, `404 organization_not_found`.
+**Errors:** `403 permission_denied` (forbidden `org_ids` entry, or the
+door gate itself).
 
 ---
 
 ## `GET /api/admin/roles/{id}/`
 
-Single role detail. Same shape as one element of the list response.
+Single role detail. Same shape as one element of `results` /
+`built_in_roles` above. This route does not parse `?org_ids=`, so a
+built-in role's `assigned_count` and `assigned_by_org` here always cover
+every organization the caller can read roles in.
 
-**Auth:** `HasOrgPermission(ROLES, READ)`.
-**Header:** `X-Organization-Id` required.
+**Auth:** built-in roles are visible to anyone who clears the door gate
+(READ on ROLES in at least one org, or superadmin). A custom role
+additionally requires READ on ROLES in **that role's own org** —
+derived from the row, not from a header or URL kwarg. **Header:**
+none.
 
-**Errors:** `400 org_context_required`, `403 permission_denied`,
-`403 org_membership_required`, `404 role_not_found`.
+A role that exists but sits in an org the caller cannot READ responds
+`404 role_not_found` — identical to a genuinely missing id, so the
+caller cannot probe for the existence of roles in orgs they can't see.
+`PATCH` and `DELETE` answer the same way for the same role, so the
+write endpoints never confirm an id this one denies (see
+"Visibility vs. permission" below).
+
+**Errors:** `404 role_not_found`.
 
 ---
 
-## `GET /api/admin/organizations/{org_id}/roles/`
+## `POST /api/admin/roles/`
 
-Target-context variant — used by superadmin and by cross-org admins to
-audit another org's roles without switching active context. The org is
-in the URL; the header is ignored.
+Create a custom role in an organization.
 
-**Auth:** `HasOrgPermission(ROLES, READ)` against `{org_id}` in the
-URL. Anyone with that org's ROLES read permission can call it.
+**Auth:** the door gate, plus CREATE on ROLES in the target org
+(service-layer check) and the ceiling rule (below). **Header:** none —
+the target org is `org_id` in the body.
 
-**Response 200:** same shape as `GET /api/admin/roles/` — a list of
-role objects.
+**Body:**
 
-**Errors:** `403 permission_denied`, `404 organization_not_found`.
+```json
+{
+  "org_id": 1,
+  "name": "Billing Manager",
+  "description": "Manage billing and secrets",
+  "permissions": [
+    { "resource_type": "secrets", "actions": ["read", "update"] }
+  ]
+}
+```
+
+`name` is required: non-blank, 255 characters or fewer, and cannot
+match one of the four built-in names case-insensitively (`Superadmin`
+/ `Org Admin` / `Member` / `Viewer`) or an existing role name in the
+same org case-insensitively → `400 role_name_conflict`. `description`
+is optional, 1000 characters or fewer. `permissions` is a list of
+`{resource_type, actions}`; an action outside that resource's
+`applicable_actions` (from the catalog) fails validation; an entry
+that reduces to a zero bitmask is dropped rather than stored.
+
+**Response 201:** the created role, same shape as a list element.
+
+**Errors:** `400` (field validation), `400 role_name_conflict`,
+`403 permission_denied`, `403 permission_escalation_denied`.
+
+---
+
+## `PATCH /api/admin/roles/{id}/`
+
+Edit a custom role's `name`, `description`, and/or `permissions` — any
+subset; omitted fields are left untouched. Sending `permissions` is a
+**full replacement** of the role's permission set, not a merge.
+
+**Auth:** UPDATE on ROLES in the role's own org, plus the ceiling rule
+when `permissions` is included. Built-in roles always reject with
+`403 built_in_role_immutable` before any other check runs.
+**Header:** none.
+
+A custom role the caller cannot see answers `404 role_not_found`, not
+`403` — see "Visibility vs. permission" below.
+
+**Errors:** `403 built_in_role_immutable`, `400` (field validation),
+`400 role_name_conflict`, `403 permission_denied`,
+`403 permission_escalation_denied`, `404 role_not_found`.
+
+---
+
+## `DELETE /api/admin/roles/{id}/`
+
+Delete a custom role. Every member currently on the role is
+reassigned to the built-in **Viewer** role first — deleting a role
+never evicts a member from the organization.
+
+**Auth:** DELETE on ROLES in the role's own org. Built-in roles always
+reject with `403 built_in_role_immutable`. A custom role the caller
+cannot see answers `404 role_not_found` — see "Visibility vs.
+permission" below. **Header:** none.
+
+**`?dry_run=true`** — preview only, no mutation:
+
+```json
+{
+  "role_id": 5,
+  "assigned_count": 2,
+  "affected_users": [
+    { "user_id": 9, "email": "a@acme.test", "display_name": "A" },
+    { "user_id": 10, "email": "b@acme.test", "display_name": "B" }
+  ]
+}
+```
+
+**Without `dry_run`** — deletes the role and performs the reassignment:
+
+```json
+{ "reassigned_count": 2 }
+```
+
+**Errors:** `403 built_in_role_immutable`, `403 permission_denied`,
+`404 role_not_found`.
+
+---
+
+
+## Visibility vs. permission (404 vs. 403)
+
+Every role endpoint answers two separate questions in order, and the
+distinction is what decides the status code:
+
+1. **Can the caller see this role at all?** If not → `404
+   role_not_found`.
+2. **May they perform this action on it?** If not → `403
+   permission_denied`.
+
+A custom role is **visible** to a caller who is a member of its
+organization and holds, in that organization, either `roles` `read`
+**or** the action they are attempting. Everything else — a missing id,
+a non-integer id, a role in an organization the caller does not belong
+to, and a role in an organization where the caller holds no relevant
+`roles` permission — is `404 role_not_found`, indistinguishable by
+design.
+
+The practical consequences:
+
+| Caller, relative to the role's organization | `GET` | `PATCH` / `DELETE` |
+|---|---|---|
+| Not a member | 404 | 404 |
+| Member, no `roles` permission at all | 404 | 404 |
+| Member with `read`, without `update`/`delete` | 200 | 403 |
+| Member with `update`/`delete`, without `read` | 404 | 200 |
+| Member with both | 200 | 200 |
+| Superadmin | 200 | 200 |
+
+The property that matters: **a 403 is only ever returned for a role the
+caller can already see.** A write endpoint therefore never confirms an
+id that `GET` reports as missing, which is what the first two rows
+guarantee.
+
+The fourth row is the one place `GET` and the write endpoints differ,
+and it is deliberate. A role granting `delete` without `read` is a
+valid grant, and it must be able to delete — being told the target
+does not exist would make the permission unusable. So visibility is
+"read **or** the action" rather than "read", and a caller in that
+position can change a role they cannot fetch. Nothing is disclosed:
+they already hold the permission to change it. If you want such a role
+to be able to read back what it wrote, grant `read` alongside — which
+is exactly what the catalog's `recommended_with` suggests for every
+write action.
+
+Built-in roles are visible to every caller who clears the door gate,
+so `PATCH`/`DELETE` on one always answers `403
+built_in_role_immutable` — that check runs before any organization
+check.
+
+The same rule applies on `/api/admin/memberships/`,
+`/api/admin/organizations/` and `/api/admin/api-keys/`; see
+[user_management.md](user_management.md),
+[organization_management.md](organization_management.md) and
+[api_keys.md](api_keys.md).
+
+---
+
+## The ceiling rule
+
+**You cannot grant authority you do not hold.** The rule applies wherever
+permissions are handed out, and it is the same comparison in both:
+
+| Where | What is compared |
+|---|---|
+| `POST` / `PATCH` `/api/admin/roles/` | the `permissions[]` being written into the role |
+| `POST` / `PATCH` `/api/admin/memberships/` | the permissions the assigned role grants |
+
+A grant is allowed when **every action it carries, on every resource type, is
+within the caller's own permissions in that organization**. Equality is allowed
+— an Org Admin can assign Org Admin. Exceeding it on any single resource is
+`403 permission_escalation_denied`. **Superadmin bypasses.**
+
+The rule **never looks at whether the role is built-in**. Promoting someone to
+the built-in Org Admin and assigning a custom role that exceeds you are refused
+identically. Built-in roles cannot be authored at all (see immutability below),
+so for them only the assignment side applies.
+
+Only the actions in the catalog's `actions[]` are compared. `use` and `list`
+exist in the `Permission` enum and appear in some built-in seeds, but they are
+not grantable through the catalog and nothing enforces them, so they are ignored
+here — otherwise dead seed data would refuse legitimate grants.
+
+**Consequence worth planning for.** A role holding only `memberships` and
+`roles` can assign **nothing**: every built-in grants workspace permissions such
+a role does not hold, so the ceiling refuses all of them. A role that must
+onboard people has to hold the permissions it hands out — typically the `read`
+action on the workspace resources — or be Org Admin.
+
+### Listing only what you can assign
+
+```
+GET /api/admin/roles/?assignable_org_ids=10
+GET /api/admin/roles/?assignable_org_ids=10,20
+```
+
+Comma-separated org ids, parsed exactly like `?org_ids=`. The response shape is
+**identical** to the unfiltered call (`count` / `next` / `previous` / `results`
+/ `built_in_roles`); only the rows narrow. Use it to populate a role picker so
+it never offers a role the write would refuse.
+
+- Omitting the parameter filters nothing — that is the roles **management** list,
+  where `ROLES.read` means "see roles", not "see roles I may assign".
+- `assignable_org_ids` also defines the org scope, so it supersedes `?org_ids=`
+  when both are sent.
+- Custom roles are compared against **their own** organization.
+- `built_in_roles` is one global list, so a built-in is included when it is
+  assignable in **at least one** requested org. **One org gives an exact answer;
+  several give a superset** — query per org when you need to know precisely
+  where a role is assignable.
+- The global **Superadmin** role is never included: it is not an assignable
+  membership role at all.
+- Superadmin callers get no filtering.
+- A malformed value → `400 org_context_required`; an org the caller cannot read
+  roles in → `403` for the whole request, the same fail-loud as `?org_ids=`.
 
 ---
 
 ## Built-in immutability
 
-Built-in roles (`is_built_in: true`) cannot be edited or deleted.
-Write endpoints will be added in a later iteration for custom roles;
-the guard is already in place so any future write attempt against a
-built-in role responds with:
+Built-in roles (`is_built_in: true`) can never be edited or deleted —
+not even by superadmin. `PATCH` and `DELETE` on
+`/api/admin/roles/{id}/` both check this before any other
+authorization or validation runs:
 
 ```json
 {
   "status_code": 403,
   "code": "built_in_role_immutable",
-  "message": "Built-in roles cannot be modified or deleted."
+  "message": "Built-in roles cannot be edited or deleted."
 }
 ```
 
@@ -313,8 +705,63 @@ and redirect to the org picker.
 }
 ```
 
-Caller is a member but the role does not include the required
-(resource_type, action) tuple.
+Caller does not hold the required (resource_type, action) tuple where
+it is required. On a detail route this means the caller can **see** the
+role — they hold `roles` `read` in its org — but lacks the action; a
+role they cannot see answers `404 role_not_found` instead. The roles
+door gate also raises this for a caller holding the action in no
+organization at all, and `?org_ids=` raises it for a forbidden org id.
+
+### `403 permission_escalation_denied`
+
+```json
+{
+  "status_code": 403,
+  "code": "permission_escalation_denied",
+  "message": "You cannot grant permissions you do not have in this organization."
+}
+```
+
+The **ceiling rule**, raised in the two places authority is handed out:
+
+- `POST` / `PATCH` on `/api/admin/roles/` — the submitted `permissions[]`
+  includes a bit the caller does not hold in that org (**authoring**);
+- `POST` / `PATCH` on `/api/admin/memberships/` — the role being
+  assigned grants a bit the caller does not hold in that org
+  (**assignment**).
+
+Superadmin bypasses both. See "The ceiling rule" below.
+
+### `400 role_name_conflict`
+
+```json
+{
+  "status_code": 400,
+  "code": "role_name_conflict",
+  "message": "A role with this name already exists in this organization."
+}
+```
+
+Raised by `POST` / `PATCH` on `/api/admin/roles/` when `name` collides
+case-insensitively with an existing role in the same org — including
+the four built-in names. The caller renames; names are never silently
+overwritten.
+
+### `404 role_not_found`
+
+```json
+{
+  "status_code": 404,
+  "code": "role_not_found",
+  "message": "Role not found."
+}
+```
+
+Returned for a genuinely missing role id, a non-integer id, and a role
+the caller cannot see — a role in an org they do not belong to, or one
+in an org where they hold neither `roles` `read` nor the action they
+are attempting. All of these are indistinguishable by design; see
+"Visibility vs. permission".
 
 ### `404 organization_not_found`
 
@@ -360,6 +807,20 @@ Special cases handled outside this loop:
 - `permissions === "*"` on `/api/permissions/me/` → same wildcard
   treatment for the action-gating layer.
 
+When the user checks a cell, read its suggestions off the same catalog row:
+
+```js
+function suggestionsFor(catalog, resourceCode, action, checkedCells) {
+  const rt = catalog.resource_types.find(r => r.code === resourceCode);
+  return (rt.recommended_with[action] ?? [])
+    .filter(c => !checkedCells.has(`${c.resource_type}:${c.action}`));
+}
+```
+
+Highlight what comes back, or offer to check it. Accepting a suggestion is
+itself a checked cell, so calling `suggestionsFor` again on that cell walks
+the next step of the chain.
+
 ---
 
 ## FE bootstrap flow
@@ -394,7 +855,7 @@ Special cases handled outside this loop:
 
 ---
 
-## Resource scoping coverage (EST-2423)
+## Resource scoping coverage
 
 Every workspace/config resource is now scoped to the active org and gated by its `resource_type`.
 Two patterns beyond plain org ownership:
@@ -417,6 +878,11 @@ Two patterns beyond plain org ownership:
 | KNOWLEDGE_SOURCES | source-collections, documents, naive-rag, graph-rag, indexing | **R** | C R U D |
 | LLM_CONFIGS | llm/embedding/realtime configs **and custom models** | **R** | C R U D |
 | FILES | storage | C R U E | C R U D E |
+| API_KEYS † | admin/api-keys | — | R D |
+
+† `API_KEYS` is cross-org rather than active-org scoped — it is governed by `?org_ids=` against
+the key owner's memberships, not the `X-Organization-Id` header. See
+[api_keys.md](api_keys.md).
 
 **Cross-org references are rejected** like a non-existent pk (`400 Invalid pk … does not exist`): a
 write in org A cannot attach org B's tool (`tool_ids`), knowledge collection, rag, or LLM/embedding

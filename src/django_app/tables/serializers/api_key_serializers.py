@@ -57,6 +57,11 @@ class ApiKeyOwnerSerializer(serializers.ModelSerializer):
 
 class ApiKeyAdminSerializer(ApiKeySerializer):
     owner = ApiKeyOwnerSerializer(source="created_by", read_only=True)
+    org_ids = serializers.SerializerMethodField()
 
     class Meta(ApiKeySerializer.Meta):
-        fields = ApiKeySerializer.Meta.fields + ["owner"]
+        fields = ApiKeySerializer.Meta.fields + ["owner", "org_ids"]
+
+    def get_org_ids(self, key: ApiKey) -> list[int]:
+        """Set by ApiKeyManagementService.attach_visible_orgs."""
+        return getattr(key, "_visible_org_ids", [])

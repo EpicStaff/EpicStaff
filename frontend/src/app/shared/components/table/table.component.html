@@ -50,9 +50,13 @@
                             <button
                                 type="button"
                                 class="col-label col-label--filter"
+                                [class.col-label--filter--active]="hasFilterValue(col.key)"
                                 [appSelectTrigger]="sel"
                             >
                                 {{ col.label }}
+                                @if (hasFilterValue(col.key)) {
+                                    <span class="col-label__count">({{ activeFilterCount(col.key) }})</span>
+                                }
                                 <app-svg-icon
                                     icon="filter-rows"
                                     size="1rem"
@@ -62,17 +66,25 @@
                     } @else if (col.filterItems?.length) {
                         <app-multi-select
                             #ms
+                            saveLabel="Save"
+                            [showClearFilter]="true"
                             [hideTrigger]="true"
                             [label]="col.label ?? ''"
                             [items]="col.filterItems!"
+                            [selectedValues]="activeFilterValues(col.key)"
+                            [sortSelectedToTop]="false"
                             (selectionChange)="onFilterChange(col.key, $event)"
                         >
                             <button
                                 type="button"
                                 class="col-label col-label--filter"
+                                [class.col-label--filter--active]="hasFilterValue(col.key)"
                                 [appMultiSelectTrigger]="ms"
                             >
                                 {{ col.label }}
+                                @if (hasFilterValue(col.key)) {
+                                    <span class="col-label__count">({{ activeFilterCount(col.key) }})</span>
+                                }
                                 <app-svg-icon
                                     icon="filter-rows"
                                     size="1rem"
@@ -105,6 +117,7 @@
                                 <app-checkbox
                                     color="secondary"
                                     [checked]="isSelected(item)"
+                                    [disabled]="!rowSelectable()(item)"
                                     (changed)="toggleRow(item)"
                                 />
                             </div>

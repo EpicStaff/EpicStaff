@@ -1,4 +1,8 @@
+from typing import Optional
+
 from tables.services.rbac.rbac_exceptions import FormValidationError
+
+ALLOWED_STATUS_FILTERS: tuple[str, ...] = ("active", "expired", "revoked")
 
 
 class ApiKeyValidationService:
@@ -53,3 +57,42 @@ class ApiKeyValidationService:
             raise FormValidationError(errors)
 
         return {"name": name.strip(), "expires_in_days": expires_in_days}
+
+    def validate_list_keys_query(self, params) -> dict:
+        """`GET /api/admin/api-keys/` filters: ?user=&status=&search=."""
+        errors: list[dict] = []
+
+        raw_status: Optional[str] = params.get("status")
+        status_value: Optional[str] = raw_status or None
+        if status_value is not None and status_value not in ALLOWED_STATUS_FILTERS:
+            errors.append(
+                {
+                    "field": "status",
+                    "value": raw_status,
+                    "reason": f"Must be one of {', '.join(ALLOWED_STATUS_FILTERS)}.",
+                }
+            )
+
+        raw_owner: Optional[str] = params.get("user")
+        owner_id: Optional[int] = None
+        if raw_owner not in (None, ""):
+            try:
+                owner_id = int(raw_owner)
+            except (TypeError, ValueError):
+                errors.append(
+                    {
+                        "field": "user",
+                        "value": raw_owner,
+                        "reason": "Must be an integer user id.",
+                    }
+                )
+
+        if errors:
+            raise FormValidationError(errors)
+
+        search: Optional[str] = params.get("search")
+        return {
+            "owner_id": owner_id,
+            "status_value": status_value,
+            "search": search or None,
+        }

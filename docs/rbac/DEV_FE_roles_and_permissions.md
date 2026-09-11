@@ -358,7 +358,7 @@ function renderMatrix(catalog: Catalog, role: Role): Cell[][] {
 
 **Built-in Superadmin row is special** — the BE returns it with empty `permissions: []` because superadmin authority is the user flag, not the bitmask. Detect by `is_built_in && name === 'Superadmin'` and render every applicable cell as checked.
 
-**`assigned_count`** — displays "N users have this role". For the Superadmin row this number is typically 0 (or low) because `is_superadmin=True` users don't necessarily have a `Superadmin` membership row. Don't surface this number for the Superadmin row, or label it "members" with a tooltip explaining that `is_superadmin` users are counted separately on the Users tab.
+**`assigned_count` / `assigned_by_org`** — `assigned_count` is how many people hold the role in the organizations the response covers, and `assigned_by_org` is that figure per organization (ordered by name, case-insensitively; organizations with no holders omitted). Render the total in the Members column and the breakdown in a tooltip or popover. A custom role has at most one entry — its own organization, omitted entirely when the role has no holders; a built-in role has one per organization in scope, so the total is a sum across organizations. Both respond to the organization filter — send `?org_ids=` and the numbers narrow with it. The **Superadmin** row always reports `0` and `[]`: superadmin authority is the account flag, not a membership row, so render no number there.
 
 ---
 
@@ -445,9 +445,12 @@ Full payload shapes in [`roles_and_permissions.md`](./roles_and_permissions.md).
   - Header with valid org you're a member of → embedded `active_organization_id` and `active_permissions`.
   - Header with an org you can't access → fields are `null` (NOT 403). This is the only endpoint with this soft-fail behavior.
 
-### `/api/admin/organizations/{org_id}/users/...` (existing — gate changed)
+### `/api/admin/memberships/...` (membership management)
 
-- **No FE behavior change.** Path is the same. The BE swapped its permission class under the hood. Same 200/403 responses for the same callers.
+- The nested `/api/admin/organizations/{org_id}/users/...` surface (and the
+  batch `assign-users`) has been **replaced** by the flat, cross-org
+  `/api/admin/memberships/` surface (org is data, not a URL segment). See
+  [`user_management.md`](./user_management.md) for the full contract.
 
 ---
 
@@ -521,6 +524,11 @@ export interface PermissionsMeResponse {
   permissions: '*' | Record<ResourceCode, ActionCode[]>;
 }
 
+export interface RoleAssignmentByOrg {
+  org: { id: number; name: string };
+  count: number;
+}
+
 export interface RoleResponse {
   id: number;
   name: string;
@@ -529,6 +537,7 @@ export interface RoleResponse {
   scope: 'global' | 'org' | string;   // "org-{id}" for custom roles
   org_id: number | null;
   assigned_count: number;
+  assigned_by_org: RoleAssignmentByOrg[];
   permissions: {
     resource_type: ResourceCode;
     actions: ActionCode[];

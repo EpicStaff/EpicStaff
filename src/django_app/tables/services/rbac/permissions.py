@@ -2,6 +2,9 @@ from django.core.exceptions import ImproperlyConfigured
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from tables.models.rbac_models import ApiKey
+from tables.services.rbac.cross_org_permission_resolver import (
+    CrossOrgPermissionResolver,
+)
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
@@ -45,30 +48,31 @@ class IsSuperadminOrReadOnly(BasePermission):
         return bool(getattr(user, "is_superadmin", False))
 
 
-class HasOrgPermission(BasePermission):
-    """Generic RBAC permission gate.
+class BaseRbacPermission(BasePermission):
+    """Shared skeleton for RBAC verb gates (Template Method).
 
-    Reads `rbac_resource_type` (required) and `rbac_action_map`
-    (optional) from the view. Picks the required action from
-    `view.action` via the per-view map first, the default map second.
+    Handles the parts every gate does the same way — the
+    `rbac_resource_type` config guard, the superadmin bypass, and
+    resolving the required action from the view's action map
+    (`rbac_action_map` first, `DEFAULT_ACTION_MAP` second). Subclasses
+    implement the single varying step, `_authorize`: a single-org check
+    (`HasOrgPermission`) vs a cross-org "anywhere" check
+    (`HasResourcePermissionAnywhere`).
 
-    Order: must run AFTER `IsAuthenticated` in `permission_classes`.
-    The class assumes `request.user.is_authenticated` and reads
+    Missing `rbac_resource_type` raises ImproperlyConfigured so
+    integration mistakes surface immediately.
+
+    Order: must run AFTER `IsAuthenticated` in `permission_classes` —
+    assumes `request.user.is_authenticated` and reads
     `request.user.is_superadmin`.
-
-    Missing `rbac_resource_type` on the view raises ImproperlyConfigured
-    so integration mistakes surface immediately.
     """
-
-    _org_context = OrgContextService()
-    _resolver = PermissionResolver()
 
     def has_permission(self, request, view):
         resource_type = getattr(view, "rbac_resource_type", None)
         if resource_type is None:
             raise ImproperlyConfigured(
-                f"{view.__class__.__name__} uses HasOrgPermission but did not declare "
-                "rbac_resource_type."
+                f"{view.__class__.__name__} uses {self.__class__.__name__} but did "
+                "not declare rbac_resource_type."
             )
 
         # Superadmin bypass — short-circuit before doing any DB work.
@@ -82,6 +86,28 @@ class HasOrgPermission(BasePermission):
         if required is None:
             return False
 
+        return self._authorize(
+            request=request, view=view, resource_type=resource_type, required=required
+        )
+
+    def _authorize(self, request, view, resource_type, required) -> bool:
+        """Return True iff the caller is authorized for `required` on
+        `resource_type`. The one step that differs per gate."""
+        raise NotImplementedError
+
+
+class HasOrgPermission(BaseRbacPermission):
+    """Single-org RBAC gate.
+
+    Authorizes `required` against the caller's permissions in the
+    request's **active org**, resolved from the URL kwarg `org_id` or the
+    `X-Organization-Id` header (via OrgContextService).
+    """
+
+    _org_context = OrgContextService()
+    _resolver = PermissionResolver()
+
+    def _authorize(self, request, view, resource_type, required) -> bool:
         org_id = self._org_context.resolve(request=request, view_kwargs=view.kwargs)
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
 
@@ -89,6 +115,7 @@ class HasOrgPermission(BasePermission):
             resource_str = (
                 resource_type if isinstance(resource_type, str) else resource_type.value
             )
+            action_name = getattr(view, "action", None)
             self.message = (
                 f"You do not have permission to {action_name} {resource_str}."
             )
@@ -151,3 +178,19 @@ class DenyApiKeyAuth(BasePermission):
 
     def has_permission(self, request, view):
         return not isinstance(request.auth, ApiKey)
+
+
+class HasResourcePermissionAnywhere(BaseRbacPermission):
+    """Cross-org door gate.
+
+    Passes if the caller holds the required action on
+    `view.rbac_resource_type` in AT LEAST ONE org. This is a coarse
+    pre-filter — precise per-org authorization (specific target org +
+    ceiling) is enforced in the service layer.
+    """
+
+    _resolver = CrossOrgPermissionResolver()
+
+    def _authorize(self, request, view, resource_type, required) -> bool:
+        scopes = self._resolver.resolve_all_cached(request)
+        return any(scope.effective.can(resource_type, required) for scope in scopes)

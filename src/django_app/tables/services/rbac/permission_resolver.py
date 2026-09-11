@@ -30,12 +30,4 @@ class PermissionResolver:
         if membership is None:
             raise OrgMembershipRequiredError()
 
-        by_resource = {
-            row.resource_type: row.permissions
-            for row in membership.role.permissions_set.all()
-        }
-        return EffectivePermissions(
-            is_superadmin=False,
-            role=membership.role,
-            by_resource=by_resource,
-        )
+        return EffectivePermissions.from_role(membership.role)
