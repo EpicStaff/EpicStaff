@@ -20,6 +20,7 @@ export enum ResourceCode {
     Files = 'files',
     LlmConfigs = 'llm_configs',
     Secrets = 'secrets',
+    Audit = 'audit',
 }
 
 export interface ActivePermissions {

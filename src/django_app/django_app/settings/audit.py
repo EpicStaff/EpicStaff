@@ -1,0 +1,8 @@
+from django_app.settings import env
+
+AUDIT_TRAIL_ENABLED = env.bool("AUDIT_TRAIL_ENABLED")
+AUDITOR_URL = env.str("AUDITOR_URL")
+AUDITOR_INGEST_API_KEY = env.str("AUDITOR_INGEST_API_KEY")
+
+AUDIT_TOKEN_TTL_SECONDS = env.int("AUDIT_TOKEN_TTL_SECONDS")
+JWT_SECRET = env.str("JWT_SECRET")

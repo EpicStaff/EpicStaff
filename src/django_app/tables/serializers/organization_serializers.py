@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from tables.models.rbac_models import Organization, User
+from tables.models.rbac_models import Organization, OrganizationConfig, User
 
 
 class OrganizationCreateRequestSerializer(serializers.Serializer):
@@ -15,13 +15,40 @@ class OrganizationRenameRequestSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
 
 
+class OrganizationSettingsUpdateSerializer(serializers.Serializer):
+    """Schema-only — real validation in OrganizationManagementService.
+
+    0 = unlimited (default), per EST-3341's explicit AC — free-form days,
+    no upper bound.
+    """
+
+    audit_retention_days = serializers.IntegerField(min_value=0)
+
+
+class OrganizationConfigSerializer(serializers.ModelSerializer):
+    """Nested under OrganizationResponseSerializer as `config` - same pattern
+    as RealtimeAgentReadSerializer's openai_config/elevenlabs_config/
+    gemini_config (each 1:1 sidecar config model gets its own dedicated
+    ModelSerializer, nested by field name matching the relation's own
+    related_name, rather than reaching across the relation with a dotted
+    `source=` on the parent serializer).
+    """
+
+    class Meta:
+        model = OrganizationConfig
+        fields = ["audit_retention_days"]
+        read_only_fields = fields
+
+
 class OrganizationResponseSerializer(serializers.ModelSerializer):
     """Response shape for every Organization endpoint (list, create, rename,
-    deactivate, reactivate). `member_count` is supplied by the queryset
-    annotation in OrganizationManagementService.
+    deactivate, reactivate, settings). `member_count` is supplied by the
+    queryset annotation in OrganizationManagementService.
     """
 
     member_count = serializers.IntegerField(read_only=True)
+    # Relies on the service layer's select_related("config").
+    config = OrganizationConfigSerializer(read_only=True)
 
     class Meta:
         model = Organization
@@ -30,6 +57,7 @@ class OrganizationResponseSerializer(serializers.ModelSerializer):
             "name",
             "is_active",
             "member_count",
+            "config",
             "created_at",
             "updated_at",
         ]

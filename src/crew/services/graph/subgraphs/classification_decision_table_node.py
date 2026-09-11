@@ -7,6 +7,7 @@ from loguru import logger
 import litellm
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
+from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.crew.models.graph_models import (
     GraphMessage,
 )
@@ -78,7 +79,12 @@ class ClassificationDecisionTableNodeSubgraph:
     def _publish_message(self, graph_message: GraphMessage):
         """Publish a GraphMessage directly to Redis.
         Subgraph StreamWriter messages don't propagate to the parent graph's
-        astream, so we publish directly to Redis instead."""
+        astream, so we publish directly to Redis instead - and, since that
+        also means _emit_session_audit_event's own interception point (the
+        parent's astream loop) never sees these chunks either, dispatch to
+        the audit pipeline explicitly here too, right alongside the primary
+        publish (same data dict, same uuid, so both pipelines agree on the
+        event's identity)."""
         if self.redis_service is None:
             return
         try:
@@ -100,6 +106,11 @@ class ClassificationDecisionTableNodeSubgraph:
             }
         data["uuid"] = str(uuid.uuid4())
         self.redis_service.publish("graph:messages", data)
+        try:
+            emit_session_audit_event(data)
+        except Exception as audit_exc:
+            # Audit must never break the primary pipeline.
+            logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
     @staticmethod
     def _resolve_path(path_expr: str, ctx: dict):
@@ -537,6 +548,7 @@ def main(**kwargs) -> dict:
                 writer=writer,
                 input_=input_vars,
                 execution_order=self.execution_order(state),
+                node_type=self.TYPE,
             )
             self._publish_message(msg)
 
@@ -554,6 +566,7 @@ def main(**kwargs) -> dict:
                     error=str(e),
                     writer=writer,
                     execution_order=self.execution_order(state),
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
@@ -575,6 +588,7 @@ def main(**kwargs) -> dict:
                     output=decision_vars["result_node"],
                     execution_order=self.execution_order(state),
                     state=state,
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
@@ -733,6 +747,7 @@ def main(**kwargs) -> dict:
                         error=error,
                         writer=writer,
                         execution_order=self.execution_order(state),
+                        node_type=self.TYPE,
                     )
                     self._publish_message(msg)
                     return state
@@ -746,6 +761,7 @@ def main(**kwargs) -> dict:
                         error=error,
                         writer=writer,
                         execution_order=self.execution_order(state),
+                        node_type=self.TYPE,
                     )
                     self._publish_message(msg)
                     return state
@@ -766,6 +782,7 @@ def main(**kwargs) -> dict:
                     error=str(e),
                     writer=writer,
                     execution_order=self.execution_order(state),
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
@@ -782,6 +799,7 @@ def main(**kwargs) -> dict:
                 output=decision_vars["result_node"],
                 execution_order=self.execution_order(state),
                 state=state,
+                node_type=self.TYPE,
                 matched_condition=matched_condition_name,
             )
             self._publish_message(msg)

@@ -36,6 +36,10 @@ DEFAULT_RAG_SEARCH_TIMEOUT = env.time("DEFAULT_RAG_SEARCH_TIMEOUT")
 NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")
 GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 
+AUDIT_TRAIL_ENABLED = env.bool("AUDIT_TRAIL_ENABLED")
+AUDITOR_URL = env.str("AUDITOR_URL")
+AUDITOR_INGEST_API_KEY = env.str("AUDITOR_INGEST_API_KEY")
+
 # optional run-level token budget hard stop.
 # Global fallback used when a session does not carry a per-run override
 # (see GraphSessionManagerService.run_session / SessionData.initial_state

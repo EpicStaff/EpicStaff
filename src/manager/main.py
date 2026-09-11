@@ -1,5 +1,4 @@
 import asyncio
-import os
 import signal
 
 from db.config import AsyncSessionLocal
@@ -10,10 +9,13 @@ from repositories.session_repository import SessionRepository
 from services.redis_service import RedisService
 from services.session_timeout_service import SessionTimeoutService
 from services.schedule_service import ScheduleService
+from services.audit_export_cleanup_service import (
+    ExportCleanupService,
+    build_export_redis_client,
+)
 from helpers.logger import logger
 
 import settings
-
 
 redis_service = RedisService(
     settings.REDIS_HOST,
@@ -21,6 +23,7 @@ redis_service = RedisService(
     settings.REDIS_USER,
     settings.REDIS_PASSWORD,
 )
+redis_export_service = build_export_redis_client()
 
 session_repository = SessionRepository(AsyncSessionLocal)
 
@@ -32,6 +35,11 @@ session_timeout_service = SessionTimeoutService(
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
+export_cleanup_service = ExportCleanupService(
+    redis_client=redis_export_service,
+    sweep_interval_seconds=settings.EXPORT_SWEEP_INTERVAL_SECONDS,
+    export_data_dir=settings.EXPORT_DATA_DIR,
+)
 
 
 async def test_database_connection():
@@ -88,6 +96,9 @@ async def main():
         await schedule_service.start()
         logger.info("ScheduleService started successfully.")
 
+        await export_cleanup_service.start()
+        logger.info("ExportCleanupService started successfully.")
+
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
@@ -103,6 +114,9 @@ async def shutdown():
         schedule_service.scheduler.shutdown(wait=False)
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
+    if redis_export_service:
+        await export_cleanup_service.stop()
+        await redis_export_service.aclose()
 
 
 if __name__ == "__main__":

@@ -103,6 +103,12 @@ services:
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
+
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      AUDITOR_URL: ${AUDITOR_URL:?}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
+      AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
+      JWT_SECRET: ${JWT_SECRET:?}
     volumes:
       - media_data:/app/media
     networks:
@@ -165,8 +171,13 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
+      AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
+      EXPORT_DATA_DIR: ${EXPORT_DATA_DIR:?}
+      EXPORT_SWEEP_INTERVAL_SECONDS: ${EXPORT_SWEEP_INTERVAL_SECONDS:?}
     networks:
       - backend-network
+    volumes:
+      - auditor_data:/app/export_data
     tty: true
     stdin_open: true
     depends_on:
@@ -256,6 +267,9 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      AUDITOR_URL: ${AUDITOR_URL:?}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
     networks:
       - backend-network
     tty: true
@@ -489,6 +503,77 @@ services:
     networks:
       - backend-network
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: opensearch
+    entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
+    environment:
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:?}
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:?}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - backend-network
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+      - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:${OPENSEARCH_PASSWORD} https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  auditor:
+    image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:-latest}
+    container_name: auditor
+    build:
+      context: .
+      dockerfile: ./auditor/Dockerfile.auditor
+    command: ./entrypoint.sh
+    environment:
+      <<: [*docker-env, *redis-env]
+      AUDITOR_DEBUG: ${AUDITOR_DEBUG:?}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      AUDITOR_PORT: ${AUDITOR_PORT:?}
+      LOG_LEVEL: ${AUDITOR_LOG_LEVEL:?}
+      AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:?}
+      OPENSEARCH_HOST: ${OPENSEARCH_HOST:?}
+      OPENSEARCH_PORT: ${OPENSEARCH_PORT:?}
+      OPENSEARCH_USER: ${OPENSEARCH_USER:?}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:?}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:?}
+      CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
+      AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
+      EXPORT_DATA_DIR: ${EXPORT_DATA_DIR:?}
+      EXPORT_FILE_TTL_SECONDS: ${EXPORT_FILE_TTL_SECONDS:?}
+    ports:
+      - "${AUDITOR_PORT}:${AUDITOR_PORT}"
+    networks:
+      - backend-network
+    volumes:
+      - auditor_data:/app/export_data
+    depends_on:
+      opensearch:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${AUDITOR_PORT}/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+
 
 volumes:
   sandbox_venvs:
@@ -499,6 +584,8 @@ volumes:
     external: true
   redis_data: {}
   minio_data: {}
+  opensearch_data: {}
+  auditor_data: {}
 
   graph_data:
     external: true

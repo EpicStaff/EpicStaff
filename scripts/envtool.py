@@ -81,7 +81,7 @@ def generate_env_file(schema: dict, target: Literal["prod", "dev"], schema_file:
                 content.append(DEFAULT_VARIABLE_PATTERN.format(name=name, default=default))
 
     content = "".join(content)
-    env_file.write_text(content)
+    env_file.write_text(content, encoding="utf-8", newline="\n")
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

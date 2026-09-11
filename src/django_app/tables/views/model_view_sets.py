@@ -106,6 +106,12 @@ from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
 from tables.swagger_schemas.partial_import_schemas import (
     PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
 )
+from tables.swagger_schemas.audit_filter_preset_schemas import (
+    AUDIT_FILTER_PRESET_COPY,
+    AUDIT_FILTER_PRESET_EXPORT_ALL,
+    AUDIT_FILTER_PRESET_EXPORT_ONE,
+    AUDIT_FILTER_PRESET_IMPORT,
+)
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
     MCP_TOOL_BULK_EXPORT_POST,
@@ -178,6 +184,7 @@ from tables.filters import (
 )
 from tables.utils.helpers import natural_sort_key
 from tables.models.label_models import Label
+from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
@@ -187,6 +194,7 @@ from tables.models.webhook_models import (
     ProviderType,
 )
 from tables.services.copy_services import (
+    AuditFilterPresetCopyService,
     GraphCopyService,
     McpToolCopyService,
     PythonCodeToolCopyService,
@@ -222,6 +230,10 @@ from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
     AgentNodeSerializer,
     AgentNodeTaskSerializer,
+    AuditFilterPresetCopySerializer,
+    AuditFilterPresetImportFileSerializer,
+    AuditFilterPresetImportSerializer,
+    AuditFilterPresetSerializer,
     ClassificationDecisionTableNodeSerializer,
     AudioTranscriptionNodeSerializer,
     ConditionalEdgeSerializer,
@@ -279,6 +291,7 @@ from tables.serializers.serializers import (
     ImportRequestSerializer,
 )
 from tables.import_export.registry import entity_registry
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
@@ -1594,7 +1607,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     def end(self, request):
         """Mark a RealtimeAgentChat as ended.
 
-        Called server-to-server by the `realtime`/`voice_app` services
+        Called server-to-server by the `realtime` service
         (`voice_call_service._patch_agent_chat`) once a call ends. That caller
         has no logged-in user/org context and identifies the target chat by
         its opaque `connection_key` alone, so this action cannot be scoped
@@ -1681,7 +1694,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     def lookup_by_token(self, request):
         """Resolve a channel by its unique `token`, unscoped by org.
 
-        Used only by the `realtime`/`voice_app` services to route an inbound
+        Used only by the `realtime` service to route an inbound
         Twilio call (POST /voice/{token}) to the right agent — that caller has
         no logged-in user and cannot supply `X-Organization-Id`. The token
         itself (an unguessable UUID) is the lookup/authorization key, so the
@@ -1779,7 +1792,7 @@ class ConversationRecordingViewSet(
     - An authenticated org member (JWT) or a self-issued USER API key, sending
       `X-Organization-Id` as usual — org-scoping is enforced via
       `_assert_parent_in_active_org` exactly like any other child resource.
-    - The `realtime`/`voice_app` services (`voice_call_service._post_recording`),
+    - The `realtime` service (`voice_call_service._post_recording`),
       authenticated with a `key_type=SYSTEM` API key, once a call ends. That
       caller has no logged-in user/org context and can never supply
       `X-Organization-Id`, and identifies its target purely by the opaque
@@ -1829,7 +1842,7 @@ class ConversationRecordingViewSet(
                 )
             serializer.validated_data["rt_agent_chat"] = rt_agent_chat
 
-        # A trusted SYSTEM API key (the realtime/voice_app services) has no
+        # A trusted SYSTEM API key (the realtime service) has no
         # X-Organization-Id to check against — skip the org assertion for it,
         # same trust boundary as RealtimeAgentChatViewSet.end. Any other
         # caller (JWT session or a self-issued USER key) still goes through
@@ -2568,6 +2581,149 @@ class SecretViewSet(
         )
         return Response(
             secret_usage_service.summary(secret=secret, effective=effective)
+        )
+
+
+class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """
+    A user's own saved audit-search filters - owner-only (see get_queryset):
+    every action, including an Org Admin's, is scoped to `created_by=request.
+    user` on top of the usual org scoping, so another user's preset id 404s
+    rather than 403s (it isn't visible enough to even name as "forbidden").
+
+    Gated entirely on AUDIT:read, same as browsing itself - presets are a
+    personal convenience over audit data, not audit data or an org-wide
+    setting, so every action (including create/update/destroy/duplicate/
+    overwrite/export/import) maps to READ rather than the CREATE/UPDATE/
+    DELETE bits DEFAULT_ACTION_MAP would otherwise require - which were
+    never granted for the `audit` resource type (see
+    0209_seed_audit_role_permissions.py: Org Admin only has READ+EXPORT).
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AUDIT
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "create": Permission.READ,
+        "update": Permission.READ,
+        "partial_update": Permission.READ,
+        "destroy": Permission.READ,
+        "copy": Permission.READ,
+        "export": Permission.READ,
+        "export_all": Permission.READ,
+        "import_presets": Permission.READ,
+    }
+    queryset = AuditFilterPreset.objects.all()
+    serializer_class = AuditFilterPresetSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
+
+    @extend_schema(**AUDIT_FILTER_PRESET_COPY)
+    @action(detail=True, methods=["post"])
+    def copy(self, request, pk=None):
+        preset = self.get_object()
+        serializer = AuditFilterPresetCopySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        clone = AuditFilterPresetCopyService().copy(
+            preset,
+            name=serializer.validated_data.get("name"),
+            org_id=self.get_active_org_id(),
+            created_by=request.user,
+        )
+        return Response(AuditFilterPresetSerializer(clone).data, status=201)
+
+    @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk=None):
+        preset = self.get_object()
+        strategy = entity_registry.get_strategy(EntityType.AUDIT_FILTER_PRESET)
+        payload = strategy.export_entity(preset)
+        filename = generate_file_name(preset.name, prefix="audit_filter_preset")
+        response = HttpResponse(
+            json.dumps(payload, indent=2), content_type="application/json"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
+    @action(detail=False, methods=["post"], url_path="export")
+    def export_all(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        presets = list(self.get_queryset().filter(id__in=ids))
+        if len(presets) != len(ids):
+            # Same check GraphViewSet.bulk_export uses - an id that isn't
+            # the caller's own (or doesn't exist) 400s rather than being
+            # silently dropped from the export.
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        strategy = entity_registry.get_strategy(EntityType.AUDIT_FILTER_PRESET)
+        payload = {"presets": [strategy.export_entity(p) for p in presets]}
+        filename = generate_file_name("selection", prefix="audit_filter_presets")
+        response = HttpResponse(
+            json.dumps(payload, indent=2), content_type="application/json"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_presets(self, request):
+        """
+        Deliberately does not go through ExportService/ImportService (see
+        AuditFilterPresetStrategy's docstring): this is a single leaf
+        entity with no dependency graph, and those generic services have
+        no concept of owner-scoping (created_by), which this feature's
+        visibility model depends on. find_existing()/create_entity() are
+        called directly on the strategy instead - same per-entity contract,
+        no dependency-collection/topological-sort machinery that would
+        buy nothing here.
+        """
+        file_serializer = AuditFilterPresetImportFileSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        try:
+            data = json.load(file_serializer.validated_data["file"])
+        except json.JSONDecodeError:
+            raise DRFValidationError({"file": "Invalid JSON file."})
+
+        serializer = AuditFilterPresetImportSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        org_id = self.get_active_org_id()
+        strategy = entity_registry.get_strategy(EntityType.AUDIT_FILTER_PRESET)
+        id_mapper = IDMapper()
+
+        created, skipped_duplicate, failed = [], [], []
+        for item in serializer.to_items():
+            try:
+                # Untrusted input: org/created_by always come from the
+                # request, never from anything the imported file claims.
+                existing = strategy.find_existing(
+                    item, id_mapper, org_id=org_id, created_by=request.user
+                )
+                if existing is not None:
+                    skipped_duplicate.append(item["name"])
+                    continue
+                preset = strategy.create_entity(
+                    item, id_mapper, org_id=org_id, created_by=request.user
+                )
+                created.append(AuditFilterPresetSerializer(preset).data)
+            except Exception as e:
+                failed.append({"name": item.get("name"), "error": str(e)})
+
+        return Response(
+            {
+                "created": created,
+                "skipped_duplicate": skipped_duplicate,
+                "failed": failed,
+            },
+            status=200 if not failed else 207,
         )
 
 

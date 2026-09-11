@@ -315,7 +315,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     """Internal-only variant of `_TwilioChannelReadSerializer` that includes `auth_token`.
 
     Used exclusively by `RealtimeChannelViewSet.lookup_by_token`, which is gated by
-    `IsSystemApiKeyAuthenticated` (the trusted `realtime`/`voice_app` services only,
+    `IsSystemApiKeyAuthenticated` (the trusted `realtime` service only,
     never a logged-in user AND never a self-issued `key_type=USER` API key). That
     caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
     Twilio webhook requests. Do NOT reuse this serializer for any user-facing

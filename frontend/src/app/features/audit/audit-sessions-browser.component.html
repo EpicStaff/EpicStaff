@@ -1,0 +1,219 @@
+<div class="audit-browser">
+    <header class="audit-browser__header">
+        <a
+            class="audit-browser__back"
+            routerLink="/flows"
+            aria-label="Back to flows"
+        >
+            <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+            >
+                <path
+                    d="M19 12H5m7-7l-7 7 7 7"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                />
+            </svg>
+        </a>
+        <a
+            class="audit-browser__crumb"
+            routerLink="/flows"
+            >Flows</a
+        >
+        <span class="audit-browser__crumb-sep">/</span>
+        <span class="audit-browser__crumb audit-browser__crumb--current">Audit</span>
+    </header>
+
+    <div class="audit-browser__body">
+        <div class="audit-browser__main">
+            <div class="audit-browser__toolbar">
+                <input
+                    class="audit-browser__search"
+                    type="text"
+                    placeholder="Search every field, every level..."
+                    disabled
+                />
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="isFiltersPanelOpen()"
+                    (click)="toggleFiltersPanel()"
+                >
+                    Filters
+                </button>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="areColumnsExpanded()"
+                    (click)="setColumnsExpanded(true)"
+                >
+                    Expand All Columns
+                </button>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="!areColumnsExpanded()"
+                    (click)="setColumnsExpanded(false)"
+                >
+                    Collapse All Columns
+                </button>
+                <span class="audit-browser__toolbar-spacer"></span>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    disabled
+                >
+                    Export
+                </button>
+            </div>
+
+            @if (isPartial()) {
+                <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
+            }
+
+            <div class="audit-browser__table-wrap">
+                @if (isLoading()) {
+                    <p class="audit-browser__state">Loading...</p>
+                } @else if (loadError()) {
+                    <p class="audit-browser__state audit-browser__state--error">Failed to load audit sessions.</p>
+                } @else if (rows().length === 0) {
+                    <p class="audit-browser__state">No sessions found</p>
+                } @else {
+                    <table
+                        class="audit-table"
+                        [class.audit-table--expanded]="areColumnsExpanded()"
+                    >
+                        <thead>
+                            <tr>
+                                <th class="audit-table__gutter"></th>
+                                <th>Kind</th>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Flow</th>
+                                <th>Node Type</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Input</th>
+                                <th>Output</th>
+                                <th>Error</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (row of rows(); track row.sessionId) {
+                                <tr>
+                                    <td class="audit-table__gutter"></td>
+                                    <td><span class="audit-kind">Session</span></td>
+                                    <td>{{ row.sessionId }}</td>
+                                    <td>{{ row.name }}</td>
+                                    <td>{{ row.flowName }}</td>
+                                    <td></td>
+                                    <td>
+                                        <span
+                                            class="audit-status"
+                                            [class]="'audit-status--' + row.status"
+                                        >
+                                            {{ row.status | titlecase }}
+                                        </span>
+                                    </td>
+                                    <td class="audit-table__date">
+                                        {{ row.startTime | date: 'MMM dd yyyy HH:mm:ss' }}
+                                    </td>
+                                    <td></td>
+                                    <td>{{ row.output | json }}</td>
+                                    <td>{{ row.error }}</td>
+                                    <td>{{ row.details | json }}</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <footer class="audit-browser__footer">
+                <div class="audit-pager">
+                    <span class="audit-pager__label">Sessions to display:</span>
+                    <button
+                        class="audit-pager__step"
+                        type="button"
+                        [disabled]="!canDecreasePageSize()"
+                        (click)="stepPageSize(-1)"
+                        aria-label="Fewer sessions per page"
+                    >
+                        −
+                    </button>
+                    <span class="audit-pager__size">{{ pageSize() }}</span>
+                    <button
+                        class="audit-pager__step"
+                        type="button"
+                        [disabled]="!canIncreasePageSize()"
+                        (click)="stepPageSize(1)"
+                        aria-label="More sessions per page"
+                    >
+                        +
+                    </button>
+
+                    <button
+                        class="audit-pager__nav"
+                        type="button"
+                        [disabled]="!canGoNewer()"
+                        (click)="goToFirstPage()"
+                        aria-label="First page"
+                    >
+                        «
+                    </button>
+                    <button
+                        class="audit-pager__nav"
+                        type="button"
+                        [disabled]="!canGoNewer()"
+                        (click)="goToNewerPage()"
+                    >
+                        ‹ Newer
+                    </button>
+                    <button
+                        class="audit-pager__nav audit-pager__nav--primary"
+                        type="button"
+                        [disabled]="!canGoOlder()"
+                        (click)="goToOlderPage()"
+                    >
+                        Older ›
+                    </button>
+                    <button
+                        class="audit-pager__nav"
+                        type="button"
+                        disabled
+                        aria-label="Last page"
+                    >
+                        »
+                    </button>
+                </div>
+
+                <div class="audit-summary">
+                    <span class="audit-summary__key">TIMES IN:</span>
+                    <span>{{ timeZoneLabel }}</span>
+                    <span class="audit-summary__key">IN VIEW:</span>
+                    <span>{{ counts().sessions }} sessions</span>
+                    <span class="audit-summary__sep">|</span>
+                    <span>{{ counts().nodes }} nodes</span>
+                    <span class="audit-summary__sep">|</span>
+                    <span>{{ counts().events }} events</span>
+                </div>
+            </footer>
+        </div>
+
+        @if (isFiltersPanelOpen()) {
+            <aside class="audit-browser__panel">
+                <app-audit-filters-panel
+                    (closed)="closeFiltersPanel()"
+                    (applied)="applyFilters()"
+                    (cleared)="clearFilters()"
+                />
+            </aside>
+        }
+    </div>
+</div>

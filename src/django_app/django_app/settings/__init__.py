@@ -13,6 +13,7 @@ if not env.bool("RUN_IN_DOCKER", False):
 
 from .base import *  # noqa: F403
 from .redis import *  # noqa: F403
+from .audit import *  # noqa: F403
 from .caches import *  # noqa: F403
 from .communication import *  # noqa: F403
 from .cors import *  # noqa: F403

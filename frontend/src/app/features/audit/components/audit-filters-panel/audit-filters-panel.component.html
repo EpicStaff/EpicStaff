@@ -1,0 +1,71 @@
+<div class="filters-panel">
+    <div class="filters-panel__header">
+        <span class="filters-panel__title">Filters</span>
+        <button
+            class="filters-panel__close"
+            type="button"
+            (click)="closed.emit()"
+            aria-label="Close filters"
+        >
+            ✕
+        </button>
+    </div>
+
+    <div class="filters-panel__tabs">
+        <button
+            class="filters-panel__tab"
+            type="button"
+            [class.is-active]="activeTab() === 'builder'"
+            (click)="setActiveTab('builder')"
+        >
+            Builder
+        </button>
+        <span class="filters-panel__tab-sep">/</span>
+        <button
+            class="filters-panel__tab"
+            type="button"
+            disabled
+        >
+            Query Code
+        </button>
+        <span class="filters-panel__tabs-spacer"></span>
+        <button
+            class="filters-panel__tab"
+            type="button"
+            disabled
+        >
+            Presets
+        </button>
+    </div>
+
+    <div class="filters-panel__body">
+        @if (activeTab() === 'builder') {
+            <p class="filters-panel__placeholder">Filter controls land here.</p>
+        }
+    </div>
+
+    <div class="filters-panel__footer">
+        <button
+            class="filters-panel__btn"
+            type="button"
+            (click)="cleared.emit()"
+        >
+            Clear Filters
+        </button>
+        <span class="filters-panel__footer-spacer"></span>
+        <button
+            class="filters-panel__btn"
+            type="button"
+            (click)="closed.emit()"
+        >
+            Cancel
+        </button>
+        <button
+            class="filters-panel__btn filters-panel__btn--primary"
+            type="button"
+            (click)="applied.emit()"
+        >
+            Apply Filters
+        </button>
+    </div>
+</div>

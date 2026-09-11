@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from asgiref.sync import async_to_sync
 from django.db import transaction
 
 from tables.exceptions import GraphEntryPointException
@@ -45,6 +46,7 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.session_audit_provider import get_session_audit_writer
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
@@ -189,6 +191,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         session: Session,
         token_budget: int | None = None,
+        run_type: str = "",
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
@@ -204,9 +207,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return SessionData(
             id=session.pk,
+            org_id=session.graph.org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
+            run_type=run_type,
         )
 
     def run_session(
@@ -249,7 +254,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
 
             session_data: SessionData = self.create_session_data(
-                session=session, token_budget=token_budget
+                session=session,
+                token_budget=token_budget,
+                run_type=trigger.trigger_type,
             )
             # TODO: add ping or waiting for crew to accept connections
 
@@ -297,7 +304,9 @@ class SessionManagerService(metaclass=SingletonMeta):
     def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
-            session = Session.objects.get(id=graph_session_message_data.session_id)
+            session = Session.objects.select_related("graph").get(
+                id=graph_session_message_data.session_id
+            )
             GraphSessionMessage.objects.create(
                 session=session,
                 name=graph_session_message_data.name,
@@ -305,6 +314,16 @@ class SessionManagerService(metaclass=SingletonMeta):
                 message_data=graph_session_message_data.message_data,
                 uuid=graph_session_message_data.uuid,
                 created_at=created_at_dt,
+            )
+
+            async_to_sync(get_session_audit_writer().add_custom_message)(
+                session_id=session.id,
+                org_id=session.graph.org_id,
+                flow_name=session.graph.name,
+                node_name=graph_session_message_data.name,
+                execution_order=graph_session_message_data.execution_order,
+                message_data=graph_session_message_data.message_data,
+                event_id=str(graph_session_message_data.uuid),
             )
 
             self.redis_service.publish_user_graph_message(
