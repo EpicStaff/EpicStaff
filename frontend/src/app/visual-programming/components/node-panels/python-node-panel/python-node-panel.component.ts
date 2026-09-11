@@ -7,7 +7,6 @@ import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
