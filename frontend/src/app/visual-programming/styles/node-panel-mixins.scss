@@ -128,7 +128,20 @@
 @mixin resizable-column($default-width) {
     flex: 0 0 $default-width;
     min-width: 0;
-    max-width: calc(100% - var(--column-min-opposite, 320px) - var(--column-divider-width, 1rem));
+    max-width: calc(100% - var(--column-min-opposite, 320px) - var(--column-divider-width, 0.375rem));
+}
+
+@mixin editor-pane-bleed($h-gap: 1rem, $v-gap: 1rem) {
+    margin-right: -#{$h-gap};
+    height: calc(100% + #{$v-gap});
+}
+
+@mixin resize-divider-bleed($v-gap: 1rem) {
+    height: calc(100% + #{$v-gap});
+}
+
+@mixin editor-pane-corner($radius: 12px) {
+    border-bottom-right-radius: $radius;
 }
 
 @mixin panel-content {

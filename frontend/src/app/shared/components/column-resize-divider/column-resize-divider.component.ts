@@ -13,6 +13,8 @@ import {
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 const KEYBOARD_STEP = 16;
+/** Px past `minWidth` the drag has to travel before it snaps collapsed — tuned by feel, not derived. */
+const COLLAPSE_DRAG_SLACK = 220;
 
 /**
  * Draggable divider that resizes `column`, keeping at least `minOppositeWidth` for `opposite`.
@@ -24,12 +26,23 @@ const KEYBOARD_STEP = 16;
 @Component({
     selector: 'app-column-resize-divider',
     imports: [AppSvgIconComponent],
-    template: `<app-svg-icon
-        class="grip"
-        icon="divider"
-        width="1px"
-        height="28px"
-    />`,
+    template: `
+        @if (collapsible()) {
+            <button
+                type="button"
+                class="collapse-toggle"
+                [class.always-visible]="collapsed()"
+                [attr.aria-label]="collapsed() ? 'Expand panel' : 'Collapse panel'"
+                (pointerdown)="$event.stopPropagation()"
+                (click)="onToggleClick()"
+            >
+                <app-svg-icon
+                    [icon]="collapsed() ? 'chevron-right' : 'chevron-left'"
+                    size="1rem"
+                />
+            </button>
+        }
+    `,
     host: {
         role: 'separator',
         'aria-orientation': 'vertical',
@@ -50,30 +63,94 @@ const KEYBOARD_STEP = 16;
     styles: [
         `
             :host {
-                --column-divider-color: var(--color-text-primary);
-                --column-divider-color-hover: var(--color-text-primary-hover);
-
+                position: relative;
                 flex: 0 0 auto;
                 align-self: stretch;
-                width: 1rem;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: var(--column-divider-color);
+                width: 0.375rem;
+                box-sizing: border-box;
+                border-left: 1px solid var(--color-divider-subtle);
+                border-right: 1px solid var(--color-divider-subtle);
                 cursor: col-resize;
+                transition: border-left-color 0.15s ease;
                 /* Keep touch drags from scrolling the panel instead of resizing. */
                 touch-action: none;
                 outline: none;
+                z-index: 10;
             }
 
-            .grip {
-                transition: color 0.15s ease;
+            :host::before {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 1px;
+                height: 28px;
+                background-color: var(--color-text-primary);
+                pointer-events: none;
             }
 
-            :host(:hover),
-            :host(:focus-visible),
-            :host(.is-dragging) {
-                color: var(--column-divider-color-hover);
+            :host:has(.collapse-toggle.always-visible) {
+                cursor: default;
+                width: 1px;
+                border-left: none;
+
+                &::before {
+                    display: none;
+                }
+            }
+
+            :host:has(.collapse-toggle:not(.always-visible):hover) {
+                border-left-color: var(--accent-color);
+            }
+
+            :host:has(.collapse-toggle.always-visible:hover) {
+                border-right-color: var(--accent-color);
+            }
+
+            .collapse-toggle {
+                position: absolute;
+                top: 50%;
+                left: 0;
+                border-top-left-radius: 8px;
+                border-bottom-left-radius: 8px;
+                transform: translate(-100%, -50%);
+                width: 28px;
+                height: 66px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                border: 1px solid var(--color-divider-subtle);
+                background: var(--color-background-body);
+                color: var(--color-text-primary);
+                cursor: pointer;
+                opacity: 0;
+                pointer-events: none;
+                transition:
+                    opacity 0.15s ease,
+                    border-color 0.15s ease,
+                    color 0.15s ease;
+                z-index: -1;
+
+                &:hover {
+                    border-color: var(--accent-color);
+                    color: var(--accent-color);
+                }
+
+                &.always-visible {
+                    opacity: 1;
+                    pointer-events: auto;
+                    left: 100%;
+                    transform: translateY(-50%);
+                    border-radius: 0 8px 8px 0;
+                }
+            }
+
+            :host(:hover) .collapse-toggle,
+            :host(:focus-visible) .collapse-toggle {
+                opacity: 1;
+                pointer-events: auto;
             }
         `,
     ],
@@ -89,6 +166,9 @@ export class ColumnResizeDividerComponent implements OnDestroy {
     /** Width restored on double click or Home; omit to disable that shortcut. */
     public readonly defaultWidth = input<number | null>(null);
     public readonly ariaLabel = input<string>('Resize columns');
+
+    public readonly collapsible = input<boolean>(false);
+    public readonly collapsed = model<boolean>(false);
 
     protected readonly isDragging = signal(false);
     protected readonly maxWidth = signal<number | null>(null);
@@ -115,10 +195,14 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         this.containerResize?.disconnect();
     }
 
+    protected onToggleClick(): void {
+        this.collapsed.update((value) => !value);
+    }
+
     protected onPointerDown(event: PointerEvent): void {
         // A second pointer mid-drag would replace `endDrag` and orphan the first one, leaving the
         // body unselectable and the Escape listener swallowing the key for good.
-        if (event.button !== 0 || this.isDragging()) {
+        if (event.button !== 0 || this.isDragging() || this.collapsed()) {
             return;
         }
         event.preventDefault();
@@ -167,6 +251,7 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         this.isDragging.set(false);
         this.cancelPendingFrame();
         this.finishDrag();
+        this.collapsed.set(false);
         this.applyWidth(this.startWidth);
     }
 
@@ -175,11 +260,19 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         if (defaultWidth === null) {
             return;
         }
+        this.collapsed.set(false);
         this.remeasureBounds();
         this.applyWidth(defaultWidth);
     }
 
     protected onKeydown(event: KeyboardEvent): void {
+        if (this.collapsible() && this.collapsed()) {
+            if (event.key === 'Home') {
+                event.preventDefault();
+                this.resetToDefault();
+            }
+            return;
+        }
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
             event.preventDefault();
             this.remeasureBounds();
@@ -197,6 +290,17 @@ export class ColumnResizeDividerComponent implements OnDestroy {
     }
 
     private applyWidth(rawWidth: number): void {
+        if (this.collapsible() && rawWidth < this.minWidth() - COLLAPSE_DRAG_SLACK) {
+            if (!this.collapsed()) {
+                this.collapsed.set(true);
+            }
+            return;
+        }
+
+        if (this.collapsed()) {
+            this.collapsed.set(false);
+        }
+
         const maxWidth = this.maxWidth();
         let nextWidth = Math.max(this.minWidth(), rawWidth);
         if (maxWidth !== null) {
