@@ -10,7 +10,12 @@ SECRET_USAGE_GET = dict(
         "values are the frontend node-type identifiers. Items in the other "
         "categories carry a `type` naming which model they are, because a category "
         "can hold several — `llm_configs` folds four and `tools` folds two, and two "
-        "of them may share a name."
+        "of them may share a name. "
+        "Only resources the requesting user has READ permission on are listed; "
+        "`readable_total` counts those, and `hidden_total` counts the referencing "
+        "resources withheld, so a secret that is referenced only by resources the "
+        "caller cannot see reports `readable_total: 0` with a non-zero "
+        "`hidden_total`."
     ),
     responses={
         200: OpenApiResponse(
@@ -20,7 +25,8 @@ SECRET_USAGE_GET = dict(
                 OpenApiExample(
                     "In use across three categories",
                     value={
-                        "total": 4,
+                        "readable_total": 4,
+                        "hidden_total": 0,
                         "categories": [
                             {
                                 "key": "flows",
@@ -86,7 +92,20 @@ SECRET_USAGE_GET = dict(
                 ),
                 OpenApiExample(
                     "Unused",
-                    value={"total": 0, "categories": []},
+                    value={
+                        "readable_total": 0,
+                        "hidden_total": 0,
+                        "categories": [],
+                    },
+                    response_only=True,
+                ),
+                OpenApiExample(
+                    "Referenced only by resources the caller cannot read",
+                    value={
+                        "readable_total": 0,
+                        "hidden_total": 2,
+                        "categories": [],
+                    },
                     response_only=True,
                 ),
             ],

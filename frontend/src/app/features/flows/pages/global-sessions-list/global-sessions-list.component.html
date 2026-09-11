@@ -138,18 +138,23 @@
                         </div>
                         <span class="preview-header-title">Session execution</span>
                     </div>
-                    <div class="preview-header-right">
-                        <span class="preview-session-id-badge">#{{ session.id }}</span>
-                        <button
-                            class="preview-open-btn"
-                            (click)="onViewSession(session.id)"
-                            title="Open session"
-                        >
-                            <app-svg-icon
-                                icon="arrow-up-right"
-                                size="16px"
-                            />
-                        </button>
+                    <div class="preview-header-actions">
+                        @if (canStopSession(session.status)) {
+                            <app-stop-session-button (stopClick)="onStopSession(session.id)" />
+                        }
+                        <div class="preview-header-right">
+                            <span class="preview-session-id-badge">#{{ session.id }}</span>
+                            <button
+                                class="preview-open-btn"
+                                (click)="onViewSession(session.id)"
+                                title="Open session"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-up-right"
+                                    size="16px"
+                                />
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="preview-body">

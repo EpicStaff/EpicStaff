@@ -16,7 +16,14 @@ from django_filters.rest_framework import (
     CharFilter,
     NumberFilter,
 )
-from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
+from rest_framework import (
+    generics,
+    serializers,
+    viewsets,
+    mixins,
+    status,
+    filters as drf_filters,
+)
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
@@ -507,7 +514,11 @@ class PythonCodeToolViewSet(
     copy_service_class = PythonCodeToolCopyService
     copy_serializer_class = PythonCodeToolSerializer
 
-    queryset = PythonCodeTool.objects.all().select_related("python_code")
+    queryset = (
+        PythonCodeTool.objects.all()
+        .select_related("python_code")
+        .prefetch_related("python_code__secrets")
+    )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = PythonCodeToolFilter
@@ -660,7 +671,9 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -693,7 +706,9 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
             .prefetch_related(
                 Prefetch(
                     "python_node_list",
-                    queryset=PythonNode.objects.select_related("python_code"),
+                    queryset=PythonNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "file_extractor_node_list", queryset=FileExtractorNode.objects.all()
@@ -705,14 +720,26 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
                 Prefetch("edge_list", queryset=Edge.objects.all()),
                 Prefetch(
                     "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code"),
+                    queryset=ConditionalEdge.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "webhook_trigger_node_list",
-                    queryset=WebhookTriggerNode.objects.all(),
+                    queryset=WebhookTriggerNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()
+                ),
+                Prefetch(
+                    "classification_decision_table_node_list",
+                    queryset=ClassificationDecisionTableNode.objects.select_related(
+                        "pre_python_code", "post_python_code"
+                    ).prefetch_related(
+                        "pre_python_code__secrets", "post_python_code__secrets"
+                    ),
                 ),
                 Prefetch(
                     "subgraph_node_list",
@@ -2021,7 +2048,9 @@ class ClassificationDecisionTableNodeModelViewSet(
         "explain": Permission.READ,
     }
     org_filter_path = "graph__org_id"
-    queryset = ClassificationDecisionTableNode.objects.all()
+    queryset = ClassificationDecisionTableNode.objects.select_related(
+        "pre_python_code", "post_python_code"
+    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets")
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
@@ -2534,7 +2563,12 @@ class SecretViewSet(
     def usage(self, request, pk=None):
         """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
-        return Response(secret_usage_service.summary(secret=secret))
+        effective = PermissionResolver().resolve(
+            user=request.user, org_id=self.get_active_org_id()
+        )
+        return Response(
+            secret_usage_service.summary(secret=secret, effective=effective)
+        )
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
