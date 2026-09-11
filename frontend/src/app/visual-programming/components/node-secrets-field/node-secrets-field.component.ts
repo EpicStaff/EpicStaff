@@ -3,10 +3,12 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     input,
     model,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -38,6 +40,8 @@ export class NodeSecretsFieldComponent {
     public readonly tooltipText = input<string>(
         "Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
     );
+    public readonly readonly = input<boolean>(false);
+    public readonly names = input<string[]>([]);
     /** Dropdown width — narrow panels (e.g. CDT's 350px sidebar) need a smaller value than
      *  the 390px default so the panel doesn't overflow past the field's own column. */
     public readonly panelWidth = input<string>('390px');
@@ -53,7 +57,13 @@ export class NodeSecretsFieldComponent {
         }))
     );
 
+    public readonly readonlyItems = computed<SelectItem[]>(() => this.names().map((name) => ({ name, value: name })));
+
     public readonly triggerLabel = computed(() => {
+        if (this.readonly()) {
+            const count = this.names().length;
+            return count > 0 ? `${count} selected` : 'No secrets assigned';
+        }
         // Count only ids that still resolve to an existing secret — a since-deleted secret's id
         // can still be sitting in value() (nothing prunes it), and counting it here would show a
         // number the dropdown's checked rows can't match.
@@ -63,18 +73,23 @@ export class NodeSecretsFieldComponent {
     });
 
     constructor() {
-        this.secretsStorageService
-            .getSecrets()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                error: () => this.toastService.error('Failed to load secrets.'),
-            });
+        effect(() => {
+            if (this.readonly()) return;
+            untracked(() =>
+                this.secretsStorageService
+                    .getSecrets()
+                    .pipe(takeUntilDestroyed(this.destroyRef))
+                    .subscribe({
+                        error: () => this.toastService.error('Failed to load secrets.'),
+                    })
+            );
+        });
     }
 
     public openDropdown(): void {
         const el = this.trigger()?.nativeElement;
         if (!el) return;
-        this.multiSelectRef()?.openAt(el, this.value());
+        this.multiSelectRef()?.openAt(el, this.readonly() ? this.names() : this.value());
     }
 
     public onSelectionChange(values: unknown[]): void {

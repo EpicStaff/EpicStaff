@@ -18,7 +18,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { IconButtonComponent } from '@shared/components';
-import { SecretDeclarationIndexService } from '@shared/services';
 import { EMPTY, filter, Observable, of, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
@@ -51,7 +50,6 @@ export class VersionHistoryPanelComponent implements OnInit {
     @ViewChildren('versionMenu') versionMenus!: QueryList<ElementRef>;
 
     private destroyRef = inject(DestroyRef);
-    private secretDeclarationIndexService = inject(SecretDeclarationIndexService);
 
     @HostListener('document:click', ['$event'])
     onDocumentClick(event: MouseEvent): void {
@@ -303,7 +301,6 @@ export class VersionHistoryPanelComponent implements OnInit {
                     if (response.warnings.length) {
                         this.createGraphWarningsService.setPending(response.warnings);
                     }
-                    this.secretDeclarationIndexService.invalidate();
                     this.dialogRef.close();
                     this.router.navigate(['/flows', response.graph_id]);
                 },

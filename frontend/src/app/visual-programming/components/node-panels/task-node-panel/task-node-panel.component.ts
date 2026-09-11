@@ -13,6 +13,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
     JsonEditorComponent,
@@ -80,6 +82,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ToggleSwitchComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -95,6 +98,9 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly outputSchemaExpanded = signal<boolean>(false);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
+
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('task-node', 406);
 
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
     public readonly instructionsView = signal<InstructionsView>('preview');

@@ -312,6 +312,11 @@
             }
         }
     }
+    .editor-wrapper.panel-open .f-minimap {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
     .f-connections-dragging {
         .f-component.port-circle.f-connector-connectable ~ .port-label {
             display: block;

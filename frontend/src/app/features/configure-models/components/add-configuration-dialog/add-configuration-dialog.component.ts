@@ -119,7 +119,7 @@ export class AddConfigurationDialogComponent implements OnInit {
 
         this.llmForm = this.fb.group({
             custom_name: ['', [Validators.required]],
-            api_key: [''],
+            api_key_secret_id: [null as number | null],
             model: [null, [Validators.required]],
             temperature: [0.5, [Validators.min(0), Validators.max(1)]],
             top_p: [1, [Validators.min(0.1)]],

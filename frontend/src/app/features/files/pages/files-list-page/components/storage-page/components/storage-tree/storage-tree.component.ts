@@ -298,8 +298,10 @@ export class StorageTreeComponent {
         const btn = event.currentTarget as HTMLElement;
         const rect = btn.getBoundingClientRect();
         const menuWidth = 180;
+        const menuHeight = 140;
         const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
-        const y = rect.bottom + 4;
+        const below = rect.bottom + 4;
+        const y = below + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight - 4) : below;
         this.moreMenuPosition.set({ x, y });
         this.moreMenuOpen.set(true);
     }

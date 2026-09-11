@@ -26,6 +26,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from tables.services.secrets import secret_resolver
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -117,7 +118,11 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
+class OpenAIRealtimeConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -148,7 +153,11 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
+class ElevenLabsRealtimeConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -170,7 +179,11 @@ class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
+class GeminiRealtimeConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -192,7 +205,9 @@ class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class TwilioChannelSerializer(serializers.ModelSerializer):
+class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_token_secret_id",)
+
     webhook_trigger = OrgScopedPrimaryKeyRelatedField(
         queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
     )
@@ -214,6 +229,8 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
+
         wt = attrs.get("webhook_trigger")
         provider_type = wt.provider_type if wt else None
 

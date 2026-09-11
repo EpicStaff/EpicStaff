@@ -126,7 +126,10 @@
 
                 <!-- Pre-computation Tab -->
                 @if (activeTab() === 'precomputation') {
-                    <div class="computation-section">
+                    <div
+                        class="computation-section"
+                        [class.sidebar-collapsed]="isSidebarCollapsed()"
+                    >
                         <div
                             #preSidebarColumn
                             class="computation-sidebar"
@@ -140,7 +143,9 @@
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="preSelectedSecretIds()"
-                                tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                [readonly]="!canEditSecrets()"
+                                [names]="preSecretNames()"
+                                [tooltipText]="preSecretsTooltip()"
                                 panelWidth="346px"
                                 (valueChange)="onPreSecretsChange($event)"
                             />
@@ -165,6 +170,9 @@
                             [opposite]="preCodeColumn"
                             [(width)]="sidebarWidth.width"
                             [defaultWidth]="sidebarWidth.defaultWidth"
+                            [collapsible]="true"
+                            [minWidth]="350"
+                            [(collapsed)]="isSidebarCollapsed"
                         />
                         <div
                             #preCodeColumn
@@ -182,7 +190,10 @@
 
                 <!-- Post-computation Tab -->
                 @if (activeTab() === 'postcomputation') {
-                    <div class="computation-section">
+                    <div
+                        class="computation-section"
+                        [class.sidebar-collapsed]="isSidebarCollapsed()"
+                    >
                         <div
                             #postSidebarColumn
                             class="computation-sidebar"
@@ -196,7 +207,9 @@
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="postSelectedSecretIds()"
-                                tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                [readonly]="!canEditSecrets()"
+                                [names]="postSecretNames()"
+                                [tooltipText]="postSecretsTooltip()"
                                 panelWidth="346px"
                                 (valueChange)="onPostSecretsChange($event)"
                             />
@@ -221,6 +234,9 @@
                             [opposite]="postCodeColumn"
                             [(width)]="sidebarWidth.width"
                             [defaultWidth]="sidebarWidth.defaultWidth"
+                            [collapsible]="true"
+                            [minWidth]="350"
+                            [(collapsed)]="isSidebarCollapsed"
                         />
                         <div
                             #postCodeColumn
