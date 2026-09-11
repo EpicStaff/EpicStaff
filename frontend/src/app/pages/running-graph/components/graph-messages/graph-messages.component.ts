@@ -803,9 +803,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         const nestedPath = [...context.path, context.key];
         return this.messageContexts.reduce(
             (count, ctx) =>
-                this.pathStartsWith(ctx.path, nestedPath) && this.isRenderableNestedMessage(ctx)
-                    ? count + 1
-                    : count,
+                this.pathStartsWith(ctx.path, nestedPath) && this.isRenderableNestedMessage(ctx) ? count + 1 : count,
             0
         );
     }
