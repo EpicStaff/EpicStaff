@@ -127,6 +127,43 @@ class CrossOrgResourceService:
         if not effective.can(self.rbac_resource_type.value, action):
             raise PermissionDenied("You do not have permission to perform this action.")
 
+    def resolve_scope_org_ids(self, actor, org_ids, scopes=None) -> Optional[set[int]]:
+        """The org ids this request is scoped to.
+
+        An explicit `org_ids` selection wins; an entry the actor cannot READ
+        fails the whole request (403 fail-loud) rather than silently narrowing
+        it. Otherwise every org where the actor may READ this resource.
+
+        `None` means no filter at all -- a superadmin -- and is NOT the same as
+        an empty set, which scopes the request to no org. Callers must test
+        `is None`, never truthiness: `?org_ids=,` parses to an empty selection,
+        and treating that as "unfiltered" would publish a cross-org total.
+        """
+        return self._narrow_to_requested(
+            readable=self.resolve_readable_org_ids(actor, scopes=scopes),
+            org_ids=org_ids,
+        )
+
+    def _narrow_to_requested(self, readable, org_ids) -> Optional[set[int]]:
+        """Apply an explicit `org_ids` selection to the readable set.
+
+        Stated once so `apply_org_scope` (which filters a queryset) and
+        `resolve_scope_org_ids` (which hands the same set to a counter) cannot
+        disagree about which orgs a request covers.
+        """
+        if org_ids is None:
+            return readable
+        requested = set(org_ids)
+        if readable is not None:
+            forbidden = requested - readable
+            if forbidden:
+                raise PermissionDenied(
+                    f"You do not have permission to read "
+                    f"{self.rbac_resource_type.value} in organization(s) "
+                    f"{sorted(forbidden)}."
+                )
+        return requested
+
     def apply_org_scope(self, actor, org_ids, base_qs, org_field="org_id", scopes=None):
         """Filter `base_qs` to the caller's readable orgs. An explicit
         `org_ids` restricts to those ids; a forbidden id fails loud (403) for
@@ -135,19 +172,7 @@ class CrossOrgResourceService:
         readable = self.resolve_readable_org_ids(actor, scopes=scopes)
         if readable is not None and self.delegated_scope_q is not None:
             base_qs = base_qs.filter(self.delegated_scope_q)
-        if org_ids is not None:
-            requested = set(org_ids)
-            if readable is not None:
-                forbidden = requested - readable
-                if forbidden:
-                    raise PermissionDenied(
-                        f"You do not have permission to read "
-                        f"{self.rbac_resource_type.value} in organization(s) "
-                        f"{sorted(forbidden)}."
-                    )
-            effective_ids = requested
-        else:
-            effective_ids = readable
+        effective_ids = self._narrow_to_requested(readable=readable, org_ids=org_ids)
         if effective_ids is not None:
             base_qs = base_qs.filter(**{f"{org_field}__in": effective_ids})
         return base_qs

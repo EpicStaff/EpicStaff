@@ -122,3 +122,42 @@ def test_resolve_for_write_superadmin_stays_visible(superadmin, acme):
     effective = _Svc().resolve_for_write(superadmin, acme.id, action=Permission.UPDATE)
 
     assert effective.is_superadmin
+
+
+# ---- resolve_scope_org_ids: the request's org scope, stated once ----
+#
+# `None` and `set()` are opposites: None means no filter at all (superadmin),
+# set() means the request selected no org and nothing is in scope. A caller
+# that conflated them would publish a global total.
+
+
+@pytest.mark.django_db
+def test_resolve_scope_org_ids_superadmin_is_none(superadmin):
+    assert _Svc().resolve_scope_org_ids(superadmin, org_ids=None) is None
+
+
+@pytest.mark.django_db
+def test_resolve_scope_org_ids_defaults_to_readable_orgs(admin_acme, acme, beta):
+    assert _Svc().resolve_scope_org_ids(admin_acme, org_ids=None) == {acme.id}
+
+
+@pytest.mark.django_db
+def test_resolve_scope_org_ids_explicit_selection_wins(superadmin, acme, beta):
+    assert _Svc().resolve_scope_org_ids(superadmin, org_ids=[acme.id]) == {acme.id}
+
+
+@pytest.mark.django_db
+def test_resolve_scope_org_ids_forbidden_selection_fails_loud(admin_acme, beta):
+    with pytest.raises(PermissionDenied):
+        _Svc().resolve_scope_org_ids(admin_acme, org_ids=[beta.id])
+
+
+@pytest.mark.django_db
+def test_resolve_scope_org_ids_empty_selection_is_empty_set(admin_acme, acme):
+    # `?org_ids=,` parses to [] — a selection of no orgs, NOT "unfiltered".
+    assert _Svc().resolve_scope_org_ids(admin_acme, org_ids=[]) == set()
+
+
+@pytest.mark.django_db
+def test_resolve_scope_org_ids_plain_member_is_empty(member_only):
+    assert _Svc().resolve_scope_org_ids(member_only, org_ids=None) == set()
