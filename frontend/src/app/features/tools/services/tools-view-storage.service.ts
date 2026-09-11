@@ -80,20 +80,11 @@ export class ToolsViewStorageService implements StorageService {
 
     private readonly _filter = signal<ToolsFilterState>({ ...EMPTY_TOOLS_FILTER });
     public readonly filter = this._filter.asReadonly();
-    public readonly hasActiveFilter = computed(() => {
+    public readonly needsUsageData = computed(() => {
+        if (this.showUsageAndUnused()) return true;
         const f = this._filter();
-        return (
-            f.showFavoriteOnly ||
-            f.sortOrder !== 'default' ||
-            f.includedToolIds !== null ||
-            f.includedLabelIds !== null ||
-            f.customFilter !== null
-        );
+        return USAGE_DEPENDENT_SORTS.includes(f.sortOrder) || f.unusedOnly || f.usageBuckets.length > 0;
     });
-    /** True when the current sort order requires usage counts to render. */
-    public readonly needsUsageData = computed(
-        () => this.showUsageAndUnused() || USAGE_DEPENDENT_SORTS.includes(this._filter().sortOrder)
-    );
 
     public readonly action$ = new Subject<ToolsBulkActionEvent>();
 

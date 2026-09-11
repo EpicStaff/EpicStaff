@@ -118,6 +118,70 @@ def test_python_code_tool_duplicate_name_returns_400(client_a, org_a):
     assert "already exists" in str(resp.data)
 
 
+# ---- EST-4000: a custom PythonCodeTool must not be able to shadow a built-in ----
+
+
+@pytest.mark.django_db
+def test_python_code_tool_create_named_like_built_in_returns_400(client_a, org_a):
+    built_in_code = PythonCode.objects.create(code="x", entrypoint="main")
+    PythonCodeTool.objects.create(
+        name="SerperDevTool",
+        description="d",
+        python_code=built_in_code,
+        built_in=True,
+        org=None,
+    )
+    resp = client_a.post(
+        "/api/python-code-tool/", _py_payload("SerperDevTool"), format="json"
+    )
+    assert resp.status_code == 400
+    # The project's global exception handler (utils/exception_handler.py)
+    # wraps every serializer ValidationError into {status_code, code,
+    # message} — the same envelope every other duplicate-name test in this
+    # file asserts against — so the field-keyed detail is only visible
+    # inside the stringified `message`, not at `resp.data["name"]`.
+    assert "built-in tool with this name" in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_python_code_tool_rename_to_built_in_name_returns_400(client_a, org_a):
+    built_in_code = PythonCode.objects.create(code="x", entrypoint="main")
+    PythonCodeTool.objects.create(
+        name="SerperDevTool",
+        description="d",
+        python_code=built_in_code,
+        built_in=True,
+        org=None,
+    )
+    own_code = PythonCode.objects.create(code="y", entrypoint="main")
+    own_tool = PythonCodeTool.objects.create(
+        name="MyTool", description="d", python_code=own_code, org=org_a
+    )
+    resp = client_a.patch(
+        f"/api/python-code-tool/{own_tool.id}/",
+        {"name": "SerperDevTool"},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "built-in tool with this name" in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_python_code_tool_rename_to_own_current_name_is_allowed(client_a, org_a):
+    """The validator excludes `instance.pk` on both the per-org and the
+    built-in check, so a no-op rename must not 400."""
+    code = PythonCode.objects.create(code="x", entrypoint="main")
+    tool = PythonCodeTool.objects.create(
+        name="MyTool", description="d", python_code=code, org=org_a
+    )
+    resp = client_a.patch(
+        f"/api/python-code-tool/{tool.id}/",
+        {"name": "MyTool", "description": "new desc"},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+
+
 @pytest.mark.django_db
 def test_python_code_tool_create_with_name_of_soft_deleted_tool_succeeds(
     client_a, org_a

@@ -180,6 +180,8 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             OrgScopedUniqueValidator(
                 queryset=PythonCodeTool.objects.all(),
                 message="A tool with this name already exists.",
+                global_queryset=PythonCodeTool.objects.filter(built_in=True),
+                global_message="A built-in tool with this name already exists.",
             )
         ]
     )
@@ -201,8 +203,10 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "built_in",
             "use_storage",
             "labels",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "built_in"]
+        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.

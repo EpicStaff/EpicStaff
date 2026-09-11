@@ -33,11 +33,13 @@ export interface SelectDropdownTab {
 }
 
 /**
- * Optional action button rendered in the panel header next to the tabs
+ * Optional action button rendered in the search row next to the search input
  * (e.g. "Create custom tool"). Clicking it emits `headerActionClick` with the
- * active tab id; the host decides what to open.
+ * active tab id; the host decides what to open. Set `disabled` to render the
+ * button in a disabled state (still visible) instead of hiding it.
  */
 export interface SelectDropdownHeaderAction {
     label: string;
     icon?: string;
+    disabled?: boolean;
 }

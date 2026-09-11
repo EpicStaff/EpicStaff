@@ -18,8 +18,9 @@ export interface ToolCardVM {
     labelIds: number[];
     favorite: boolean;
     builtIn: boolean;
-    projectsUsage?: number;
-    agentsUsage?: number;
+    agentSurfaceUsage?: number;
+    sharedSurfaceUsage?: number;
+    inlineSurfaceUsage?: number;
     unused?: boolean;
 }
 

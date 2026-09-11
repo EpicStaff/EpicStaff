@@ -11,26 +11,34 @@ from tables.import_export.services.partial_export_service import (
 
 class ToolUsageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    projects_count = serializers.IntegerField()
-    staff_count = serializers.IntegerField()
+    agent_surface_count = serializers.IntegerField()
+    shared_surface_count = serializers.IntegerField()
+    inline_surface_count = serializers.IntegerField()
     is_built_in = serializers.BooleanField()
 
 
-class ToolUsageProjectSerializer(serializers.Serializer):
+class ToolUsageSurfaceEntrySerializer(serializers.Serializer):
+    """Shared `{id, name, node_id}` shape reused for all three usage-detail
+    lists — list membership (agent_surface/shared_surface/inline_surface) already
+    conveys what a `kind` discriminator used to.
+
+    `id` is a navigation target, not a unique row key: for `agent_surface`/
+    `shared_surface` it's the catalog `Surface` id (unique per entry); for
+    `inline_surface` it's the owning graph's id, which two different nodes in the
+    same graph can share. `node_id` disambiguates that case — the id of the
+    `TaskNode`/`AgentNode` the inline attachment lives on — and is always
+    `null` for `agent_surface`/`shared_surface` entries, which have no node.
+    """
+
     id = serializers.IntegerField()
     name = serializers.CharField()
-
-
-class ToolUsageStaffSerializer(serializers.Serializer):
-    # Agent has no `name` field — `role` is its display identity
-    # (see tables.models.crew_models.Agent.__str__).
-    id = serializers.IntegerField()
-    role = serializers.CharField()
+    node_id = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class ToolUsageDetailSerializer(serializers.Serializer):
-    projects = ToolUsageProjectSerializer(many=True)
-    staff = ToolUsageStaffSerializer(many=True)
+    agent_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    shared_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    inline_surface = ToolUsageSurfaceEntrySerializer(many=True)
 
 
 class RunSessionSerializer(serializers.Serializer):

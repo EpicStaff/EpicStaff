@@ -82,12 +82,10 @@
                             tooltipText="A unique, descriptive name for your custom tool."
                             formControlName="name"
                             placeholder="Enter tool name..."
-                            [errorMessage]="
-                                form.controls.name.touched && form.controls.name.hasError('required')
-                                    ? 'Tool name is required.'
-                                    : ''
-                            "
                         ></app-custom-input>
+                        @if (form.controls.name.touched) {
+                            <app-validation-errors [control]="form.controls.name" />
+                        }
                     }
                 </div>
 
@@ -102,8 +100,8 @@
                         [rows]="3"
                         [invalid]="form.controls.description.touched && form.controls.description.invalid"
                     ></app-textarea>
-                    @if (form.controls.description.touched && form.controls.description.hasError('required')) {
-                        <p class="error-message">Description is required.</p>
+                    @if (form.controls.description.touched) {
+                        <app-validation-errors [control]="form.controls.description" />
                     }
                 </div>
 

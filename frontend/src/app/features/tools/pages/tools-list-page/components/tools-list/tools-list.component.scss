@@ -4,6 +4,57 @@
     min-height: 0;
 }
 
+.recent-section {
+    margin-bottom: 1rem;
+}
+
+.recent-section__title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-ks-text);
+    margin: 0 0 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.recent-tools-list {
+    display: flex;
+    gap: 8px;
+    overflow: hidden;
+    padding: 4px 0 4px;
+    margin: -4px 0;
+    list-style: none;
+}
+
+.recent-tool-card {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    height: 28px;
+    padding: 0 8px;
+    background: var(--color-flow-card-bg);
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    max-width: 240px;
+    box-shadow:
+        0 2px 3px 0 var(--black-alpha-30),
+        0 6px 10px 4px var(--black-alpha-15);
+
+    &:hover {
+        background: var(--graphite-690);
+    }
+}
+
+.recent-tool-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .tools-list-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 280px), 1fr));

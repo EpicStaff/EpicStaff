@@ -29,6 +29,7 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
         labelIdsOf: (t) => t.labels ?? [],
         favoriteOf: (t) => t.is_favorite,
         searchableTextOf: (t) => [t.name, t.tool_name, t.transport],
+        updatedAtOf: (t) => t.updated_at,
     };
 
     public readonly createdEvent$: Observable<GetMcpToolRequest> = this.events.mcpToolCreated$;
@@ -50,8 +51,8 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
     public getAll(): Observable<GetMcpToolRequest[]> {
         return this.service.getMcpTools();
     }
-    public copy(id: number, body: { name: string }): Observable<GetMcpToolRequest> {
-        return this.service.copyMcpTool(id, body);
+    public copy(id: number): Observable<GetMcpToolRequest> {
+        return this.service.copyMcpTool(id);
     }
     public exportOne(id: number): Observable<Blob> {
         return this.service.exportMcpTool(id);

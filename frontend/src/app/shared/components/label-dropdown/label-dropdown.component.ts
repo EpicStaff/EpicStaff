@@ -1,4 +1,4 @@
-import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { ConnectedPosition, Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -181,8 +181,7 @@ export class LabelDropdownComponent implements OnInit {
         this.openAt(el);
     }
 
-    /** Open the dropdown anchored to an arbitrary element (custom trigger mode). */
-    openAt(originElement: HTMLElement): void {
+    openAt(originElement: HTMLElement, positions?: ConnectedPosition[]): void {
         const checkedSet = new Set(this.selectedLabelIds());
         const indeterminateSet = new Set(this.indeterminateLabelIds().filter((id) => !checkedSet.has(id)));
         this.localCheckedIds.set(checkedSet);
@@ -198,12 +197,14 @@ export class LabelDropdownComponent implements OnInit {
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
-            .withPositions([
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
-            ])
+            .withPositions(
+                positions ?? [
+                    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 2 },
+                    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 2 },
+                    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -2 },
+                    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -2 },
+                ]
+            )
             .withPush(false)
             .withViewportMargin(8);
 
