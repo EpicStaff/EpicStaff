@@ -14,6 +14,7 @@ from tables.models.python_models import (
 )
 from tables.models.secret_models import Secret
 from tables.serializers.base_serializer import ContentHashWritableMixin
+from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
@@ -25,6 +26,7 @@ from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
@@ -35,11 +37,20 @@ from tables.validators.python_code_tool_config_validator import (
 )
 
 
-class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class PythonCodeSerializer(
+    SecretReferenceGuardMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("secret_ids",)
+
     libraries = serializers.ListField(
         child=serializers.CharField(),
         write_only=False,
         help_text="A list of library names.",
+    )
+    secrets = SecretNameSerializer(
+        many=True,
+        read_only=True,
+        help_text="Secrets this code is allowed to read, by name.",
     )
     secret_ids = OrgScopedPrimaryKeyRelatedField(
         many=True,
@@ -58,6 +69,7 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
             "entrypoint",
             "libraries",
             "global_kwargs",
+            "secrets",
             "secret_ids",
         ]
         read_only_fields = ["id"]
@@ -84,6 +96,20 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
             internal_value["libraries"] = " ".join(libraries)
         return internal_value
 
+    def _current_python_code(self):
+        """The persisted PythonCode for this field, resolved through the parent when nested."""
+        if self.instance is not None:
+            return self.instance
+        parent_instance = getattr(self.parent, "instance", None)
+        if parent_instance is None:
+            return None
+        return getattr(parent_instance, self.field_name, None)
+
+    def get_current_secret_reference(self, source):
+        """The persisted secrets for this field, resolved through the parent when nested."""
+        python_code = self._current_python_code()
+        return getattr(python_code, source, None) if python_code is not None else None
+
     def validate(self, attrs):
         """Reject code that reads a secret this PythonCode did not declare."""
         attrs = super().validate(attrs)
@@ -94,10 +120,13 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 
         if "secrets" in attrs:
             declared = {secret.name for secret in attrs["secrets"]}
-        elif self.instance is not None:
-            declared = set(self.instance.secrets.values_list("name", flat=True))
         else:
-            declared = set()
+            current = self._current_python_code()
+            declared = (
+                set(current.secrets.values_list("name", flat=True))
+                if current is not None
+                else set()
+            )
 
         parsed = parse_secret_names(code=code)
         undeclared = parsed - declared
@@ -201,9 +230,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             python_code_tool = PythonCodeTool.objects.create(
                 python_code=python_code, **validated_data
             )
-            set_org_scoped_labels(
-                python_code_tool, labels, self.context.get("request")
-            )
+            set_org_scoped_labels(python_code_tool, labels, self.context.get("request"))
         return python_code_tool
 
     def update(self, instance, validated_data):

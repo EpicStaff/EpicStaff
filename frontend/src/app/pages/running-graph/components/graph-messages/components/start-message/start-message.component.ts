@@ -15,14 +15,14 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 class="start-header"
                 (click)="toggleMessage()"
             >
-                @if (hasInputs()) {
-                    <div class="play-arrow">
+                <div class="play-arrow">
+                    @if (hasInputs()) {
                         <app-svg-icon
                             [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
                             size="1.1rem"
                         />
-                    </div>
-                }
+                    }
+                </div>
                 <div class="icon-container">
                     <app-svg-icon
                         icon="flag"
@@ -91,9 +91,12 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             }
 
             .play-arrow {
+                width: 1.1rem;
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #d29922;

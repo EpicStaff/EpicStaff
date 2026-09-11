@@ -733,6 +733,7 @@
                         <app-surface-knowledge-advanced
                             [collections]="selectedCollections()"
                             [knowledge]="knowledgeItems()"
+                            [flat]="flat()"
                             (knowledgeChange)="onKnowledgeConfigChange($event)"
                         />
                     }
