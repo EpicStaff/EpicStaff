@@ -30,6 +30,8 @@ export class CustomToolsService {
     }
 
     getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
+        // TODO: replace the auto-fetch-all fallback with real pagination.
+        // TODO: replace `{ name }`-based uniqueness checks with a dedicated backend validator.
         const LIMIT = 50;
         return this.fetchToolsSlice(LIMIT, 0).pipe(
             switchMap((first) => {

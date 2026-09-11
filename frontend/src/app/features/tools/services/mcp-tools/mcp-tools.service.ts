@@ -30,6 +30,8 @@ export class McpToolsService {
         limit?: number;
         offset?: number;
     }): Observable<GetMcpToolRequest[]> {
+        // TODO: replace the auto-fetch-all fallback with real pagination.
+        // TODO: replace `{ name }`-based uniqueness checks with a dedicated backend validator.
         if (!params || (!params.name && !params.tool_name && !params.limit && !params.offset)) {
             const LIMIT = 50;
             return this.fetchMcpToolsSlice(LIMIT, 0).pipe(
