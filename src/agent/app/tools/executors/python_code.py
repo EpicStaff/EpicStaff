@@ -30,10 +30,13 @@ class PythonCodeToolExecutor:
             execution_id=str(uuid.uuid4()),
             entrypoint=python_code.entrypoint,
             func_kwargs=args,
+            global_kwargs=python_code.global_kwargs,
             use_storage=python_code.use_storage,
             storage_allowed_paths=python_code.storage_allowed_paths,
             storage_org_prefix=python_code.storage_org_prefix,
             session_id=python_code.session_id,
+            org_id=python_code.org_id,
+            secrets=python_code.secrets,
         )
 
         try:
