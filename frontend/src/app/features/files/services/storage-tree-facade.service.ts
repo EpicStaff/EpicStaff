@@ -488,7 +488,10 @@ export class StorageTreeFacade {
                     }
                     this.reloadTreePreservingExpansion([targetPath]);
                 },
-                error: () => this.toastService.error('Failed to group items'),
+                error: () => {
+                    this.toastService.error('Failed to group items');
+                    this.reloadTreePreservingExpansion([targetPath]);
+                },
             });
     }
 

@@ -250,11 +250,11 @@ export class StorageTreeComponent {
     }
 
     canGroupSelected(): boolean {
-        return this.pruneNestedItems(this.getSelectedItems()).length >= 2;
+        return this.getGroupableItems().length >= 2;
     }
 
     startGrouping(): void {
-        const items = this.pruneNestedItems(this.getSelectedItems());
+        const items = this.getGroupableItems();
         if (items.length < 2) {
             return;
         }
@@ -404,6 +404,15 @@ export class StorageTreeComponent {
     private getSelectedItems(): StorageItem[] {
         const selectedSet = this.selectedPaths();
         return this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
+    }
+
+    private getGroupableItems(): StorageItem[] {
+        const items = this.pruneNestedItems(this.getSelectedItems());
+        if (items.length < 2) {
+            return [];
+        }
+        const parent = this.getParentPath(items[0].path);
+        return items.every((item) => this.getParentPath(item.path) === parent) ? items : [];
     }
 
     onDragStart(event: DragEvent, item: StorageItem): void {
