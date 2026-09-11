@@ -106,6 +106,13 @@
         border-radius: 10px;
     }
 
+    &__list-content {
+        display: flex;
+        flex-direction: column;
+        width: max-content;
+        min-width: 100%;
+    }
+
     &__state {
         display: flex;
         align-items: center;
@@ -118,12 +125,13 @@
     &__item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 2px;
         height: 28px;
         padding-right: 1rem;
         cursor: pointer;
         flex-shrink: 0;
-        min-width: max-content;
+        min-width: 100%;
+        width: max-content;
 
         &:nth-child(even) {
             background-color: var(--color-ks-transparent-black-28);
@@ -143,7 +151,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: var(--color-text-secondary);
+        color: var(--color-text-primary);
         padding: 0;
         flex-shrink: 0;
         transition: transform 0.15s;
@@ -160,13 +168,14 @@
     }
 
     &__file-icon {
-        color: var(--color-text-secondary);
+        color: var(--color-text-primary);
         flex-shrink: 0;
     }
 
     &__item-name {
         flex: 1 1 auto;
         min-width: 0;
+        margin-left: 6px;
         font-size: 0.875rem;
         color: var(--color-text-primary);
         white-space: nowrap;

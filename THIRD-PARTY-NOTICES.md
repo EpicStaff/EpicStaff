@@ -1,71 +1,37 @@
-<!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 09 Sep 2026 08:04:40 GMT -->
-<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
-<!-- package-lock.json sha256: a8a01bce84252414 -->
+<!-- Sections between BEGIN/END GENERATED markers are produced by scripts — do not edit by hand. -->
 
 # Third-Party Notices
 
-This file lists third-party open-source software bundled into the EpicStaff frontend (Angular application). It covers **production** npm dependencies declared in `frontend/package.json` and resolved via `frontend/package-lock.json`.
+This file lists third-party open-source software bundled into EpicStaff. It covers **production** npm dependencies of the Angular frontend (declared in `frontend/package.json`, resolved via `frontend/package-lock.json`), assets embedded in the prebuilt epicchat-widget bundle, and **main** Python dependencies of the backend microservices under `src/`.
 
-Backend / Python dependencies are out of scope of this file. Development-only npm dependencies (test runners, linters, build tooling) are likewise out of scope, since they are not shipped with the production bundle.
+Development-only dependencies (test runners, linters, build tooling) are out of scope — they are not shipped to users.
 
 The EpicStaff project itself is licensed under the terms found in [LICENSE](./LICENSE). Nothing in this notices file modifies or supersedes that license.
 
 ---
 
-## License summary
+<!-- BEGIN GENERATED: frontend -->
+<!-- AUTO-GENERATED — do not edit by hand -->
+<!-- generated: Wed, 09 Sep 2026 08:04:40 GMT -->
+<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
+<!-- package-lock.json sha256: a8a01bce84252414 -->
 
-Combined totals for frontend (npm) production dependencies, assets embedded in the prebuilt epicchat-widget bundle, and backend (Python) main dependencies.
+## Frontend license summary
+
+Production npm dependencies of the Angular frontend. Assets embedded in the prebuilt widget bundle are counted separately under "Embedded assets" below, and backend Python packages under "Backend (Python)".
 
 | License | Packages |
 |---|---|
-| MIT License | 150 |
-| MIT | 148 |
-| Apache Software License | 75 |
-| BSD License | 62 |
-| BSD-3-Clause | 41 |
-| Apache-2.0 | 40 |
-| BSD-2-Clause | 6 |
-| Python Software Foundation License | 6 |
-| Apache Software License; MIT License | 4 |
-| Mozilla Public License 2.0 (MPL 2.0) | 4 |
-| Apache Software License; BSD License | 3 |
-| BSD | 3 |
-| ISC | 3 |
-| ISC License (ISCL) | 3 |
-| LGPL-2.1 | 3 |
-| UNKNOWN | 3 |
-| 0BSD | 2 |
-| Apache 2.0 | 2 |
-| Apache License 2.0 | 2 |
-| Apache-2.0 AND CNRI-Python | 2 |
-| Apache-2.0 OR BSD-2-Clause | 2 |
-| Apache-2.0 OR BSD-3-Clause | 2 |
-| BSD-3-Clause, Apache-2.0, dependency licenses | 2 |
-| GNU Library or Lesser General Public License (LGPL) | 2 |
-| MIT AND Python-2.0 | 2 |
-| MIT-CMU | 2 |
-| MPL-2.0 AND (Apache-2.0 OR MIT) | 2 |
-| OFL-1.1 | 2 |
-| PSF-2.0 | 2 |
-| The Unlicense (Unlicense) | 2 |
+| MIT | 47 |
+| Apache-2.0 | 2 |
+| ISC | 2 |
 | (MIT AND Zlib) | 1 |
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
-| 3-Clause BSD License | 1 |
-| Apache License, Version 2.0 | 1 |
-| Apache-2.0 AND MIT | 1 |
-| BSD 3-Clause OR Apache-2.0 | 1 |
-| BSD License; GNU General Public License (GPL); Public Domain | 1 |
-| BSD License; Public Domain | 1 |
-| BSD-2-Clause AND Apache-2.0 WITH LLVM-exception | 1 |
-| LGPL-2.1-only | 1 |
-| MIT AND PSF-2.0 | 1 |
-| MIT License; Mozilla Public License 2.0 (MPL 2.0) | 1 |
-| MIT-0 | 1 |
-| MPL-2.0 AND MIT | 1 |
-| Unlicense | 1 |
-| **Total** | **598** |
+| 0BSD | 1 |
+| BSD-2-Clause | 1 |
+| OFL-1.1 | 1 |
+| **Total** | **57** |
 
 ## Package index
 
@@ -3733,16 +3699,9 @@ SOFTWARE.
 
 The cycle-removal helper in the same component follows [Douglas Crockford's cycle.js](https://github.com/douglascrockford/JSON-js/blob/master/cycle.js), which its author released into the public domain. No licence notice is required for it; it is recorded here for completeness.
 
----
-
-<!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-09-09T08:05:17Z UTC -->
-<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
-<!-- lock-hashes: django_app:9110300af17f94f1, crew:e2d28ca29efdc771, agent:3db082c932146c2e, manager:3db2a7f85977dde9, knowledge:aa9584a2aa0a2b9b, realtime:1741f28c1a0930ec, sandbox:8f11524fe5ec54ed, webhook:f78ff3d84484d519, voice_app:no-lock -->
-
 ## Embedded assets (prebuilt epicchat-widget)
 
-The prebuilt EpicChat widget shipped at `frontend/public/epicchat-widget/` embeds third-party assets directly in its bundle files (they are not resolved via `frontend/package.json`, so the frontend npm section above does not cover them). This section is maintained by hand in `scripts/embedded-assets-notices.md` and re-stitched into this file by `scripts/merge-notices.py`.
+The prebuilt EpicChat widget shipped at `frontend/public/epicchat-widget/` embeds third-party assets directly in its bundle files (they are not resolved via `frontend/package.json`, so the frontend npm section above does not cover them). This section is maintained by hand in `frontend/scripts/embedded-assets-notices.md` and inlined into this file by `frontend/scripts/generate-third-party-notices.mjs`.
 
 Components were identified from license banners and bundler path comments inside the prebuilt files (`@license Angular v20.3.10`, `// node_modules/<pkg>/` markers, `SheetJS -- http://sheetjs.com`, and the base64 `@font-face` blocks in `styles.css`).
 
@@ -4086,6 +4045,13 @@ Identified from `// node_modules/<pkg>/` bundler comments and `@license` banners
 - **ngx-markdown** — MIT — https://github.com/jfcere/ngx-markdown
 - **marked** — MIT — https://github.com/markedjs/marked
 - **expr-eval** — MIT — https://github.com/silentmatt/expr-eval
+<!-- END GENERATED: frontend -->
+
+<!-- BEGIN GENERATED: backend -->
+<!-- AUTO-GENERATED — do not edit by hand -->
+<!-- generated: 2026-09-09T08:05:17Z UTC -->
+<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
+<!-- lock-hashes: django_app:9110300af17f94f1, crew:e2d28ca29efdc771, agent:3db082c932146c2e, manager:3db2a7f85977dde9, knowledge:aa9584a2aa0a2b9b, realtime:1741f28c1a0930ec, sandbox:8f11524fe5ec54ed, webhook:f78ff3d84484d519, voice_app:no-lock -->
 
 ## Backend (Python)
 
@@ -57477,23 +57443,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - **Copyright:** Copyright (c) Microsoft Corporation
 - **Source:** https://github.com/microsoft/graphrag
 - **Note:** vendored with local modifications (see src/knowledge/libraries/graphrag/)
+<!-- END GENERATED: backend -->
+
+---
 
 ## How to refresh this file
 
-Whenever frontend production dependencies change (additions, version bumps, removals in `frontend/package.json`), regenerate this notices file.
+Each half of this file is regenerated independently. A frontend dependency change does not need the Python toolchain, and a backend change does not need Node.
 
-From the repository root, in PowerShell:
+### Frontend (npm + embedded assets)
+
+Whenever frontend production dependencies change (additions, version bumps, removals in `frontend/package.json`), or the prebuilt widget bundle at `frontend/public/epicchat-widget/` is replaced:
 
 ```powershell
 cd frontend
 npm install
 node scripts/generate-third-party-notices.mjs
-cd ..
 ```
 
-The generator script lives at `frontend/scripts/generate-third-party-notices.mjs` and invokes `npx --yes license-checker --production --json` internally - no extra devDependency is needed. The output is written to `THIRD-PARTY-NOTICES.md` at the repository root, overwriting the previous version.
+The generator invokes `npx --yes license-checker --production --json` internally — no extra devDependency is needed. It rewrites ONLY the `frontend` region of this file. Embedded-asset entries are maintained by hand in `frontend/scripts/embedded-assets-notices.md` and inlined by the generator.
 
-### What the refresh covers
+### What the frontend refresh covers
 
 - Walks every package reachable from `frontend/package.json` `dependencies` (not `devDependencies`) via `npm` resolution.
 - Reads each package's SPDX license identifier from its installed `package.json` and the verbatim text from its shipped LICENSE / COPYING / NOTICE file when present.
@@ -57501,19 +57471,15 @@ The generator script lives at `frontend/scripts/generate-third-party-notices.mjs
 
 ### Backend (Python)
 
-Whenever any backend service's `pyproject.toml` `main` dependency group changes (additions, version bumps, removals in any of `src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/voice_app`), regenerate the backend section of this file.
-
-From the repository root, in PowerShell:
+Whenever any backend service's `pyproject.toml` dependencies change (`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/voice_app`):
 
 ```powershell
 python scripts/generate-python-notices.py
-python scripts/merge-notices.py
 ```
 
-Both scripts use only the Python standard library; `pip-licenses` is installed into a throwaway venv at `scripts/.tmp_notices_venv/` and the venv is removed afterwards. `poetry` must be available on `PATH` because the first script calls `poetry export --only main` per service.
+Stdlib only; `pip-licenses` is installed into a throwaway venv at `scripts/.tmp_notices_venv/` and removed afterwards. `uv` must be on `PATH`. It rewrites ONLY the `backend` region of this file.
 
-The first script writes `scripts/python-notices-partial.md`; the second stitches that fragment into `THIRD-PARTY-NOTICES.md` and refreshes the combined license summary table at the top of the file. Re-running is safe — the backend section is replaced in place rather than appended.
+## Manual overrides applied
 
-### Manual overrides applied
-
-- The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the list — this notices file only covers third-party code.
+- The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the npm list — this notices file only covers third-party code.
+- Vendored code (copied into the repository rather than installed) is maintained by hand inside each generator: `## Vendored code` for the frontend, `### Vendored Libraries` for the backend.
