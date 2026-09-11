@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     DESCRIPTION: str = "EpicStaff audit trail service"
     VERSION: str = "0.1.0"
 
+    AUDITOR_DEBUG: bool = False
     AUDITOR_PORT: int = 8060
     LOG_LEVEL: str = "INFO"
 

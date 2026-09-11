@@ -70,9 +70,9 @@ def create_app() -> FastAPI:
         title=settings.PROJECT_NAME,
         description=settings.DESCRIPTION,
         version=settings.VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if settings.AUDITOR_DEBUG else None,
+        redoc_url="/redoc" if settings.AUDITOR_DEBUG else None,
+        openapi_url="/openapi.json" if settings.AUDITOR_DEBUG else None,
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )

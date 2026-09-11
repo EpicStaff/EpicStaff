@@ -506,9 +506,9 @@ services:
   opensearch:
     image: opensearchproject/opensearch:2.19.1
     container_name: opensearch
-    profiles:
-      - audit
+    entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
       discovery.type: single-node
       bootstrap.memory_lock: "true"
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:?}
@@ -524,25 +524,25 @@ services:
       - backend-network
     volumes:
       - opensearch_data:/usr/share/opensearch/data
+      - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sk -u admin:${OPENSEARCH_PASSWORD} https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 30s
-    restart: unless-stopped
 
   auditor:
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:-latest}
     container_name: auditor
-    profiles:
-      - audit
     build:
       context: .
       dockerfile: ./auditor/Dockerfile.auditor
     command: ./entrypoint.sh
     environment:
       <<: [*docker-env, *redis-env]
+      AUDITOR_DEBUG: ${AUDITOR_DEBUG:?}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       LOG_LEVEL: ${AUDITOR_LOG_LEVEL:?}
       AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:?}
@@ -564,7 +564,7 @@ services:
       - auditor_data:/app/export_data
     depends_on:
       opensearch:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
