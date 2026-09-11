@@ -1,5 +1,6 @@
 import { generateUuid } from '@shared/utils';
 
+import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import { PythonNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
@@ -21,6 +22,8 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
             code: pn.python_code.code,
             entrypoint: pn.python_code.entrypoint,
             use_storage: pn.use_storage ?? false,
+            secret_ids: toSecretIds(pn.python_code.secrets),
+            secret_names: toSecretNames(pn.python_code.secrets),
         },
         position: ui.position,
         ports: null,

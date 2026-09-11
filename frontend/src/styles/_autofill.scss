@@ -1,0 +1,37 @@
+// Tell the browser this is a dark UI so autofill uses dark-mode colors
+// (navy background + light text) instead of the default light-mode yellow.
+// Without this, Chrome's autofill overrides look out of place on dark themes.
+:root {
+    color-scheme: dark;
+}
+
+// Neutralize browser autofill styling so autofilled inputs keep the app's theme.
+// `!important` is required because Chrome applies these with `-internal` rules
+// that beat normal author selectors, and the previewed border can't be overridden
+// via `border-color` in the autofill preview state.
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+input:autofill,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active,
+textarea:autofill,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active,
+select:autofill {
+    color: var(--color-text-primary) !important;
+    -webkit-text-fill-color: var(--color-text-primary) !important;
+    -webkit-box-shadow: 0 0 0 1000px var(--color-input-background) inset !important;
+    box-shadow: 0 0 0 1000px var(--color-input-background) inset !important;
+    caret-color: var(--color-text-primary) !important;
+    border-color: var(--color-input-border) !important;
+    // Delay the background transition so the yellow flash never appears.
+    transition:
+        background-color 5000s ease-in-out 0s,
+        color 5000s ease-in-out 0s;
+}
