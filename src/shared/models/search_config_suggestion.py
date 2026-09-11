@@ -38,7 +38,6 @@ class NaiveRagSuggestInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     knowledge_collection_id: int = Field(gt=0)
-    llm_config_id: int = Field(gt=0)
     user_custom_params: dict | None = None
 
 
@@ -47,7 +46,10 @@ class GraphRagSuggestInput(BaseModel):
 
     knowledge_collection_id: int = Field(gt=0)
     search_method: GraphSearchMethod
-    llm_config_id: int = Field(gt=0)
+    # Ignored: the budget is sized against the collection's GraphRag.llm
+    # (the LLM that runs the search's synthesis), resolved server-side. Kept
+    # nullable so the agent surface may still send it without a 400.
+    llm_config_id: int | None = Field(default=None, gt=0)
     user_custom_params: dict | None = None
 
 
@@ -55,8 +57,9 @@ class SuggestOutput(BaseModel):
     metrics: SuggestedCollectionMetrics
     resolved_llm_name: str | None = None
     llm_resolution_warning: str | None = None
-    effective_llm_context_window: int = Field(gt=0)
-    safe_token_budget: int = Field(gt=0)
+    # Null for naive suggestions — naive params ignore the LLM context window.
+    effective_llm_context_window: int | None = Field(default=None, gt=0)
+    safe_token_budget: int | None = Field(default=None, gt=0)
     clamped_fields: list[str] = Field(default_factory=list)
     suggested_params: SuggestedSearchParams
     recommended_search_method: GraphSearchMethod | None = None
