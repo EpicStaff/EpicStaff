@@ -15,14 +15,14 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 class="subgraph-start-header"
                 (click)="toggleMessage()"
             >
-                @if (hasContent()) {
-                    <div class="play-arrow">
+                <div class="play-arrow">
+                    @if (hasContent()) {
                         <app-svg-icon
                             [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
                             size="1.1rem"
                         />
-                    </div>
-                }
+                    }
+                </div>
                 <div class="icon-container">
                     <app-svg-icon
                         icon="hierarchy-2"
@@ -142,9 +142,12 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .play-arrow {
+                width: 1.1rem;
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #00bfa5;
