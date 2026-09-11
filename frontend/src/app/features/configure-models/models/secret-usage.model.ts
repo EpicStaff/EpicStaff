@@ -46,7 +46,8 @@ export interface SecretUsageSimpleCategory {
 export type SecretUsageCategory = SecretUsageFlowCategory | SecretUsageSimpleCategory;
 
 export interface SecretUsageSummary {
-    total: number;
+    readableTotal: number;
+    hiddenTotal: number;
     categories: SecretUsageCategory[];
 }
 
@@ -75,7 +76,8 @@ function dedupeFlowNodes(nodes: SecretUsageFlowItemDto['nodes']): SecretUsageFlo
 
 export function toSecretUsageSummary(response: SecretUsageResponse): SecretUsageSummary {
     return {
-        total: response.total,
+        readableTotal: response.readable_total,
+        hiddenTotal: response.hidden_total,
         categories: response.categories.map((category): SecretUsageCategory => {
             const { label, icon } = CATEGORY_DISPLAY[category.key];
 
