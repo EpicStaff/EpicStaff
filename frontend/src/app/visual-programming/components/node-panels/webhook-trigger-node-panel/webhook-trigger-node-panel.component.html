@@ -63,7 +63,9 @@
                     <app-node-secrets-field
                         [activeColor]="activeColor"
                         [value]="selectedSecretIds()"
-                        tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                        [readonly]="!canEditSecrets()"
+                        [names]="secretNames()"
+                        [tooltipText]="secretsTooltip()"
                         (valueChange)="onSecretsChange($event)"
                     />
 
