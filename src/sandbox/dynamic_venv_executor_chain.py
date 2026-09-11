@@ -62,24 +62,7 @@ _TIMEOUT_DRAIN_GRACE_SECONDS = 5
 
 
 def _kill_process_tree(process: asyncio.subprocess.Process, execution_id: str) -> bool:
-    """Kill a timed-out execution and every child it spawned.
-
-    The process was started with start_new_session=True, so it leads its own
-    process group; killing that group also kills grandchildren the job spawned,
-    which process.kill() alone would leave running. Falls back to process.kill()
-    on platforms or states where killpg/getpgid is unavailable (Windows) or the
-    process has already exited.
-
-    Never raises: this is called from the timeout path, which must always
-    finish and report a result. A missing capability (e.g. the container
-    lacks CAP_KILL, needed to signal a child running under a different UID
-    than this root parent) makes both killpg and kill() fail with
-    PermissionError; that must be reported to the caller, not propagated.
-
-    Returns True when a kill signal was delivered (or the process was already
-    gone), False when neither attempt could signal the process, meaning it is
-    still running.
-    """
+    """Kill a timed-out execution and every child it spawned."""
     try:
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         return True
