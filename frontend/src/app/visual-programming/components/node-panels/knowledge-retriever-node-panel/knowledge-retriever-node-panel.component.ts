@@ -159,7 +159,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     }
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     get inputMapPairs(): FormArray {
