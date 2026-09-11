@@ -86,7 +86,7 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
     }
 
     public get activeColor(): string {
-        return this.node().color || '#2196F3';
+        return 'var(--accent-color)';
     }
 
     public get inputMapPairs(): FormArray {

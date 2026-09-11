@@ -54,6 +54,7 @@
                                 [appCollapseOnOverflow]="true"
                                 collapseOnOverflowTarget=".surface-category__btn-label"
                                 collapseOnOverflowClass="surface-category__btn--icon-only"
+                                [disabled]="!canViewSummary(category.id)"
                                 (click)="onViewSummary(category.id)"
                             >
                                 <app-svg-icon
@@ -65,12 +66,13 @@
                         }
                         <app-select-dropdown
                             mode="list"
-                            selectionMode="single"
+                            selectionMode="multiple"
                             searchPlaceholder="Search shared surface..."
                             emptyText="No shared surfaces available"
-                            [minPanelWidth]="280"
-                            [items]="addableSharedFor(category.id)"
-                            [selected]="[]"
+                            [minPanelWidth]="420"
+                            [items]="sharedItemsFor()"
+                            [selected]="attachedSharedFor(category.id)"
+                            [checkedTip]="sharedTipFor(category.id)"
                             (selectionChange)="onAddFromShared($event, category.id)"
                         >
                             <button
@@ -167,7 +169,7 @@
                     (cdkDropListDropped)="onSurfaceDropped($event, category.id)"
                     cdkDropList
                 >
-                    @if (categorySurfaces.length === 0 && !isDrafting(category.id)) {
+                    @if (categorySurfaces.length === 0 && !isDrafting(category.id) && !anyDragActive()) {
                         <p class="surface-category__empty">No surfaces detected. Create one up to get started.</p>
                     }
                     @for (surface of categorySurfaces; track surfaceTrackBy($index, surface)) {

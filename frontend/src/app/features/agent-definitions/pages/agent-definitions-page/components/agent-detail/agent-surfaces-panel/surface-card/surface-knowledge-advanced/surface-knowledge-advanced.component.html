@@ -1,7 +1,10 @@
 @if (collections().length === 0) {
     <p class="advanced__empty">Select at least one collection to configure retrieval settings.</p>
 } @else {
-    <div class="advanced">
+    <div
+        class="advanced"
+        [class.advanced--flat]="flat()"
+    >
         <div class="advanced__tabs">
             @for (c of collections(); track c.id; let last = $last) {
                 <app-tab-button
