@@ -57,6 +57,12 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
             else self.parse_org_ids(request.query_params.get("org_ids"))
         )
         scopes = getattr(request, "_rbac_org_scopes", None)
+        # One resolution for the whole request: it decides which orgs the
+        # built-in counts cover, and raises the 403 fail-loud on a forbidden
+        # ?org_ids= entry.
+        scope_org_ids = self._service.resolve_scope_org_ids(
+            actor=request.user, org_ids=org_ids, scopes=scopes
+        )
         assignable_in = self._service.resolve_assignable_scopes(
             actor=request.user, org_ids=assignable_ids, scopes=scopes
         )
@@ -68,11 +74,13 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
         )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(custom_qs, request, view=self)
-        self._service.attach_role_display(roles=page)
+        self._service.attach_role_display(roles=page, scope_org_ids=scope_org_ids)
         response = paginator.get_paginated_response(
             RoleResponseSerializer(page, many=True).data
         )
-        built_ins = self._service.list_built_in_roles(assignable_in=assignable_in)
+        built_ins = self._service.list_built_in_roles(
+            scope_org_ids=scope_org_ids, assignable_in=assignable_in
+        )
         response.data["built_in_roles"] = RoleResponseSerializer(
             built_ins, many=True
         ).data
@@ -80,7 +88,11 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**ROLES_RETRIEVE_GET)
     def retrieve(self, request, pk=None):
-        role = self._service.get_role_for_read(actor=request.user, role_id=pk)
+        role = self._service.get_role_for_read(
+            actor=request.user,
+            role_id=pk,
+            scopes=getattr(request, "_rbac_org_scopes", None),
+        )
         return Response(RoleResponseSerializer(role).data)
 
     @extend_schema(**ROLES_CREATE_POST)

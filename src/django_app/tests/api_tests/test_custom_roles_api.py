@@ -209,20 +209,178 @@ def test_create_with_create_but_no_read_returns_201(
     assert resp.json()["name"] == "MadeByCreator"
 
 
+@pytest.fixture
+def superadmin_roles_api(db, django_user_model):
+    return django_user_model.objects.create_user(
+        email="sa-roles-count@example.com",
+        password="StrongPass123!",
+        is_superadmin=True,
+    )
+
+
+def _holder(django_user_model, org, role, email):
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+def _named(body, name):
+    return next(role for role in body["built_in_roles"] if role["name"] == name)
+
+
+# ---- the no-leak rule: a built-in count never reaches past readable orgs ----
+#
+# This is the test that fails if the scope is ever widened by accident.
+
+
 @pytest.mark.django_db
-def test_builtin_roles_assigned_count_is_zero(
+def test_builtin_count_covers_only_orgs_the_caller_can_read_roles_in(
+    auth_client, admin_acme, acme, beta, role_member, django_user_model
+):
+    _holder(django_user_model, acme, role_member, "leak-acme@example.com")
+    _holder(django_user_model, beta, role_member, "leak-beta@example.com")
+
+    body = auth_client(admin_acme).get("/api/admin/roles/").json()
+    member = _named(body, "Member")
+
+    # admin_acme is Org Admin of Acme only, so Beta contributes nothing and is
+    # not named anywhere in the response.
+    assert member["assigned_count"] == 1
+    assert member["assigned_by_org"] == [
+        {"org": {"id": acme.id, "name": "Acme-api"}, "count": 1}
+    ]
+    assert beta.id not in [entry["org"]["id"] for entry in member["assigned_by_org"]]
+
+
+@pytest.mark.django_db
+def test_builtin_count_reflects_real_holders(
     auth_client, admin_acme, acme, role_member, django_user_model
 ):
-    # Regression (final-review I2): built-in assigned_count must be 0 in the
-    # cross-org list, never a global cross-org total.
-    other = django_user_model.objects.create_user(
-        email="plain-member@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=other, org=acme, role=role_member)
+    _holder(django_user_model, acme, role_member, "real-1@example.com")
+    _holder(django_user_model, acme, role_member, "real-2@example.com")
+
     body = auth_client(admin_acme).get("/api/admin/roles/").json()
-    assert body["built_in_roles"]  # sanity: built-ins are present
-    for role in body["built_in_roles"]:
-        assert role["assigned_count"] == 0
+
+    assert _named(body, "Member")["assigned_count"] == 2
+    # admin_acme itself holds the built-in Org Admin role in Acme.
+    assert _named(body, "Org Admin")["assigned_count"] == 1
+
+
+@pytest.mark.django_db
+def test_builtin_count_is_narrowed_by_org_ids(
+    auth_client, superadmin_roles_api, acme, beta, role_member, django_user_model
+):
+    _holder(django_user_model, acme, role_member, "narrow-acme@example.com")
+    _holder(django_user_model, beta, role_member, "narrow-beta-1@example.com")
+    _holder(django_user_model, beta, role_member, "narrow-beta-2@example.com")
+    client = auth_client(superadmin_roles_api)
+
+    unfiltered = _named(client.get("/api/admin/roles/").json(), "Member")
+    filtered = _named(
+        client.get(f"/api/admin/roles/?org_ids={beta.id}").json(), "Member"
+    )
+
+    assert unfiltered["assigned_count"] == 3
+    assert filtered["assigned_count"] == 2
+    assert [entry["org"]["id"] for entry in filtered["assigned_by_org"]] == [beta.id]
+
+
+@pytest.mark.django_db
+def test_builtin_count_is_narrowed_by_assignable_org_ids(
+    auth_client, superadmin_roles_api, acme, beta, role_member, django_user_model
+):
+    _holder(django_user_model, acme, role_member, "assign-narrow-acme@example.com")
+    _holder(django_user_model, beta, role_member, "assign-narrow-beta-1@example.com")
+    _holder(django_user_model, beta, role_member, "assign-narrow-beta-2@example.com")
+    client = auth_client(superadmin_roles_api)
+
+    unfiltered = _named(client.get("/api/admin/roles/").json(), "Member")
+    filtered = _named(
+        client.get(f"/api/admin/roles/?assignable_org_ids={beta.id}").json(), "Member"
+    )
+
+    assert unfiltered["assigned_count"] == 3
+    assert filtered["assigned_count"] == 2
+    assert [entry["org"]["id"] for entry in filtered["assigned_by_org"]] == [beta.id]
+
+
+@pytest.mark.django_db
+def test_superadmin_caller_sees_every_org_in_the_breakdown(
+    auth_client, superadmin_roles_api, acme, beta, role_member, django_user_model
+):
+    _holder(django_user_model, acme, role_member, "all-acme@example.com")
+    _holder(django_user_model, beta, role_member, "all-beta@example.com")
+
+    body = auth_client(superadmin_roles_api).get("/api/admin/roles/").json()
+    member = _named(body, "Member")
+
+    assert member["assigned_count"] == 2
+    assert [entry["org"]["id"] for entry in member["assigned_by_org"]] == [
+        acme.id,
+        beta.id,
+    ]
+
+
+@pytest.mark.django_db
+def test_superadmin_builtin_row_reports_no_count(
+    auth_client, admin_acme, acme, django_user_model
+):
+    sa_role = Role.objects.get(
+        name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
+    )
+    _holder(django_user_model, acme, sa_role, "bootstrap-sa@example.com")
+
+    body = auth_client(admin_acme).get("/api/admin/roles/").json()
+    superadmin_row = _named(body, "Superadmin")
+
+    assert superadmin_row["assigned_count"] == 0
+    assert superadmin_row["assigned_by_org"] == []
+
+
+# ---- custom roles: one entry, their own org ----
+
+
+@pytest.mark.django_db
+def test_custom_role_breakdown_names_its_own_org(
+    auth_client, admin_acme, acme, django_user_model
+):
+    billing = Role.objects.create(name="Billing-count-api", org=acme, is_built_in=False)
+    _holder(django_user_model, acme, billing, "custom-holder@example.com")
+
+    body = auth_client(admin_acme).get("/api/admin/roles/").json()
+    row = next(role for role in body["results"] if role["name"] == "Billing-count-api")
+
+    assert row["assigned_count"] == 1
+    assert row["assigned_by_org"] == [
+        {"org": {"id": acme.id, "name": "Acme-api"}, "count": 1}
+    ]
+
+
+@pytest.mark.django_db
+def test_retrieve_returns_the_breakdown(
+    auth_client, admin_acme, acme, role_member, django_user_model
+):
+    _holder(django_user_model, acme, role_member, "retrieve-holder@example.com")
+
+    body = auth_client(admin_acme).get(f"/api/admin/roles/{role_member.id}/").json()
+
+    assert body["assigned_count"] == 1
+    assert body["assigned_by_org"] == [
+        {"org": {"id": acme.id, "name": "Acme-api"}, "count": 1}
+    ]
+
+
+@pytest.mark.django_db
+def test_create_response_carries_an_empty_breakdown(auth_client, admin_acme, acme):
+    resp = auth_client(admin_acme).post(
+        "/api/admin/roles/",
+        {"org_id": acme.id, "name": "FreshRole-count", "permissions": []},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["assigned_count"] == 0
+    assert resp.json()["assigned_by_org"] == []
 
 
 # ---- QA: writes must not confirm a role the read surface denies ----
