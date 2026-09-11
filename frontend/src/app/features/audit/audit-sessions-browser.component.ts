@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditSessionEvent } from './models/audit-session.models';
 import { AuditApiService } from './services/audit-api.service';
 import { groupAuditSessions } from './utils/group-audit-sessions.util';
@@ -11,7 +12,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 @Component({
     selector: 'app-audit-sessions-browser',
     standalone: true,
-    imports: [CommonModule, RouterLink],
+    imports: [CommonModule, RouterLink, AuditFiltersPanelComponent],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,6 +26,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public isPartial = signal<boolean>(false);
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
+    public isFiltersPanelOpen = signal<boolean>(false);
     private rawEvents = signal<AuditSessionEvent[]>([]);
     private cursorStack = signal<(string | null)[]>([null]);
     private nextCursor = signal<string | null>(null);
@@ -88,6 +90,25 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public setColumnsExpanded(expanded: boolean): void {
         this.areColumnsExpanded.set(expanded);
+    }
+
+    public toggleFiltersPanel(): void {
+        this.isFiltersPanelOpen.update((isOpen) => !isOpen);
+    }
+
+    public closeFiltersPanel(): void {
+        this.isFiltersPanelOpen.set(false);
+    }
+
+    public applyFilters(): void {
+        this.cursorStack.set([null]);
+        this.isFiltersPanelOpen.set(false);
+        this.loadSessions();
+    }
+
+    public clearFilters(): void {
+        this.cursorStack.set([null]);
+        this.loadSessions();
     }
 
     public loadSessions(): void {
