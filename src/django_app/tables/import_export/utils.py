@@ -10,6 +10,12 @@ from django.conf import settings
 from tables.models import Organization, PythonCode
 
 
+def clean_base_name(base_name: str) -> str:
+    """Strips a trailing "#N" (or "# N") suffix from base_name, if present."""
+    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
+    return match.group(1) if match else base_name.strip()
+
+
 def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
     """
     Creates new unique name from base_name using a trailing "#N" suffix.
@@ -22,11 +28,7 @@ def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
     if base_name not in existing_names:
         return base_name
 
-    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
-    if match:
-        clean_base = match.group(1)
-    else:
-        clean_base = base_name.strip()
+    clean_base = clean_base_name(base_name)
 
     existing_numbers = set()
     pattern = re.compile(rf"^{re.escape(clean_base)}\s*#\s*(\d+)$")
