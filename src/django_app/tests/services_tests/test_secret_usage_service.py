@@ -15,6 +15,7 @@ from tables.models import (
     EmbeddingConfig,
     LLMConfig,
     McpTool,
+    OpenAIRealtimeConfig,
     PythonCode,
     PythonCodeTool,
 )
@@ -28,10 +29,19 @@ from tables.models.graph_models import (
 )
 from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
 from tables.models.rbac_models import Organization
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_service import secret_usage_service
 
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
+
+
+def _all_readable():
+    """An EffectivePermissions that can read every resource type, matching the pre-RBAC behaviour these tests describe."""
+    from tables.services.rbac.effective_permissions import EffectivePermissions
+
+    return EffectivePermissions(is_superadmin=True, role=None, by_resource={})
 
 
 @pytest.fixture
@@ -51,11 +61,11 @@ class TestCounts:
         or a broken sweep silently renders as "unused"."""
         unused = secret_service.create(text="sk-unused", org=org, name="UNUSED_KEY")
 
-        counts = secret_usage_service.counts(org_id=org.id)
+        counts = secret_usage_service.counts(org_id=org.id, effective=_all_readable())
 
         assert set(counts) == {secret.pk, unused.pk}
-        assert counts[secret.pk] == 0
-        assert counts[unused.pk] == 0
+        assert counts[secret.pk].readable == 0
+        assert counts[unused.pk].readable == 0
 
     def test_a_flow_counts_once_however_many_nodes_use_the_secret(self, org, secret):
         graph = Graph.objects.create(name="Multi-node flow", org=org)
@@ -68,7 +78,12 @@ class TestCounts:
                 graph=graph, node_name=node_name, python_code=python_code
             )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 1
+        )
 
     def test_counts_sum_across_categories(self, org, secret):
         graph = Graph.objects.create(name="Counted flow", org=org)
@@ -93,12 +108,20 @@ class TestCounts:
             api_key_secret=secret,
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 3
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 3
+        )
 
     def test_an_org_with_no_secrets_returns_an_empty_map(self, db):
         empty = Organization.objects.create(name="Org SecretUsageService Empty")
 
-        assert secret_usage_service.counts(org_id=empty.id) == {}
+        assert (
+            secret_usage_service.counts(org_id=empty.id, effective=_all_readable())
+            == {}
+        )
 
     def test_the_same_name_in_another_org_does_not_bleed(self, org, secret):
         """Names are org-scoped by UniqueConstraint(org, name), so an identically
@@ -117,7 +140,12 @@ class TestCounts:
             graph=other_graph, node_name="other node", python_code=other_code
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 0
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 0
+        )
 
 
 @pytest.mark.django_db
@@ -138,18 +166,30 @@ class TestScopedCounts:
             secret_service.create(text=f"sk-s{index}", org=org, name=f"SCOPED_{index}")
 
         with django_assert_num_queries(1):
-            counts = secret_usage_service.counts(org_id=org.id, secret_ids={secret.pk})
+            counts = secret_usage_service.counts(
+                org_id=org.id, effective=_all_readable(), secret_ids={secret.pk}
+            )
 
         # Only what was asked for, even though the org holds six secrets.
         assert set(counts) == {secret.pk}
 
     def test_count_for_costs_one_query(self, org, secret, django_assert_num_queries):
         with django_assert_num_queries(1):
-            assert secret_usage_service.count_for(secret=secret) == 0
+            assert (
+                secret_usage_service.count_for(
+                    secret=secret, effective=_all_readable()
+                ).readable
+                == 0
+            )
 
     def test_an_empty_id_set_costs_nothing(self, org, django_assert_num_queries):
         with django_assert_num_queries(0):
-            assert secret_usage_service.counts(org_id=org.id, secret_ids=set()) == {}
+            assert (
+                secret_usage_service.counts(
+                    org_id=org.id, effective=_all_readable(), secret_ids=set()
+                )
+                == {}
+            )
 
     def test_count_for_agrees_with_the_org_wide_map(self, org, secret):
         """The invariant that makes the two modes interchangeable. Asserted across
@@ -178,10 +218,16 @@ class TestScopedCounts:
         )
         unused = secret_service.create(text="sk-su", org=org, name="SCOPED_UNUSED")
 
-        whole = secret_usage_service.counts(org_id=org.id)
+        whole = secret_usage_service.counts(org_id=org.id, effective=_all_readable())
 
-        assert secret_usage_service.count_for(secret=secret) == whole[secret.pk] == 3
-        assert secret_usage_service.count_for(secret=unused) == whole[unused.pk] == 0
+        count_for_secret = secret_usage_service.count_for(
+            secret=secret, effective=_all_readable()
+        )
+        assert count_for_secret.readable == whole[secret.pk].readable == 3
+        count_for_unused = secret_usage_service.count_for(
+            secret=unused, effective=_all_readable()
+        )
+        assert count_for_unused.readable == whole[unused.pk].readable == 0
 
     def test_a_flow_still_counts_once_when_scoped_to_one_secret(self, org, secret):
         """Narrowing the id set must not change the dedup rule."""
@@ -193,7 +239,12 @@ class TestScopedCounts:
                 graph=graph, node_name=node_name, python_code=python_code
             )
 
-        assert secret_usage_service.count_for(secret=secret) == 1
+        assert (
+            secret_usage_service.count_for(
+                secret=secret, effective=_all_readable()
+            ).readable
+            == 1
+        )
 
     def test_scoping_does_not_weaken_org_isolation(self, org, secret):
         """The id set narrows; it must not replace the per-source org filter. A
@@ -209,15 +260,28 @@ class TestScopedCounts:
             graph=other_graph, node_name="other node", python_code=other_code
         )
 
-        assert secret_usage_service.count_for(secret=secret) == 0
-        assert secret_usage_service.count_for(secret=other_secret) == 1
+        assert (
+            secret_usage_service.count_for(
+                secret=secret, effective=_all_readable()
+            ).readable
+            == 0
+        )
+        assert (
+            secret_usage_service.count_for(
+                secret=other_secret, effective=_all_readable()
+            ).readable
+            == 1
+        )
 
 
 @pytest.mark.django_db
 class TestSummary:
     def test_unused_secret_returns_zero_and_no_categories(self, org, secret):
-        assert secret_usage_service.summary(secret=secret) == {
-            "total": 0,
+        assert secret_usage_service.summary(
+            secret=secret, effective=_all_readable()
+        ) == {
+            "readable_total": 0,
+            "hidden_total": 0,
             "categories": [],
         }
 
@@ -232,7 +296,7 @@ class TestSummary:
             auth_secret=secret,
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert [category["key"] for category in summary["categories"]] == ["tools"]
 
@@ -259,7 +323,7 @@ class TestSummary:
             api_key_secret=secret,
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert [category["key"] for category in summary["categories"]] == [
             "flows",
@@ -286,7 +350,7 @@ class TestSummary:
             post_python_code=post_code,
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
         flows = summary["categories"][0]
 
         assert flows["key"] == "flows"
@@ -303,7 +367,7 @@ class TestSummary:
                 "code_field": "pre_python_code",
             },
         ]
-        assert summary["total"] == 1
+        assert summary["readable_total"] == 1
 
     def test_a_cdt_declaring_in_only_one_block_reports_only_that_block(
         self, org, secret
@@ -320,7 +384,7 @@ class TestSummary:
             post_python_code=PythonCode.objects.create(code=DECLARING_CODE),
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
             {
@@ -341,7 +405,7 @@ class TestSummary:
             graph=graph, node_name="charge", python_code=python_code
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
             {"name": "charge", "node_type": "python", "code_field": "python_code"}
@@ -355,7 +419,7 @@ class TestSummary:
             graph=graph, node_name="tg", telegram_bot_api_key_secret=secret
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
             {"name": "tg", "node_type": "telegram-trigger", "code_field": None}
@@ -372,14 +436,14 @@ class TestSummary:
                 graph=graph, node_name=node_name, python_code=python_code
             )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
         items = summary["categories"][0]["items"]
 
         assert len(items) == 1
         assert items[0]["id"] == graph.pk
         assert items[0]["name"] == "Grouped flow"
         assert sorted(node["name"] for node in items[0]["nodes"]) == ["alpha", "beta"]
-        assert summary["total"] == 1
+        assert summary["readable_total"] == 1
 
     def test_two_configs_of_one_type_sharing_a_name_dedupe(self, org, secret):
         """RealtimeConfig has no per-org uniqueness on custom_name, so this is
@@ -400,12 +464,12 @@ class TestSummary:
                 api_key_secret=secret,
             )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"] == [
             {"name": "same name", "type": "realtime_config"}
         ]
-        assert summary["total"] == 1
+        assert summary["readable_total"] == 1
 
     def test_different_config_types_sharing_a_name_report_separately(self, org, secret):
         """Four models fold into the one llm_configs category and per-model
@@ -426,13 +490,13 @@ class TestSummary:
             api_key_secret=secret,
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"] == [
             {"name": "prod", "type": "embedding_config"},
             {"name": "prod", "type": "llm_config"},
         ]
-        assert summary["total"] == 2
+        assert summary["readable_total"] == 2
 
     def test_total_equals_the_sum_of_category_item_counts(self, org, secret):
         graph = Graph.objects.create(name="Total flow", org=org)
@@ -449,9 +513,9 @@ class TestSummary:
             auth_secret=secret,
         )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
-        assert summary["total"] == sum(
+        assert summary["readable_total"] == sum(
             len(category["items"]) for category in summary["categories"]
         )
 
@@ -471,10 +535,11 @@ class TestSummary:
             auth_secret=secret,
         )
 
-        assert (
-            secret_usage_service.summary(secret=secret)["total"]
-            == secret_usage_service.counts(org_id=org.id)[secret.pk]
-        )
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        counts = secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+            secret.pk
+        ]
+        assert summary["readable_total"] == counts.readable + counts.hidden
 
 
 @pytest.mark.django_db
@@ -503,23 +568,29 @@ class TestSummaryQueryCost:
         )
         return graph
 
-    def test_three_queries_when_no_conditional_edge_matches(
+    def test_four_queries_when_no_conditional_edge_matches(
         self, org, secret, django_assert_num_queries
     ):
+        """The fourth query is the count_for() call summary() makes to get hidden_total."""
         self._used_everywhere(org=org, secret=secret)
 
-        with django_assert_num_queries(3):
-            summary = secret_usage_service.summary(secret=secret)
+        with django_assert_num_queries(4):
+            summary = secret_usage_service.summary(
+                secret=secret, effective=_all_readable()
+            )
 
-        assert summary["total"] == 2
+        assert summary["readable_total"] == 2
 
-    def test_three_queries_for_an_unused_secret(
+    def test_four_queries_for_an_unused_secret(
         self, org, secret, django_assert_num_queries
     ):
-        """The old per-source loop paid twelve even to answer "nothing"."""
-        with django_assert_num_queries(3):
-            assert secret_usage_service.summary(secret=secret) == {
-                "total": 0,
+        """The old per-source loop paid twelve even to answer "nothing", and the fourth of these four queries is still the count_for() call for hidden_total."""
+        with django_assert_num_queries(4):
+            assert secret_usage_service.summary(
+                secret=secret, effective=_all_readable()
+            ) == {
+                "readable_total": 0,
+                "hidden_total": 0,
                 "categories": [],
             }
 
@@ -543,7 +614,9 @@ class TestSummaryQueryCost:
         )
 
         with CaptureQueriesContext(connection) as captured:
-            summary = secret_usage_service.summary(secret=secret)
+            summary = secret_usage_service.summary(
+                secret=secret, effective=_all_readable()
+            )
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
             {"name": "route", "node_type": "edge", "code_field": "python_code"}
@@ -578,10 +651,13 @@ class TestSummaryIsDeterministic:
                 auth_secret=secret,
             )
 
-        first = secret_usage_service.summary(secret=secret)
+        first = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         for _ in range(5):
-            assert secret_usage_service.summary(secret=secret) == first
+            assert (
+                secret_usage_service.summary(secret=secret, effective=_all_readable())
+                == first
+            )
 
     def test_flows_and_named_items_come_back_sorted_by_name(self, org, secret):
         graph_b = Graph.objects.create(name="B flow", org=org)
@@ -601,7 +677,7 @@ class TestSummaryIsDeterministic:
                 auth_secret=secret,
             )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
         by_key = {
             category["key"]: category["items"] for category in summary["categories"]
         }
@@ -621,7 +697,7 @@ class TestSummaryIsDeterministic:
                 graph=graph, node_name=node_name, python_code=python_code
             )
 
-        summary = secret_usage_service.summary(secret=secret)
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
         nodes = summary["categories"][0]["items"][0]["nodes"]
 
         assert [node["name"] for node in nodes] == ["alpha", "mid", "zeta"]
@@ -644,7 +720,7 @@ class TestCountsQueryCost:
 
         # One for the id set, one combined query for every reference.
         with django_assert_num_queries(2):
-            secret_usage_service.counts(org_id=org.id)
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())
 
     def test_two_queries_even_with_a_conditional_edge_in_play(
         self, org, secret, django_assert_num_queries
@@ -667,16 +743,21 @@ class TestCountsQueryCost:
         )
 
         with django_assert_num_queries(2):
-            counts = secret_usage_service.counts(org_id=org.id)
+            counts = secret_usage_service.counts(
+                org_id=org.id, effective=_all_readable()
+            )
 
-        assert counts[secret.pk] == 1
+        assert counts[secret.pk].readable == 1
 
     def test_an_empty_org_costs_one_query(self, db, django_assert_num_queries):
         """No secrets means nothing can reference them, so the union never runs."""
         empty = Organization.objects.create(name="Org SecretUsageService NoQueries")
 
         with django_assert_num_queries(1):
-            assert secret_usage_service.counts(org_id=empty.id) == {}
+            assert (
+                secret_usage_service.counts(org_id=empty.id, effective=_all_readable())
+                == {}
+            )
 
 
 @pytest.mark.django_db
@@ -694,7 +775,12 @@ class TestCountsDedupInSql:
                 api_key_secret=secret,
             )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 1
+        )
 
     def test_different_config_types_sharing_a_name_count_separately(self, org, secret):
         """The type in the key is what keeps the four models of the category
@@ -714,7 +800,12 @@ class TestCountsDedupInSql:
             api_key_secret=secret,
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 2
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 2
+        )
 
     def test_two_tool_types_sharing_a_name_count_separately(self, org, secret):
         """The tools category folds two models the same way, and McpTool does not
@@ -732,7 +823,12 @@ class TestCountsDedupInSql:
             name="shared tool", org=org, python_code=python_code
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 2
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 2
+        )
 
     def test_two_different_sources_in_one_flow_count_once(self, org, secret):
         """Cross-source, not just cross-row: a PythonNode and a ConditionalEdge are
@@ -750,7 +846,12 @@ class TestCountsDedupInSql:
             graph=graph, source_node_id=router.pk, python_code=edge_code
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 1
+        )
 
     def test_a_config_and_a_tool_sharing_a_name_count_separately(self, org, secret):
         """The other direction: the prefix must not over-collapse across categories."""
@@ -770,4 +871,56 @@ class TestCountsDedupInSql:
             auth_secret=secret,
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 2
+        assert (
+            secret_usage_service.counts(org_id=org.id, effective=_all_readable())[
+                secret.pk
+            ].readable
+            == 2
+        )
+
+
+@pytest.mark.django_db
+class TestProviderSpecificRealtimeConfigUsage:
+    """A secret used only by an OpenAIRealtimeConfig must land in readable or hidden, never silently as zero."""
+
+    # OpenAIRealtimeConfig.api_key_secret was unregistered until this task: it used to
+    # report {"readable": 0, "hidden": 0}, which the frontend renders as "Not used"
+    # even though the FK is on_delete=SET_NULL and deleting the secret would silently
+    # break the config. This is the one behavioural check for the four
+    # newly-registered realtime FKs; the other three are covered by
+    # test_secret_usage_source_coverage.py rather than duplicated here.
+
+    @staticmethod
+    def _effective(*, can_read_llm_configs: bool) -> EffectivePermissions:
+        by_resource = (
+            {ResourceType.LLM_CONFIGS.value: int(Permission.READ)}
+            if can_read_llm_configs
+            else {}
+        )
+        return EffectivePermissions(
+            is_superadmin=False, role=None, by_resource=by_resource
+        )
+
+    def test_readable_for_a_caller_with_llm_configs_read(self, org, secret):
+        OpenAIRealtimeConfig.objects.create(
+            custom_name="voice cfg", org=org, api_key_secret=secret
+        )
+
+        counts = secret_usage_service.count_for(
+            secret=secret, effective=self._effective(can_read_llm_configs=True)
+        )
+
+        assert counts.readable == 1
+        assert counts.hidden == 0
+
+    def test_hidden_for_a_caller_without_llm_configs_read(self, org, secret):
+        OpenAIRealtimeConfig.objects.create(
+            custom_name="voice cfg", org=org, api_key_secret=secret
+        )
+
+        counts = secret_usage_service.count_for(
+            secret=secret, effective=self._effective(can_read_llm_configs=False)
+        )
+
+        assert counts.readable == 0
+        assert counts.hidden == 1
