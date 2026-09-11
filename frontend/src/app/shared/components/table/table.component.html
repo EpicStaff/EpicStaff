@@ -72,6 +72,7 @@
                             [label]="col.label ?? ''"
                             [items]="col.filterItems!"
                             [selectedValues]="activeFilterValues(col.key)"
+                            [sortSelectedToTop]="false"
                             (selectionChange)="onFilterChange(col.key, $event)"
                         >
                             <button
