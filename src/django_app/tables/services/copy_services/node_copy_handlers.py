@@ -277,6 +277,8 @@ def copy_classification_decision_table_node(
             field_expressions=group.field_expressions,
             field_manipulations=group.field_manipulations,
             next_node_id=group.next_node_id,
+            route_code=group.route_code,
+            metadata=group.metadata,
         )
 
     return new_node

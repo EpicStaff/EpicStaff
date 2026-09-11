@@ -43,8 +43,8 @@ def test_copy_classification_decision_table_node_clones_section_with_new_id(
     assert new_group.section_id != section.id
 
     new_section = new_group.section
-    assert new_section.name == "Section A"
-    assert new_section.metadata == {"color": "red"}
+    assert new_section.name == section.name
+    assert new_section.metadata == section.metadata
     assert new_section.classification_decision_table_node_id == new_cdt_node.id
 
 
@@ -59,11 +59,13 @@ def test_copy_classification_decision_table_node_copies_use_storage_and_remaps_n
     cdt_node = ClassificationDecisionTableNode.objects.create(
         graph=src, node_name="cdt", pre_use_storage=True, post_use_storage=True
     )
-    ClassificationConditionGroup.objects.create(
+    cd_group = ClassificationConditionGroup.objects.create(
         classification_decision_table_node=cdt_node,
         group_name="group1",
         order=0,
         next_node_id=target_node.id,
+        route_code="route-a",
+        metadata={"color": "blue"},
     )
 
     new_graph = GraphCopyService().copy(src, org_id=default_org.id)
@@ -84,3 +86,5 @@ def test_copy_classification_decision_table_node_copies_use_storage_and_remaps_n
     assert new_group.next_node_id is not None
     assert new_group.next_node_id != target_node.id
     assert new_group.next_node_id == new_target_node.id
+    assert new_group.route_code == cd_group.route_code
+    assert new_group.metadata == cd_group.metadata
