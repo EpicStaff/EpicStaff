@@ -9,79 +9,15 @@
         <p class="text">Session execution</p>
     </div>
 
-    <button
-        [disabled]="!hasPreviousSession"
-        (click)="goToPreviousSession()"
-        matTooltip="Previous session"
-        class="btn-switch-session"
-    >
-        <div class="icon-arrow">
-            <app-svg-icon
-                icon="chevron-down"
-                size="20px"
-            />
-        </div>
-    </button>
+    @if (canStopSelectedSession) {
+        <app-stop-session-button (stopClick)="onStopSession()" />
+    }
 
-    <div class="session-dropdown-wrapper">
-        <button
-            class="session-dropdown-trigger"
-            (click)="toggleDropdown()"
-        >
-            <span class="session-dropdown-trigger__label">{{ selectedSessionLabel }}</span>
-            <app-svg-icon
-                icon="chevron-down"
-                size="16px"
-            />
-        </button>
-
-        @if (isDropdownOpen) {
-            <div
-                class="session-dropdown-overlay"
-                (click)="closeDropdown()"
-            ></div>
-            <div class="session-dropdown">
-                <div class="session-dropdown__search">
-                    <input
-                        type="text"
-                        placeholder="Search by ID..."
-                        [(ngModel)]="searchQuery"
-                        (click)="$event.stopPropagation()"
-                        class="session-dropdown__input"
-                    />
-                </div>
-                <div class="session-dropdown__list">
-                    @for (session of filteredSessions; track session.id) {
-                        <button
-                            class="session-dropdown__item"
-                            [class.active]="session.id.toString() === selectedSessionId"
-                            (click)="onSessionChange(session.id.toString())"
-                        >
-                            <span class="session-dropdown__item-id">ID {{ session.id }}</span>
-                            <span class="session-dropdown__item-time">{{ getTimeAgo(session.status_updated_at) }}</span>
-                        </button>
-                    }
-                    @if (filteredSessions.length === 0) {
-                        <div class="session-dropdown__empty">No sessions found</div>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-
-    <button
-        [disabled]="!hasNextSession"
-        (click)="goToNextSession()"
-        matTooltip="Next session"
-        class="btn-switch-session"
-    >
-        <div class="icon-arrow">
-            <app-svg-icon
-                icon="chevron-up"
-                size="20px"
-            />
-        </div>
-    </button>
+    <app-session-id-switcher
+        [sessions]="sessions"
+        [selectedSessionId]="selectedSessionId"
+        (sessionSelected)="onSessionChange($event)"
+    />
 
     <button
         [disabled]="!selectedSessionId"
@@ -117,6 +53,7 @@
         <app-graph-messages
             [graphId]="graphId"
             [sessionId]="selectedSessionId"
+            (sessionStatusChanged)="onSessionStatusChanged($event)"
             class="graph-messages-list"
         ></app-graph-messages>
     } @else if (sessionsLoaded && sessions.length === 0) {
