@@ -136,7 +136,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Secrets",
         "group": "config",
         "description": "Provider API keys, credentials, sensitive config",
-        "applicable_actions": ["create", "read", "update", "delete", "use"],
+        "applicable_actions": ["create", "read", "delete", "use"],
         "platform_actions": [],
     },
     {
