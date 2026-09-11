@@ -328,6 +328,7 @@ class SessionGraphBuilder:
                 rag_search_config=knowledge_node_data.rag_search_config,
                 knowledge_search_service=self.knowledge_search_service,
                 embedder_api_key=knowledge_node_data.embedder_api_key,
+                llm_api_key=knowledge_node_data.llm_api_key,
             )
             self.add_node(knowledge_node)
 
