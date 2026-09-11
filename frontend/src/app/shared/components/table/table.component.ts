@@ -66,6 +66,8 @@ export class AppTableComponent {
 
     private readonly selectedIds = signal<Set<unknown>>(new Set());
     private readonly activeFilters = signal<Record<string, unknown[]>>({});
+    /** Last `defaultValues` applied per column key — used to detect actual changes and avoid re-applying on unrelated column def updates. */
+    private readonly lastAppliedDefaults = signal<Record<string, unknown[]>>({});
 
     constructor() {
         effect(() => {
@@ -87,6 +89,34 @@ export class AppTableComponent {
             this.selectedIds.set(new Set(ids));
             untracked(() => this.selectionChange.emit(this.selectedItems()));
         });
+
+        // Apply per-column `defaultValues` whenever the columns array (or the default values
+        // inside it) changes. Overwrites current selection, matching the "always follow" semantic
+        // used e.g. for the active-org filter.
+        effect(() => {
+            const cols = this.columns();
+            untracked(() => {
+                const applied = this.lastAppliedDefaults();
+                const nextApplied: Record<string, unknown[]> = { ...applied };
+                let mutated = false;
+                for (const col of cols) {
+                    if (col.defaultValues === undefined) continue;
+                    if (this.arraysShallowEqual(applied[col.key], col.defaultValues)) continue;
+                    nextApplied[col.key] = [...col.defaultValues];
+                    mutated = true;
+                    this.onFilterChange(col.key, [...col.defaultValues]);
+                }
+                if (mutated) this.lastAppliedDefaults.set(nextApplied);
+            });
+        });
+    }
+
+    private arraysShallowEqual(a: unknown[] | undefined, b: unknown[]): boolean {
+        if (!a || a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) return false;
+        }
+        return true;
     }
 
     /** True when any filter (header dropdown or external search) is currently applied. */
@@ -209,6 +239,18 @@ export class AppTableComponent {
     firstSingleFilterValue(key: string): unknown {
         const values = this.activeFilters()[key];
         return values && values.length > 0 ? values[0] : null;
+    }
+
+    activeFilterValues(key: string): unknown[] {
+        return this.activeFilters()[key] ?? [];
+    }
+
+    hasFilterValue(key: string): boolean {
+        return this.activeFilterValues(key).length > 0;
+    }
+
+    activeFilterCount(key: string): number {
+        return this.activeFilterValues(key).length;
     }
 
     resolveActionVariant(action: AppTableRowAction, row: TableRow): AppTableActionVariant {
