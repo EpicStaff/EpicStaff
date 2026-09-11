@@ -51,7 +51,6 @@ export class StorageTreeComponent {
     selectionChange = output<StorageItem[]>();
 
     private readonly renameInputRef = viewChild<ElementRef<HTMLInputElement>>('renameInput');
-    private readonly groupInputRef = viewChild<ElementRef<HTMLInputElement>>('groupInput');
     private readonly listElRef = viewChild<ElementRef<HTMLElement>>('listEl');
 
     private hoveredItemEl: HTMLElement | null = null;
@@ -64,12 +63,6 @@ export class StorageTreeComponent {
     renamingFromPath = '';
     renameValue = '';
     private selectionAnchorPath: string | null = null;
-
-    groupingActive = signal<boolean>(false);
-    groupPos = signal<{ top: number; left: number; right: number } | null>(null);
-    groupValue = '';
-    private groupingItems: StorageItem[] = [];
-    private groupingParentPath = '';
 
     contextMenuOpen = signal<boolean>(false);
     contextMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -169,11 +162,12 @@ export class StorageTreeComponent {
         this.renameValue = item.name;
 
         const path = item.path || item.name;
-        const itemEl =
-            this.hoveredItemEl ??
-            (this.listElRef()?.nativeElement.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
         const listEl = this.listElRef()?.nativeElement;
+        const itemEl =
+            (this.hoveredItemEl?.getAttribute('data-path') === path ? this.hoveredItemEl : null) ??
+            (listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
         if (itemEl && listEl) {
+            itemEl.scrollIntoView({ block: 'nearest' });
             const itemRect = itemEl.getBoundingClientRect();
             const listRect = listEl.getBoundingClientRect();
             this.renamePos.set({
@@ -190,6 +184,23 @@ export class StorageTreeComponent {
             this.renameInputRef()?.nativeElement.focus();
             this.renameInputRef()?.nativeElement.select();
         });
+    }
+
+    /**
+     * Like startRename, but waits for the item's row to actually exist in the DOM first.
+     * Needed right after a tree reload (e.g. after grouping), where the row may not be
+     * rendered yet — starting the rename immediately would leave renamePos unset and the
+     * overlay would fall back to a default position instead of the item's real row.
+     */
+    startRenameWhenReady(item: StorageItem, retriesLeft = 20): void {
+        const path = item.path || item.name;
+        const listEl = this.listElRef()?.nativeElement;
+        const exists = listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`);
+        if (exists || retriesLeft <= 0) {
+            this.startRename(item);
+            return;
+        }
+        setTimeout(() => this.startRenameWhenReady(item, retriesLeft - 1), 50);
     }
 
     onContextMenuAction(action: string): void {
@@ -259,62 +270,11 @@ export class StorageTreeComponent {
             return;
         }
 
-        this.groupingItems = items;
-        this.groupingParentPath = this.getParentPath(items[0].path);
-        this.groupValue = 'New Folder';
-
-        const listEl = this.listElRef()?.nativeElement;
-        if (listEl) {
-            const listRect = listEl.getBoundingClientRect();
-            this.groupPos.set({
-                top: listRect.top,
-                left: listRect.left,
-                right: window.innerWidth - listRect.right,
-            });
-        } else {
-            this.groupPos.set(null);
-        }
-
-        this.groupingActive.set(true);
-        setTimeout(() => {
-            this.groupInputRef()?.nativeElement.focus();
-            this.groupInputRef()?.nativeElement.select();
-        });
-    }
-
-    onGroupConfirm(): void {
-        const items = this.groupingItems;
-        const parentPath = this.groupingParentPath;
-        this.groupingActive.set(false);
-        this.groupPos.set(null);
-        this.groupingItems = [];
-
-        const name = this.groupValue.trim();
-        if (!name || items.length < 2) {
-            return;
-        }
-
-        const targetPath = parentPath ? `${parentPath}/${name}` : name;
         this.contextAction.emit({
             action: 'group-selected',
             item: items[0],
             selectedItems: items,
-            targetPath,
         });
-    }
-
-    onGroupCancel(event?: Event): void {
-        event?.preventDefault();
-        event?.stopPropagation();
-        this.groupingActive.set(false);
-        this.groupPos.set(null);
-        this.groupingItems = [];
-    }
-
-    onGroupEnter(event: Event): void {
-        event.preventDefault();
-        event.stopPropagation();
-        this.onGroupConfirm();
     }
 
     getFileIcon(item: StorageItem): string {

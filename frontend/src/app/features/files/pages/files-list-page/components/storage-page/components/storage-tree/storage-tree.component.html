@@ -226,56 +226,6 @@
     </div>
 }
 
-<!-- Group Selected naming overlay -->
-@if (groupingActive()) {
-    <div
-        class="storage-tree__rename-overlay"
-        [style.top.px]="groupPos()?.top"
-        [style.left.px]="groupPos()?.left"
-        [style.right.px]="groupPos()?.right"
-        (click)="$event.stopPropagation()"
-    >
-        <input
-            #groupInput
-            class="storage-tree__rename-input"
-            type="text"
-            [value]="groupValue"
-            (input)="groupValue = groupInput.value"
-            (keydown.enter)="onGroupEnter($event)"
-            (keydown.escape)="onGroupCancel($event)"
-            (blur)="onGroupCancel($event)"
-        />
-        <button
-            class="storage-tree__rename-btn storage-tree__rename-btn--cancel"
-            type="button"
-            aria-label="Cancel grouping"
-            matTooltip="Cancel"
-            matTooltipPosition="above"
-            (mousedown)="$event.preventDefault()"
-            (click)="onGroupCancel($event)"
-        >
-            <app-svg-icon
-                icon="rename-cancel"
-                size="1.75rem"
-            ></app-svg-icon>
-        </button>
-        <button
-            class="storage-tree__rename-btn storage-tree__rename-btn--confirm"
-            type="button"
-            aria-label="Confirm grouping"
-            matTooltip="Confirm"
-            matTooltipPosition="above"
-            (mousedown)="$event.preventDefault()"
-            (click)="onGroupConfirm()"
-        >
-            <app-svg-icon
-                icon="rename-confirm"
-                size="1.75rem"
-            ></app-svg-icon>
-        </button>
-    </div>
-}
-
 <!-- More Options Menu Overlay -->
 @if (moreMenuOpen()) {
     <div
