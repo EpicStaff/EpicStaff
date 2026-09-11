@@ -85,7 +85,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public conditionGroups = input.required<ConditionGroup[]>();
-    public activeColor = input<string>('#685fff');
+    public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
     public storageNodeId = input<string>('');
     public prompts = input<Record<string, PromptConfig>>({});
