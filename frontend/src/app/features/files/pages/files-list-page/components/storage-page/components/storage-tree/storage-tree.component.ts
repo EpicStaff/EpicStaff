@@ -51,6 +51,7 @@ export class StorageTreeComponent {
     selectionChange = output<StorageItem[]>();
 
     private readonly renameInputRef = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    private readonly groupInputRef = viewChild<ElementRef<HTMLInputElement>>('groupInput');
     private readonly listElRef = viewChild<ElementRef<HTMLElement>>('listEl');
 
     private hoveredItemEl: HTMLElement | null = null;
@@ -63,6 +64,12 @@ export class StorageTreeComponent {
     renamingFromPath = '';
     renameValue = '';
     private selectionAnchorPath: string | null = null;
+
+    groupingActive = signal<boolean>(false);
+    groupPos = signal<{ top: number; left: number; right: number } | null>(null);
+    groupValue = '';
+    private groupingItems: StorageItem[] = [];
+    private groupingParentPath = '';
 
     contextMenuOpen = signal<boolean>(false);
     contextMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -191,6 +198,8 @@ export class StorageTreeComponent {
 
         if (action === 'rename') {
             this.startRename(item);
+        } else if (action === 'group-selected') {
+            this.startGrouping();
         } else if (action === 'delete') {
             const selectedSet = this.selectedPaths();
             const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
@@ -238,6 +247,74 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
         this.onRenameConfirm();
+    }
+
+    canGroupSelected(): boolean {
+        return this.pruneNestedItems(this.getSelectedItems()).length >= 2;
+    }
+
+    startGrouping(): void {
+        const items = this.pruneNestedItems(this.getSelectedItems());
+        if (items.length < 2) {
+            return;
+        }
+
+        this.groupingItems = items;
+        this.groupingParentPath = this.getParentPath(items[0].path);
+        this.groupValue = 'New Folder';
+
+        const listEl = this.listElRef()?.nativeElement;
+        if (listEl) {
+            const listRect = listEl.getBoundingClientRect();
+            this.groupPos.set({
+                top: listRect.top,
+                left: listRect.left,
+                right: window.innerWidth - listRect.right,
+            });
+        } else {
+            this.groupPos.set(null);
+        }
+
+        this.groupingActive.set(true);
+        setTimeout(() => {
+            this.groupInputRef()?.nativeElement.focus();
+            this.groupInputRef()?.nativeElement.select();
+        });
+    }
+
+    onGroupConfirm(): void {
+        const items = this.groupingItems;
+        const parentPath = this.groupingParentPath;
+        this.groupingActive.set(false);
+        this.groupPos.set(null);
+        this.groupingItems = [];
+
+        const name = this.groupValue.trim();
+        if (!name || items.length < 2) {
+            return;
+        }
+
+        const targetPath = parentPath ? `${parentPath}/${name}` : name;
+        this.contextAction.emit({
+            action: 'group-selected',
+            item: items[0],
+            selectedItems: items,
+            targetPath,
+        });
+    }
+
+    onGroupCancel(event?: Event): void {
+        event?.preventDefault();
+        event?.stopPropagation();
+        this.groupingActive.set(false);
+        this.groupPos.set(null);
+        this.groupingItems = [];
+    }
+
+    onGroupEnter(event: Event): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.onGroupConfirm();
     }
 
     getFileIcon(item: StorageItem): string {
@@ -322,6 +399,11 @@ export class StorageTreeComponent {
             item: selectedItems[0] ?? this.selectedItem() ?? { name: '', path: '', type: 'folder' },
             selectedItems,
         });
+    }
+
+    private getSelectedItems(): StorageItem[] {
+        const selectedSet = this.selectedPaths();
+        return this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
     }
 
     onDragStart(event: DragEvent, item: StorageItem): void {

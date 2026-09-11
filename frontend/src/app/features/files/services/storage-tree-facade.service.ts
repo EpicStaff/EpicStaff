@@ -325,6 +325,9 @@ export class StorageTreeFacade {
             case 'move':
                 this.handleMove(event);
                 break;
+            case 'group-selected':
+                this.handleGroupSelected(event);
+                break;
         }
     }
 
@@ -461,6 +464,31 @@ export class StorageTreeFacade {
                         items.length === 1 ? `Failed to move "${items[0].name}"` : 'Failed to move selected items';
                     this.toastService.error(label);
                 },
+            });
+    }
+
+    private handleGroupSelected(event: { selectedItems?: StorageItem[]; targetPath?: string }): void {
+        const targetPath = event.targetPath?.trim();
+        const items = event.selectedItems ?? [];
+        if (!targetPath || items.length < 2) return;
+
+        this.storageApiService
+            .mkdir(targetPath)
+            .pipe(
+                switchMap(() => forkJoin(items.map((item) => this.storageApiService.move(item.path, targetPath)))),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: () => {
+                    const name = targetPath.split('/').pop() ?? targetPath;
+                    this.toastService.success(`${items.length} items grouped into "${name}"`);
+                    const selected = this.selectedFile();
+                    if (selected && items.some((item) => item.path === selected.path)) {
+                        this.selectedFile.set(null);
+                    }
+                    this.reloadTreePreservingExpansion([targetPath]);
+                },
+                error: () => this.toastService.error('Failed to group items'),
             });
     }
 
