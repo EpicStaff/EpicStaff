@@ -316,6 +316,48 @@ invariant.
 
 ---
 
+### 5.6 Serializer-level guards — `secrets:USE` on secret references
+
+One check lives in neither the view nor the service: whether the caller may change
+**which Secret a resource references**. It is enforced in the serializer layer, and
+the reason is worth understanding before you move it.
+
+`SecretReferenceGuardMixin` (`tables/serializers/utils/secret_reference_guard_mixin.py`)
+declares the guarded fields and hooks `validate()`; the decision lives in
+`SecretReferenceGuard` (`tables/services/secrets/reference_guard.py`):
+
+```python
+class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_secret_id",)
+```
+
+**The delta rule.** A secret reference is *state, not an operation*. Omitted from the
+payload → skip; present but equal to the persisted value → skip; different → require
+`secrets:USE`. This is what makes the guard usable from `graph/{id}/save`, which
+submits the whole graph on every save and would otherwise demand `USE` from anyone
+editing an unrelated node.
+
+`_assert_may_use` denies when there is no `request` in serializer context, because the
+active org cannot be resolved without one — fail-safe, not fail-open. Any service that
+drives these serializers must thread the request through (`GraphBulkSaveService` does).
+
+**Diverging one request path.** `secret_reference_fields` is read through
+`get_secret_reference_fields()`, so a subclass may differ from the class its siblings
+share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an
+endpoint-specific variant:
+
+```python
+class McpToolBulkSerializer(McpToolSerializer):
+    def get_secret_reference_fields(self):
+        """Guard nothing on this path."""
+        return ()
+```
+
+The coverage checks ask instances, not classes, so an override stays inside the
+guarantee.
+
+---
+
 ## 6. Row scope layer (queryset scoping)
 
 All mixins live in `tables/views/mixins.py` and share `OrgScopedResolverMixin`

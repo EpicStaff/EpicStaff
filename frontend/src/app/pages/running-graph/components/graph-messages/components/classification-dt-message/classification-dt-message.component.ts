@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     ClassificationPromptMessageData,
     ConditionGroupManipulationMessageData,
@@ -11,29 +12,32 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    imports: [CommonModule],
+    imports: [CommonModule, AppSvgIconComponent],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
-            <div class="dt-flow-container">
+            <div
+                class="dt-flow-container"
+                [ngClass]="conditionResultClass()"
+            >
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div
                         class="icon-container"
                         [ngClass]="conditionResultClass()"
                     >
-                        <i
-                            class="ti"
-                            [ngClass]="conditionResultIcon()"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="conditionResultIcon()"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>{{ getConditionData()?.group_name }}</h3>
@@ -75,13 +79,16 @@ import {
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div class="icon-container prompt-icon">
-                        <i class="ti ti-brain"></i>
+                        <app-svg-icon
+                            icon="brain"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>LLM Classification</h3>
@@ -100,10 +107,10 @@ import {
                                 class="section-heading"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
-                                <i
-                                    class="ti"
-                                    [ngClass]="isPromptExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                                ></i>
+                                <app-svg-icon
+                                    [icon]="isPromptExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
                                 Prompt
                             </div>
                             <div
@@ -120,10 +127,10 @@ import {
                                 class="section-heading"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
-                                <i
-                                    class="ti"
-                                    [ngClass]="isResponseExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                                ></i>
+                                <app-svg-icon
+                                    [icon]="isResponseExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
                                 Raw Response
                             </div>
                             <div
@@ -160,13 +167,16 @@ import {
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div class="icon-container manipulation-icon">
-                        <i class="ti ti-transform"></i>
+                        <app-svg-icon
+                            icon="variable"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>Manipulation</h3>
@@ -192,16 +202,26 @@ import {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
                 padding: 1.25rem;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #a78bfa;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--violet-400);
+            }
+
+            .dt-flow-container.matched {
+                --condition-result-color: var(--emerald-400);
+                border-left-color: var(--condition-result-color);
+            }
+
+            .dt-flow-container.not-matched {
+                --condition-result-color: var(--gray-570);
+                border-left-color: var(--condition-result-color);
             }
 
             .prompt-container {
-                border-left-color: #f59e0b;
+                border-left-color: var(--amber-620);
             }
 
             .manipulation-container {
-                border-left-color: #6ee7b7;
+                border-left-color: var(--emerald-300);
             }
 
             .dt-header {
@@ -212,56 +232,56 @@ import {
             }
 
             .play-arrow {
+                width: 1.1rem;
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+
+                app-svg-icon {
+                    color: var(--condition-result-color);
+                }
             }
 
-            .play-arrow i {
-                color: #a78bfa;
-                font-size: 1.1rem;
-                transition: transform 0.3s ease;
+            .prompt-container .play-arrow app-svg-icon {
+                color: var(--amber-620);
             }
 
-            .prompt-container .play-arrow i {
-                color: #f59e0b;
-            }
-
-            .manipulation-container .play-arrow i {
-                color: #6ee7b7;
+            .manipulation-container .play-arrow app-svg-icon {
+                color: var(--emerald-300);
             }
 
             .icon-container {
                 width: 36px;
                 height: 36px;
                 border-radius: 50%;
-                background-color: #a78bfa;
+                background-color: var(--violet-400);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 16px;
+                margin-right: 20px;
                 flex-shrink: 0;
-            }
 
-            .icon-container i {
-                color: var(--gray-900);
-                font-size: 1.25rem;
+                app-svg-icon {
+                    color: var(--gray-900);
+                }
             }
 
             .icon-container.matched {
-                background-color: #34d399;
+                background-color: var(--condition-result-color);
             }
 
             .icon-container.not-matched {
-                background-color: #6b7280;
+                background-color: var(--condition-result-color);
             }
 
             .prompt-icon {
-                background-color: #f59e0b;
+                background-color: var(--amber-620);
             }
 
             .manipulation-icon {
-                background-color: #6ee7b7;
+                background-color: var(--emerald-300);
             }
 
             .header-text {
@@ -286,23 +306,23 @@ import {
             }
 
             .badge.matched {
-                background-color: rgba(52, 211, 153, 0.15);
-                color: #34d399;
+                background-color: var(--emerald-400-alpha-15);
+                color: var(--condition-result-color);
             }
 
             .badge.not-matched {
-                background-color: rgba(107, 114, 128, 0.15);
-                color: #9ca3af;
+                background-color: var(--gray-570-alpha-15);
+                color: var(--slate-460);
             }
 
             .prompt-badge {
-                background-color: rgba(245, 158, 11, 0.15);
-                color: #f59e0b;
+                background-color: var(--amber-620-alpha-15);
+                color: var(--amber-620);
             }
 
             .manipulation-badge {
-                background-color: rgba(110, 231, 183, 0.15);
-                color: #6ee7b7;
+                background-color: var(--emerald-300-alpha-15);
+                color: var(--emerald-300);
             }
 
             .dt-content {
@@ -358,12 +378,10 @@ import {
                 align-items: center;
             }
 
-            .section-heading i {
+            .section-heading app-svg-icon {
                 margin-right: 8px;
-                color: #f59e0b;
-                font-size: 1.1rem;
+                color: var(--amber-620);
                 margin-left: -3px;
-                transition: transform 0.3s ease;
             }
 
             .code-block {
@@ -442,7 +460,7 @@ export class ClassificationDtMessageComponent {
     }
 
     conditionResultIcon(): string {
-        return this.getConditionData()?.result ? 'ti-check' : 'ti-x';
+        return this.getConditionData()?.result ? 'check' : 'x';
     }
 
     toggleMessage(): void {

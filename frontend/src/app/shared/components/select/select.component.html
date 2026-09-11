@@ -17,6 +17,7 @@
             [class.selector__btn--invalid]="invalid()"
             [class.selector__btn--open]="open()"
             [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
+            [class.selector__btn--transparent]="transparent()"
             (click)="toggle()"
         >
             @if (loading()) {

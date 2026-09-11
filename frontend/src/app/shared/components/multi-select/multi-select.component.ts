@@ -73,6 +73,7 @@ export class MultiSelectComponent implements OnInit {
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
     saveLabel = input<string>('Save Selection');
+    readonlyView = input<boolean>(false);
     /** When true (default), selected items float to the top of the list (within their group). */
     sortSelectedToTop = input<boolean>(true);
 
@@ -232,6 +233,7 @@ export class MultiSelectComponent implements OnInit {
     }
 
     toggleValue(value: unknown) {
+        if (this.readonlyView()) return;
         const arr = [...this.tempSelected()];
         const i = arr.indexOf(value);
         if (i >= 0) arr.splice(i, 1);

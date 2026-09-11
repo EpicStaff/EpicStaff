@@ -95,6 +95,17 @@ export class PermissionsService implements StorageService {
         return !!resType && (resType.platform_actions ?? []).includes(action);
     }
 
+    canEditSecrets(subjectResource: ResourceCode): boolean {
+        return this.can(subjectResource, ActionCode.Read) && this.can(ResourceCode.Secrets, ActionCode.Use);
+    }
+
+    canOpenConfigureModelsDialog(): boolean {
+        return (
+            this.can(ResourceCode.LlmConfigs, ActionCode.Read) ||
+            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])
+        );
+    }
+
     get isSuperadmin(): boolean {
         return this._isSuperadmin();
     }

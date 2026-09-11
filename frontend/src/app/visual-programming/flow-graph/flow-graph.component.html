@@ -1,4 +1,7 @@
-<div class="editor-wrapper">
+<div
+    class="editor-wrapper"
+    [class.panel-open]="!!sidePanelService.selectedNode()"
+>
     <f-flow
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"

@@ -72,15 +72,21 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.SECRETS,
             label: 'Secrets',
             svgIcon: 'secrets',
-            isPermitted: () => this.permissionService.can(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () => this.permissionService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
         },
     ];
 
     public readonly activeTabId = signal<ConfigureModelsTabId>(ConfigureModelsTabId.DEFAULT_LLMS);
 
     ngOnInit() {
-        const canCreateConfigs = this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create);
-        this.activeTabId.set(canCreateConfigs ? ConfigureModelsTabId.QUICKSTART : ConfigureModelsTabId.DEFAULT_LLMS);
+        if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create)) {
+            this.activeTabId.set(ConfigureModelsTabId.QUICKSTART);
+        } else if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
+            this.activeTabId.set(ConfigureModelsTabId.DEFAULT_LLMS);
+        } else {
+            const firstPermittedTab = this.tabs.find((tab) => tab.isPermitted);
+            if (firstPermittedTab) this.activeTabId.set(firstPermittedTab.id);
+        }
     }
 
     public selectTab(tabId: ConfigureModelsTabId): void {

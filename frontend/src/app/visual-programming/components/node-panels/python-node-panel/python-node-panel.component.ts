@@ -1,16 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { ResourceCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import {
@@ -41,13 +41,15 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         CodeEditorComponent,
         PythonTerminalComponent,
         NodeStorageSectionComponent,
-        AppSvgIconComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
     template: `
         <div class="panel-container">
-            <div class="panel-content">
+            <div
+                class="panel-content"
+                [class.editor-fullwidth]="isFormCollapsed()"
+            >
                 <form
                     [formGroup]="form"
                     class="form-container"
@@ -56,7 +58,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                         class="form-layout"
                         [class.expanded]="isExpanded()"
                         [class.collapsed]="!isExpanded()"
-                        [class.code-editor-fullwidth]="isExpanded() && isCodeEditorFullWidth()"
+                        [class.form-collapsed]="isFormCollapsed()"
                     >
                         <!-- Form Fields (stable single instance) -->
                         <div
@@ -91,7 +93,9 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="selectedSecretIds()"
-                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                [readonly]="!canEditSecrets()"
+                                [names]="secretNames()"
+                                [tooltipText]="secretsTooltip()"
                                 (valueChange)="onSecretsChange($event)"
                             />
 
@@ -119,41 +123,26 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             ></app-node-storage-section>
                         </div>
 
-                        @if (isExpanded() && !isCodeEditorFullWidth()) {
+                        @if (isExpanded()) {
                             <app-column-resize-divider
                                 ariaLabel="Resize form and code editor columns"
                                 [column]="formColumn"
                                 [opposite]="editorColumn"
                                 [(width)]="leftColumnWidth.width"
                                 [defaultWidth]="leftColumnWidth.defaultWidth"
+                                [collapsible]="true"
+                                [minWidth]="400"
+                                [(collapsed)]="isFormCollapsed"
                             />
                         }
 
-                        <!-- Code editor area: toggle button only present in expanded mode -->
                         <div
                             #editorColumn
                             class="code-editor-wrapper"
                         >
-                            @if (isExpanded()) {
-                                <button
-                                    type="button"
-                                    class="toggle-icon-button"
-                                    (click)="toggleCodeEditorFullWidth()"
-                                    [attr.aria-label]="
-                                        isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'
-                                    "
-                                >
-                                    <app-svg-icon
-                                        [icon]="isCodeEditorFullWidth() ? 'chevron-right' : 'chevron-left'"
-                                        size="1rem"
-                                    ></app-svg-icon>
-                                </button>
-                            }
-
                             <div class="code-editor-column">
                                 <app-code-editor
                                     class="code-editor-section"
-                                    [class.no-bottom-radius]="isOpenTestMode()"
                                     [pythonCode]="pythonCode"
                                     [secretNames]="secretNames()"
                                     [inputMapKeys]="inputMapKeys()"
@@ -203,6 +192,11 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
+                padding-top: 0;
+
+                &.editor-fullwidth {
+                    padding: 0;
+                }
             }
 
             .section-header {
@@ -228,27 +222,10 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                     gap: 0;
                     height: 100%;
                     width: 100%;
+                    overflow: visible;
 
-                    &.code-editor-fullwidth {
-                        overflow: visible;
-
-                        .form-fields {
-                            display: none;
-                        }
-
-                        .code-editor-wrapper {
-                            width: 100%;
-                        }
-
-                        .toggle-icon-button {
-                            position: absolute;
-                            left: 0;
-                            top: 50%;
-                            transform: translateY(-50%);
-                            z-index: 10;
-                            border-width: 1px 1px 1px 0px;
-                            border-radius: 0 8px 8px 0;
-                        }
+                    &.form-collapsed .form-fields {
+                        display: none;
                     }
                 }
 
@@ -269,18 +246,24 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                         flex: 0 0 auto;
                         height: auto;
                         display: block;
-                        transition: none;
+                        margin: 0 -1rem;
                     }
                 }
             }
 
             .form-fields {
-                @include mixins.resizable-column(400px);
+                @include mixins.resizable-column(406px);
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
                 height: 100%;
                 overflow-y: auto;
+                padding-top: 1rem;
+                padding-right: 0.75rem;
+            }
+
+            .form-layout.expanded:not(.form-collapsed) app-column-resize-divider {
+                @include mixins.resize-divider-bleed;
             }
 
             .code-editor-wrapper {
@@ -292,42 +275,13 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 flex: 1;
                 min-height: 0;
                 min-width: 0;
-                transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-                .toggle-icon-button {
-                    flex-shrink: 0;
-                    width: 28px;
-                    height: 66px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-width: 1px 0px 1px 1px;
-                    border-style: solid;
-                    border-color: #2c2c2e;
-                    background: transparent;
-                    cursor: pointer;
-                    border-radius: 8px 0 0 8px;
-                    transition: all 0.2s ease;
-                    padding: 0;
-                    color: #d9d9d999;
-
-                    &:hover:not(:disabled) {
-                        color: #d9d9d9;
-                        background: #2c2c2e;
-                    }
-
-                    &:active:not(:disabled) {
-                        color: #d9d9d9;
-                    }
-
-                    &:disabled {
-                        cursor: not-allowed;
-                        opacity: 0.5;
-                    }
-                }
 
                 app-code-editor {
                     min-width: 0;
+                }
+
+                .expanded:not(.form-collapsed) & {
+                    @include mixins.editor-pane-bleed;
                 }
             }
 
@@ -342,13 +296,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 
             .code-editor-section {
                 border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-                border-radius: 0 8px 8px 0;
-
-                &.no-bottom-radius {
-                    border-bottom-left-radius: 0;
-                    border-bottom-right-radius: 0;
-                }
-                overflow: visible;
                 display: flex;
                 flex-direction: column;
 
@@ -356,25 +303,15 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                     flex: 1;
                     height: 100%;
                     min-height: 0;
-                    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-                    transform: scaleX(0.3) translateX(-50px);
-                    opacity: 0;
+                    overflow: hidden;
+                    @include mixins.editor-pane-corner;
                 }
 
                 .collapsed & {
+                    border-radius: 8px;
+                    overflow: hidden;
                     height: 300px;
                     flex-shrink: 0;
-                }
-
-                .form-layout.expanded:not(.code-editor-fullwidth) & {
-                    transform: scaleX(1) translateX(0);
-                    opacity: 1;
-                }
-
-                .form-layout.expanded.code-editor-fullwidth & {
-                    transform: scaleX(1) translateX(0);
-                    opacity: 1;
-                    overflow: visible;
                 }
             }
 
@@ -399,18 +336,22 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 })
 export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly graphId = input<number | null>(null);
-    public readonly isCodeEditorFullWidth = signal<boolean>(true);
+    public readonly isFormCollapsed = signal<boolean>(false);
     public readonly useStorage = signal<boolean>(false);
-    protected readonly leftColumnWidth = createColumnWidthState('python-node', 400);
+    protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
 
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly secretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
+    );
     public readonly selectedSecretIds = signal<number[]>([]);
-    public readonly secretNames = computed(() => {
-        const selected = new Set(this.selectedSecretIds());
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
-    });
+    public readonly secretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
+            : (this.node().data.secret_names ?? [])
+    );
     public readonly inputMapKeys = computed(() => {
         this.formDirtyTick();
         if (!this.form) return [];
@@ -458,13 +399,12 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
-    private secretsRestoredForNodeId: string | null = null;
 
     constructor(
         private readonly sidePanelService: SidePanelService,
         private readonly pythonCodeRunService: PythonCodeRunService,
-        private readonly secretDeclarationIndexService: SecretDeclarationIndexService,
-        private readonly secretsStorageService: SecretsStorageService
+        private readonly secretsStorageService: SecretsStorageService,
+        private readonly permissionsService: PermissionsService
     ) {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
@@ -473,7 +413,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         effect(() => {
             if (this.isOpenTestMode()) {
                 this.sidePanelService.requestExpand();
-                this.isCodeEditorFullWidth.set(false);
             }
         });
         effect(() => {
@@ -488,33 +427,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             }
             this.wasSaving = saving;
         });
-        effect(() => {
-            const graphId = this.graphId();
-            const node = this.node();
-            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
-            this.secretsRestoredForNodeId = node.id;
-            if (node.data.secret_ids !== undefined) return;
-
-            const nodeId = node.id;
-            const nodeName = node.node_name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    if (this.node().id !== nodeId) return;
-                    const declared = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.PYTHON,
-                        'python_code'
-                    );
-                    if (declared.length) {
-                        this.selectedSecretIds.set(declared);
-                        this.resetSecretsBaseline();
-                    }
-                });
-        });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
     }
 
@@ -524,20 +436,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initialPythonCode = this.pythonCode;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
-        this.formDirtyTick.update((v) => v + 1);
-    }
-
-    /**
-     * Patches only secret_ids into the dirty-tracking baseline, instead of recomputing the whole
-     * signature like resetDirtyAfterSave() does — the secret-restoration effect resolves
-     * asynchronously, and recomputing the full baseline at that point would bake in any other
-     * field the user edited in the meantime as if it were already saved.
-     */
-    private resetSecretsBaseline(): void {
-        if (!this.form || !this.initialFormSignatureExceptTestValues) return;
-        const baseline = JSON.parse(this.initialFormSignatureExceptTestValues) as Record<string, unknown>;
-        baseline['secret_ids'] = [...this.selectedSecretIds()].sort();
-        this.initialFormSignatureExceptTestValues = JSON.stringify(baseline);
         this.formDirtyTick.update((v) => v + 1);
     }
 
@@ -564,7 +462,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     get inputMapPairs(): FormArray {
@@ -677,6 +575,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 libraries: librariesArray,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
+                secret_names: this.secretNames(),
             },
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };
@@ -723,10 +622,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     private initializeInputMap(form: FormGroup): void {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
-    }
-
-    toggleCodeEditorFullWidth(): void {
-        this.isCodeEditorFullWidth.update((value) => !value);
     }
 
     onTerminalHeightChange(height: number): void {

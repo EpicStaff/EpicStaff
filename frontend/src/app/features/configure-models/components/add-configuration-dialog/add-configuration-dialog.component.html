@@ -44,18 +44,25 @@
                         tooltipText="The AI provider and model this configuration will use"
                         [provider]="ModelTypes.LLM"
                         [required]="true"
-                        (modelChanged)="onModelChanged($event)"
                     />
                     <app-validation-errors [control]="llmForm.get('model')!" />
                 </div>
                 <div>
-                    <app-custom-input
-                        formControlName="api_key"
+                    <app-select
+                        formControlName="api_key_secret_id"
                         label="API Key"
-                        placeholder="Enter provider's API key"
+                        variant="boxed"
                         tooltipText="Your secret API key from the provider's dashboard"
-                        type="password"
+                        placeholder="Select a secret"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
                     />
+                    @if (!llmForm.get('api_key_secret_id')?.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
                 </div>
                 <div>
                     <app-custom-input
@@ -64,6 +71,7 @@
                         placeholder="Enter a custom name"
                         tooltipText="A friendly name to identify this configuration across the app"
                         [required]="true"
+                        autocomplete="off"
                     />
                     <app-validation-errors [control]="llmForm.get('custom_name')!" />
                 </div>

@@ -42,6 +42,7 @@ x-communication-env: &communication-env
   SESSION_TIMEOUT_CHANNEL: ${SESSION_TIMEOUT_CHANNEL:?}
   CREWAI_OUTPUT_CHANNEL: ${CREWAI_OUTPUT_CHANNEL:?}
   REALTIME_AGENTS_SCHEMA_CHANNEL: ${REALTIME_AGENTS_SCHEMA_CHANNEL:?}
+  REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
 services:
@@ -56,8 +57,8 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
-      DJANGO_DB_USER: ${DB_USER:?}
-      DJANGO_DB_PASSWORD: ${DB_PASSWORD:?}
+      DB_USER: ${DB_USER:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
       DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
@@ -280,7 +281,8 @@ services:
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
-      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:-true}
+      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+      SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
@@ -306,6 +308,7 @@ services:
       - CHOWN  # chown per-exec output and home dirs to sandboxuser.
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
+      - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
     depends_on:
       redis:
         condition: service_healthy
@@ -390,7 +393,7 @@ services:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:-latest}
     container_name: webhook
     build:
       context: .

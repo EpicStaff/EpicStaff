@@ -61,6 +61,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     collections = input.required<SurfaceCollectionOption[]>();
     knowledge = input.required<SurfaceKnowledge[]>();
     readOnly = input<boolean>(false);
+    flat = input<boolean>(false);
 
     readonly knowledgeChange = output<SurfaceKnowledge>();
 

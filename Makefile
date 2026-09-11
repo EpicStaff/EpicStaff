@@ -18,11 +18,20 @@ COMPOSE := docker compose -f docker-compose.yaml --env-file ./.env
 warn-no-s = $(if $(strip $(s)),,$(warning no s=<service> given - applying to ALL services))
 
 .DEFAULT_GOAL := help
+
+# Every backend service that uv manages, derived from the pyproject files so a
+# new service is picked up without editing this list.
+uv_services := $(patsubst src/%/pyproject.toml,%,$(wildcard src/*/pyproject.toml))
+uv_lock_targets := $(addprefix uv-lock-,$(uv_services))
+
 .PHONY: help \
         backup apply-backup stash-tags apply-tags switch \
         init ensure-env up down build rebuild rebuild-s restart logs logs-s \
         clean docker-generate-certs \
-        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests
+        gen-env check-env \
+        uv-lock \
+        uv-sync \
+        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests sandbox-tests
 
 # --- Help ---
 
@@ -150,13 +159,38 @@ docker-generate-certs:
 # LOCAL DJANGO DEVELOPMENT
 # ==========================================
 
-# Use each service's OWN venv interpreter explicitly so these targets work
-# regardless of which venv (if any) is currently activated on PATH.
+# Use each service's own uv-managed venv interpreter explicitly so these
+# targets work regardless of what (if anything) is currently activated on
+# PATH. Every service's venv lives at a plain .venv. A missing .venv fails
+# loudly; `make uv-sync svc=<service>` is the one-command fix.
 ifeq ($(OS),Windows_NT)
-VENV_PY := venv\Scripts\python.exe
+VENV_PY := .venv\Scripts\python.exe
 else
-VENV_PY := venv/bin/python
+VENV_PY := .venv/bin/python
 endif
+
+# Regenerate every service's uv.lock. `--project` avoids a per-service cd and
+# resolves each pyproject's relative [tool.uv.sources] paths (crew's
+# ../shared/dotdict) against the service directory rather than the CWD.
+# No --upgrade: this refreshes the lock to match pyproject.toml, it does not
+# bump pinned versions.
+#
+# Deliberately NOT listing uv-lock-% (the expanded $(uv_lock_targets)) in
+# .PHONY: GNU Make registers any name appearing in .PHONY's prerequisite list
+# as already having an explicit (empty) rule, which then blocks the pattern
+# rule below from ever matching it -- every uv-lock-<service> silently turns
+# into a no-op ("Nothing to be done"). None of these names correspond to real
+# files on disk, so they always rebuild anyway without needing .PHONY.
+uv-lock: $(uv_lock_targets)
+
+uv-lock-%:
+	@echo "--- Locking src/$* ---"
+	@uv lock --project src/$*
+
+# --no-install-project keeps this target in lockstep with the Docker builders.
+uv-sync:
+	@test -n "$(svc)" || (echo "ERROR: svc is required. Usage: make uv-sync svc=<service>" && exit 1)
+	@cd src/$(svc) && uv sync --frozen --no-install-project --all-groups
 
 django-makemigrations django-migrate django-manage django-tests: export PYTHONPATH = $(CURDIR)
 
@@ -185,3 +219,8 @@ agent-tests: export PYTHONPATH = $(CURDIR)
 
 agent-tests:
 	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)
+
+sandbox-tests: export PYTHONPATH = $(CURDIR)
+
+sandbox-tests:
+	@cd src/sandbox && $(VENV_PY) -m pytest $(ARGS)

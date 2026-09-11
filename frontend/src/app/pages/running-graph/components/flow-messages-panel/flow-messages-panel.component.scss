@@ -29,8 +29,8 @@
     .text {
         min-width: 0;
         margin: 0;
-        font-weight: 500;
-        font-size: 14px;
+        font-weight: var(--text-body-medium-weight);
+        font-size: var(--text-body-medium-size);
         line-height: 1.2;
         letter-spacing: -0.03em;
     }
@@ -81,24 +81,15 @@
         }
     }
 
-    .icon-arrow {
-        transform: rotate(90deg);
-    }
-
-    .icon,
-    .icon-arrow {
+    .icon {
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-    }
-
-    .icon {
         color: var(--accent-color);
     }
 
-    .icon app-svg-icon,
-    .icon-arrow app-svg-icon {
+    .icon app-svg-icon {
         display: block;
         flex-shrink: 0;
     }
@@ -146,143 +137,6 @@
     }
 }
 
-.icon {
-    color: var(--accent-color);
-}
-
-.session-dropdown-wrapper {
-    position: relative;
-    flex: 0 1 200px;
-    min-width: 0;
-}
-
-.session-dropdown-trigger {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    min-width: 0;
-    max-width: 200px;
-    overflow: hidden;
-    padding: 4px 8px;
-    border: 1px solid var(--graphite-700);
-    border-radius: 4px;
-    background: var(--graphite-960);
-    color: var(--color-text-primary);
-    cursor: pointer;
-    font-size: 13px;
-    transition: border-color 0.2s ease;
-
-    &:hover {
-        background-color: var(--graphite-955);
-    }
-
-    &__label {
-        flex: 1;
-        text-align: left;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
-    }
-
-    app-svg-icon {
-        flex-shrink: 0;
-    }
-}
-
-.session-dropdown-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 99;
-}
-
-.session-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    min-width: 200px;
-    background: var(--graphite-900);
-    border: 1px solid var(--graphite-650);
-    border-radius: 6px;
-    box-shadow: 0 8px 24px var(--black-alpha-40);
-    z-index: 100;
-    overflow: hidden;
-
-    &__search {
-        padding: 8px;
-        border-bottom: 1px solid var(--white-alpha-8);
-    }
-
-    &__input {
-        width: 100%;
-        padding: 6px 8px;
-        border: 1px solid var(--graphite-650);
-        border-radius: 4px;
-        background: transparent;
-        color: var(--color-text-primary);
-        font-size: 13px;
-        outline: none;
-        box-sizing: border-box;
-
-        &::placeholder {
-            color: var(--fog-alpha-60);
-        }
-
-        &:focus {
-            border-color: var(--indigo-650);
-        }
-    }
-
-    &__list {
-        max-height: 240px;
-        overflow-y: auto;
-        padding: 4px 0;
-    }
-
-    &__item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        padding: 8px 12px;
-        border: none;
-        background: transparent;
-        color: var(--color-text-primary);
-        cursor: pointer;
-        font-size: 13px;
-        text-align: left;
-        transition: background-color 0.15s ease;
-        font-weight: 400;
-
-        &:hover {
-            background: var(--graphite-700);
-        }
-
-        &:active {
-            border-color: var(--fog-alpha-28);
-        }
-    }
-
-    &__item-id {
-        color: var(--color-text-primary);
-    }
-
-    &__item-time {
-        font-size: 10px;
-        color: var(--fog-alpha-60);
-        flex-shrink: 0;
-        margin-left: 12px;
-    }
-
-    &__empty {
-        padding: 12px;
-        text-align: center;
-        font-size: 12px;
-        color: var(--fog-alpha-40);
-    }
-}
-
 .drag-handle {
     width: 4px;
     cursor: col-resize;
@@ -311,7 +165,7 @@
         gap: 6px;
         height: 100%;
         color: var(--fog-alpha-40);
-        font-size: 13px;
+        font-size: 0.8125rem;
         text-align: center;
     }
 
@@ -324,13 +178,13 @@
         border-radius: 4px;
         background-color: var(--accent-color);
         color: var(--white);
-        font-size: 12px;
-        font-weight: 400;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
         vertical-align: middle;
         cursor: default;
 
         app-svg-icon {
-            font-size: 10px;
+            font-size: 0.625rem;
         }
     }
     .graph-messages-list {

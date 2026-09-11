@@ -105,6 +105,7 @@ def test_permission_catalog_returns_actions_and_resource_types(
         "update",
         "delete",
         "export",
+        "use",
     ]
     resource_codes = [r["code"] for r in body["resource_types"]]
     assert "organizations" in resource_codes
@@ -136,11 +137,12 @@ def test_member_seed_has_no_memberships_or_roles(role_member):
 
 
 @pytest.mark.django_db
-def test_viewer_seed_can_use_flows_and_secrets(role_viewer):
+def test_viewer_seed_can_use_flows_but_not_secrets(role_viewer):
     flows = RolePermission.objects.get(role=role_viewer, resource_type="flows")
     secrets = RolePermission.objects.get(role=role_viewer, resource_type="secrets")
     assert flows.permissions == 66  # R | use
-    assert secrets.permissions == 192  # use | list
+    # 0236 revoked secrets:USE from Viewer; only `list` remains.
+    assert secrets.permissions == 128  # list
 
 
 @pytest.mark.django_db

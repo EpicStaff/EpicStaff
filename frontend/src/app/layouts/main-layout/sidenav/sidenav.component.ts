@@ -208,7 +208,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
-            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',

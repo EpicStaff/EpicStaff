@@ -19,8 +19,8 @@ ACTION_METADATA = [
     {"code": "update", "label": "Edit", "bit": int(Permission.UPDATE)},
     {"code": "delete", "label": "Delete", "bit": int(Permission.DELETE)},
     {"code": "export", "label": "Export", "bit": int(Permission.EXPORT)},
+    {"code": "use", "label": "Use", "bit": int(Permission.USE)},
     # TODO: Future actions:
-    # {"code": "use", "label": "Use", "bit": int(Permission.USE)},
     # {"code": "list", "label": "List", "bit": int(Permission.LIST)},
 ]
 
@@ -135,8 +135,8 @@ RESOURCE_TYPE_METADATA = [
         "code": ResourceType.SECRETS.value,
         "label": "Secrets",
         "group": "config",
-        "description": "Provider credentials and sensitive configuration",
-        "applicable_actions": ["create", "read", "update", "delete"],
+        "description": "Provider API keys, credentials, sensitive config",
+        "applicable_actions": ["create", "read", "update", "delete", "use"],
         "platform_actions": [],
     },
     {

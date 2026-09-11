@@ -79,8 +79,8 @@ $radius: 8px;
     justify-content: center;
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
     line-height: 1.6;
     cursor: pointer;
     border: 1px solid var(--graphite-750);
@@ -99,7 +99,7 @@ $radius: 8px;
     // Primary — purple accent text (@ token)
     &--primary {
         color: var(--accent-color);
-        font-weight: 600;
+        font-weight: 500;
 
         &:hover {
             background: var(--purple-alpha-12);
@@ -171,7 +171,7 @@ $radius: 8px;
     align-items: center;
     gap: 6px;
     font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--green-490);
     user-select: none;
@@ -190,7 +190,7 @@ $radius: 8px;
     border: none;
     cursor: pointer;
     color: var(--green-490);
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1;
     padding: 0 2px;
     opacity: 0.6;
@@ -213,7 +213,7 @@ $radius: 8px;
     color: var(--gray-212);
     caret-color: var(--purple-440);
     font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.5;
     box-sizing: border-box;
 
@@ -246,7 +246,7 @@ $radius: 8px;
 .eb-mention-item {
     padding: 4px 12px;
     font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.4;
     color: var(--gray-212);
     cursor: pointer;
@@ -290,7 +290,7 @@ $radius: 8px;
 
 .eb-search-icon {
     color: var(--fog-alpha-60);
-    font-size: 14px;
+    font-size: 0.875rem;
     flex-shrink: 0;
 }
 
@@ -300,7 +300,7 @@ $radius: 8px;
     border: none;
     outline: none;
     color: var(--color-text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
 
     &::placeholder {
         color: var(--fog-alpha-60);
@@ -320,7 +320,7 @@ $radius: 8px;
 .eb-var-row {
     flex-shrink: 0;
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--color-text-primary);
     cursor: pointer;
     background: transparent;
@@ -347,7 +347,7 @@ $radius: 8px;
 }
 
 .eb-templates-label {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--gray-573);
     margin-right: 2px;
     white-space: nowrap;
@@ -356,7 +356,7 @@ $radius: 8px;
 // ── Template buttons ──────────────────────────────────────────────────────────
 .eb-template-btn {
     padding: 4px 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     color: var(--gray-212);
     background: var(--graphite-800);

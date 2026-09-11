@@ -66,6 +66,7 @@ export class SelectComponent implements ControlValueAccessor {
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
+    transparent = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
     allowCustomValue = input<boolean>(false);
 
