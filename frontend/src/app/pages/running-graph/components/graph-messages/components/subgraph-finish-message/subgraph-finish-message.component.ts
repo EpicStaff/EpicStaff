@@ -125,9 +125,12 @@ import {
             }
 
             .play-arrow {
+                width: 1.1rem;
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #00bfa5;

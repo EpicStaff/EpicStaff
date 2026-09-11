@@ -1,0 +1,259 @@
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 5rem !important;
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+    padding: 0 clamp(1rem, 4vw, 3rem);
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    position: relative;
+    z-index: 10;
+
+    .breadcrumbs {
+        display: flex;
+        align-items: center;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: visible;
+        white-space: nowrap;
+
+        .flows-prefix,
+        .flow-name,
+        .slash {
+            font-size: 1.5rem;
+            font-weight: 400;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            margin: 0;
+            padding: 0;
+        }
+
+        .flows-prefix {
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            flex-shrink: 0;
+
+            .back-arrow {
+                margin-top: 3px;
+                opacity: 1;
+                transform: translateX(0);
+                transition: all 0.3s ease;
+            }
+
+            span {
+                line-height: 1;
+            }
+
+            &:hover {
+                color: rgba(255, 255, 255, 0.9);
+            }
+        }
+
+        .slash {
+            color: var(--gray-500);
+            margin: 0 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .flow-name {
+            color: var(--white);
+            min-width: 0;
+            flex: 0 1 auto;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+            vertical-align: bottom;
+            cursor: pointer;
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+
+        app-status-badge {
+            flex-shrink: 0;
+        }
+    }
+
+    .actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+        margin-left: auto;
+        flex: 0 1 auto;
+        max-width: 100%;
+        overflow: visible;
+    }
+
+    app-session-files-button {
+        min-width: 0;
+        max-width: 100%;
+        flex: 0 1 auto;
+    }
+
+    .sessions-button,
+    .memories-button {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        color: var(--gray-400) !important;
+        background: transparent !important;
+        border: none !important;
+        border-radius: 6px !important;
+        padding: 8px 12px !important;
+        min-width: 0 !important;
+        max-width: 100%;
+        flex: 0 1 auto;
+        line-height: 1 !important;
+        overflow: hidden;
+
+        .btn-label {
+            display: block;
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        &:hover {
+            color: var(--white) !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        &:disabled {
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+
+            &:hover {
+                color: var(--gray-400) !important;
+                background: transparent !important;
+            }
+        }
+
+        mat-icon {
+            font-size: 1.125rem;
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+        }
+
+        span {
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
+        }
+    }
+
+    .memories-button {
+        position: relative;
+
+        .memories-badge {
+            flex-shrink: 0;
+        }
+    }
+}
+
+.session-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    padding: 8px clamp(1rem, 4vw, 3rem);
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &__left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    &__right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+
+        app-session-id-switcher {
+            --session-id-switcher-width: 160px;
+        }
+    }
+}
+
+.session-meta-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    white-space: nowrap;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+
+    &__label {
+        color: var(--gray-500);
+        font-weight: 500;
+        letter-spacing: 0.02em;
+    }
+
+    &__value {
+        color: var(--gray-300);
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.session-meta-divider {
+    color: var(--gray-500);
+    flex-shrink: 0;
+}
+
+.trigger-chip {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    gap: 4px;
+    padding: 4px 8px 4px 4px;
+    border-radius: 4px;
+    background: var(--white-alpha-8);
+    color: var(--fog-200);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    white-space: nowrap;
+    box-sizing: border-box;
+
+    i {
+        font-size: 1em;
+        line-height: 1;
+    }
+}
+
+@media (max-width: 1100px) {
+    .header {
+        .actions {
+            gap: 8px;
+        }
+
+        .sessions-button,
+        .memories-button {
+            padding: 8px 10px !important;
+        }
+    }
+}

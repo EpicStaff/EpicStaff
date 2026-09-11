@@ -651,9 +651,9 @@
 }
 
 .empty-list {
-    font-weight: 500;
-    color: var(--rose-500);
     margin: 10px;
+    color: var(--color-text-secondary);
+    font-weight: 500;
 }
 
 .loading-more-indicator {
