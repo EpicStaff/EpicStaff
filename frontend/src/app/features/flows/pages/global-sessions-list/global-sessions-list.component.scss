@@ -296,6 +296,13 @@
         white-space: nowrap;
     }
 
+    .preview-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
     .preview-header-right {
         display: flex;
         align-items: center;

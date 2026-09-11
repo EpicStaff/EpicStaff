@@ -17,7 +17,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
-import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { ModelTypes } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
@@ -142,13 +142,6 @@ export class AddConfigurationDialogComponent implements OnInit {
                 this.onSubmit();
             }
         });
-    }
-
-    onModelChanged(data: { model: LLMModel; provider: LLMProvider }): void {
-        const nameControl = this.llmForm.get('custom_name');
-        if (nameControl && !nameControl.value) {
-            nameControl.setValue(`${data.provider.name}/${data.model.name}`);
-        }
     }
 
     selectProvider(provider: RealtimeProvider): void {
