@@ -101,6 +101,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public activeTab = signal<TabType>('table');
 
     protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
+    protected readonly isSidebarCollapsed = signal<boolean>(false);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
@@ -253,7 +254,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     protected initializeForm(): FormGroup {

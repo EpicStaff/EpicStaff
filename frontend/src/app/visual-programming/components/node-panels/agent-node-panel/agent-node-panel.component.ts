@@ -15,6 +15,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
     JsonEditorComponent,
@@ -85,6 +87,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         VariableHighlightTextareaComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -100,6 +103,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly tasks = signal<AgentNodeTaskUi[]>([]);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
+
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('agent-node', 480);
 
     /** Both `<app-multi-select>` instances (compact + expanded views) for the surfaces
      *  dropdown — used to force-close whichever is open after the local-surface dialog
