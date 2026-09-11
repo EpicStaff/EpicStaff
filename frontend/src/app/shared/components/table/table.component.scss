@@ -51,7 +51,7 @@
 .col-label {
     font-size: var(--text-body-bold-size);
     font-weight: var(--text-body-bold-weight);
-    color: var(--text-secondary-60);
+    color: var(--text);
     text-transform: uppercase;
     white-space: nowrap;
 
@@ -62,10 +62,15 @@
         background: transparent;
         cursor: pointer;
         gap: 0.25rem;
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 
-        &:hover {
-            color: var(--text);
-        }
+    &__count {
+        color: var(--accent-color);
+        white-space: nowrap;
     }
 }
 

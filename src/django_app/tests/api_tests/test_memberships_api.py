@@ -2,7 +2,8 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import OrganizationUser
+from tables.models.rbac_models import OrganizationUser, Role, RolePermission
+from tables.models.rbac_models.rbac_enums import Permission
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -411,3 +412,235 @@ def test_remove_superadmin_membership_allowed(
     resp = client_as(admin_acme).delete(detail_url(membership.id))
     assert resp.status_code == status.HTTP_204_NO_CONTENT
     assert not OrganizationUser.objects.filter(pk=membership.pk).exists()
+
+
+# ---- visibility: a row the caller cannot see is 404, never 403 ----
+
+
+@pytest.fixture
+def admin_beta_member_acme(
+    db, django_user_model, acme, beta, role_org_admin, role_member
+):
+    """Org Admin of beta (clears the MEMBERSHIPS door gate) and a plain Member
+    of acme (no MEMBERSHIPS bits there)."""
+    user = django_user_model.objects.create_user(
+        email="admin-beta-member-acme-mem@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    return user
+
+
+@pytest.mark.django_db
+def test_patch_membership_without_bits_in_its_org_is_404(
+    client_as, admin_beta_member_acme, acme, member_only, role_viewer
+):
+    row = OrganizationUser.objects.get(user=member_only, org=acme)
+
+    resp = client_as(admin_beta_member_acme).patch(
+        detail_url(row.id), {"role_id": role_viewer.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "membership_not_found"
+    row.refresh_from_db()
+    assert row.role_id != role_viewer.id
+
+
+@pytest.mark.django_db
+def test_delete_membership_without_bits_in_its_org_is_404(
+    client_as, admin_beta_member_acme, acme, member_only
+):
+    row = OrganizationUser.objects.get(user=member_only, org=acme)
+
+    resp = client_as(admin_beta_member_acme).delete(detail_url(row.id))
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "membership_not_found"
+    assert OrganizationUser.objects.filter(pk=row.id).exists()
+
+
+# ---- the escalation ceiling on assignment ----
+#
+# Holding MEMBERSHIPS does not let you hand out authority you do not hold
+# yourself. The rule never looks at `is_built_in`: Org Admin and an
+# over-ceiling custom role are refused identically.
+
+
+@pytest.fixture
+def member_manager(db, django_user_model, acme, beta, role_org_admin):
+    """A delegated admin of acme holding only the two admin resources, plus
+    Org Admin of beta so the coarse door gate always passes."""
+    role = Role.objects.create(name="Member Manager-mc", org=acme, is_built_in=False)
+    for resource in ("memberships", "roles"):
+        RolePermission.objects.create(
+            role=role,
+            resource_type=resource,
+            permissions=int(
+                Permission.CREATE
+                | Permission.READ
+                | Permission.UPDATE
+                | Permission.DELETE
+            ),
+        )
+    user = django_user_model.objects.create_user(
+        email="member-manager-mc@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role)
+    return user
+
+
+@pytest.fixture
+def acme_membership(db, member_only, acme):
+    return OrganizationUser.objects.get(user=member_only, org=acme)
+
+
+@pytest.mark.django_db
+def test_assign_built_in_org_admin_above_ceiling_is_403(
+    client_as, member_manager, acme_membership, role_org_admin, role_member
+):
+    """The reported bug: managing memberships must not let you mint an
+    Org Admin whose powers you do not hold."""
+    resp = client_as(member_manager).patch(
+        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert resp.json()["code"] == "permission_escalation_denied"
+    acme_membership.refresh_from_db()
+    assert acme_membership.role_id == role_member.id
+
+
+@pytest.mark.django_db
+def test_add_member_with_role_above_ceiling_is_403(
+    client_as, member_manager, acme, role_org_admin, django_user_model
+):
+    newcomer = django_user_model.objects.create_user(
+        email="newcomer-mc@example.com", password="StrongPass123!"
+    )
+
+    resp = client_as(member_manager).post(
+        LIST_URL,
+        {"org_id": acme.id, "user_id": newcomer.id, "role_id": role_org_admin.id},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert resp.json()["code"] == "permission_escalation_denied"
+    assert not OrganizationUser.objects.filter(user=newcomer, org=acme).exists()
+
+
+@pytest.mark.django_db
+def test_assign_built_in_viewer_above_ceiling_is_403(
+    client_as, member_manager, acme_membership, role_viewer
+):
+    """Deliberate, not a bug: Viewer grants workspace read bits this caller
+    does not hold, so a strict-subset ceiling refuses it. A role that must
+    onboard people has to hold the bits it hands out."""
+    resp = client_as(member_manager).patch(
+        detail_url(acme_membership.id), {"role_id": role_viewer.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert resp.json()["code"] == "permission_escalation_denied"
+
+
+@pytest.mark.django_db
+def test_assign_custom_role_above_ceiling_is_403(
+    client_as, member_manager, acme_membership, acme
+):
+    """The rule is not a built-in special case -- a custom role that exceeds
+    the caller is refused the same way."""
+    powerful = Role.objects.create(name="Flow Owner-mc", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=powerful, resource_type="flows", permissions=int(Permission.CREATE)
+    )
+
+    resp = client_as(member_manager).patch(
+        detail_url(acme_membership.id), {"role_id": powerful.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert resp.json()["code"] == "permission_escalation_denied"
+
+
+@pytest.mark.django_db
+def test_assign_role_within_ceiling_succeeds(
+    client_as, member_manager, acme_membership, acme
+):
+    """A role whose bits the caller does hold is assignable."""
+    peer = Role.objects.create(name="Peer Manager-mc", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=peer, resource_type="memberships", permissions=int(Permission.READ)
+    )
+
+    resp = client_as(member_manager).patch(
+        detail_url(acme_membership.id), {"role_id": peer.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    acme_membership.refresh_from_db()
+    assert acme_membership.role_id == peer.id
+
+
+@pytest.mark.django_db
+def test_org_admin_can_assign_org_admin(
+    client_as, admin_acme, acme_membership, role_org_admin
+):
+    """Equality is within the ceiling."""
+    resp = client_as(admin_acme).patch(
+        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_org_admin_can_assign_viewer(
+    client_as, admin_acme, acme_membership, role_viewer
+):
+    """Viewer carries a USE bit on flows that Org Admin lacks. Comparing raw
+    bitmasks would refuse this; the ceiling compares grantable bits only."""
+    resp = client_as(admin_acme).patch(
+        detail_url(acme_membership.id), {"role_id": role_viewer.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    acme_membership.refresh_from_db()
+    assert acme_membership.role_id == role_viewer.id
+
+
+@pytest.mark.django_db
+def test_superadmin_bypasses_the_ceiling(
+    client_as, superadmin, acme_membership, role_org_admin
+):
+    resp = client_as(superadmin).patch(
+        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_missing_update_bit_is_permission_denied_not_escalation(
+    client_as, django_user_model, acme, beta, acme_membership, role_org_admin
+):
+    """Ordering: the verb gate runs first, so a caller who may see the row but
+    not write it is never told anything about the target role's power."""
+    reader = Role.objects.create(name="Member Reader-mc", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=reader, resource_type="memberships", permissions=int(Permission.READ)
+    )
+    user = django_user_model.objects.create_user(
+        email="member-reader-mc@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=reader)
+
+    resp = client_as(user).patch(
+        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert resp.json()["code"] == "permission_denied"

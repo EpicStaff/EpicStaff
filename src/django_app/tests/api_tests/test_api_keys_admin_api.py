@@ -201,3 +201,47 @@ def test_old_route_is_gone(client_as, admin_acme):
         client_as(admin_acme).get("/api/api-keys/").status_code
         == status.HTTP_404_NOT_FOUND
     )
+
+
+# ---- visibility: a key the caller cannot see is 404, never 403 ----
+
+
+@pytest.fixture
+def admin_beta_member_acme(
+    db, django_user_model, acme, beta, role_org_admin, role_member
+):
+    """Org Admin of beta (clears the API_KEYS door gate) and a plain Member of
+    acme (api_keys=0 there), which is the only org the key owner belongs to."""
+    user = django_user_model.objects.create_user(
+        email="admin-beta-member-acme-key@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    return user
+
+
+@pytest.mark.django_db
+def test_revoke_key_without_bits_in_owners_org_is_404(
+    client_as, admin_beta_member_acme, acme_member, make_key
+):
+    key = make_key(acme_member, name="invisible-revoke")
+
+    resp = client_as(admin_beta_member_acme).post(revoke_url(key.id))
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "api_key_not_found"
+    key.refresh_from_db()
+    assert key.revoked_at is None
+
+
+@pytest.mark.django_db
+def test_delete_key_without_bits_in_owners_org_is_404(
+    client_as, admin_beta_member_acme, acme_member, make_key
+):
+    key = make_key(acme_member, name="invisible-delete")
+
+    resp = client_as(admin_beta_member_acme).delete(detail_url(key.id))
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "api_key_not_found"
+    assert ApiKey.objects.filter(pk=key.id).exists()

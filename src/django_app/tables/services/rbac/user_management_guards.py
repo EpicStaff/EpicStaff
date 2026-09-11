@@ -37,19 +37,34 @@ class UserManagementGuards:
             raise LastSuperadminError()
 
     @staticmethod
-    def assert_role_is_assignable(role: Role, org_id: int) -> None:
-        """Refuses to assign roles that are not valid membership targets:
+    def role_is_assignable(role: Role, org_id: int) -> bool:
+        """Whether `role` is a structurally valid membership target in `org_id`.
+
+        Refuses two kinds of role:
 
         - The global Superadmin role (`is_built_in=True, name='Superadmin'`)
           — superadmin is a User flag granted via grant-superadmin, never
-          an org-membership role.
+          an org-membership role. Note it carries no RolePermission rows, so
+          the escalation ceiling alone would consider it assignable; this is
+          the only thing that excludes it.
         - A custom role whose `org_id` is not None and != the target org.
-          (Story 9 forward-compat; for Story 5 there are no custom roles
-          but the guard is in place.)
+
+        Exposed as a predicate as well as an assertion because the assignable
+        roles filter on `GET /api/admin/roles/` needs the same rule as a
+        boolean, and restating it there would let the two drift.
         """
         if role.is_built_in and role.name == BuiltInRole.SUPERADMIN:
-            raise InvalidRoleAssignmentError()
-        if role.org_id is not None and role.org_id != org_id:
+            return False
+        return role.org_id is None or role.org_id == org_id
+
+    @staticmethod
+    def assert_role_is_assignable(role: Role, org_id: int) -> None:
+        """Assertion form of `role_is_assignable`.
+
+        Raises:
+            InvalidRoleAssignmentError (400): not a valid membership target.
+        """
+        if not UserManagementGuards.role_is_assignable(role, org_id):
             raise InvalidRoleAssignmentError()
 
     @staticmethod

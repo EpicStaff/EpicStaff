@@ -33,8 +33,13 @@ list spans organizations.
 | DELETE | `/api/admin/memberships/{id}/` | `MEMBERSHIPS.DELETE` in the row's org | Remove a member |
 
 The door gate is coarse — it passes if you hold the action in at least one org.
-The precise per-org check runs behind it; a membership in an org you can't access
-is **404**, indistinguishable from one that doesn't exist.
+The precise per-org check runs behind it, and it answers two questions in order:
+**can you see this membership**, and **may you perform this action on it**. A
+membership you cannot see is **404**, indistinguishable from one that doesn't
+exist — that covers both an org you don't belong to and an org where you hold
+neither `MEMBERSHIPS.READ` nor the action you're attempting. Only once the row is
+visible does a missing permission surface as **403**, so a 403 never confirms a
+membership id the list won't show you.
 
 ### Membership row shape
 
@@ -115,18 +120,26 @@ that list.
 - Target account is deactivated → **400 `user_not_active`**.
 - Non-assignable role (the global Superadmin role, or a custom role from another
   org) → **400 `invalid_role_assignment`**.
+- Role grants permissions you do not hold in that org → **403
+  `permission_escalation_denied`** (the escalation ceiling — see `PATCH` below).
 - Target org you can't access → **404** (no existence leak).
 
 **201** → the membership row.
 
 ### PATCH `/api/admin/memberships/{id}/`
 
-`{"role_id": 2}`. Assigns any existing assignable role. There is **no assignment
-ceiling** — holding `MEMBERSHIPS.UPDATE` lets you assign any existing role to
-others, including promoting to Org Admin. A non-superadmin **cannot change their
-own membership** → **403 `cannot_modify_self_membership`**. A membership held by
-a superadmin cannot be re-roled → **400 `superadmin_not_assignable`**. **200** →
-the row.
+`{"role_id": 2}`. Subject to the **escalation ceiling**: you may only assign a
+role whose permissions are all within your own in that organization, so holding
+`MEMBERSHIPS.UPDATE` does not let you hand out authority you lack — promoting
+someone to Org Admin requires holding Org Admin's permissions yourself.
+Exceeding it → **403 `permission_escalation_denied`**. The rule is identical for
+built-in and custom roles, and superadmin bypasses it. See
+[roles_and_permissions.md](roles_and_permissions.md) for the full rule and for
+`?assignable_org_ids=`, which lists exactly the roles you may assign.
+
+A non-superadmin **cannot change their own membership** → **403
+`cannot_modify_self_membership`**. A membership held by a superadmin cannot be
+re-roled → **400 `superadmin_not_assignable`**. **200** → the row.
 
 ### DELETE `/api/admin/memberships/{id}/`
 
@@ -209,7 +222,8 @@ organization members" above.
 |---|---|
 | Adding a member | Pick from the assignable-users list, or supply an exact email. If the email has no account, you get a 404 — a superadmin creates the account first on `/api/admin/users/`. |
 | Who the picker shows | People already visible to you through an org where you can read members. Superadmins and deactivated accounts never appear. |
-| Assigning roles | Populating the role picker needs `ROLES.read` in the org (to list options) plus `MEMBERSHIPS.update` to assign. A `MEMBERSHIPS`-only admin without `ROLES.read` can still add/remove members and default them to Member. |
+| Assigning roles | Populating the role picker needs `ROLES.read` in the org (to list options) plus `MEMBERSHIPS.update` to assign. You can only assign roles whose permissions are within your own — call `GET /api/admin/roles/?assignable_org_ids=<org>` to list exactly those. |
+| Admin-only roles cannot onboard | A role holding only `MEMBERSHIPS`/`ROLES` can assign **nothing**: every built-in grants workspace permissions it does not hold, so the ceiling refuses them and the assignable list comes back empty. Give such a role the permissions it needs to hand out (typically the `read` actions of the workspace resources), or use Org Admin. |
 | Self-management | You cannot change or remove your own membership; another admin or a superadmin does it. |
 | Deactivated orgs | Drop out of a delegated admin's scope; only a superadmin manages members in an inactive org. |
 | 401 vs 403 | 401 = no/expired credential. 403 = valid credential but insufficient permission. |
@@ -224,10 +238,11 @@ organization members" above.
 | `superadmin_not_assignable` | 400 | Target is a superadmin — cannot be added or re-roled |
 | `user_not_active` | 400 | Target account is deactivated |
 | `invalid_role_assignment` | 400 | Global Superadmin role, or a custom role from another org |
+| `permission_escalation_denied` | 403 | The role being assigned grants permissions you do not hold in that org |
 | `cannot_modify_self_membership` | 403 | You cannot change or remove your own membership |
-| `membership_not_found` | 404 | No such membership, or it is in an org you cannot access |
+| `membership_not_found` | 404 | No such membership, or one you cannot see (an org you don't belong to, or one where you hold neither `MEMBERSHIPS.READ` nor the attempted action) |
 | `organization_not_found` | 404 | No such organization, or you cannot access it |
 | `email_already_exists` | 400 | An account with that email exists |
 | `last_superadmin` | 400 | At least one active superadmin must remain |
-| `permission_denied` | 403 | You lack the required `MEMBERSHIPS` permission |
+| `permission_denied` | 403 | You can see the membership but lack the required `MEMBERSHIPS` action (one you cannot see is a 404 instead) |
 | `invalid` | 400 | Field validation, or a bad list filter |

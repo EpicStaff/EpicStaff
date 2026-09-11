@@ -21,6 +21,7 @@ import { getRelativeTime } from '@shared/utils';
 import { concat, Observable, of } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
@@ -80,6 +81,7 @@ export class UsersTabComponent implements OnInit {
     private membershipsService = inject(MembershipsService);
     private profileService = inject(ProfileService);
     private permissionsService = inject(PermissionsService);
+    private activeOrgService = inject(ActiveOrgService);
     private toast = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
 
@@ -91,6 +93,12 @@ export class UsersTabComponent implements OnInit {
 
     private orgFilterItems = signal<SelectItem[]>([]);
     private roleFilterItems = signal<SelectItem[]>([]);
+
+    /** Preselected org filter — follows the currently active org (empty when none is chosen). */
+    private readonly activeOrgDefault = computed<number[] | undefined>(() => {
+        const id = this.activeOrgService.activeOrgId();
+        return id !== null ? [id] : undefined;
+    });
 
     filteredUsers = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -157,6 +165,7 @@ export class UsersTabComponent implements OnInit {
             label: 'ORGANIZATION',
             width: 'minmax(140px, 1.5fr)',
             filterItems: this.orgFilterItems(),
+            defaultValues: this.activeOrgDefault(),
         },
         { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
         { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },

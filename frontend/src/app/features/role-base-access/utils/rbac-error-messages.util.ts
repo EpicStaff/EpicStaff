@@ -4,6 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
  *  Callers can fall back to `err.error?.message` or a generic string for unknown codes. */
 const CODE_TO_MESSAGE: Record<string, string> = {
     permission_denied: 'You do not have permission to perform this action.',
+    permission_escalation_denied: "You can't assign a role with more permissions than you have.",
     cannot_modify_self_membership: 'You can\u2019t modify your own membership.',
     membership_already_exists: 'Already a member of this organization.',
     user_not_found: 'No account with that email \u2014 ask a superadmin to create the account first.',

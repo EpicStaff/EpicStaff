@@ -11,7 +11,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { ActionCode, FullMembership, GetRoleResponse, Organization, ResourceCode, UserRole } from '@shared/models';
-import { catchError, EMPTY } from 'rxjs';
+import { catchError, forkJoin, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { RolesService } from '../../../../services/admin/roles.service';
@@ -106,20 +106,24 @@ export class StepAssignToOrgComponent implements OnInit {
     private loadRolesForOrgs(allowedOrgIds: number[]): void {
         if (!allowedOrgIds.length) return;
 
-        this.rolesService
-            .loadRoles({ orgIds: allowedOrgIds })
-            .pipe(
-                catchError(() => EMPTY),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((res) => {
-                // Superadmin is a platform-level grant, not an assignable membership role
-                const builtIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN).map(roleToSelectItem);
-                const byOrg = new Map<number, SelectItem[]>(allowedOrgIds.map((id) => [id, [...builtIns]]));
-                for (const role of res.results) {
-                    if (role.org_id === null) continue;
-                    byOrg.get(role.org_id)?.push(roleToSelectItem(role));
-                }
+        const perOrg$ = allowedOrgIds.map((orgId) =>
+            this.rolesService
+                .loadAssignableRoles(orgId)
+                .pipe(catchError(() => of({ built_in_roles: [], results: [], count: 0, next: null, previous: null })))
+        );
+
+        forkJoin(perOrg$)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((responses) => {
+                const byOrg = new Map<number, SelectItem[]>();
+                responses.forEach((res, i) => {
+                    const orgId = allowedOrgIds[i];
+                    const items: SelectItem[] = [
+                        ...res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN).map(roleToSelectItem),
+                        ...res.results.filter((r) => r.org_id === orgId).map(roleToSelectItem),
+                    ];
+                    byOrg.set(orgId, items);
+                });
                 this.roleItemsByOrg.set(byOrg);
             });
     }

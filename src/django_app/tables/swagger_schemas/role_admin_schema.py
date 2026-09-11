@@ -32,7 +32,8 @@ _FORBIDDEN_403 = OpenApiResponse(
 
 _WRITE_FORBIDDEN_403 = OpenApiResponse(
     description=(
-        "permission_denied (no ROLES permission in the role's org), "
+        "permission_denied (the caller can see the role but lacks this "
+        "action on ROLES in its org — a role they cannot see is a 404), "
         "permission_escalation_denied (granting a bit the caller doesn't "
         "hold), or built_in_role_immutable (target is a built-in role)."
     )
@@ -40,8 +41,9 @@ _WRITE_FORBIDDEN_403 = OpenApiResponse(
 
 _NOT_FOUND_404 = OpenApiResponse(
     description=(
-        "Role not found, or a custom role in an org the caller cannot read "
-        "(role_not_found — no existence leak)."
+        "Role not found, or a custom role the caller cannot see — an org "
+        "they are not a member of, or one where they hold neither ROLES "
+        "read nor the attempted action (role_not_found — no existence leak)."
     )
 )
 
@@ -57,7 +59,11 @@ ROLES_LIST_GET = dict(
     description=(
         "Built-in templates (once, in `built_in_roles`) plus custom roles "
         "(`results`, paginated) from every org the caller can read. Filter "
-        "with ?org_ids=; omit for all readable orgs."
+        "with ?org_ids=; omit for all readable orgs. Use "
+        "?assignable_org_ids= instead to list only the roles the caller may "
+        "assign — the response shape is identical. Each role carries "
+        "`assigned_count` and an `assigned_by_org` breakdown, covering the "
+        "orgs in scope for this request."
     ),
     parameters=[
         OpenApiParameter(
@@ -68,6 +74,20 @@ ROLES_LIST_GET = dict(
             description=(
                 "Comma-separated org ids to include, e.g. `10,20`. A "
                 "forbidden org → 403. Omit for every org the caller can read."
+            ),
+        ),
+        OpenApiParameter(
+            name="assignable_org_ids",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.STR,
+            required=False,
+            description=(
+                "Comma-separated org ids, parsed like ?org_ids=, restricting "
+                "the response to roles the caller may actually assign in "
+                "those orgs — the escalation ceiling applied as a filter. "
+                "Supersedes ?org_ids= when both are sent. Built-in roles are "
+                "included when assignable in at least one requested org, so "
+                "one org gives an exact answer and several give a superset."
             ),
         ),
         OpenApiParameter(
@@ -87,7 +107,11 @@ ROLES_LIST_GET = dict(
     ],
     responses={
         200: RoleListResponseSerializer,
-        400: OpenApiResponse(description="Malformed org_ids (org_context_required)."),
+        400: OpenApiResponse(
+            description=(
+                "Malformed org_ids or assignable_org_ids " "(org_context_required)."
+            )
+        ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _FORBIDDEN_403,
     },

@@ -39,9 +39,10 @@ class RolePermissionEntrySerializer(serializers.Serializer):
 
 
 class RoleResponseSerializer(serializers.Serializer):
-    """Renders Role with attached `_perm_rows` and `_assigned_count`
-    (set by RoleManagementService). Filters zero-permission rows
-    from the response so the FE doesn't see noise."""
+    """Renders Role with the attributes RoleManagementService attaches —
+    `_perm_rows`, `_assigned_count`, `_assigned_by_org`, `_effective_org_id`.
+    Filters zero-permission rows from the response so the FE doesn't see
+    noise."""
 
     id = serializers.IntegerField()
     name = serializers.CharField()
@@ -51,6 +52,7 @@ class RoleResponseSerializer(serializers.Serializer):
     org_id = serializers.IntegerField(allow_null=True)
     org = serializers.DictField(allow_null=True)
     assigned_count = serializers.IntegerField()
+    assigned_by_org = serializers.ListField(child=serializers.DictField())
     permissions = RolePermissionEntrySerializer(many=True)
 
     def to_representation(self, instance):
@@ -63,6 +65,7 @@ class RoleResponseSerializer(serializers.Serializer):
             "org_id": getattr(instance, "_effective_org_id", instance.org_id),
             "org": self._org_obj(instance),
             "assigned_count": getattr(instance, "_assigned_count", 0),
+            "assigned_by_org": getattr(instance, "_assigned_by_org", []),
             "permissions": [
                 {
                     "resource_type": row.resource_type,

@@ -5,6 +5,9 @@ Read by `PermissionCatalogView` (FE matrix UI) and indirectly by the
 built-in role seed migration (for sanity-checking applicable bits).
 """
 
+from functools import reduce
+from operator import or_
+
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 
 
@@ -20,6 +23,8 @@ ACTION_METADATA = [
     # {"code": "use", "label": "Use", "bit": int(Permission.USE)},
     # {"code": "list", "label": "List", "bit": int(Permission.LIST)},
 ]
+
+GRANTABLE_ACTION_BITS: int = reduce(or_, (entry["bit"] for entry in ACTION_METADATA), 0)
 
 
 # Resource type metadata: ordered as the FE renders the matrix rows,

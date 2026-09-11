@@ -1,6 +1,8 @@
 import pytest
 from rest_framework import status
 
+from tables.models.rbac_models import OrganizationUser
+
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 LIST_URL = "/api/admin/organizations/"
@@ -95,3 +97,46 @@ def test_org_admin_cannot_deactivate_org(client_as, admin_acme, acme):
 def test_superadmin_can_create_org(client_as, superadmin):
     resp = client_as(superadmin).post(LIST_URL, {"name": "SA New Co"}, format="json")
     assert resp.status_code == status.HTTP_201_CREATED
+
+
+# ---- visibility: an org the caller cannot see is 404, never 403 ----
+
+
+@pytest.fixture
+def admin_beta_member_acme(
+    db, django_user_model, acme, beta, role_org_admin, role_member
+):
+    """Org Admin of beta (clears the ORGANIZATIONS door gate) and a plain
+    Member of acme (organizations=0 there)."""
+    user = django_user_model.objects.create_user(
+        email="admin-beta-member-acme-org@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    return user
+
+
+@pytest.mark.django_db
+def test_retrieve_org_without_bits_as_member_is_404(
+    client_as, admin_beta_member_acme, acme
+):
+    resp = client_as(admin_beta_member_acme).get(detail_url(acme.id))
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "organization_not_found"
+
+
+@pytest.mark.django_db
+def test_rename_org_without_bits_as_member_is_404(
+    client_as, admin_beta_member_acme, acme
+):
+    original = acme.name
+
+    resp = client_as(admin_beta_member_acme).patch(
+        detail_url(acme.id), {"name": "Renamed-by-outsider"}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "organization_not_found"
+    acme.refresh_from_db()
+    assert acme.name == original

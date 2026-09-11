@@ -16,6 +16,7 @@ import {
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
 import { EMPTY, finalize, switchMap } from 'rxjs';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import {
@@ -46,6 +47,7 @@ export class RolesTabComponent implements OnInit {
     private confirmation = inject(ConfirmationDialogService);
     private permissionsService = inject(PermissionsService);
     private orgStorage = inject(OrganizationsStorageService);
+    private activeOrgService = inject(ActiveOrgService);
     protected rolesService = inject(RolesService);
 
     readonly searchTerm = signal('');
@@ -63,6 +65,12 @@ export class RolesTabComponent implements OnInit {
     readonly orgFilterItems = computed<SelectItem[]>(() =>
         this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
     );
+
+    /** Preselected org filter — follows the currently active org (empty when none is chosen). */
+    private readonly activeOrgDefault = computed<number[] | undefined>(() => {
+        const id = this.activeOrgService.activeOrgId();
+        return id !== null ? [id] : undefined;
+    });
 
     private readonly rowActions: AppTableRowAction[] = [
         {
@@ -101,6 +109,7 @@ export class RolesTabComponent implements OnInit {
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
+            defaultValues: this.activeOrgDefault(),
         },
         { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)', align: 'center' },
         { key: 'actions', label: 'ACTIONS', width: '160px', align: 'center', actions: this.rowActions },
@@ -125,7 +134,7 @@ export class RolesTabComponent implements OnInit {
 
     ngOnInit(): void {
         this.loadReadableOrgs();
-        this.reloadRoles();
+        if (!this.activeOrgDefault()) this.reloadRoles();
     }
 
     private loadReadableOrgs(): void {

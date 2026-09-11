@@ -3,6 +3,7 @@ later (custom roles) with the BuiltInRoleImmutableError guard already
 in place via `assert_mutable`.
 """
 
+from collections import defaultdict
 from typing import Optional
 
 from django.db import transaction
@@ -17,11 +18,13 @@ from tables.models.rbac_models import (
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
+from tables.services.rbac.effective_permissions import EffectivePermissions
+from tables.services.rbac.permission_assert import assert_within_ceiling
+from tables.services.rbac.user_management_guards import UserManagementGuards
 from tables.services.rbac.rbac_exceptions import (
     BuiltInRoleImmutableError,
     OrganizationNotFoundError,
     OrgMembershipRequiredError,
-    PermissionEscalationError,
     RoleNameConflictError,
     RoleNotFoundError,
 )
@@ -80,11 +83,19 @@ class RoleManagementService(CrossOrgResourceService):
 
     def update_role(self, actor, role_id, changes) -> Role:
         """Apply a partial update (subset of name/description/permissions).
-        `permissions`, if present, is a full replacement. Atomic + row-locked."""
+        `permissions`, if present, is a full replacement. Atomic + row-locked.
+
+        A role the caller cannot see raises RoleNotFoundError (404) from
+        `resolve_for_write`, so this endpoint never confirms an id that the
+        detail route reports as missing; only a visible role can reach the
+        403 from `assert_can`. Built-ins short-circuit before either check —
+        they are visible to every caller, so their 403 leaks nothing."""
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self.resolve_for_write(actor, role.org_id)
+            effective = self.resolve_for_write(
+                actor, role.org_id, action=Permission.UPDATE
+            )
             self.assert_can(effective=effective, action=Permission.UPDATE)
             if "permissions" in changes:
                 self._assert_within_ceiling(
@@ -115,7 +126,7 @@ class RoleManagementService(CrossOrgResourceService):
         the role is fetched without a row lock."""
         role = self._fetch_role_or_404(role_id=role_id)
         self.assert_mutable(role)
-        effective = self.resolve_for_write(actor, role.org_id)
+        effective = self.resolve_for_write(actor, role.org_id, action=Permission.DELETE)
         self.assert_can(effective=effective, action=Permission.DELETE)
         memberships = OrganizationUser.objects.filter(role_id=role.id).select_related(
             "user"
@@ -141,7 +152,9 @@ class RoleManagementService(CrossOrgResourceService):
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self.resolve_for_write(actor, role.org_id)
+            effective = self.resolve_for_write(
+                actor, role.org_id, action=Permission.DELETE
+            )
             self.assert_can(effective=effective, action=Permission.DELETE)
             viewer_role = Role.objects.get(
                 name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
@@ -154,13 +167,27 @@ class RoleManagementService(CrossOrgResourceService):
 
     # ---- read authorization ----
 
-    def get_role_for_read(self, actor, role_id) -> Role:
+    def get_role_for_read(self, actor, role_id, scopes=None) -> Role:
         """Fetch a role the actor is allowed to READ, with display data
         attached for serialization. Built-ins are visible to any principal
         with ROLES.READ anywhere; a custom role in an org the actor cannot
-        READ raises RoleNotFoundError (404 — no existence leak)."""
+        READ raises RoleNotFoundError (404 — no existence leak).
+
+        `scopes` is the caller's pre-resolved cross-org scopes from the door
+        gate's per-request cache. Only a built-in target needs them: a custom
+        role is counted in its own org, so resolving them would be a wasted
+        query. The custom branch passes `scope_org_ids=set()` rather than
+        `None`: only built-in counting ever consults that argument, and no
+        built-in can reach this branch, but an empty selection fails closed
+        — counting nothing rather than everything — if that assumption is
+        ever wrong."""
         role, _ = self._get_role_with_read_access(actor=actor, role_id=role_id)
-        self.attach_role_display(roles=[role])
+        scope_org_ids = (
+            self.resolve_scope_org_ids(actor, org_ids=None, scopes=scopes)
+            if role.is_built_in
+            else set()
+        )
+        self.attach_role_display(roles=[role], scope_org_ids=scope_org_ids)
         return role
 
     def _get_role_with_read_access(self, actor, role_id):
@@ -208,21 +235,76 @@ class RoleManagementService(CrossOrgResourceService):
             .prefetch_related("permissions_set")
             .get(pk=role_id)
         )
-        self.attach_role_display(roles=[role])
+        # Only create/update reach here, and `assert_mutable` rejects a
+        # built-in before either write begins. Only built-in counting consults
+        # the scope. A custom role is counted in its own org,
+        # which is exactly right for a write response even when the caller
+        # holds CREATE/UPDATE without READ there.
+        self.attach_role_display(roles=[role], scope_org_ids=set())
         return role
 
     # ---- cross-org list ----
 
-    def list_built_in_roles(self) -> list[Role]:
+    def list_built_in_roles(self, scope_org_ids, assignable_in=None) -> list[Role]:
+        """The four built-in templates. `assignable_in` (a
+        {org_id: EffectivePermissions} map, or None for no filtering) keeps
+        only the ones the caller may assign — by **union** across the
+        requested orgs, since the list is global while assignability is
+        per-org. A single requested org therefore gives an exact answer and
+        several give a superset.
+
+        `scope_org_ids` (`Optional[set[int]]`, required) is forwarded to
+        `attach_role_display` for the holder count: `None` means no filter at
+        all (superadmin, count every organization), `set()` means an empty
+        selection (count nothing) — the two are opposites, never test one by
+        truthiness."""
         roles = list(
             Role.objects.filter(is_built_in=True, org__isnull=True)
             .order_by("name")
             .prefetch_related("permissions_set")
         )
-        self.attach_role_display(roles=roles)
+        if assignable_in is not None:
+            roles = [
+                role
+                for role in roles
+                if any(
+                    self.is_assignable_by(effective, role, org_id)
+                    for org_id, effective in assignable_in.items()
+                )
+            ]
+        self.attach_role_display(roles=roles, scope_org_ids=scope_org_ids)
         return roles
 
-    def list_custom_roles(self, actor, org_ids, scopes=None):
+    def is_assignable_by(self, effective, role, org_id) -> bool:
+        """Whether `effective` may assign `role` in `org_id`: a structurally
+        valid membership target, and within the caller's escalation ceiling.
+
+        The boolean twin of the two assertions `MembershipManagementService`
+        runs before a write, so the picker cannot offer a role the write
+        would refuse."""
+        return UserManagementGuards.role_is_assignable(
+            role, org_id
+        ) and effective.covers(EffectivePermissions.bits_of(role))
+
+    def resolve_assignable_scopes(self, actor, org_ids, scopes=None):
+        """{org_id: EffectivePermissions} for the assignability filter, or None
+        when no filtering applies — the parameter was absent, or the caller is
+        a superadmin who may assign anything.
+
+        Reuses the door gate's per-request `_rbac_org_scopes` cache, so the
+        filter costs no additional query."""
+        if org_ids is None or getattr(actor, "is_superadmin", False):
+            return None
+        if scopes is None:
+            scopes = self._org_access.resolve_all(user=actor)
+        requested = set(org_ids)
+        return {
+            scope.org.id: scope.effective
+            for scope in scopes
+            if scope.org.id in requested
+        }
+
+    def list_custom_roles(self, actor, org_ids, scopes=None, assignable_in=None):
         """Return a queryset of custom roles across the orgs the actor may
         READ. `org_ids` (list) restricts to those orgs — a forbidden id
         raises PermissionDenied (fail-loud). `org_ids=None` means every
@@ -235,29 +317,112 @@ class RoleManagementService(CrossOrgResourceService):
             .prefetch_related("permissions_set")
             .order_by("org__name", "name")
         )
-        return self.apply_org_scope(
+        scoped = self.apply_org_scope(
             actor=actor,
             org_ids=org_ids,
             base_qs=base_qs,
             org_field="org_id",
             scopes=scopes,
         )
+        if assignable_in is None:
+            return scoped
+        # Each custom role lives in exactly one org, so it is compared there.
+        # Filtered in Python because a bitmask-subset test across a role's
+        # several permission rows is not a clean SQL predicate, and before
+        # pagination so pages stay full and consistent. The candidate set is
+        # only the requested orgs' custom roles.
+        return [
+            role
+            for role in scoped
+            if role.org_id in assignable_in
+            and self.is_assignable_by(assignable_in[role.org_id], role, role.org_id)
+        ]
 
     # ---- display attributes ----
 
-    def attach_role_display(self, roles) -> None:
-        """Attach `_perm_rows`, `_assigned_count`, `_effective_org_id` used
-        by RoleResponseSerializer. Custom roles get their per-role count
-        (a custom role lives in exactly one org, so the count is that org's).
-        Built-ins get 0 — a global cross-org total would both leak an
-        aggregate to a single-org caller and violate the response contract."""
-        custom = [r for r in roles if not r.is_built_in]
+    def attach_role_display(self, roles, scope_org_ids) -> None:
+        """Attach `_perm_rows`, `_effective_org_id`, `_assigned_count` and
+        `_assigned_by_org`, all read by RoleResponseSerializer.
+
+        `scope_org_ids` is required rather than defaulted on purpose: a
+        built-in role is one row shared by every org, so a call site that
+        omitted the scope would publish a global cross-org total. `None` means
+        no filter (superadmin); an empty set means no org is in scope. This
+        mirrors `resolve_for_write`, whose `action` is required so that every
+        call site states which verb it authorizes.
+
+        Custom roles ignore the scope: a custom role's holders can only be in
+        its own org, and the caller was already authorized against that role
+        there.
+        """
+        custom = [role for role in roles if not role.is_built_in]
+        built_in = [role for role in roles if role.is_built_in]
         self._attach_assigned_counts(roles=custom, org_id=None)
+        self._attach_custom_assigned_breakdown(roles=custom)
+        self._attach_built_in_assigned_counts(
+            roles=built_in, scope_org_ids=scope_org_ids
+        )
         for role in roles:
             role._perm_rows = list(role.permissions_set.all())
             role._effective_org_id = role.org_id
-            if role.is_built_in:
-                role._assigned_count = 0
+
+    @staticmethod
+    def _attach_custom_assigned_breakdown(roles) -> None:
+        """The one-entry breakdown for a custom role. Needs no query: the org
+        is the role's own, `_attach_assigned_counts` has already counted it,
+        and `role.org` is select_related by every caller."""
+        for role in roles:
+            count = getattr(role, "_assigned_count", 0)
+            role._assigned_by_org = (
+                [{"org": {"id": role.org_id, "name": role.org.name}, "count": count}]
+                if role.org_id is not None and count
+                else []
+            )
+
+    @staticmethod
+    def _attach_built_in_assigned_counts(roles, scope_org_ids) -> None:
+        """Per-org holder counts for built-in roles, restricted to
+        `scope_org_ids` (`None` = every org).
+
+        The Superadmin row is excluded. Its authority is the
+        `User.is_superadmin` flag, so the only memberships carrying that role
+        are the bootstrap rows migration 0211 deliberately retained -- a count
+        over them reports how many bootstrap rows survived a migration, not how
+        many superadmins exist. It would also tell a delegated admin that a
+        platform superadmin is attached to their org, which `attach_admins`
+        withholds for the same reason.
+
+        Ordering is applied in Python, not by the query: `.values().annotate()`
+        groups by the `values()` fields, so an `order_by(Lower("org__name"))`
+        would pull that expression into the GROUP BY.
+        """
+        for role in roles:
+            role._assigned_count = 0
+            role._assigned_by_org = []
+        countable = [role for role in roles if role.name != BuiltInRole.SUPERADMIN]
+        if not countable or (scope_org_ids is not None and not scope_org_ids):
+            return
+        rows = OrganizationUser.objects.filter(
+            role_id__in=[role.id for role in countable]
+        )
+        if scope_org_ids is not None:
+            rows = rows.filter(org_id__in=scope_org_ids)
+        by_role = defaultdict(list)
+        for row in rows.values("role_id", "org_id", "org__name").annotate(
+            c=Count("id")
+        ):
+            by_role[row["role_id"]].append(
+                {
+                    "org": {"id": row["org_id"], "name": row["org__name"]},
+                    "count": row["c"],
+                }
+            )
+        for role in countable:
+            entries = sorted(
+                by_role.get(role.id, []), key=lambda entry: entry["org"]["name"].lower()
+            )
+            role._assigned_by_org = entries
+            role._assigned_count = sum(entry["count"] for entry in entries)
 
     # ---- internals ----
 
@@ -294,15 +459,15 @@ class RoleManagementService(CrossOrgResourceService):
             )
 
     def _assert_within_ceiling(self, effective, permissions) -> None:
-        """Ceiling rule: every requested bit must be within the caller's own
-        effective permissions. Takes an already-resolved `effective` from
-        the caller. Superadmin bypasses."""
-        if effective.is_superadmin:
-            return
-        for entry in permissions:
-            caller_mask = effective.by_resource.get(entry["resource_type"], 0)
-            if entry["bitmask"] & ~caller_mask:
-                raise PermissionEscalationError()
+        """Ceiling rule for authoring: every requested bit must be within the
+        caller's own effective permissions. Adapts the validator's
+        `[{resource_type, bitmask}]` shape onto the shared assertion, which
+        role assignment uses too. Collapsing the list into a mapping cannot
+        lose an entry -- RoleValidationService rejects a duplicate
+        resource_type. Superadmin bypasses."""
+        assert_within_ceiling(
+            effective, {e["resource_type"]: e["bitmask"] for e in permissions}
+        )
 
     @staticmethod
     def _assert_name_available(org_id, name, exclude_role_id) -> None:

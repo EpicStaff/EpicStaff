@@ -25,6 +25,7 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/admin/roles/` | CREATE in body `org_id` + ceiling |
 | PATCH | `/api/admin/roles/{id}/` | UPDATE in role's org + ceiling |
 | DELETE | `/api/admin/roles/{id}/` | DELETE in role's org |
+| GET | `/api/admin/roles/?assignable_org_ids=1,2` | same as list — filters to roles the caller may assign |
 
 ---
 
@@ -331,6 +332,7 @@ below). **Header:** none.
       "org_id": 1,
       "org": { "id": 1, "name": "Acme Inc" },
       "assigned_count": 2,
+      "assigned_by_org": [{ "org": { "id": 1, "name": "Acme Inc" }, "count": 2 }],
       "permissions": [
         { "resource_type": "secrets", "actions": ["read", "update"] }
       ]
@@ -346,6 +348,7 @@ below). **Header:** none.
       "org_id": null,
       "org": null,
       "assigned_count": 0,
+      "assigned_by_org": [],
       "permissions": []
     },
     {
@@ -356,7 +359,11 @@ below). **Header:** none.
       "scope": "org",
       "org_id": null,
       "org": null,
-      "assigned_count": 0,
+      "assigned_count": 3,
+      "assigned_by_org": [
+        { "org": { "id": 1, "name": "Acme Inc" }, "count": 2 },
+        { "org": { "id": 2, "name": "Beta" }, "count": 1 }
+      ],
       "permissions": [
         { "resource_type": "flows", "actions": ["create", "read", "update", "delete", "export"] }
       ]
@@ -373,14 +380,28 @@ Field notes:
   built-in roles (Superadmin, Org Admin, Member, Viewer). Not affected
   by `?org_ids=` or pagination — every caller who passes the door gate
   sees all four.
+  Their `assigned_count` and `assigned_by_org` do vary by caller and by
+  `?org_ids=`, because those describe holders rather than the role itself.
 - `is_built_in: true` — protected from edit / delete (see "Built-in
   immutability" below).
 - `scope` — `"global"` for Superadmin, `"org"` for every other role.
 - `org` / `org_id` — `null` for built-in roles; the owning org for
   custom roles.
-- `assigned_count` — `OrganizationUser` rows referencing this role.
-  For the Superadmin role this is typically 0 — superadmin authority
-  comes from `User.is_superadmin`, not a membership row.
+- `assigned_count` — how many people hold this role **in the organizations
+  this response covers**: the `?org_ids=` selection when you send one,
+  otherwise every organization where you hold `roles` `read`. A superadmin is
+  unfiltered. It is always the sum of `assigned_by_org[].count`.
+- `assigned_by_org` — the same figure broken down per organization, ordered by
+  organization name, case-insensitively. Organizations with no holders are omitted, so an
+  unassigned role comes back with `[]`. A custom role has at most one entry —
+  its own organization, omitted entirely when the role has no holders. A built-in role has
+  one entry per organization in scope, because the same role row is shared by
+  every organization.
+- The **Superadmin** row always reports `assigned_count: 0` and
+  `assigned_by_org: []`. Superadmin authority is the account's
+  `is_superadmin` flag, not a membership row, so a count there would be
+  meaningless. To count superadmins, use
+  `GET /api/admin/users/?is_superadmin=true` (superadmin only).
 - `permissions[]` for the Superadmin row is **empty** — authority is
   the flag, not the bitmask. Render Superadmin as "all cells checked"
   without consulting `permissions`.
@@ -393,7 +414,9 @@ door gate itself).
 ## `GET /api/admin/roles/{id}/`
 
 Single role detail. Same shape as one element of `results` /
-`built_in_roles` above.
+`built_in_roles` above. This route does not parse `?org_ids=`, so a
+built-in role's `assigned_count` and `assigned_by_org` here always cover
+every organization the caller can read roles in.
 
 **Auth:** built-in roles are visible to anyone who clears the door gate
 (READ on ROLES in at least one org, or superadmin). A custom role
@@ -404,6 +427,9 @@ none.
 A role that exists but sits in an org the caller cannot READ responds
 `404 role_not_found` — identical to a genuinely missing id, so the
 caller cannot probe for the existence of roles in orgs they can't see.
+`PATCH` and `DELETE` answer the same way for the same role, so the
+write endpoints never confirm an id this one denies (see
+"Visibility vs. permission" below).
 
 **Errors:** `404 role_not_found`.
 
@@ -457,9 +483,12 @@ when `permissions` is included. Built-in roles always reject with
 `403 built_in_role_immutable` before any other check runs.
 **Header:** none.
 
+A custom role the caller cannot see answers `404 role_not_found`, not
+`403` — see "Visibility vs. permission" below.
+
 **Errors:** `403 built_in_role_immutable`, `400` (field validation),
 `400 role_name_conflict`, `403 permission_denied`,
-`403 permission_escalation_denied`.
+`403 permission_escalation_denied`, `404 role_not_found`.
 
 ---
 
@@ -470,7 +499,9 @@ reassigned to the built-in **Viewer** role first — deleting a role
 never evicts a member from the organization.
 
 **Auth:** DELETE on ROLES in the role's own org. Built-in roles always
-reject with `403 built_in_role_immutable`. **Header:** none.
+reject with `403 built_in_role_immutable`. A custom role the caller
+cannot see answers `404 role_not_found` — see "Visibility vs.
+permission" below. **Header:** none.
 
 **`?dry_run=true`** — preview only, no mutation:
 
@@ -496,6 +527,124 @@ reject with `403 built_in_role_immutable`. **Header:** none.
 
 ---
 
+
+## Visibility vs. permission (404 vs. 403)
+
+Every role endpoint answers two separate questions in order, and the
+distinction is what decides the status code:
+
+1. **Can the caller see this role at all?** If not → `404
+   role_not_found`.
+2. **May they perform this action on it?** If not → `403
+   permission_denied`.
+
+A custom role is **visible** to a caller who is a member of its
+organization and holds, in that organization, either `roles` `read`
+**or** the action they are attempting. Everything else — a missing id,
+a non-integer id, a role in an organization the caller does not belong
+to, and a role in an organization where the caller holds no relevant
+`roles` permission — is `404 role_not_found`, indistinguishable by
+design.
+
+The practical consequences:
+
+| Caller, relative to the role's organization | `GET` | `PATCH` / `DELETE` |
+|---|---|---|
+| Not a member | 404 | 404 |
+| Member, no `roles` permission at all | 404 | 404 |
+| Member with `read`, without `update`/`delete` | 200 | 403 |
+| Member with `update`/`delete`, without `read` | 404 | 200 |
+| Member with both | 200 | 200 |
+| Superadmin | 200 | 200 |
+
+The property that matters: **a 403 is only ever returned for a role the
+caller can already see.** A write endpoint therefore never confirms an
+id that `GET` reports as missing, which is what the first two rows
+guarantee.
+
+The fourth row is the one place `GET` and the write endpoints differ,
+and it is deliberate. A role granting `delete` without `read` is a
+valid grant, and it must be able to delete — being told the target
+does not exist would make the permission unusable. So visibility is
+"read **or** the action" rather than "read", and a caller in that
+position can change a role they cannot fetch. Nothing is disclosed:
+they already hold the permission to change it. If you want such a role
+to be able to read back what it wrote, grant `read` alongside — which
+is exactly what the catalog's `recommended_with` suggests for every
+write action.
+
+Built-in roles are visible to every caller who clears the door gate,
+so `PATCH`/`DELETE` on one always answers `403
+built_in_role_immutable` — that check runs before any organization
+check.
+
+The same rule applies on `/api/admin/memberships/`,
+`/api/admin/organizations/` and `/api/admin/api-keys/`; see
+[user_management.md](user_management.md),
+[organization_management.md](organization_management.md) and
+[api_keys.md](api_keys.md).
+
+---
+
+## The ceiling rule
+
+**You cannot grant authority you do not hold.** The rule applies wherever
+permissions are handed out, and it is the same comparison in both:
+
+| Where | What is compared |
+|---|---|
+| `POST` / `PATCH` `/api/admin/roles/` | the `permissions[]` being written into the role |
+| `POST` / `PATCH` `/api/admin/memberships/` | the permissions the assigned role grants |
+
+A grant is allowed when **every action it carries, on every resource type, is
+within the caller's own permissions in that organization**. Equality is allowed
+— an Org Admin can assign Org Admin. Exceeding it on any single resource is
+`403 permission_escalation_denied`. **Superadmin bypasses.**
+
+The rule **never looks at whether the role is built-in**. Promoting someone to
+the built-in Org Admin and assigning a custom role that exceeds you are refused
+identically. Built-in roles cannot be authored at all (see immutability below),
+so for them only the assignment side applies.
+
+Only the actions in the catalog's `actions[]` are compared. `use` and `list`
+exist in the `Permission` enum and appear in some built-in seeds, but they are
+not grantable through the catalog and nothing enforces them, so they are ignored
+here — otherwise dead seed data would refuse legitimate grants.
+
+**Consequence worth planning for.** A role holding only `memberships` and
+`roles` can assign **nothing**: every built-in grants workspace permissions such
+a role does not hold, so the ceiling refuses all of them. A role that must
+onboard people has to hold the permissions it hands out — typically the `read`
+action on the workspace resources — or be Org Admin.
+
+### Listing only what you can assign
+
+```
+GET /api/admin/roles/?assignable_org_ids=10
+GET /api/admin/roles/?assignable_org_ids=10,20
+```
+
+Comma-separated org ids, parsed exactly like `?org_ids=`. The response shape is
+**identical** to the unfiltered call (`count` / `next` / `previous` / `results`
+/ `built_in_roles`); only the rows narrow. Use it to populate a role picker so
+it never offers a role the write would refuse.
+
+- Omitting the parameter filters nothing — that is the roles **management** list,
+  where `ROLES.read` means "see roles", not "see roles I may assign".
+- `assignable_org_ids` also defines the org scope, so it supersedes `?org_ids=`
+  when both are sent.
+- Custom roles are compared against **their own** organization.
+- `built_in_roles` is one global list, so a built-in is included when it is
+  assignable in **at least one** requested org. **One org gives an exact answer;
+  several give a superset** — query per org when you need to know precisely
+  where a role is assignable.
+- The global **Superadmin** role is never included: it is not an assignable
+  membership role at all.
+- Superadmin callers get no filtering.
+- A malformed value → `400 org_context_required`; an org the caller cannot read
+  roles in → `403` for the whole request, the same fail-loud as `?org_ids=`.
+
+---
 
 ## Built-in immutability
 
@@ -556,9 +705,12 @@ and redirect to the org picker.
 }
 ```
 
-Caller is a member (or, for the roles door gate, any authenticated
-non-member) but does not hold the required (resource_type, action)
-tuple anywhere it is required.
+Caller does not hold the required (resource_type, action) tuple where
+it is required. On a detail route this means the caller can **see** the
+role — they hold `roles` `read` in its org — but lacks the action; a
+role they cannot see answers `404 role_not_found` instead. The roles
+door gate also raises this for a caller holding the action in no
+organization at all, and `?org_ids=` raises it for a forbidden org id.
 
 ### `403 permission_escalation_denied`
 
@@ -570,9 +722,15 @@ tuple anywhere it is required.
 }
 ```
 
-Raised by `POST` / `PATCH` on `/api/admin/roles/` when the submitted
-`permissions[]` includes a bit the caller does not hold themselves in
-that org — the ceiling rule. Superadmin bypasses it.
+The **ceiling rule**, raised in the two places authority is handed out:
+
+- `POST` / `PATCH` on `/api/admin/roles/` — the submitted `permissions[]`
+  includes a bit the caller does not hold in that org (**authoring**);
+- `POST` / `PATCH` on `/api/admin/memberships/` — the role being
+  assigned grants a bit the caller does not hold in that org
+  (**assignment**).
+
+Superadmin bypasses both. See "The ceiling rule" below.
 
 ### `400 role_name_conflict`
 
@@ -600,8 +758,10 @@ overwritten.
 ```
 
 Returned for a genuinely missing role id, a non-integer id, and a role
-that exists but sits in an org the caller cannot READ — the three
-cases are indistinguishable by design.
+the caller cannot see — a role in an org they do not belong to, or one
+in an org where they hold neither `roles` `read` nor the action they
+are attempting. All of these are indistinguishable by design; see
+"Visibility vs. permission".
 
 ### `404 organization_not_found`
 
