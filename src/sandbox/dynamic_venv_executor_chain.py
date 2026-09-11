@@ -453,9 +453,7 @@ except Exception:
         mask_secrets = settings.MASK_SECRET
 
         comm_task = asyncio.ensure_future(process.communicate())
-        done, _ = await asyncio.wait(
-            {comm_task}, timeout=settings.EXECUTION_TIMEOUT_SECONDS
-        )
+        done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
 
         if comm_task not in done:
             return await self._handle_timeout(
@@ -521,11 +519,11 @@ except Exception:
         The job never finishes writing output.txt, so unlike the normal path
         this never reads the result file: result_data stays None.
         """
-        timeout_seconds = settings.EXECUTION_TIMEOUT_SECONDS
+        timeout = settings.EXECUTION_TIMEOUT
         logger.error(
             "Execution {} exceeded {} seconds; killing process tree.",
             context["execution_id"],
-            timeout_seconds,
+            f"{timeout:g}",
         )
 
         killed = _kill_process_tree(process, execution_id=context["execution_id"])
@@ -561,9 +559,7 @@ except Exception:
             stdout = scrub(text=stdout, secrets=secrets)
             stderr = scrub(text=stderr, secrets=secrets)
 
-        timeout_message = (
-            f"Execution exceeded {timeout_seconds} seconds and was terminated."
-        )
+        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
             timeout_message += (
                 " Process could not be terminated and may still be running."
