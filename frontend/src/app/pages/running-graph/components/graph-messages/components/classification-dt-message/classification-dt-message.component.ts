@@ -173,8 +173,6 @@ import {
                         />
                     </div>
                     <div class="icon-container manipulation-icon">
-                        <!-- No direct equivalent of the old "transform" icon in the sprite;
-                             "variable" fits since this message reports changed flow variables. -->
                         <app-svg-icon
                             icon="variable"
                             size="1.25rem"
@@ -204,29 +202,26 @@ import {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
                 padding: 1.25rem;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #a78bfa;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--violet-400);
             }
 
-            /* --condition-result-color is the single source of truth for a condition's
-               matched/not-matched color, shared by the border, the play-arrow icon, the
-               icon-container background and the badge text below. */
             .dt-flow-container.matched {
-                --condition-result-color: #34d399;
+                --condition-result-color: var(--emerald-400);
                 border-left-color: var(--condition-result-color);
             }
 
             .dt-flow-container.not-matched {
-                --condition-result-color: #6b7280;
+                --condition-result-color: var(--gray-570);
                 border-left-color: var(--condition-result-color);
             }
 
             .prompt-container {
-                border-left-color: #f59e0b;
+                border-left-color: var(--amber-620);
             }
 
             .manipulation-container {
-                border-left-color: #6ee7b7;
+                border-left-color: var(--emerald-300);
             }
 
             .dt-header {
@@ -245,23 +240,23 @@ import {
                 flex-shrink: 0;
 
                 app-svg-icon {
-                    color: var(--condition-result-color, #a78bfa);
+                    color: var(--condition-result-color);
                 }
             }
 
             .prompt-container .play-arrow app-svg-icon {
-                color: #f59e0b;
+                color: var(--amber-620);
             }
 
             .manipulation-container .play-arrow app-svg-icon {
-                color: #6ee7b7;
+                color: var(--emerald-300);
             }
 
             .icon-container {
                 width: 36px;
                 height: 36px;
                 border-radius: 50%;
-                background-color: #a78bfa;
+                background-color: var(--violet-400);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -274,19 +269,19 @@ import {
             }
 
             .icon-container.matched {
-                background-color: var(--condition-result-color, #34d399);
+                background-color: var(--condition-result-color);
             }
 
             .icon-container.not-matched {
-                background-color: var(--condition-result-color, #6b7280);
+                background-color: var(--condition-result-color);
             }
 
             .prompt-icon {
-                background-color: #f59e0b;
+                background-color: var(--amber-620);
             }
 
             .manipulation-icon {
-                background-color: #6ee7b7;
+                background-color: var(--emerald-300);
             }
 
             .header-text {
@@ -311,23 +306,23 @@ import {
             }
 
             .badge.matched {
-                background-color: rgba(52, 211, 153, 0.15);
-                color: var(--condition-result-color, #34d399);
+                background-color: var(--emerald-400-alpha-15);
+                color: var(--condition-result-color);
             }
 
             .badge.not-matched {
-                background-color: rgba(107, 114, 128, 0.15);
-                color: #9ca3af;
+                background-color: var(--gray-570-alpha-15);
+                color: var(--slate-460);
             }
 
             .prompt-badge {
-                background-color: rgba(245, 158, 11, 0.15);
-                color: #f59e0b;
+                background-color: var(--amber-620-alpha-15);
+                color: var(--amber-620);
             }
 
             .manipulation-badge {
-                background-color: rgba(110, 231, 183, 0.15);
-                color: #6ee7b7;
+                background-color: var(--emerald-300-alpha-15);
+                color: var(--emerald-300);
             }
 
             .dt-content {
@@ -385,7 +380,7 @@ import {
 
             .section-heading app-svg-icon {
                 margin-right: 8px;
-                color: #f59e0b;
+                color: var(--amber-620);
                 margin-left: -3px;
             }
 
