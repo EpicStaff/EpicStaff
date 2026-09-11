@@ -505,7 +505,6 @@ class ConverterService(metaclass=SingletonMeta):
                 api_version=config.model.api_version,
                 api_key_secret_id=config.api_key_secret_id,
                 deployment_id=config.model.deployment_id,
-                headers=config.headers,
                 extra_headers=config.extra_headers,
             ),
         )
