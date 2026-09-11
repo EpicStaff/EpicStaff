@@ -552,7 +552,7 @@ path — the default org is only for bootstrap and data migrations.
 | Org management (list/read/rename permission-aware; create/deactivate superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
 | Membership management (cross-org, MEMBERSHIPS-gated, assignment ceiling) + assignable-user lookup | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
 | User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
-| Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter + the org-scoped `assigned_count` | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
 | Escalation ceiling (shared by authoring and assignment) | `services/rbac/permission_assert.py` (`assert_within_ceiling`), `services/rbac/effective_permissions.py` (`covers`, `bits_of`) |
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `services/rbac/api_key/management_service.py`, `views/api_key_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |

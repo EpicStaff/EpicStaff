@@ -332,6 +332,7 @@ below). **Header:** none.
       "org_id": 1,
       "org": { "id": 1, "name": "Acme Inc" },
       "assigned_count": 2,
+      "assigned_by_org": [{ "org": { "id": 1, "name": "Acme Inc" }, "count": 2 }],
       "permissions": [
         { "resource_type": "secrets", "actions": ["read", "update"] }
       ]
@@ -347,6 +348,7 @@ below). **Header:** none.
       "org_id": null,
       "org": null,
       "assigned_count": 0,
+      "assigned_by_org": [],
       "permissions": []
     },
     {
@@ -357,7 +359,11 @@ below). **Header:** none.
       "scope": "org",
       "org_id": null,
       "org": null,
-      "assigned_count": 0,
+      "assigned_count": 3,
+      "assigned_by_org": [
+        { "org": { "id": 1, "name": "Acme Inc" }, "count": 2 },
+        { "org": { "id": 2, "name": "Beta" }, "count": 1 }
+      ],
       "permissions": [
         { "resource_type": "flows", "actions": ["create", "read", "update", "delete", "export"] }
       ]
@@ -374,14 +380,28 @@ Field notes:
   built-in roles (Superadmin, Org Admin, Member, Viewer). Not affected
   by `?org_ids=` or pagination — every caller who passes the door gate
   sees all four.
+  Their `assigned_count` and `assigned_by_org` do vary by caller and by
+  `?org_ids=`, because those describe holders rather than the role itself.
 - `is_built_in: true` — protected from edit / delete (see "Built-in
   immutability" below).
 - `scope` — `"global"` for Superadmin, `"org"` for every other role.
 - `org` / `org_id` — `null` for built-in roles; the owning org for
   custom roles.
-- `assigned_count` — `OrganizationUser` rows referencing this role.
-  For the Superadmin role this is typically 0 — superadmin authority
-  comes from `User.is_superadmin`, not a membership row.
+- `assigned_count` — how many people hold this role **in the organizations
+  this response covers**: the `?org_ids=` selection when you send one,
+  otherwise every organization where you hold `roles` `read`. A superadmin is
+  unfiltered. It is always the sum of `assigned_by_org[].count`.
+- `assigned_by_org` — the same figure broken down per organization, ordered by
+  organization name, case-insensitively. Organizations with no holders are omitted, so an
+  unassigned role comes back with `[]`. A custom role has at most one entry —
+  its own organization, omitted entirely when the role has no holders. A built-in role has
+  one entry per organization in scope, because the same role row is shared by
+  every organization.
+- The **Superadmin** row always reports `assigned_count: 0` and
+  `assigned_by_org: []`. Superadmin authority is the account's
+  `is_superadmin` flag, not a membership row, so a count there would be
+  meaningless. To count superadmins, use
+  `GET /api/admin/users/?is_superadmin=true` (superadmin only).
 - `permissions[]` for the Superadmin row is **empty** — authority is
   the flag, not the bitmask. Render Superadmin as "all cells checked"
   without consulting `permissions`.
@@ -394,7 +414,9 @@ door gate itself).
 ## `GET /api/admin/roles/{id}/`
 
 Single role detail. Same shape as one element of `results` /
-`built_in_roles` above.
+`built_in_roles` above. This route does not parse `?org_ids=`, so a
+built-in role's `assigned_count` and `assigned_by_org` here always cover
+every organization the caller can read roles in.
 
 **Auth:** built-in roles are visible to anyone who clears the door gate
 (READ on ROLES in at least one org, or superadmin). A custom role

@@ -41,7 +41,7 @@ class RoleDeleteResultSerializer(serializers.Serializer):
 
 
 class AffectedRoleUserSerializer(serializers.Serializer):
-    """A member who would be reassigned to the built-in Member role if the
+    """A member who would be reassigned to the built-in Viewer role if the
     role were deleted."""
 
     user_id = serializers.IntegerField()

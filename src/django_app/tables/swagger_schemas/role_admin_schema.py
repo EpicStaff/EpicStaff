@@ -61,7 +61,9 @@ ROLES_LIST_GET = dict(
         "(`results`, paginated) from every org the caller can read. Filter "
         "with ?org_ids=; omit for all readable orgs. Use "
         "?assignable_org_ids= instead to list only the roles the caller may "
-        "assign — the response shape is identical."
+        "assign — the response shape is identical. Each role carries "
+        "`assigned_count` and an `assigned_by_org` breakdown, covering the "
+        "orgs in scope for this request."
     ),
     parameters=[
         OpenApiParameter(
