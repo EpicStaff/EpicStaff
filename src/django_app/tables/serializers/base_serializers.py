@@ -13,11 +13,15 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from rest_framework import serializers
 from utils.logger import logger
 
 
-class NgrokConfigInlineSerializer(serializers.Serializer):
+class NgrokConfigInlineSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    secret_reference_fields = ("auth_token_secret_id",)
+    parent_attribute = "ngrok"
+
     name = serializers.CharField(max_length=50)
     auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
@@ -41,7 +45,11 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
     )
 
 
-class WebhookTriggerNestedSerializer(serializers.ModelSerializer):
+class WebhookTriggerNestedSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("auth_secret_id",)
+
     provider_type = serializers.ChoiceField(
         choices=ProviderType.choices, required=False, allow_null=True
     )
@@ -124,7 +132,11 @@ class WebhookTriggerNestedSerializer(serializers.ModelSerializer):
         try:
             WebhookTriggerService().set_trigger_auth_secret(
                 trigger,
-                secret=validated_data.get("auth_secret_id"),
+                secret=(
+                    validated_data["auth_secret_id"]
+                    if "auth_secret_id" in validated_data
+                    else (existing.secret if existing is not None else None)
+                ),
                 kind=kind,
             )
         except ValueError as e:
@@ -242,7 +254,17 @@ class WebhookTriggerNestedSerializer(serializers.ModelSerializer):
 
         return rep
 
+    def get_current_secret_reference(self, source):
+        """The persisted secret on this trigger's user-settable auth row, for the one field this hook supports."""
+        assert source == "auth_secret_id", (
+            f"unexpected guarded field source: {source!r}"
+        )
+        existing = getattr(self.instance, "auth", None)
+        return existing.secret if existing is not None else None
+
     def validate(self, data):
+        data = super().validate(data)
+
         provider_type = data.get("provider_type")
         ngrok = data.get("ngrok_config")
         localhost = data.get("localhost_config")
