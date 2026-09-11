@@ -24,7 +24,7 @@
 
 // CDT "Create/Edit Group" dialog backdrop.
 .cdk-overlay-backdrop.cdt-group-dialog-backdrop {
-    background: rgba(21, 21, 21, 0.6);
+    background: var(--color-ks-transparent-black-60);
 }
 
 // Column header freeze/hide dropdown (CDK overlay, rendered to document body)

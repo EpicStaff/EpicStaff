@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
@@ -10,7 +10,6 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 @Component({
     selector: 'app-view-nested-messages-button',
     imports: [CommonModule, AppSvgIconComponent],
-    changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <button
             class="view-nested-button"
@@ -45,8 +44,8 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             }
 
             .view-nested-button {
-                background-color: rgb(0, 191, 165);
-                color: rgb(255, 255, 255);
+                background-color: var(--color-nodes-flow-link);
+                color: var(--color-white);
                 border: 2px solid rgba(0, 191, 165, 0.4);
                 border-radius: 6px;
                 padding: 0.5rem 0.75rem;
@@ -65,8 +64,8 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .view-nested-button:hover {
                 background-color: transparent;
-                color: rgb(0, 191, 165);
-                border-color: rgb(0, 191, 165);
+                color: var(--color-nodes-flow-link);
+                border-color: var(--color-nodes-flow-link);
             }
 
             .show-nested-btn--open {
@@ -78,7 +77,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 display: inline-block;
                 transform: rotate(0deg);
                 transition: transform 0.2s ease;
-                color: white;
+                color: var(--color-white);
             }
 
             .play-nested-arrow--open {
@@ -86,7 +85,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                     transform 0.2s ease,
                     color 0.2s ease;
                 transform: rotate(90deg);
-                color: rgb(0, 191, 165);
+                color: var(--color-nodes-flow-link);
             }
         `,
     ],

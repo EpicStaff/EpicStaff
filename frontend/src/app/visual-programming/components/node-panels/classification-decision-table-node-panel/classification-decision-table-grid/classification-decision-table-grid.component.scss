@@ -2,7 +2,9 @@ $grid-header-height: 40px;
 $grid-header-gap: 1rem;
 
 :host {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .decision-table-grid-container {
@@ -10,6 +12,8 @@ $grid-header-gap: 1rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    flex: 1;
+    min-height: 0;
 }
 
 .grid-header {
@@ -292,11 +296,15 @@ $grid-header-gap: 1rem;
     width: 100%;
     overflow: visible;
     padding-left: 28px;
+    flex: 1;
+    min-height: 0;
 
-    // When at least one params group is absent, reserve space above the ag-grid
-    // for the floating "+" button row.
     &.has-above-btns {
         padding-top: 36px;
+    }
+
+    ag-grid-angular {
+        height: 100%;
     }
 }
 
@@ -307,8 +315,10 @@ $group-gutter-width: 28px;
     left: 0;
     top: 0;
     width: 100%;
+    height: 100%;
     z-index: 11;
     pointer-events: none;
+    clip-path: inset(var(--cdt-overlay-clip-top, 0px) 0 var(--cdt-overlay-clip-bottom, 0px) 0);
 }
 
 .group-overlay {
@@ -388,7 +398,7 @@ $group-gutter-width: 28px;
     color: var(--color-text-primary);
 }
 .group-overlay-chip.is-light .group-overlay-chip-btn:hover {
-    color: rgba(21, 21, 21, 0.28);
+    color: var(--color-ks-transparent-black-28);
 }
 
 .group-overlay-gutter {

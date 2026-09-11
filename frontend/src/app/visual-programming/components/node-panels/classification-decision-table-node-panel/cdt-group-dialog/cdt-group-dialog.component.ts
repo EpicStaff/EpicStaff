@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
+import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -24,7 +24,6 @@ export type CdtGroupDialogResult = { name: string; color: string } | undefined;
     imports: [CommonModule, DialogModule, FormsModule, AppSvgIconComponent],
     templateUrl: './cdt-group-dialog.component.html',
     styleUrls: ['./cdt-group-dialog.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtGroupDialogComponent {
     private readonly dialogRef = inject<DialogRef<CdtGroupDialogResult>>(DialogRef);

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { Component } from '@angular/core';
 import { IDragAndDropImageAngularComponent } from 'ag-grid-angular';
 import { IDragAndDropImageParams } from 'ag-grid-community';
 
@@ -28,7 +28,6 @@ import { IDragAndDropImageParams } from 'ag-grid-community';
  */
 @Component({
     selector: 'app-cdt-no-drag-ghost',
-    changeDetection: ChangeDetectionStrategy.OnPush,
     template: '',
     styles: [
         `

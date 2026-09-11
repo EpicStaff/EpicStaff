@@ -122,6 +122,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }>();
     public promptAdd = output<{ id: string; config: PromptConfig }>();
     public openPromptLibrary = output<{ action: 'create' } | { action: 'edit'; promptId: string }>();
+    /** Vertical scroll metrics of the grid body, consumed by the panel to auto-collapse its node-header. */
+    public gridVerticalScroll = output<{ scrollTop: number; scrollable: number }>();
 
     private cdr = inject(ChangeDetectorRef);
     private elRef = inject(ElementRef);
@@ -262,6 +264,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const wrapperRect = wrapperEl.getBoundingClientRect();
         const bodyRect = bodyEl.getBoundingClientRect();
         const bodyOffsetY = bodyRect.top - wrapperRect.top;
+        const headerEl = this.elRef.nativeElement.querySelector('.ag-header') as HTMLElement | null;
+        const rowsOffsetY = bodyOffsetY + (headerEl?.getBoundingClientRect().height ?? 0);
+        const overlaysEl = wrapperEl.querySelector('.group-overlays') as HTMLElement | null;
+        if (overlaysEl) {
+            const rowsBottom = bodyOffsetY + bodyEl.clientHeight;
+            overlaysEl.style.setProperty('--cdt-overlay-clip-top', `${Math.max(0, rowsOffsetY)}px`);
+            overlaysEl.style.setProperty(
+                '--cdt-overlay-clip-bottom',
+                `${Math.max(0, wrapperRect.height - rowsBottom)}px`
+            );
+        }
         const scrollTop = bodyEl.scrollTop;
         const collapsed = this.collapsedGroups();
 
@@ -314,13 +327,18 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         >();
         const sections = this.sectionsState();
 
+        const idxByRow = new Map<unknown, number>(rawRows.map((row, idx) => [row, idx]));
+        const visiblePositions: Array<{ idx: number; top: number; bottom: number }> = [];
+
         api.forEachNodeAfterFilterAndSort((node) => {
             if (node.rowTop == null) return;
             const data = node.data as { section?: string | null } | undefined;
-            const section = data?.section ?? null;
-            if (!section) return;
             const top = node.rowTop;
             const height = node.rowHeight ?? CDT_OVERLAY_ROW_HEIGHT;
+            const modelIdx = data ? (idxByRow.get(data) ?? -1) : -1;
+            if (modelIdx >= 0) visiblePositions.push({ idx: modelIdx, top, bottom: top + height });
+            const section = data?.section ?? null;
+            if (!section) return;
             const bottom = top + height;
             const existing = expandedFirstLast.get(section);
             if (existing) {
@@ -366,14 +384,30 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const color = getCdtSectionColor(sectionRecord);
 
             if (collapsed.has(sectionId)) {
-                let visibleBefore = 0;
-                for (let i = 0; i < range.firstIdx; i++) {
-                    if (isRowVisible(rawRows[i] as ConditionGroup)) visibleBefore++;
+                // The collapsed rows are gone from the DOM, so anchor on the seam they left:
+                // the top of the first row still visible after the group, else the bottom of the
+                // last one before it. Centring the chevron on that seam puts it between the two
+                // rows rather than on top of one of them.
+                let seam: number | null = null;
+                for (const pos of visiblePositions) {
+                    if (pos.idx > range.lastIdx && (seam == null || pos.top < seam)) seam = pos.top;
                 }
-                const anchorY = visibleBefore * rowHeight;
+                if (seam == null) {
+                    for (const pos of visiblePositions) {
+                        if (pos.idx < range.firstIdx && (seam == null || pos.bottom > seam)) seam = pos.bottom;
+                    }
+                }
+                if (seam == null) {
+                    // No rendered rows to measure against — fall back to the old index arithmetic.
+                    let visibleBefore = 0;
+                    for (let i = 0; i < range.firstIdx; i++) {
+                        if (isRowVisible(rawRows[i] as ConditionGroup)) visibleBefore++;
+                    }
+                    seam = visibleBefore * rowHeight;
+                }
                 items.push({
                     sectionId,
-                    top: bodyOffsetY + anchorY - scrollTop,
+                    top: rowsOffsetY + seam - scrollTop - chevronHeight / 2,
                     height: 22,
                     isCollapsed: true,
                     name,
@@ -414,7 +448,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const lastRowMid = positions.lastBottom - positions.lastHeight / 2 - positions.firstTop;
             items.push({
                 sectionId,
-                top: bodyOffsetY + positions.firstTop - scrollTop,
+                top: rowsOffsetY + positions.firstTop - scrollTop,
                 height: positions.lastBottom - positions.firstTop,
                 isCollapsed: false,
                 name,
@@ -614,6 +648,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         borderColor: 'rgba(255, 255, 255, 0.1)',
         rowHoverColor: 'rgba(104, 95, 255, 0.1)',
         columnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
+        headerColumnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
+        headerColumnResizeHandleColor: 'transparent',
         pinnedColumnBorder: { style: 'solid', width: 4, color: '#3f4144' },
         fontSize: 14,
     });
@@ -723,7 +759,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
-        domLayout: 'autoHeight',
+        domLayout: 'normal',
         rowDragManaged: false,
         animateRows: true,
         suppressColumnMoveAnimation: true,
@@ -1167,17 +1203,27 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
         };
 
+        const stackCounts = new Map<number, number>();
+        const placeBadge = (colId: string, boundaryX: number, label: string): void => {
+            let stackKey = boundaryX;
+            for (const key of stackCounts.keys()) {
+                if (Math.abs(key - boundaryX) < 5) {
+                    stackKey = key;
+                    break;
+                }
+            }
+            const indexInStack = stackCounts.get(stackKey) ?? 0;
+            stackCounts.set(stackKey, indexInStack + 1);
+            badges.push({ colId, x: stackKey + indexInStack * 22, y, label });
+        };
+
         for (const hiddenId of hidden) {
             if (groupedColIdToGroupId.has(hiddenId)) continue;
 
             const boundaryX = computeBoundaryX(hiddenId);
             if (boundaryX === null) continue;
 
-            const colLabel = this.getColLabel(hiddenId);
-            const existing = badges.filter((b) => Math.abs(b.x - boundaryX) < 5);
-            const offsetX = existing.length * 22;
-
-            badges.push({ colId: hiddenId, x: boundaryX + offsetX, y, label: colLabel });
+            placeBadge(hiddenId, boundaryX, this.getColLabel(hiddenId));
         }
 
         const emittedGroups = new Set<string>();
@@ -1196,10 +1242,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const boundaryX = computeBoundaryX(anchorColId);
             if (boundaryX === null) continue;
 
-            const existing = badges.filter((b) => Math.abs(b.x - boundaryX) < 5);
-            const offsetX = existing.length * 22;
-
-            badges.push({ colId: groupId, x: boundaryX + offsetX, y, label: info.label });
+            placeBadge(groupId, boundaryX, info.label);
         }
 
         this.hiddenColumnBadges.set(badges);
@@ -2005,7 +2048,14 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     onBodyScroll(event: BodyScrollEvent): void {
         if (event.direction === 'horizontal') {
             this.updateAddButtonPositions();
+            return;
         }
+        const viewport = this.elRef.nativeElement.querySelector('.ag-grid-viewport') as HTMLElement | null;
+        if (!viewport) return;
+        this.gridVerticalScroll.emit({
+            scrollTop: viewport.scrollTop,
+            scrollable: viewport.scrollHeight - viewport.clientHeight,
+        });
     }
 
     private bodyClickHandler = () => {

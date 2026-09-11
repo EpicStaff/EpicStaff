@@ -525,11 +525,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onGridSectionScroll(event: Event): void {
         const el = event.target as HTMLElement;
-        const scrollable = el.scrollHeight - el.clientHeight;
+        this.applyHeaderCollapse(el.scrollTop, el.scrollHeight - el.clientHeight);
+    }
+
+    public onGridVerticalScroll(metrics: { scrollTop: number; scrollable: number }): void {
+        this.applyHeaderCollapse(metrics.scrollTop, metrics.scrollable);
+    }
+
+    private applyHeaderCollapse(scrollTop: number, scrollable: number): void {
         const collapsed = this.headerCollapsed();
         if (!collapsed && scrollable < CDT_HEADER_COLLAPSE_MIN_SCROLLABLE) return;
 
-        const next = collapsed ? el.scrollTop > CDT_HEADER_EXPAND_AT : el.scrollTop > CDT_HEADER_COLLAPSE_AT;
+        const next = collapsed ? scrollTop > CDT_HEADER_EXPAND_AT : scrollTop > CDT_HEADER_COLLAPSE_AT;
         if (next === collapsed) return;
         this.headerCollapsed.set(next);
         this.cdr.markForCheck();
