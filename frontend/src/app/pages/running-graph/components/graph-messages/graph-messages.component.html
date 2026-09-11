@@ -327,7 +327,10 @@
         <div class="empty-list">No messages to show</div>
     }
 
-    @if (isLoadingMore) {
+    <!-- Shown for scroll-triggered pagination (messages already present), and for the very
+         first fetch of an empty session — but only when isProcessing isn't already showing
+         its own loader below, so the two never stack. -->
+    @if (isLoadingMore && (messages.length > 0 || !isProcessing)) {
         <div class="loading-more-indicator">
             <app-loading-dots></app-loading-dots>
         </div>

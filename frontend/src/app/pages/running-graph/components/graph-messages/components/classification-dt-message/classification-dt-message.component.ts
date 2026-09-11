@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     ClassificationPromptMessageData,
     ConditionGroupManipulationMessageData,
@@ -11,29 +12,32 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    imports: [CommonModule],
+    imports: [CommonModule, AppSvgIconComponent],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
-            <div class="dt-flow-container">
+            <div
+                class="dt-flow-container"
+                [ngClass]="conditionResultClass()"
+            >
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div
                         class="icon-container"
                         [ngClass]="conditionResultClass()"
                     >
-                        <i
-                            class="ti"
-                            [ngClass]="conditionResultIcon()"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="conditionResultIcon()"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>{{ getConditionData()?.group_name }}</h3>
@@ -75,13 +79,16 @@ import {
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div class="icon-container prompt-icon">
-                        <i class="ti ti-brain"></i>
+                        <app-svg-icon
+                            icon="brain"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>LLM Classification</h3>
@@ -100,10 +107,10 @@ import {
                                 class="section-heading"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
-                                <i
-                                    class="ti"
-                                    [ngClass]="isPromptExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                                ></i>
+                                <app-svg-icon
+                                    [icon]="isPromptExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
                                 Prompt
                             </div>
                             <div
@@ -120,10 +127,10 @@ import {
                                 class="section-heading"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
-                                <i
-                                    class="ti"
-                                    [ngClass]="isResponseExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                                ></i>
+                                <app-svg-icon
+                                    [icon]="isResponseExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
                                 Raw Response
                             </div>
                             <div
@@ -160,13 +167,18 @@ import {
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div class="icon-container manipulation-icon">
-                        <i class="ti ti-transform"></i>
+                        <!-- No direct equivalent of the old "transform" icon in the sprite;
+                             "variable" fits since this message reports changed flow variables. -->
+                        <app-svg-icon
+                            icon="variable"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>Manipulation</h3>
@@ -196,6 +208,19 @@ import {
                 border-left: 4px solid #a78bfa;
             }
 
+            /* --condition-result-color is the single source of truth for a condition's
+               matched/not-matched color, shared by the border, the play-arrow icon, the
+               icon-container background and the badge text below. */
+            .dt-flow-container.matched {
+                --condition-result-color: #34d399;
+                border-left-color: var(--condition-result-color);
+            }
+
+            .dt-flow-container.not-matched {
+                --condition-result-color: #6b7280;
+                border-left-color: var(--condition-result-color);
+            }
+
             .prompt-container {
                 border-left-color: #f59e0b;
             }
@@ -212,22 +237,23 @@ import {
             }
 
             .play-arrow {
+                width: 1.1rem;
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+
+                app-svg-icon {
+                    color: var(--condition-result-color, #a78bfa);
+                }
             }
 
-            .play-arrow i {
-                color: #a78bfa;
-                font-size: 1.1rem;
-                transition: transform 0.3s ease;
-            }
-
-            .prompt-container .play-arrow i {
+            .prompt-container .play-arrow app-svg-icon {
                 color: #f59e0b;
             }
 
-            .manipulation-container .play-arrow i {
+            .manipulation-container .play-arrow app-svg-icon {
                 color: #6ee7b7;
             }
 
@@ -239,21 +265,20 @@ import {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 16px;
+                margin-right: 20px;
                 flex-shrink: 0;
-            }
 
-            .icon-container i {
-                color: var(--gray-900);
-                font-size: 1.25rem;
+                app-svg-icon {
+                    color: var(--gray-900);
+                }
             }
 
             .icon-container.matched {
-                background-color: #34d399;
+                background-color: var(--condition-result-color, #34d399);
             }
 
             .icon-container.not-matched {
-                background-color: #6b7280;
+                background-color: var(--condition-result-color, #6b7280);
             }
 
             .prompt-icon {
@@ -287,7 +312,7 @@ import {
 
             .badge.matched {
                 background-color: rgba(52, 211, 153, 0.15);
-                color: #34d399;
+                color: var(--condition-result-color, #34d399);
             }
 
             .badge.not-matched {
@@ -358,12 +383,10 @@ import {
                 align-items: center;
             }
 
-            .section-heading i {
+            .section-heading app-svg-icon {
                 margin-right: 8px;
                 color: #f59e0b;
-                font-size: 1.1rem;
                 margin-left: -3px;
-                transition: transform 0.3s ease;
             }
 
             .code-block {
@@ -442,7 +465,7 @@ export class ClassificationDtMessageComponent {
     }
 
     conditionResultIcon(): string {
-        return this.getConditionData()?.result ? 'ti-check' : 'ti-x';
+        return this.getConditionData()?.result ? 'check' : 'x';
     }
 
     toggleMessage(): void {
