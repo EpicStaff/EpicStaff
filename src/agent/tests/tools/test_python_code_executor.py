@@ -208,3 +208,46 @@ async def test_storage_config_read_from_tool_data():
     assert task.storage_allowed_paths == ["reports/"]
     assert task.storage_org_prefix == "org1"
     assert task.session_id == 42
+
+
+async def test_secrets_are_forwarded_to_sandbox_task():
+    """A tool's resolved secrets must reach the sandbox — this is EST-4043:
+    the executor was silently dropping them, so get_secret() in the sandbox
+    always saw an empty declaration regardless of what the tool declared."""
+    sandbox = MagicMock()
+    sandbox.submit = AsyncMock(return_value=_make_success_result())
+
+    data = _make_tool_data(
+        python_code_overrides={"secrets": {"MY_SECRET": "sk-live-12345"}}
+    )
+    executor = PythonCodeToolExecutor(sandbox, data)
+    await executor({"x": "hello"})
+
+    task = sandbox.submit.call_args[0][0]
+    assert task.secrets == {"MY_SECRET": "sk-live-12345"}
+
+
+async def test_global_kwargs_are_forwarded_to_sandbox_task():
+    sandbox = MagicMock()
+    sandbox.submit = AsyncMock(return_value=_make_success_result())
+
+    data = _make_tool_data(
+        python_code_overrides={"global_kwargs": {"mode": "production"}}
+    )
+    executor = PythonCodeToolExecutor(sandbox, data)
+    await executor({})
+
+    task = sandbox.submit.call_args[0][0]
+    assert task.global_kwargs == {"mode": "production"}
+
+
+async def test_org_id_is_forwarded_to_sandbox_task():
+    sandbox = MagicMock()
+    sandbox.submit = AsyncMock(return_value=_make_success_result())
+
+    data = _make_tool_data(python_code_overrides={"org_id": 77})
+    executor = PythonCodeToolExecutor(sandbox, data)
+    await executor({})
+
+    task = sandbox.submit.call_args[0][0]
+    assert task.org_id == 77
