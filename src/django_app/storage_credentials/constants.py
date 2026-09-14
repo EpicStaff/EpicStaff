@@ -25,11 +25,6 @@ CREDENTIAL_RESPONSE_TTL_SECONDS = 300
 # TtlReconciliationService.sweep() cadence.
 TTL_RECONCILIATION_INTERVAL_SECONDS = 900
 
-# Background issuer heartbeat cadence + the TTL on the heartbeat key itself
-# (4 missed cycles before /ht/ reports unhealthy).
-ISSUER_HEARTBEAT_INTERVAL_SECONDS = 5
-ISSUER_HEARTBEAT_KEY_TTL_SECONDS = 20
-
 # Consumer group over STORAGE_CREDENTIAL_REQUEST_STREAM (imported above from
 # `src.shared.storage_credentials.constants`, shared with `sandbox` since
 # both sides must agree on the stream name and envelope type). A durable,

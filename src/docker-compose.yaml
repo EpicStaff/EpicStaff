@@ -129,13 +129,14 @@ services:
       context: .
       dockerfile: ./django_app/Dockerfile.dj
     container_name: storage-credential-issuer
+    init: true
     command: python manage.py run_storage_credential_issuer
     environment:
       <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
-      DJANGO_DB_USER: ${DB_USER:?}
-      DJANGO_DB_PASSWORD: ${DB_PASSWORD:?}
+      DB_USER: ${DB_USER:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
       DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
@@ -184,6 +185,12 @@ services:
       backend-network:
         aliases:
           - storage-credential-issuer
+    healthcheck:
+      test: ["CMD", "python", "/app/src/django_app/storage_credentials/healthcheck.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
     depends_on:
       redis:

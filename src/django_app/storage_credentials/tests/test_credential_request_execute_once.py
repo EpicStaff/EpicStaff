@@ -37,6 +37,28 @@ def redis_client():
     client.set = AsyncMock()
     client.rpush = AsyncMock()
     client.expire = AsyncMock()
+
+    # redis-py's real pipeline queues commands synchronously (rpush/expire
+    # calls just append to an internal queue) and only awaits on execute().
+    # Route the queued calls through to client.rpush/client.expire so tests
+    # can assert on those mocks' await_args as if they'd been called directly.
+    class _FakePipeline:
+        def __init__(self):
+            self._queued = []
+
+        def rpush(self, *args, **kwargs):
+            self._queued.append((client.rpush, args, kwargs))
+            return self
+
+        def expire(self, *args, **kwargs):
+            self._queued.append((client.expire, args, kwargs))
+            return self
+
+        async def execute(self):
+            return [await func(*args, **kwargs) for func, args, kwargs in self._queued]
+
+    client.pipeline = MagicMock(side_effect=_FakePipeline)
+
     return client
 
 

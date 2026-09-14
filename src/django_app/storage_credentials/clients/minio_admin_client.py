@@ -112,4 +112,4 @@ class MinioAdminGateway:
         """Active service accounts of `user`, each carrying at least
         `accessKey` and `expiration` (ISO-8601, server-supplied)."""
         raw = await self._client.list_service_account(user)
-        return json.loads(raw).get("accounts", [])
+        return json.loads(raw).get("accounts") or []

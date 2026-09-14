@@ -1,23 +1,32 @@
 import asyncio
-
+from pathlib import Path
 import redis.asyncio as aioredis
 from loguru import logger
 
-from storage_credentials.constants import (
+from storage_credentials.heartbeat_constants import (
+    ISSUER_HEARTBEAT_FILE_PATH,
     ISSUER_HEARTBEAT_INTERVAL_SECONDS,
     ISSUER_HEARTBEAT_KEY_TTL_SECONDS,
 )
+
 from storage_credentials.redis.keys import ISSUER_HEARTBEAT_KEY
 
 
 class IssuerHeartbeat:
-    """Writes a Redis key with a short TTL after each cycle, so the custom
-    `/ht/` backend (`storage_credentials.health_checks`) can tell a hung or
-    dead issuer process apart from a live one -- a `pgrep`-style liveness
-    check would miss a process stuck looping on an error."""
+    """Independent timer, not a per-cycle marker: confirms the event loop is
+    alive and Redis is reachable by setting a short-TTL Redis key. On success
+    it also touches a local file, which the Docker healthcheck probe reads
+    instead of talking to Redis. Detects a blocked event loop or a dead
+    process, not a coroutine hung on an await elsewhere in the process."""
 
-    def __init__(self, *, redis_client: aioredis.Redis):
+    def __init__(
+        self,
+        *,
+        redis_client: aioredis.Redis,
+        heartbeat_file_path: str = ISSUER_HEARTBEAT_FILE_PATH,
+    ):
         self._redis_client = redis_client
+        self._heartbeat_file_path = heartbeat_file_path
 
     async def run_forever(self) -> None:
         while True:
@@ -29,4 +38,9 @@ class IssuerHeartbeat:
                 raise
             except Exception as error:
                 logger.error("IssuerHeartbeat: failed to write heartbeat: {}", error)
+            else:
+                self._touch_heartbeat_file()
             await asyncio.sleep(ISSUER_HEARTBEAT_INTERVAL_SECONDS)
+
+    def _touch_heartbeat_file(self) -> None:
+        Path(self._heartbeat_file_path).touch()

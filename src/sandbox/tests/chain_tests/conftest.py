@@ -69,8 +69,15 @@ def _ensure_src_shared_stub() -> None:
     src_shared_mod.__package__ = "src.shared"
 
     src_shared_models_mod = types.ModuleType("src.shared.models")
+    src_shared_models_mod.__path__ = []
+    src_shared_models_mod.__package__ = "src.shared.models"
     src_shared_models_mod.CodeResultData = CodeResultData
     src_shared_models_mod.CodeTaskData = CodeTaskData
+
+    src_shared_models_tools_mod = types.ModuleType("src.shared.models.tools")
+    src_shared_models_tools_mod.CodeResultData = CodeResultData
+    src_shared_models_tools_mod.CodeTaskData = CodeTaskData
+    src_shared_models_mod.tools = src_shared_models_tools_mod
 
     class StreamEnvelope:
         def __init__(self, *, type, correlation_id, payload):
@@ -105,6 +112,7 @@ def _ensure_src_shared_stub() -> None:
     sys.modules.setdefault("src", src_mod)
     sys.modules.setdefault("src.shared", src_shared_mod)
     sys.modules.setdefault("src.shared.models", src_shared_models_mod)
+    sys.modules.setdefault("src.shared.models.tools", src_shared_models_tools_mod)
     sys.modules.setdefault("src.shared.redis_streams", src_shared_redis_streams_mod)
 
 
