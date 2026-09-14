@@ -1,0 +1,21 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.status-filter__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.status-filter__checkbox {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}

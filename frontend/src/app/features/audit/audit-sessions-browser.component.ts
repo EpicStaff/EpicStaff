@@ -3,8 +3,10 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { RouterLink } from '@angular/router';
 
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
+import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditSessionEvent } from './models/audit-session.models';
 import { AuditApiService } from './services/audit-api.service';
+import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { groupAuditSessions } from './utils/group-audit-sessions.util';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
@@ -30,6 +32,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private rawEvents = signal<AuditSessionEvent[]>([]);
     private cursorStack = signal<(string | null)[]>([null]);
     private nextCursor = signal<string | null>(null);
+    protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
     public rows = computed(() => groupAuditSessions(this.rawEvents()));
     public canGoNewer = computed(() => this.cursorStack().length > 1);
@@ -97,29 +101,34 @@ export class AuditSessionsBrowserComponent implements OnInit {
     }
 
     public closeFiltersPanel(): void {
+        this.draftFilter.set(this.appliedFilter());
         this.isFiltersPanelOpen.set(false);
     }
 
     public applyFilters(): void {
+        this.appliedFilter.set(this.draftFilter());
         this.cursorStack.set([null]);
         this.isFiltersPanelOpen.set(false);
         this.loadSessions();
     }
 
     public clearFilters(): void {
+        this.draftFilter.set(EMPTY_AUDIT_FILTER);
+        this.appliedFilter.set(EMPTY_AUDIT_FILTER);
         this.cursorStack.set([null]);
         this.loadSessions();
     }
 
     public loadSessions(): void {
         const stack = this.cursorStack();
+        const { filters, matchScope } = compileAuditFilter(this.appliedFilter());
         this.isLoading.set(true);
         this.loadError.set(false);
 
         this.auditApiService
             .searchSessions({
-                filters: { field: 'kind', op: 'in', value: ['session'] },
-                match_scope: { children: true },
+                filters,
+                match_scope: matchScope,
                 cursor: stack[stack.length - 1],
                 size: this.pageSize(),
             })

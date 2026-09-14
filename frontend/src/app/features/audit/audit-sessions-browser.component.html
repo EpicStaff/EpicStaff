@@ -209,6 +209,7 @@
         @if (isFiltersPanelOpen()) {
             <aside class="audit-browser__panel">
                 <app-audit-filters-panel
+                    [(filter)]="draftFilter"
                     (closed)="closeFiltersPanel()"
                     (applied)="applyFilters()"
                     (cleared)="clearFilters()"

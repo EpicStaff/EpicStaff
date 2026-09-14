@@ -1,3 +1,5 @@
+import { AuditFilterNode } from './audit-filter.models';
+
 export type AuditEventKind = 'session' | 'node' | 'event';
 export type AuditEventStatus = 'completed' | 'failed';
 export type AuditSessionRowStatus = AuditEventStatus | 'running';
@@ -36,7 +38,7 @@ export interface AuditMatchScope {
 
 export interface SessionSearchRequest {
     query?: string;
-    filters?: unknown;
+    filters?: AuditFilterNode;
     match_scope?: AuditMatchScope;
     cursor?: string | null;
     size: number;

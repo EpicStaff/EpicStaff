@@ -40,7 +40,13 @@
 
     <div class="filters-panel__body">
         @if (activeTab() === 'builder') {
-            <p class="filters-panel__placeholder">Filter controls land here.</p>
+            <div class="filters-panel__group">
+                <span class="filters-panel__group-title">Status</span>
+                <app-audit-status-filter
+                    [value]="filter().statuses"
+                    (valueChange)="setStatuses($event)"
+                />
+            </div>
         }
     </div>
 
