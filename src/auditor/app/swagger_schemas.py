@@ -32,7 +32,7 @@ OPENAPI_TAGS = [
             "`export` action - gated independently of `read`, so a token may browse "
             "without being able to export.\n\n"
             "Asynchronous: `POST` returns a `job_id`, then poll `GET .../{job_id}`, "
-            "which answers `{\"status\": \"pending\"}` as JSON until the job "
+            'which answers `{"status": "pending"}` as JSON until the job '
             "finishes and then serves the file body itself (`500` if it failed)."
         ),
     },
@@ -117,8 +117,12 @@ see the per-op pairs in this request's own `openapi_examples`):
     text: "timeout"
 """
 
-MATCH_SCOPE_FIELD_DESCRIPTION = "Structural toggles - reshape which rows come back, not filter conditions."
-CURSOR_FIELD_DESCRIPTION = "Opaque pagination cursor from a previous response's `next_cursor`."
+MATCH_SCOPE_FIELD_DESCRIPTION = (
+    "Structural toggles - reshape which rows come back, not filter conditions."
+)
+CURSOR_FIELD_DESCRIPTION = (
+    "Opaque pagination cursor from a previous response's `next_cursor`."
+)
 SIZE_FIELD_DESCRIPTION = "Max rows per page (<=1000)."
 
 SESSION_SEARCH_REQUEST_DESCRIPTION = """See the `filters`/`query` field descriptions below for the full
@@ -187,7 +191,11 @@ SEARCH_REQUEST_EXAMPLES = {
                     {
                         "op": "or",
                         "children": [
-                            {"field": "tool", "op": "equals", "value": "Web Search Tool"},
+                            {
+                                "field": "tool",
+                                "op": "equals",
+                                "value": "Web Search Tool",
+                            },
                             {"field": "agent", "op": "equals", "value": "Researcher"},
                         ],
                     },
@@ -214,7 +222,9 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "not_equal (filters)": {
         "summary": "op: not_equal",
-        "value": {"filters": {"field": "status", "op": "not_equal", "value": "completed"}},
+        "value": {
+            "filters": {"field": "status", "op": "not_equal", "value": "completed"}
+        },
     },
     # --- contains / not_contains ----------------------------------------
     "contains (query)": {
@@ -231,12 +241,16 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "not_contains (filters)": {
         "summary": "op: not_contains",
-        "value": {"filters": {"field": "output", "op": "not_contains", "value": "timeout"}},
+        "value": {
+            "filters": {"field": "output", "op": "not_contains", "value": "timeout"}
+        },
     },
     # --- starts_with / ends_with (filters-only - no query symbol) -------
     "starts_with (filters only)": {
         "summary": "op: starts_with - no query-language symbol, use filters",
-        "value": {"filters": {"field": "name", "op": "starts_with", "value": "Session"}},
+        "value": {
+            "filters": {"field": "name", "op": "starts_with", "value": "Session"}
+        },
     },
     "ends_with (filters only)": {
         "summary": "op: ends_with - no query-language symbol, use filters",
@@ -266,7 +280,9 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "in (filters)": {
         "summary": "op: in",
-        "value": {"filters": {"field": "status", "op": "in", "value": ["failed", "error"]}},
+        "value": {
+            "filters": {"field": "status", "op": "in", "value": ["failed", "error"]}
+        },
     },
     "not_in (query)": {
         "summary": "op: not_in - `not in (...)`",
@@ -274,7 +290,9 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "not_in (filters)": {
         "summary": "op: not_in",
-        "value": {"filters": {"field": "status", "op": "not_in", "value": ["failed", "error"]}},
+        "value": {
+            "filters": {"field": "status", "op": "not_in", "value": ["failed", "error"]}
+        },
     },
     # --- gt / lt / gte / lte -----------------------------------------
     "gt/lt/gte/lte (query)": {
@@ -316,7 +334,9 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "free text (filters)": {
         "summary": "Free text as an AST leaf - sentinel field `__text__`",
-        "value": {"filters": {"field": "__text__", "op": "contains", "value": "timeout"}},
+        "value": {
+            "filters": {"field": "__text__", "op": "contains", "value": "timeout"}
+        },
     },
     # --- deep filters (agent/tool/task/prompt/message_text/message_thought) ---
     "deep filter - agent (query)": {
@@ -325,7 +345,9 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "deep filter - tool (filters)": {
         "summary": "Deep filter alias `tool` -> details.tool",
-        "value": {"filters": {"field": "tool", "op": "in", "value": ["Web Search Tool"]}},
+        "value": {
+            "filters": {"field": "tool", "op": "in", "value": ["Web Search Tool"]}
+        },
     },
     "deep filter - prompt (query)": {
         "summary": "Deep filter alias `prompt` -> details.prompt_text (free text)",
@@ -342,11 +364,23 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "key_equals_value (filters only)": {
         "summary": "op: key_equals_value - exact match on a flattened key's value",
-        "value": {"filters": {"field": "details.retry_count", "op": "key_equals_value", "value": 3}},
+        "value": {
+            "filters": {
+                "field": "details.retry_count",
+                "op": "key_equals_value",
+                "value": 3,
+            }
+        },
     },
     "key_not_equals (filters only)": {
         "summary": "op: key_not_equals",
-        "value": {"filters": {"field": "details.retry_count", "op": "key_not_equals", "value": 3}},
+        "value": {
+            "filters": {
+                "field": "details.retry_count",
+                "op": "key_not_equals",
+                "value": 3,
+            }
+        },
     },
     "null (filters only)": {
         "summary": "op: null - flattened key is JSON null (distinct from key_not_exists)",
@@ -363,7 +397,10 @@ SEARCH_REQUEST_EXAMPLES = {
     # --- match_scope (structural, filters/query field either way) -------
     "match_scope - full_session_history": {
         "summary": "Expand every match to its full, unfiltered session tree",
-        "value": {"query": "error is not empty", "match_scope": {"full_session_history": True}},
+        "value": {
+            "query": "error is not empty",
+            "match_scope": {"full_session_history": True},
+        },
     },
     "match_scope - ancestors": {
         "summary": "Pull in each match's owning node/session wrapper doc(s)",
@@ -371,7 +408,10 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "match_scope - children": {
         "summary": "A matched session/node pulls in its own children too",
-        "value": {"filters": {"field": "kind", "op": "in", "value": ["session"]}, "match_scope": {"children": True}},
+        "value": {
+            "filters": {"field": "kind", "op": "in", "value": ["session"]},
+            "match_scope": {"children": True},
+        },
     },
     "match_scope - rows_before": {
         "summary": "Include the 5 rows immediately preceding each match, same session",
@@ -385,8 +425,3 @@ for the old `GET /api/audit/sessions`. `kind="session"` is no longer an
 implicit default - send it explicitly (e.g. `{"field": "kind", "op":
 "in", "value": ["session"]}`) if that's what the caller wants.
 """
-
-GET_SESSION_TREE_DESCRIPTION = "Full per-node/tool/agent trace for one session - no redaction, no filtering."
-
-SEARCH_SESSION_TREE_DESCRIPTION = """Same as the plain GET tree route, but filter/query-capable - `session_id`
-is always ANDed on top of whatever `body` contains, same as org_id/retention."""

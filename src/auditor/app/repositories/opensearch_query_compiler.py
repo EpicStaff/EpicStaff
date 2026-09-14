@@ -25,7 +25,11 @@ from typing import Any
 
 from app.filtering.ast import FilterNode, FilterError
 
-_MAPPING_PATH = Path(__file__).resolve().parents[1] / "index_setup" / "0001_create_audit_events_index.json"
+_MAPPING_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "index_setup"
+    / "0001_create_audit_events_index.json"
+)
 _FLAT_OBJECT_ROOTS = frozenset({"input", "output", "details"})
 
 
@@ -104,11 +108,7 @@ def _free_text_clause(term: str) -> dict:
     return {
         "bool": {
             "should": [
-                {
-                    "wildcard": {
-                        field: {"value": f"*{term}*", "case_insensitive": True}
-                    }
-                }
+                {"wildcard": {field: {"value": f"*{term}*", "case_insensitive": True}}}
                 for field in ("name", "node_type", "flow_name")
             ]
             + [
@@ -233,13 +233,20 @@ def _compile_node(node: FilterNode) -> dict:
     if op == "and":
         return {"bool": {"filter": [_compile_node(c) for c in node["children"]]}}
     if op == "or":
-        return {"bool": {"should": [_compile_node(c) for c in node["children"]], "minimum_should_match": 1}}
+        return {
+            "bool": {
+                "should": [_compile_node(c) for c in node["children"]],
+                "minimum_should_match": 1,
+            }
+        }
     if op == "not":
         return {"bool": {"must_not": [_compile_node(node["child"])]}}
     return _compile_leaf(node["field"], node["op"], node.get("value"))
 
 
-def scoped_query(extra_clauses: list[dict], *, org_id: int, retention_days: int) -> dict:
+def scoped_query(
+    extra_clauses: list[dict], *, org_id: int, retention_days: int
+) -> dict:
     """
     Injects org_id/retention_days on top of arbitrary extra filter clauses.
     Shared by `compile()` below (for client AST-derived queries) and by the
@@ -250,27 +257,20 @@ def scoped_query(extra_clauses: list[dict], *, org_id: int, retention_days: int)
     """
     filter_clauses: list[dict] = [{"term": {"org_id": org_id}}]
     if retention_days and retention_days > 0:
-        filter_clauses.append({"range": {"event_time": {"gte": f"now-{retention_days}d"}}})
+        filter_clauses.append(
+            {"range": {"event_time": {"gte": f"now-{retention_days}d"}}}
+        )
     filter_clauses.extend(extra_clauses)
     return {"bool": {"filter": filter_clauses}}
 
 
 def compile(
-    filter_node: FilterNode | None,
-    *,
-    org_id: int,
-    retention_days: int,
-    extra_filters: list[dict] | None = None,
+    filter_node: FilterNode | None, *, org_id: int, retention_days: int
 ) -> dict:
     """
     The only entry point for client-supplied filters.
-
-    `extra_filters`: additional server-built (never client-supplied) clauses
-    to AND on top - e.g. get_session_tree's `session_id` scoping - kept as a
-    parameter here rather than callers reaching into the returned dict's
-    `bool.filter` list themselves.
     """
-    clauses = list(extra_filters) if extra_filters else []
+    clauses = []
     if filter_node is not None:
         clauses.append(_compile_node(filter_node))
     return scoped_query(clauses, org_id=org_id, retention_days=retention_days)

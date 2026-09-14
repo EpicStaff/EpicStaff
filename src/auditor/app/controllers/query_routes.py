@@ -10,11 +10,9 @@ from app.services.match_scope import MatchScope, expand_and_mark
 from app.swagger_schemas import (
     CURSOR_FIELD_DESCRIPTION,
     FILTERS_FIELD_DESCRIPTION,
-    GET_SESSION_TREE_DESCRIPTION,
     MATCH_SCOPE_FIELD_DESCRIPTION,
     QUERY_FIELD_DESCRIPTION,
     SEARCH_REQUEST_EXAMPLES,
-    SEARCH_SESSION_TREE_DESCRIPTION,
     SEARCH_SESSIONS_DESCRIPTION,
     SESSION_SEARCH_REQUEST_DESCRIPTION,
     SIZE_FIELD_DESCRIPTION,
@@ -55,9 +53,6 @@ class SessionSearchRequest(BaseModel):
         return None
 
 
-SearchRequestBody = Body(openapi_examples=SEARCH_REQUEST_EXAMPLES)
-
-
 class SessionSearchResponse(BaseModel):
     items: list[dict]
     next_cursor: str | None
@@ -65,11 +60,7 @@ class SessionSearchResponse(BaseModel):
 
 
 async def _run_search(
-    request: Request,
-    body: SessionSearchRequest,
-    claims: dict,
-    *,
-    extra_filters: list[dict] | None = None,
+    request: Request, body: SessionSearchRequest, claims: dict
 ) -> SessionSearchResponse:
     repository = request.app.state.session_audit_repository
 
@@ -85,8 +76,7 @@ async def _run_search(
     compiled = compile_filters(
         remainder_node,
         org_id=org_id,
-        retention_days=retention_days,
-        extra_filters=extra_filters,
+        retention_days=retention_days
     )
 
     if duration_cond is None:
@@ -123,50 +113,7 @@ async def _run_search(
 @router.post("/api/audit/sessions/search", description=SEARCH_SESSIONS_DESCRIPTION)
 async def search_sessions(
     request: Request,
-    body: SessionSearchRequest = SearchRequestBody,
+    body: SessionSearchRequest = Body(openapi_examples=SEARCH_REQUEST_EXAMPLES),
     claims: dict = Depends(require_audit_action("read")),
 ) -> SessionSearchResponse:
     return await _run_search(request, body, claims)
-
-
-@router.get(
-    "/api/audit/sessions/{session_id}/tree", description=GET_SESSION_TREE_DESCRIPTION
-)
-async def get_session_tree(
-    session_id: int,
-    request: Request,
-    claims: dict = Depends(require_audit_action("read")),
-):
-    repository = request.app.state.session_audit_repository
-    compiled = compile_filters(
-        None,
-        org_id=claims["org_id"],
-        retention_days=claims["retention_days", 0],
-        extra_filters=[{"term": {"session_id": session_id}}],
-    )
-    events, _ = await repository.query(compiled, cursor=None, size=1000)
-    return {"items": [e.model_dump(mode="json") for e in events]}
-
-
-@router.post(
-    "/api/audit/sessions/{session_id}/tree", description=SEARCH_SESSION_TREE_DESCRIPTION
-)
-async def search_session_tree(
-    session_id: int,
-    request: Request,
-    body: SessionSearchRequest | None = Body(
-        default=None, openapi_examples=SEARCH_REQUEST_EXAMPLES
-    ),
-    claims: dict = Depends(require_audit_action("read")),
-) -> SessionSearchResponse:
-    if body is None:
-        body = SessionSearchRequest(size=1000)
-    elif "size" not in body.model_fields_set:
-        # A client-sent `{}` (or any body that just omits `size`) is a real,
-        # truthy SessionSearchRequest instance with size defaulted to 50 -
-        # `body or SessionSearchRequest(size=1000)` would never catch this,
-        # only a literally absent body. Explicit `size` always wins either way.
-        body = body.model_copy(update={"size": 1000})
-    return await _run_search(
-        request, body, claims, extra_filters=[{"term": {"session_id": session_id}}]
-    )

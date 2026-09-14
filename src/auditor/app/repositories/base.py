@@ -42,9 +42,7 @@ class SessionAuditRepository(ABC):
         Query session-audit events using a fully-compiled, backend-native
         query clause (see repositories/opensearch_query_compiler.py) - the
         output of compiling a FilterNode AST plus the always-injected
-        org_id/retention_days clauses (extra_filters covers simple fixed
-        lookups like a single session_id, so every caller goes through
-        compile() - there is no separate flat-filters-dict path anymore).
+        org_id/retention_days clauses.
 
         Paginated by cursor/size: returns (events for this page, next
         cursor or None if there are no more pages).

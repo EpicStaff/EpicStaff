@@ -28,7 +28,9 @@ def test_compile_contains_op_uses_wildcard_not_term():
     node = {"field": "name", "op": "contains", "value": "Session"}
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[-1]
-    assert compiled_leaf == {"wildcard": {"name": {"value": "*Session*", "case_insensitive": True}}}
+    assert compiled_leaf == {
+        "wildcard": {"name": {"value": "*Session*", "case_insensitive": True}}
+    }
 
 
 def test_compile_error_contains_targets_error_raw_not_error():
@@ -77,7 +79,9 @@ def test_compile_never_lets_client_ast_touch_org_id():
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
     assert {"term": {"org_id": 1}} in clauses
-    assert {"term": {"org_id": 999}} in clauses  # the bypassed leaf, harmless alongside the real one
+    assert {
+        "term": {"org_id": 999}
+    } in clauses  # the bypassed leaf, harmless alongside the real one
 
 
 def test_compile_free_text_uses_wildcard_and_query_string():
@@ -133,13 +137,3 @@ def test_compile_session_message_id_in_op_uses_structured_terms():
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[-1]
     assert compiled_leaf == {"terms": {"session_message_id": [1, 2, 3]}}
-
-
-def test_compile_extra_filters_scopes_session_tree():
-    query = compile_filters(
-        {"field": "kind", "op": "in", "value": ["event"]},
-        org_id=1,
-        retention_days=0,
-        extra_filters=[{"term": {"session_id": 42}}],
-    )
-    assert {"term": {"session_id": 42}} in _filter_clauses(query)
