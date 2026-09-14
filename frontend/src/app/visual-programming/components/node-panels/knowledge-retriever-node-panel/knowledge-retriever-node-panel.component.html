@@ -69,61 +69,60 @@
                             [activeColor]="activeColor"
                         ></app-custom-input>
 
-                            <div class="form-group">
-                                <app-select
-                                    label="Knowledge Collection"
-                                    tooltipText="The source collection to search. RAG must belong to this collection."
-                                    placeholder="Select knowledge collection"
-                                    formControlName="knowledge_collection"
-                                    [items]="collectionItems()"
-                                    [loading]="loadingCollections()"
-                                />
-                            </div>
-
-                            <div class="form-group">
-                                <app-select
-                                    label="RAG"
-                                    tooltipText="The RAG type registered for the selected collection."
-                                    placeholder="Select RAG"
-                                    formControlName="rag"
-                                    [items]="ragItems()"
-                                    [loading]="loadingRags()"
-                                />
-                            </div>
-
-                            @if (selectedRagKind()) {
-                                <div class="search-config-section">
-                                    <button
-                                        type="button"
-                                        class="search-config-toggle"
-                                        (click)="toggleSearchConfig()"
-                                    >
-                                        <span
-                                            class="chevron"
-                                            [class.open]="searchConfigOpen()"
-                                            >▶</span
-                                        >
-                                        RAG Search Config
-                                    </button>
-
-                                    @if (searchConfigOpen()) {
-                                        <div class="search-config-body">
-                                            @for (f of ragTabFormList(); track f) {
-                                                <app-rag-tab
-                                                    [form]="f"
-                                                    [hideSourceSelectors]="true"
-                                                    [allKnowledgeSources]="[]"
-                                                    [agentRags]="[]"
-                                                    [searchConfigs]="ragTabSearchConfigs()"
-                                                    [llmConfigId]="null"
-                                                />
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
+                        <div class="form-group">
+                            <app-select
+                                label="Knowledge Collection"
+                                tooltipText="The source collection to search. RAG must belong to this collection."
+                                placeholder="Select knowledge collection"
+                                formControlName="knowledge_collection"
+                                [items]="collectionItems()"
+                                [loading]="loadingCollections()"
+                            />
                         </div>
-                    }
+
+                        <div class="form-group">
+                            <app-select
+                                label="RAG"
+                                tooltipText="The RAG type registered for the selected collection."
+                                placeholder="Select RAG"
+                                formControlName="rag"
+                                [items]="ragItems()"
+                                [loading]="loadingRags()"
+                            />
+                        </div>
+
+                        @if (selectedRagKind()) {
+                            <div class="search-config-section">
+                                <button
+                                    type="button"
+                                    class="search-config-toggle"
+                                    (click)="toggleSearchConfig()"
+                                >
+                                    <span
+                                        class="chevron"
+                                        [class.open]="searchConfigOpen()"
+                                        >▶</span
+                                    >
+                                    RAG Search Config
+                                </button>
+
+                                @if (searchConfigOpen()) {
+                                    <div class="search-config-body">
+                                        @for (f of ragTabFormList(); track f) {
+                                            <app-rag-tab
+                                                [form]="f"
+                                                [hideSourceSelectors]="true"
+                                                [allKnowledgeSources]="[]"
+                                                [agentRags]="[]"
+                                                [searchConfigs]="ragTabSearchConfigs()"
+                                                [llmConfigId]="null"
+                                            />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
 
                     <app-column-resize-divider
                         ariaLabel="Resize form and query editor columns"
