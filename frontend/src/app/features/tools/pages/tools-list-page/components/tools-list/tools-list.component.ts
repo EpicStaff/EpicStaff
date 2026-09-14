@@ -52,7 +52,11 @@ interface Tool {
     name: string;
     labels: number[];
     is_favorite: boolean;
+    updated_at?: string;
 }
+
+/** Max chips shown in the "Last modified" strip; extras are clipped visually. */
+const RECENT_TOOLS_MAX = 8;
 
 @Component({
     selector: 'app-tools-list',
@@ -93,6 +97,7 @@ export class ToolsListComponent implements OnInit {
             ),
             searchTerm: this.searchTerm().trim().toLowerCase(),
             usage,
+            applySourceFilter: this.port.kind === 'custom',
         };
 
         return this.allTools()
@@ -110,6 +115,19 @@ export class ToolsListComponent implements OnInit {
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
     });
+
+    public readonly recentTools = computed<{ id: number; name: string }[]>(() =>
+        this.allTools()
+            .filter((t) => !this.port.isBuiltIn(t) && !!t.updated_at)
+            .sort((a, b) => new Date(b.updated_at!).getTime() - new Date(a.updated_at!).getTime())
+            .slice(0, RECENT_TOOLS_MAX)
+            .map((t) => ({ id: t.id, name: t.name }))
+    );
+
+    public onRecentToolClick(id: number): void {
+        const tool = this.findToolById(id);
+        if (tool) this.onConfigure(tool);
+    }
 
     constructor() {
         effect(() => {
@@ -211,7 +229,7 @@ export class ToolsListComponent implements OnInit {
                 return;
             case 'duplicate':
                 this.port
-                    .copy(payload.tool.id, { name: payload.tool.name })
+                    .copy(payload.tool.id)
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: (copy) => this.addNewTool(copy),
@@ -460,8 +478,7 @@ export class ToolsListComponent implements OnInit {
     private handleBulkDuplicate(): void {
         const ids = Array.from(this.viewState.selectedIds());
         const requests = ids.map((id) => {
-            const source = this.findToolById(id);
-            return this.port.copy(id, { name: source?.name ?? '' });
+            return this.port.copy(id);
         });
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,
@@ -512,7 +529,7 @@ export class ToolsListComponent implements OnInit {
     // --------------------------------------------------------------------- //
 
     public onConfigure(tool: Tool): void {
-        const dialogRef = this.port.openConfigureDialog(this.dialog, tool, this.allTools());
+        const dialogRef = this.port.openConfigureDialog(this.dialog, tool);
         dialogRef.closed
             .pipe(
                 tap((result) => {
@@ -539,12 +556,18 @@ export class ToolsListComponent implements OnInit {
             .subscribe({
                 next: (items) => {
                     const usage = items.find((i) => i.id === tool.id);
-                    const staffCount = usage?.staff_count ?? 0;
-                    const projectsCount = usage?.projects_count ?? 0;
+                    const agentSurfaceCount = usage?.agent_surface_count ?? 0;
+                    const sharedSurfaceCount = usage?.shared_surface_count ?? 0;
+                    const inlineSurfaceCount = usage?.inline_surface_count ?? 0;
                     const confirm$ =
-                        staffCount + projectsCount > 0
+                        agentSurfaceCount + sharedSurfaceCount + inlineSurfaceCount > 0
                             ? this.confirmationDialogService.confirm(
-                                  buildSingleDeleteWithUsageDialog(tool.name, staffCount, projectsCount)
+                                  buildSingleDeleteWithUsageDialog(
+                                      tool.name,
+                                      agentSurfaceCount,
+                                      sharedSurfaceCount,
+                                      inlineSurfaceCount
+                                  )
                               )
                             : this.confirmationDialogService.confirmDelete(tool.name);
                     confirm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
@@ -591,8 +614,9 @@ export class ToolsListComponent implements OnInit {
                         return {
                             id,
                             name: tool?.name ?? '',
-                            staffCount: usage?.staff_count ?? 0,
-                            projectsCount: usage?.projects_count ?? 0,
+                            agentSurfaceCount: usage?.agent_surface_count ?? 0,
+                            sharedSurfaceCount: usage?.shared_surface_count ?? 0,
+                            inlineSurfaceCount: usage?.inline_surface_count ?? 0,
                         };
                     });
                     runBulkDeleteWithConfirm(ids, {
