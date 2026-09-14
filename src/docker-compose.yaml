@@ -415,12 +415,18 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      NGINX_DOMAIN_NAME: ${NGINX_DOMAIN_NAME:?}
-      NGINX_SSL_ENABLE: ${NGINX_SSL_ENABLE:?}
-      FRONTEND_INTERNAL_PORT: ${FRONTEND_INTERNAL_PORT:?}
+      NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
+      NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
+      FRONTEND_HOST: ${FRONTEND_HOST:?}
+      FRONTEND_PORT: ${FRONTEND_PORT:?}
+      REALTIME_HOST: ${REALTIME_HOST:?}
+      REALTIME_PORT: ${REALTIME_PORT:?}
+      WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
     volumes:
-      - ./nginx/templates/default.conf.template:/etc/nginx/templates/default.conf.template
+      - ./nginx/templates/:/etc/nginx/templates:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
     networks:
