@@ -21,7 +21,6 @@ class LLMConfigData(BaseModel):
     """In-memory carrier for SecretResolver; excluded from every dump so no
     Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
-    headers: dict[str, str] | None = None
     extra_headers: dict[str, str] | None = None
 
     model_config = ConfigDict(from_attributes=True)

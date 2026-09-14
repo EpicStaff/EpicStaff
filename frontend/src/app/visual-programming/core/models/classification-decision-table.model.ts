@@ -6,6 +6,7 @@ export interface ComputationConfig {
     output_variable_path?: string | null;
     libraries?: string[];
     secret_ids?: number[];
+    secret_names?: string[];
 }
 
 export interface ClassificationDecisionTableData {

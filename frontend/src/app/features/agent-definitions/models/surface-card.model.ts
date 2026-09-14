@@ -7,6 +7,7 @@ export interface SurfaceToolOption {
     name: string;
     description: string;
     kind: 'python' | 'mcp';
+    built_in?: boolean;
 }
 
 export interface SurfaceCollectionOption {

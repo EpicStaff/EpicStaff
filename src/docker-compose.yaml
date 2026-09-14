@@ -70,8 +70,8 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
-      DJANGO_DB_USER: ${DB_USER:?}
-      DJANGO_DB_PASSWORD: ${DB_PASSWORD:?}
+      DB_USER: ${DB_USER:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
       DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
@@ -294,7 +294,8 @@ services:
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
-      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:-true}
+      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+      SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
@@ -320,12 +321,13 @@ services:
       - CHOWN  # chown per-exec output and home dirs to sandboxuser.
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
+      - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
     depends_on:
       redis:
         condition: service_healthy
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: minio
     command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
@@ -345,7 +347,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     container_name: minio-init
     networks:
       - backend-network

@@ -10,6 +10,7 @@ import {
     ButtonComponent,
     EmbeddingModelConfigDialogComponent,
     FlowNodeListComponent,
+    HelpTooltipComponent,
     LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
     TranscriptionModelConfigDialogComponent,
@@ -73,6 +74,7 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
         FlowNodeListComponent,
         LoadingSpinnerComponent,
         ButtonComponent,
+        HelpTooltipComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -119,6 +121,12 @@ export class SecretUsageDialogComponent implements OnInit {
                     this.status.set(LoadingState.ERROR);
                 },
             });
+    }
+
+    public readonly hiddenUsageTooltip = "You don't have permission to view some of this secret's uses.";
+
+    public readableCount(summary: SecretUsageSummary): number {
+        return summary.categories.reduce((sum, category) => sum + category.items.length, 0);
     }
 
     public toggleFlow(flowName: string): void {

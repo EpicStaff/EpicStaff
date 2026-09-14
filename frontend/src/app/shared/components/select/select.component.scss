@@ -61,6 +61,10 @@
             border-color: var(--color-ks-status-failed);
         }
 
+        &--transparent {
+            background-color: transparent;
+        }
+
         &:disabled {
             cursor: not-allowed;
             opacity: 0.7;

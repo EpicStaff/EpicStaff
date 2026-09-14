@@ -1,0 +1,15 @@
+.running-graph-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    .content-container {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+        gap: 1rem;
+        padding: 1rem 0rem;
+        padding-top: 0;
+    }
+}

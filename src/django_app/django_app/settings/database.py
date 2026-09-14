@@ -7,8 +7,8 @@ AUTH_USER_MODEL = "tables.User"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "USER": env.str("DJANGO_DB_USER"),
-        "PASSWORD": env.str("DJANGO_DB_PASSWORD"),
+        "USER": env.str("DB_USER"),
+        "PASSWORD": env.str("DB_PASSWORD"),
         "HOST": env.str("DB_HOST"),
         "PORT": env.int("DB_PORT"),
         "NAME": env.str("DB_NAME"),

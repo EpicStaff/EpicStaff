@@ -50,6 +50,7 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
     private completionDisposable: import('monaco-editor').IDisposable | null = null;
     private readonly lintCode$ = new Subject<string>();
     private lintSubscription: Subscription | null = null;
+    private containerResizeObserver: ResizeObserver | null = null;
 
     public editorLoaded = false;
 
@@ -89,6 +90,7 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
     ngOnDestroy(): void {
         this.lintSubscription?.unsubscribe();
         this.completionDisposable?.dispose();
+        this.containerResizeObserver?.disconnect();
     }
 
     private applyRuffDiagnostics(diagnostics: RuffDiagnostic[]): void {
@@ -119,9 +121,19 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
         }
 
         this.registerSecretCompletions();
+        this.observeContainerResize();
 
         this.lintCode$.next(this.pythonCode);
         this.cdr.markForCheck();
+    }
+
+    private observeContainerResize(): void {
+        this.zone.runOutsideAngular(() => {
+            this.containerResizeObserver = new ResizeObserver(() => {
+                this.monacoEditor?.layout();
+            });
+            this.containerResizeObserver.observe(this.editorContainer.nativeElement);
+        });
     }
 
     public ngOnChanges(changes: SimpleChanges): void {

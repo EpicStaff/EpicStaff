@@ -66,6 +66,7 @@ export class SelectComponent implements ControlValueAccessor {
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
+    transparent = input<boolean>(false);
 
     changed = output<unknown>();
     opened = output<void>();

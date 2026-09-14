@@ -24,6 +24,7 @@ from tables.services.secrets.secret_resolver import SecretResolver, secret_resol
 from tables.services.secrets.secret_service import SecretService, secret_service
 from tables.services.secrets.usage_service import (
     SecretUsageService,
+    UsageCounts,
     secret_usage_service,
 )
 
@@ -47,5 +48,6 @@ __all__ = [
     "SecretService",
     "secret_service",
     "SecretUsageService",
+    "UsageCounts",
     "secret_usage_service",
 ]

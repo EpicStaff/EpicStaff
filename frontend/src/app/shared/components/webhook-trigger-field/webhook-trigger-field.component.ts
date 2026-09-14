@@ -79,7 +79,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     /** Which providers are allowed for both the "Create new" dropdown and the "Use existing" picker. */
     allowedProviders = input<WebhookProviderType[]>(['ngrok', 'localhost']);
     showAuth = input<boolean>(true);
-    activeColor = input<string>('#685fff');
+    activeColor = input<string>('var(--accent-color)');
     /** Restrict "Use existing" list to triggers with this auth kind. `null` = no restriction. */
     existingAuthKindFilter = input<WebhookTriggerAuthKind | null>(null);
 

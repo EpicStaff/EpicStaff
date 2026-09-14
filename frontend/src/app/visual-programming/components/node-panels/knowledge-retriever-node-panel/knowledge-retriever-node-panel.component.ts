@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
+    ColumnResizeDividerComponent,
     CopyButtonComponent,
+    createColumnWidthState,
     CustomInputComponent,
     SelectComponent,
     SelectItem,
@@ -38,7 +39,6 @@ interface RagChoice {
     selector: 'app-knowledge-retriever-node-panel',
     imports: [
         ReactiveFormsModule,
-        MatTooltipModule,
         CustomInputComponent,
         SelectComponent,
         InputMapComponent,
@@ -46,6 +46,7 @@ interface RagChoice {
         TooltipComponent,
         AppSvgIconComponent,
         CopyButtonComponent,
+        ColumnResizeDividerComponent,
         RagTabComponent,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
@@ -64,7 +65,8 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     readonly loadingRags = signal<boolean>(false);
 
     readonly searchConfigOpen = signal<boolean>(true);
-    readonly isCodeEditorFullWidth = signal<boolean>(false);
+    readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('knowledge-retriever-node', 406);
     readonly availableInputs = signal<string[]>([]);
     readonly inputsListOpen = signal<boolean>(true);
 
@@ -117,7 +119,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     }
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     get inputMapPairs(): FormArray {
@@ -200,10 +202,6 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
                 search_configs: searchConfigs,
             },
         };
-    }
-
-    toggleCodeEditorFullWidth(): void {
-        this.isCodeEditorFullWidth.update((v) => !v);
     }
 
     toggleSearchConfig(): void {

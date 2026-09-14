@@ -33,16 +33,17 @@
     }
 
     &__label {
-        font-size: var(--text-body-size);
-        font-weight: var(--text-body-weight);
+        font-size: var(--text-body-large-size);
+        font-weight: var(--text-body-large-weight);
+        line-height: var(--text-body-large-line-height);
         letter-spacing: 0.04em;
-        text-transform: uppercase;
+        text-transform: var(--text-body-large-transform);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
         flex: 0 1 auto;
-        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
+        color: var(--color-text-primary);
     }
 
     &__actions {
