@@ -162,11 +162,12 @@ export class StorageTreeComponent {
         this.renameValue = item.name;
 
         const path = item.path || item.name;
-        const itemEl =
-            this.hoveredItemEl ??
-            (this.listElRef()?.nativeElement.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
         const listEl = this.listElRef()?.nativeElement;
+        const itemEl =
+            (this.hoveredItemEl?.getAttribute('data-path') === path ? this.hoveredItemEl : null) ??
+            (listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
         if (itemEl && listEl) {
+            itemEl.scrollIntoView({ block: 'nearest' });
             const itemRect = itemEl.getBoundingClientRect();
             const listRect = listEl.getBoundingClientRect();
             this.renamePos.set({
@@ -185,12 +186,31 @@ export class StorageTreeComponent {
         });
     }
 
+    /**
+     * Like startRename, but waits for the item's row to actually exist in the DOM first.
+     * Needed right after a tree reload (e.g. after grouping), where the row may not be
+     * rendered yet — starting the rename immediately would leave renamePos unset and the
+     * overlay would fall back to a default position instead of the item's real row.
+     */
+    startRenameWhenReady(item: StorageItem, retriesLeft = 20): void {
+        const path = item.path || item.name;
+        const listEl = this.listElRef()?.nativeElement;
+        const exists = listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`);
+        if (exists || retriesLeft <= 0) {
+            this.startRename(item);
+            return;
+        }
+        setTimeout(() => this.startRenameWhenReady(item, retriesLeft - 1), 50);
+    }
+
     onContextMenuAction(action: string): void {
         const item = this.contextMenuItem();
         if (!item) return;
 
         if (action === 'rename') {
             this.startRename(item);
+        } else if (action === 'group-selected') {
+            this.startGrouping();
         } else if (action === 'delete') {
             const selectedSet = this.selectedPaths();
             const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
@@ -238,6 +258,23 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
         this.onRenameConfirm();
+    }
+
+    canGroupSelected(): boolean {
+        return this.getGroupableItems().length >= 2;
+    }
+
+    startGrouping(): void {
+        const items = this.getGroupableItems();
+        if (items.length < 2) {
+            return;
+        }
+
+        this.contextAction.emit({
+            action: 'group-selected',
+            item: items[0],
+            selectedItems: items,
+        });
     }
 
     getFileIcon(item: StorageItem): string {
@@ -322,6 +359,20 @@ export class StorageTreeComponent {
             item: selectedItems[0] ?? this.selectedItem() ?? { name: '', path: '', type: 'folder' },
             selectedItems,
         });
+    }
+
+    private getSelectedItems(): StorageItem[] {
+        const selectedSet = this.selectedPaths();
+        return this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
+    }
+
+    private getGroupableItems(): StorageItem[] {
+        const items = this.pruneNestedItems(this.getSelectedItems());
+        if (items.length < 2) {
+            return [];
+        }
+        const parent = this.getParentPath(items[0].path);
+        return items.every((item) => this.getParentPath(item.path) === parent) ? items : [];
     }
 
     onDragStart(event: DragEvent, item: StorageItem): void {
