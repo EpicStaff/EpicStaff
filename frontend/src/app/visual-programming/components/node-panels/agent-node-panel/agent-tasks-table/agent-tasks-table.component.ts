@@ -1,21 +1,6 @@
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
-import { TemplatePortal } from '@angular/cdk/portal';
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    DestroyRef,
-    inject,
-    input,
-    output,
-    signal,
-    TemplateRef,
-    ViewChild,
-    ViewContainerRef,
-} from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent } from '@shared/components';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, ViewChild } from '@angular/core';
+import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 
 import { AgentNodeTaskUi } from '../../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { ToastService } from '../../../../../services/notifications';
@@ -33,14 +18,14 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
 
 @Component({
     selector: 'app-agent-tasks-table',
-    imports: [DragDropModule, AppSvgIconComponent, VariableHighlightTextareaComponent],
+    imports: [DragDropModule, AppSvgIconComponent, MultiSelectComponent, VariableHighlightTextareaComponent],
     templateUrl: './agent-tasks-table.component.html',
     styleUrls: ['./agent-tasks-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentTasksTableComponent {
     public readonly tasks = input.required<AgentNodeTaskUi[]>();
-    public readonly activeColor = input<string>('#685fff');
+    public readonly activeColor = input<string>('var(--accent-color)');
     public readonly selectedCell = input<{ taskIndex: number; field: 'instructions' | 'schema' } | null>(null);
     public readonly variableNames = input<string[]>([]);
 
@@ -52,27 +37,28 @@ export class AgentTasksTableComponent {
     public readonly invalidSchemaIds = signal<Set<string>>(new Set());
 
     public readonly contextPopupRowIndex = signal<number | null>(null);
-    public readonly contextSearch = signal('');
-    public readonly contextTempSelected = signal<ContextRef[]>([]);
 
     public readonly contextCandidates = computed<ResolvedTaskRef[]>(() => {
         const rowIndex = this.contextPopupRowIndex();
         if (rowIndex === null) return [];
-        const search = this.contextSearch().trim().toLowerCase();
         return this.tasks()
             .slice(0, rowIndex)
-            .map((t, idx) => ({ ...t, order: idx + 1 }))
-            .filter((t) => !search || (t.name || '').toLowerCase().includes(search));
+            .map((t, idx) => ({ ...t, order: idx + 1 }));
     });
 
-    @ViewChild('contextPopupTemplate') private contextPopupTemplate!: TemplateRef<unknown>;
+    public readonly contextItems = computed<SelectItem[]>(() =>
+        this.contextCandidates().map((c) => ({ name: c.name || 'Untitled', value: c.id ?? c.tempId }))
+    );
 
-    private overlayRef: OverlayRef | null = null;
+    public readonly contextSelectedValues = computed<unknown[]>(() => {
+        const rowIndex = this.contextPopupRowIndex();
+        if (rowIndex === null) return [];
+        const task = this.tasks()[rowIndex];
+        return (task?.contextRefs ?? []).map((ref) => ref.id ?? ref.tempId);
+    });
 
-    private readonly overlay = inject(Overlay);
-    private readonly overlayPositionBuilder = inject(OverlayPositionBuilder);
-    private readonly vcr = inject(ViewContainerRef);
-    private readonly destroyRef = inject(DestroyRef);
+    @ViewChild('contextMultiSelect') private contextMultiSelect!: MultiSelectComponent;
+
     private readonly toastService = inject(ToastService);
 
     trackByTempId(_index: number, task: AgentNodeTaskUi): string {
@@ -207,83 +193,20 @@ export class AgentTasksTableComponent {
 
     openContextPopup(rowIndex: number, event: MouseEvent): void {
         event.stopPropagation();
-        this.closeContextPopup();
-
-        const task = this.tasks()[rowIndex];
         this.contextPopupRowIndex.set(rowIndex);
-        this.contextSearch.set('');
-        this.contextTempSelected.set((task.contextRefs ?? []).map((r) => ({ ...r })));
-
-        const originEl = event.currentTarget as HTMLElement;
-        const positionStrategy = this.overlayPositionBuilder
-            .flexibleConnectedTo(originEl)
-            .withPositions([
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
-            ])
-            .withPush(false)
-            .withFlexibleDimensions(false)
-            .withViewportMargin(8);
-
-        this.overlayRef = this.overlay.create({
-            positionStrategy,
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: true,
-            backdropClass: 'transparent-backdrop',
-        });
-
-        this.overlayRef
-            .backdropClick()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.closeContextPopup());
-
-        const portal = new TemplatePortal(this.contextPopupTemplate, this.vcr);
-        this.overlayRef.attach(portal);
+        const task = this.tasks()[rowIndex];
+        const seedValues = (task.contextRefs ?? []).map((ref) => ref.id ?? ref.tempId);
+        this.contextMultiSelect.openAt(event.currentTarget as HTMLElement, seedValues);
     }
 
-    closeContextPopup(): void {
-        if (this.overlayRef) {
-            this.overlayRef.detach();
-            this.overlayRef.dispose();
-            this.overlayRef = null;
-        }
-        this.contextPopupRowIndex.set(null);
-    }
-
-    onContextSearch(event: Event): void {
-        this.contextSearch.set((event.target as HTMLInputElement).value);
-    }
-
-    isContextSelected(candidate: AgentNodeTaskUi): boolean {
-        return this.contextTempSelected().some((ref) => this.refMatchesTask(ref, candidate));
-    }
-
-    toggleContextSelection(candidate: AgentNodeTaskUi): void {
-        const current = this.contextTempSelected();
-        const exists = current.some((ref) => this.refMatchesTask(ref, candidate));
-        if (exists) {
-            this.contextTempSelected.set(current.filter((ref) => !this.refMatchesTask(ref, candidate)));
-        } else {
-            const ref: ContextRef = candidate.id != null ? { id: candidate.id } : { tempId: candidate.tempId };
-            this.contextTempSelected.set([...current, ref]);
-        }
-    }
-
-    onContextClear(): void {
-        this.contextTempSelected.set([]);
-    }
-
-    onContextCancel(): void {
-        this.closeContextPopup();
-    }
-
-    onContextSave(): void {
+    onContextSelectionChange(values: unknown[]): void {
         const rowIndex = this.contextPopupRowIndex();
         if (rowIndex === null) return;
-        this.updateTask(rowIndex, { contextRefs: this.contextTempSelected() });
-        this.closeContextPopup();
+        const tasks = this.tasks();
+        const refs: ContextRef[] = values
+            .map((value): ContextRef => (typeof value === 'number' ? { id: value } : { tempId: value as string }))
+            .filter((ref) => tasks.some((t) => this.refMatchesTask(ref, t)));
+        this.updateTask(rowIndex, { contextRefs: refs });
     }
 
     private refMatchesTask(ref: ContextRef, task: AgentNodeTaskUi): boolean {
