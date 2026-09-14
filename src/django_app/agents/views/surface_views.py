@@ -8,7 +8,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from agents.models.surface_models import Surface
-from tables.models.rbac_models import Organization
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permissions import HasOrgPermission
@@ -39,9 +38,6 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         "knowledge__graph_local_search_config",
     )
 
-    def _get_organization(self):
-        return Organization.objects.get(id=self.get_active_org_id())
-
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
             return SurfaceReadSerializer
@@ -50,11 +46,11 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         return SurfaceWriteSerializer
 
     def get_queryset(self):
-        return super().get_queryset().filter(organization=self._get_organization())
+        return super().get_queryset().filter(organization_id=self.get_active_org_id())
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organization"] = self._get_organization()
+        context["organization_id"] = self.get_active_org_id()
         return context
 
     @extend_schema(request=SurfaceWriteSerializer, responses=SurfaceReadSerializer)

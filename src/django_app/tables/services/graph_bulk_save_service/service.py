@@ -6,13 +6,11 @@ from django.db import connection, transaction
 from tables.models.base_models import BaseGlobalNode
 from tables.models import Graph
 from tables.models.graph_models import ConditionalEdge, Edge
-from tables.models.rbac_models import Organization
 
 from tables.serializers.graph_bulk_save_serializers import (
     ConditionalEdgeBulkSerializer,
     EdgeBulkSerializer,
 )
-from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.services.graph_bulk_save_service.data_types import (
     BuildSaveableResult,
@@ -49,19 +47,6 @@ class GraphBulkSaveService:
     # org. Defaults to None so a helper called without save() denies (fail-safe).
     _request = None
 
-    def _resolve_organization(self) -> Organization | None:
-        """Resolve the caller's active organization (from X-Organization-Id) for
-        the Surface org-isolation checks in the node serializers' validate().
-
-        None when there is no request — keeps those checks permissive (a missing
-        "organization" key is treated as skip-validation, see
-        TaskNodeSerializer.validate) instead of raising.
-        """
-        if self._request is None:
-            return None
-        org_id = resolve_active_org_id(self._request)
-        return Organization.objects.filter(pk=org_id).first()
-
     @staticmethod
     @lru_cache(maxsize=1)
     def _get_global_node_models() -> tuple[type, ...]:
@@ -83,10 +68,7 @@ class GraphBulkSaveService:
         all_errors: dict = {}
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
-        self._serializer_context = {
-            "organization": self._resolve_organization(),
-            "request": self._request,
-        }
+        self._serializer_context = {"request": self._request}
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 

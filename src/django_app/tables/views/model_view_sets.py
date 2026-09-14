@@ -16,7 +16,14 @@ from django_filters.rest_framework import (
     CharFilter,
     NumberFilter,
 )
-from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
+from rest_framework import (
+    generics,
+    serializers,
+    viewsets,
+    mixins,
+    status,
+    filters as drf_filters,
+)
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
@@ -194,7 +201,7 @@ from tables.views.mixins import (
     SuperadminWriteMixin,
     ToolUsageActionsMixin,
 )
-from tables.models.rbac_models import ApiKey, Organization
+from tables.models.rbac_models import ApiKey
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permissions import (
     IsSuperadmin,
@@ -655,7 +662,9 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1236,11 +1245,6 @@ class TaskNodeViewSet(
     )
     serializer_class = TaskNodeSerializer
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(id=self.get_active_org_id())
-        return context
-
     def perform_update(self, serializer):
         # The serializer allows writing `graph`; without this check a PATCH
         # could move the node into another org's graph.
@@ -1286,11 +1290,6 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__graph_local_search_config",
     )
     serializer_class = AgentNodeSerializer
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(id=self.get_active_org_id())
-        return context
 
     def perform_update(self, serializer):
         # The serializer allows writing `graph`; without this check a PATCH
