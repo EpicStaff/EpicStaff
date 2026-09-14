@@ -64,7 +64,6 @@ class DefaultLLMConfig(DefaultBaseModel):
     top_logprobs = models.IntegerField(null=True, blank=True)
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
-    headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(null=True, blank=True)
     is_visible = models.BooleanField(default=True)
@@ -102,7 +101,6 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
         on_delete=models.SET_NULL,
         related_name="llm_configs",
     )
-    headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(default=120.0, null=True, blank=True)
     is_visible = models.BooleanField(default=True)

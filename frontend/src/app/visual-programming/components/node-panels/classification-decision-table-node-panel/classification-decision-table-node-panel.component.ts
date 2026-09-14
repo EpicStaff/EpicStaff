@@ -254,7 +254,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     protected initializeForm(): FormGroup {

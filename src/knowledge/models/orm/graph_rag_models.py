@@ -69,7 +69,6 @@ class LLMConfig(Base):
 
     # API settings
     api_key_secret_id = Column(Integer, nullable=True)
-    headers = Column(JSON, nullable=True, default=dict)
     extra_headers = Column(JSON, nullable=True, default=dict)
     timeout = Column(Float, nullable=True)
 
