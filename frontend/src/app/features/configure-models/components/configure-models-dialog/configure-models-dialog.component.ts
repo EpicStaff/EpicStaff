@@ -72,7 +72,8 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.SECRETS,
             label: 'Secrets',
             svgIcon: 'secrets',
-            isPermitted: () => this.permissionService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
+            isPermitted: () =>
+                this.permissionService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
         },
     ];
 
@@ -84,7 +85,7 @@ export class ConfigureModelsDialogComponent implements OnInit {
         } else if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
             this.activeTabId.set(ConfigureModelsTabId.DEFAULT_LLMS);
         } else {
-            const firstPermittedTab = this.tabs.find((tab) => tab.isPermitted);
+            const firstPermittedTab = this.tabs.find((tab) => tab.isPermitted());
             if (firstPermittedTab) this.activeTabId.set(firstPermittedTab.id);
         }
     }
