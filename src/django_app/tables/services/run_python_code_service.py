@@ -115,6 +115,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         channel = self.code_exec_task_channel
         # Trusted scope for the storage-credential issuer, written before the
         # task itself is published.
+        # Sync variant on purpose: run_code() is sync and uses the sync redis_client
         publish_credential_scope(self.redis_service.redis_client, code_task_data)
         self.redis_service.redis_client.publish(
             channel, code_task_data.model_dump_json()
