@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 from services.storage_credential_manager import (
     CredentialManagerError,
     StorageCredentialManager,
@@ -19,7 +20,11 @@ def test_build_policy_two_folders_object_statement():
     policy = manager.build_policy("b", {"f1", "f2"})
 
     object_statement = policy["Statement"][0]
-    assert set(object_statement["Action"]) == {"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}
+    assert set(object_statement["Action"]) == {
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+    }
     assert object_statement["Resource"] == [
         "arn:aws:s3:::b/f1",
         "arn:aws:s3:::b/f2",
@@ -33,7 +38,10 @@ def test_build_policy_two_folders_list_bucket_statement():
     list_statement = policy["Statement"][1]
     assert list_statement["Action"] == ["s3:ListBucket"]
     assert list_statement["Resource"] == ["arn:aws:s3:::b"]
-    assert sorted(list_statement["Condition"]["StringLike"]["s3:prefix"]) == ["f1", "f2"]
+    assert sorted(list_statement["Condition"]["StringLike"]["s3:prefix"]) == [
+        "f1",
+        "f2",
+    ]
 
 
 def test_build_policy_get_bucket_location_statement():
@@ -235,3 +243,118 @@ async def test_revoke_calls_delete_service_account():
     await manager.revoke("AK")
 
     manager._client.delete_service_account.assert_awaited_once_with("AK")
+
+
+# --- Cross-tenant path-traversal leak: _scoped_folders() joins the untrusted
+# `allowed_paths` entries onto the trusted `org_prefix` *before* normalization,
+# so a single-level ".." absorbs the org prefix itself:
+#   "org_1/../org_2/"  --posixpath.normpath-->  "org_2/"
+# `_normalize_path`'s traversal guard only rejects normalized paths that still
+# start with "..", which this case no longer does by the time it's checked.
+# The tests below assert the SECURE behavior (no sibling-org prefix must ever
+# appear in the returned policy) and therefore FAIL against the current code.
+
+
+def test_build_policy_rejects_sibling_org_via_prefix_absorbed_traversal():
+    manager = make_manager()
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", ["../org_2/"])
+
+    policy = manager.build_policy("b", folders)
+
+    object_statement = policy["Statement"][0]
+    for resource in object_statement["Resource"]:
+        assert resource.startswith("arn:aws:s3:::b/org_1/") or resource == "arn:aws:s3:::b/org_1", (
+            f"Policy grants access to a sibling org's objects via path-traversal-absorbed "
+            f"prefix: {resource!r} does not start with 'arn:aws:s3:::b/org_1/'"
+        )
+
+    list_statement = policy["Statement"][1]
+    for prefix in list_statement["Condition"]["StringLike"]["s3:prefix"]:
+        assert prefix.startswith("org_1/") or prefix == "org_1", (
+            f"Policy grants s3:ListBucket over a sibling org's prefix via "
+            f"path-traversal-absorbed prefix: {prefix!r} does not start with 'org_1/'"
+        )
+
+
+def test_build_policy_rejects_sibling_org_via_multi_segment_traversal():
+    manager = make_manager()
+    # "org_1" + "a/../../org_2/" -> normpath -> "org_2" (both ".." segments consumed,
+    # the second one eating into the org prefix itself)
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", ["a/../../org_2/"])
+
+    policy = manager.build_policy("b", folders)
+
+    object_statement = policy["Statement"][0]
+    for resource in object_statement["Resource"]:
+        assert resource.startswith("arn:aws:s3:::b/org_1/") or resource == "arn:aws:s3:::b/org_1", (
+            f"Policy grants access to a sibling org's objects via multi-segment "
+            f"path-traversal-absorbed prefix: {resource!r} does not start with 'arn:aws:s3:::b/org_1/'"
+        )
+
+
+def test_build_policy_list_bucket_condition_rejects_sibling_org_prefix():
+    manager = make_manager()
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", ["../org_2/"])
+
+    policy = manager.build_policy("b", folders)
+
+    list_statement = policy["Statement"][1]
+    prefixes = list_statement["Condition"]["StringLike"]["s3:prefix"]
+    assert all(prefix.startswith("org_1/") or prefix == "org_1" for prefix in prefixes), (
+        f"s3:ListBucket StringLike condition leaks a sibling org's prefix: {prefixes!r}"
+    )
+
+
+def test_build_policy_rejects_sibling_org_file_via_traversal():
+    manager = make_manager()
+    # No trailing "/" on the traversal target, so _normalize_path does not append
+    # "/*" -- this grants exactly the single sibling-org file "org_2/secret.txt".
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", ["../org_2/secret.txt"])
+
+    policy = manager.build_policy("b", folders)
+
+    object_statement = policy["Statement"][0]
+    for resource in object_statement["Resource"]:
+        assert resource.startswith("arn:aws:s3:::b/org_1/") or resource == "arn:aws:s3:::b/org_1", (
+            f"Policy grants access to a specific file in a sibling org via "
+            f"path traversal: {resource!r} does not start with 'arn:aws:s3:::b/org_1/'"
+        )
+
+
+def test_scoped_folders_plain_subfolder_stays_in_org():
+    manager = make_manager()
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", ["reports/"])
+
+    policy = manager.build_policy("b", folders)
+
+    object_statement = policy["Statement"][0]
+    assert object_statement["Resource"] == ["arn:aws:s3:::b/org_1/reports/*"]
+
+
+def test_scoped_folders_none_allowed_paths_grants_whole_org():
+    manager = make_manager()
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", None)
+
+    policy = manager.build_policy("b", folders)
+
+    object_statement = policy["Statement"][0]
+    assert object_statement["Resource"] == ["arn:aws:s3:::b/org_1/*"]
+
+
+def test_scoped_folders_interior_traversal_resolving_inside_org_is_not_rejected():
+    manager = make_manager()
+    # "org_1" + "a/../b/" -> normpath -> "org_1/b" (the ".." only cancels the
+    # interior "a" segment, never touching the org prefix) -- this must stay
+    # allowed so a future fix that blanket-bans any ".." doesn't regress this.
+    folders = DynamicVenvExecutorChain._scoped_folders("org_1", ["a/../b/"])
+
+    policy = manager.build_policy("b", folders)
+
+    object_statement = policy["Statement"][0]
+    assert object_statement["Resource"] == ["arn:aws:s3:::b/org_1/b/*"]
+
+
+def test_build_policy_still_catches_bucket_wide_escape():
+    manager = make_manager()
+    with pytest.raises(CredentialManagerError):
+        manager.build_policy("b", {"org_1/../../"})
