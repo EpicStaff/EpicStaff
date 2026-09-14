@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from opensearchpy.exceptions import RequestError as OpenSearchRequestError
 
 from app.controllers import export_routes, health_routes, ingest_routes, query_routes
@@ -95,6 +96,16 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400, content={"detail": _extract_opensearch_reason(exc)}
+        )
+
+    @app.exception_handler(OpenSearchConnectionError)
+    async def _opensearch_connection_error_handler(
+        request: Request, exc: OpenSearchConnectionError
+    ) -> JSONResponse:
+        logger.warning(f"OpenSearch unreachable: {exc}")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Audit search backend is temporarily unavailable"},
         )
 
     app.include_router(health_routes.router)
