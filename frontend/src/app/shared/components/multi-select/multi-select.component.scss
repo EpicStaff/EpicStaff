@@ -151,13 +151,17 @@
         color: var(--color-ks-text);
         transition: border-color 0.2s ease;
 
-        &:hover {
+        &:hover:not(&--readonly) {
             background: var(--color-ks-hover-row);
         }
 
         &--selected {
             border-color: var(--purple-alpha-60);
             background: var(--purple-alpha-12);
+        }
+
+        &--readonly {
+            cursor: default;
         }
 
         &--checkbox-left {

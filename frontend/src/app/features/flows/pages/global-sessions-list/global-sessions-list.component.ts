@@ -18,6 +18,7 @@ import {
     PaginationControlsComponent,
     SelectComponent,
     SelectItem,
+    StopSessionButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
@@ -35,6 +36,7 @@ import {
     GraphSessionLight,
     GraphSessionService,
     GraphSessionStatus,
+    isTerminalSessionStatus,
     TriggerType,
 } from '../../services/flows-sessions.service';
 
@@ -49,6 +51,7 @@ import {
         ActionDropdownButtonComponent,
         SelectComponent,
         HasPermissionDirective,
+        StopSessionButtonComponent,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
@@ -224,6 +227,10 @@ export class GlobalSessionsListComponent {
         }
     }
 
+    public canStopSession(status: GraphSessionStatus): boolean {
+        return !isTerminalSessionStatus(status);
+    }
+
     public onStopSession(sessionId: number): void {
         this.graphSessionService
             .stopSessionById(sessionId)
@@ -365,6 +372,7 @@ export class GlobalSessionsListComponent {
             .subscribe({
                 next: (response) => {
                     this.sessions.set(response.results);
+                    this.syncPreviewSession(response.results);
                     this.totalCount.set(response.count);
                     this.isLoaded.set(true);
                     this.startBackgroundRefresh();
@@ -403,8 +411,18 @@ export class GlobalSessionsListComponent {
             )
             .subscribe((response) => {
                 this.sessions.set(response.results);
+                this.syncPreviewSession(response.results);
                 this.totalCount.set(response.count);
             });
+    }
+
+    private syncPreviewSession(sessions: GraphSessionLight[]): void {
+        const current = this.previewSession();
+        if (!current) return;
+        const updated = sessions.find((s) => s.id === current.id);
+        if (updated) {
+            this.previewSession.set(updated);
+        }
     }
 
     protected readonly ResourceCode = ResourceCode;

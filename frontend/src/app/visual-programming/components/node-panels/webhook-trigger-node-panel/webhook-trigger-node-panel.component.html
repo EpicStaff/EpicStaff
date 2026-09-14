@@ -1,5 +1,8 @@
 <div class="panel-container">
-    <div class="panel-content">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
         <form
             [formGroup]="form"
             class="form-container"
@@ -8,7 +11,7 @@
                 class="form-layout"
                 [class.expanded]="isExpanded()"
                 [class.collapsed]="!isExpanded()"
-                [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
+                [class.form-collapsed]="isFormCollapsed()"
             >
                 <div
                     #formColumn
@@ -60,7 +63,9 @@
                     <app-node-secrets-field
                         [activeColor]="activeColor"
                         [value]="selectedSecretIds()"
-                        tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                        [readonly]="!canEditSecrets()"
+                        [names]="secretNames()"
+                        [tooltipText]="secretsTooltip()"
                         (valueChange)="onSecretsChange($event)"
                     />
 
@@ -73,62 +78,30 @@
                     ></app-custom-input>
                 </div>
                 @if (isExpanded()) {
-                    @if (!isCodeEditorFullWidth()) {
-                        <app-column-resize-divider
-                            ariaLabel="Resize form and code editor columns"
-                            [column]="formColumn"
-                            [opposite]="editorColumn"
-                            [(width)]="leftColumnWidth.width"
-                            [defaultWidth]="leftColumnWidth.defaultWidth"
-                        />
-                    }
-                    <div
-                        #editorColumn
-                        class="code-editor-wrapper"
-                    >
-                        <button
-                            type="button"
-                            class="toggle-icon-button"
-                            [matTooltip]="isCodeEditorFullWidth() ? 'Collapse editor' : 'Expand editor'"
-                            matTooltipPosition="right"
-                            [attr.aria-label]="isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'"
-                            (click)="toggleCodeEditorFullWidth()"
-                        >
-                            <svg
-                                width="9"
-                                height="22"
-                                viewBox="0 0 9 22"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                [style.transform]="isCodeEditorFullWidth() ? 'scaleX(1)' : 'scaleX(-1)'"
-                            >
-                                <path
-                                    d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                        </button>
-                        <div class="code-editor-section">
-                            <app-code-editor
-                                [pythonCode]="pythonCode"
-                                [secretNames]="secretNames()"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                            ></app-code-editor>
-                        </div>
-                    </div>
-                } @else {
-                    <div class="code-editor-section">
-                        <app-code-editor
-                            [pythonCode]="pythonCode"
-                            [secretNames]="secretNames()"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                        ></app-code-editor>
-                    </div>
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and code editor columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
                 }
+
+                <div
+                    #editorColumn
+                    class="code-editor-wrapper"
+                >
+                    <app-code-editor
+                        class="code-editor-section"
+                        [pythonCode]="pythonCode"
+                        [secretNames]="secretNames()"
+                        (pythonCodeChange)="onPythonCodeChange($event)"
+                        (errorChange)="onCodeErrorChange($event)"
+                    ></app-code-editor>
+                </div>
             </div>
         </form>
     </div>

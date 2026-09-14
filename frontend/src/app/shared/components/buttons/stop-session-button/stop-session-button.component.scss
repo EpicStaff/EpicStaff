@@ -1,0 +1,32 @@
+.stop-session-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid var(--color-stop-session-button);
+    background: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.18s;
+
+    &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--color-stop-session-button) 15%, transparent);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+}
+
+.stop-session-button__icon {
+    width: 10px;
+    height: 10px;
+    border-radius: 1px;
+    background: var(--color-stop-session-button);
+    flex-shrink: 0;
+}

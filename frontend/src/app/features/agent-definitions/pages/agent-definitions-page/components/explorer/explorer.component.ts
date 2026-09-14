@@ -201,14 +201,28 @@ export class ExplorerComponent {
 
     onAdd(section: ExplorerSectionId): void {
         if (section === 'storage') {
-            this.storageSection()?.openCreateFolder();
+            this.withStorageSection((s) => s.openCreateFolder());
             return;
         }
         this.addInSection.emit(section);
     }
 
     onStorageMenu(event: MouseEvent): void {
-        this.storageSection()?.openMoreMenu(event);
+        this.withStorageSection((s) => s.openMoreMenu(event));
+    }
+
+    private withStorageSection(action: (section: StorageSectionComponent) => void): void {
+        this.ensureExpanded('storage');
+        const existing = this.storageSection();
+        if (existing) {
+            action(existing);
+            return;
+        }
+        this.store.activateStorage();
+        setTimeout(() => {
+            const section = this.storageSection();
+            if (section) action(section);
+        });
     }
 
     onClose(): void {

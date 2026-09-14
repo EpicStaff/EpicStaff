@@ -1,12 +1,22 @@
 <div class="panel-container">
-    <div class="panel-content">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
         <form
             [formGroup]="form"
             class="form-container"
         >
             @if (isExpanded()) {
-                <div class="form-layout expanded">
-                    <div class="form-fields">
+                <div
+                    class="form-layout expanded"
+                    [class.form-collapsed]="isFormCollapsed()"
+                >
+                    <div
+                        #formColumn
+                        class="form-fields"
+                        [style.flex-basis.px]="leftColumnWidth.width()"
+                    >
                         <app-custom-input
                             label="Node Name"
                             [required]="true"
@@ -151,7 +161,22 @@
                         </div>
                     </div>
 
-                    <div class="main-editor-pane">
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and instructions columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [minOppositeWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
+
+                    <div
+                        #editorColumn
+                        class="main-editor-pane"
+                    >
                         @if (!selectedTask()) {
                             <div class="main-editor-pane__empty">Add a task to edit its instructions</div>
                         } @else if (effectiveRightPane()?.field === 'schema') {

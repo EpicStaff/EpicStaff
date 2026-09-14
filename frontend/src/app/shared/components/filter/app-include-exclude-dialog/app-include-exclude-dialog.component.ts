@@ -205,6 +205,6 @@ export class AppIncludeExcludeDialogComponent {
     }
 
     public indentPadding(depth: number): string {
-        return `${0.75 + depth * 1.25}rem`;
+        return `${1 + depth * 1.25}rem`;
     }
 }
