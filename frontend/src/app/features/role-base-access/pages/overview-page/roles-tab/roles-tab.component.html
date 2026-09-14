@@ -4,44 +4,49 @@
         [width]="'240px'"
         [(searchTerm)]="searchTerm"
     />
-    <span class="count-label">{{ filteredRoles().length }} of {{ rolesService.roles().length }} roles</span>
+    <span class="count-label"> {{ filteredRows().length }} of {{ rows().length }} roles </span>
     <div class="toolbar-actions">
-        <!-- TODO: re-enable when custom role CRUD is available on the backend -->
-        <!--
-        <app-button
-            type="primary"
-            leftIcon="plus"
-            (click)="onCreateRole()"
-        >
-            Create Role
-        </app-button>
-        -->
+        @if (canCreateOrCopyAnywhere()) {
+            <app-button
+                type="primary"
+                leftIcon="plus"
+                (click)="onCreateRole()"
+            >
+                Create Role
+            </app-button>
+        }
     </div>
 </div>
 
 <app-table
-    [columns]="columns"
-    [data]="filteredRoles()"
+    [columns]="columns()"
+    [data]="filteredRows()"
     [selectable]="false"
     rowId="id"
+    (filterChange)="onFilterChange($event)"
 >
-    <!-- ROLE NAME -->
     <ng-template
         appTableCell="name"
         let-row
     >
         <span class="role-name">{{ row['name'] }}</span>
     </ng-template>
-
-    <!-- DESCRIPTION -->
     <ng-template
         appTableCell="description"
         let-row
     >
         <span class="description-text">{{ row['description'] }}</span>
     </ng-template>
-
-    <!-- MEMBERS -->
+    <ng-template
+        appTableCell="organization"
+        let-row
+    >
+        <span
+            class="cell-text"
+            [class.cell-text--muted]="row['isBuiltIn']"
+            >{{ row['organization'] }}</span
+        >
+    </ng-template>
     <ng-template
         appTableCell="members"
         let-row
@@ -54,7 +59,7 @@
             <app-loading-spinner size="sm" />
         } @else {
             <h4 class="empty-title">No roles yet</h4>
-            <p class="empty-subtitle">Roles define the permissions available to organization members.</p>
+            <p class="empty-subtitle">Create a role to bundle permissions and assign it to organization members.</p>
         }
     </div>
 </app-table>

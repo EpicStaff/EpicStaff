@@ -166,7 +166,6 @@
         flex-direction: column;
         min-width: 0;
         flex: 1;
-        line-height: 100%;
     }
 
     &__subtitle {
@@ -225,6 +224,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        flex-shrink: 0;
 
         &--default {
             height: 40px;

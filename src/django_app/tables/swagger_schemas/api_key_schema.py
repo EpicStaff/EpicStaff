@@ -52,17 +52,6 @@ _NOT_FOUND_404_RESPONSE = OpenApiResponse(
     ],
 )
 
-_ORG_HEADER_PARAMETER = OpenApiParameter(
-    name="X-Organization-Id",
-    location=OpenApiParameter.HEADER,
-    type=OpenApiTypes.INT,
-    required=False,
-    description=(
-        "Active organization id. Required for non-superadmins; a superadmin "
-        "may omit it to operate across all organizations."
-    ),
-)
-
 PROFILE_API_KEYS_GET = dict(
     summary="List my API keys",
     description=(
@@ -172,41 +161,64 @@ PROFILE_API_KEY_DELETE = dict(
 )
 
 API_KEYS_MANAGEMENT_LIST = dict(
-    summary="List API keys of active-org members",
+    summary="List members' API keys",
     description=(
-        "Keys owned by members of the active organization (SECRETS read "
-        "permission required). Superadmins may omit the org header to list "
-        "across all organizations. System keys never appear."
+        "Keys owned by members of every organization where the caller holds "
+        "api_keys read. Superadmins see all. System keys never appear, and "
+        "superadmin-owned keys are visible only to superadmins."
     ),
     parameters=[
-        _ORG_HEADER_PARAMETER,
+        OpenApiParameter(
+            name="org_ids",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="Comma-separated organization ids to restrict the list to.",
+        ),
         OpenApiParameter(
             name="user",
-            location=OpenApiParameter.QUERY,
             type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
             required=False,
             description="Filter by owner user id.",
         ),
         OpenApiParameter(
             name="status",
-            location=OpenApiParameter.QUERY,
             type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
             required=False,
             enum=["active", "expired", "revoked"],
             description="Filter by computed key status.",
         ),
         OpenApiParameter(
             name="search",
-            location=OpenApiParameter.QUERY,
             type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
             required=False,
             description="Case-insensitive match on key name or prefix.",
         ),
+        OpenApiParameter(
+            name="page",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="1-based page number.",
+        ),
+        OpenApiParameter(
+            name="page_size",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="Items per page (default 50, max 200).",
+        ),
     ],
     responses={
-        200: ApiKeyAdminSerializer(many=True),
+        200: OpenApiResponse(description="Paginated API keys."),
         400: OpenApiResponse(
-            description="Missing org context or invalid filter value."
+            description=(
+                "Invalid `status` or `user` filter (invalid), or a malformed "
+                "org_ids value (org_context_required)."
+            )
         ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
@@ -216,11 +228,10 @@ API_KEYS_MANAGEMENT_LIST = dict(
 API_KEYS_MANAGEMENT_REVOKE_POST = dict(
     summary="Revoke a member's API key",
     description=(
-        "Requires SECRETS edit permission in the active organization. "
+        "Requires api_keys delete in an organization the owner belongs to. "
         "Revocation disables the key in every organization the owner belongs to."
     ),
     request=None,
-    parameters=[_ORG_HEADER_PARAMETER],
     responses={
         200: ApiKeyAdminSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
@@ -231,8 +242,10 @@ API_KEYS_MANAGEMENT_REVOKE_POST = dict(
 
 API_KEYS_MANAGEMENT_DELETE = dict(
     summary="Delete a member's API key",
-    description="Requires SECRETS delete permission in the active organization.",
-    parameters=[_ORG_HEADER_PARAMETER],
+    description=(
+        "Requires api_keys delete in an organization the owner belongs to. "
+        "Removes the record; revoke instead to keep it."
+    ),
     responses={
         204: OpenApiResponse(description="Deleted"),
         401: UNAUTHORIZED_401_RESPONSE,

@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { withPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import {
     CreatePythonCodeToolRequest,
@@ -31,7 +33,14 @@ export class PythonCodeToolService {
     // GET method to retrieve the existing Python code tools
     getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
         return this.http
-            .get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl)
+            .get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, {
+                context: withPermission<ApiGetRequest<GetPythonCodeToolRequest>>(ResourceCode.Tools, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response) => response.results));
     }
 

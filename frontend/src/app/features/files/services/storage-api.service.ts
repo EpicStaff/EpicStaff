@@ -1,8 +1,10 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, Observable, of, switchMap, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config/config.service';
 import { ConfirmationDialogData, ConfirmationDialogService } from '../../../shared/components/cofirm-dialog';
 import { AddFilesPayload } from '../components/create-folder-dialog/create-folder-dialog.component';
@@ -45,6 +47,10 @@ export class StorageApiService {
         return this.http
             .get<{ path: string; items: StorageItem[] }>(`${this.apiUrl}list/`, {
                 params: { path },
+                context: withPermission<{ path: string; items: StorageItem[] }>(ResourceCode.Files, ActionCode.Read, {
+                    path,
+                    items: [],
+                }),
             })
             .pipe(map((res) => res.items ?? []));
     }
@@ -297,6 +303,7 @@ export class StorageApiService {
     getGraphFiles(graphId: number): Observable<GraphFileRecord[]> {
         return this.http.get<GraphFileRecord[]>(`${this.apiUrl}graph-files/`, {
             params: { graph_id: graphId.toString() },
+            context: withPermission<GraphFileRecord[]>(ResourceCode.Files, ActionCode.Read, []),
         });
     }
 

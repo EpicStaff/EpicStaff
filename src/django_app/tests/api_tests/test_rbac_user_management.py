@@ -1,13 +1,11 @@
+from importlib import import_module
+
 import pytest
-from django.urls import reverse
+from django.apps import apps as django_apps
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-)
+from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
 
@@ -31,11 +29,6 @@ def role_org_admin(db):
 @pytest.fixture
 def role_member(db):
     return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
-
-
-@pytest.fixture
-def role_viewer(db):
-    return Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
 
 
 @pytest.fixture
@@ -108,16 +101,8 @@ def user_action_url(user_id, action):
     return f"/api/admin/users/{user_id}/{action}/"
 
 
-def org_users_list_url(org_id):
-    return f"/api/admin/organizations/{org_id}/users/"
-
-
-def org_user_detail_url(org_id, user_id):
-    return f"/api/admin/organizations/{org_id}/users/{user_id}/"
-
-
 # ============================================================================
-# Permission gates
+# Permission gates — UserAdminViewSet (superadmin-only user entity)
 # ============================================================================
 
 
@@ -127,21 +112,11 @@ class TestPermissionsAnonymous:
         resp = APIClient().get(USERS_LIST)
         assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_list_org_users_anonymous_401(self, org_acme):
-        resp = APIClient().get(org_users_list_url(org_acme.pk))
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
-
 
 @pytest.mark.django_db
 class TestPermissionsMember:
-    """A plain Member must not reach any Story 5 endpoint."""
-
     def test_list_users_403(self, authed_client, member_acme):
         resp = authed_client(member_acme).get(USERS_LIST)
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_list_org_users_403(self, authed_client, member_acme, org_acme):
-        resp = authed_client(member_acme).get(org_users_list_url(org_acme.pk))
         assert resp.status_code == status.HTTP_403_FORBIDDEN
 
     def test_grant_superadmin_403(self, authed_client, member_acme):
@@ -153,20 +128,6 @@ class TestPermissionsMember:
 
 @pytest.mark.django_db
 class TestPermissionsOrgAdmin:
-    """Org Admin can hit org-scoped endpoints for their own org only."""
-
-    def test_org_admin_lists_own_org_members(
-        self, authed_client, org_admin_acme, org_acme
-    ):
-        resp = authed_client(org_admin_acme).get(org_users_list_url(org_acme.pk))
-        assert resp.status_code == status.HTTP_200_OK
-
-    def test_org_admin_blocked_on_other_org(
-        self, authed_client, org_admin_acme, org_globex
-    ):
-        resp = authed_client(org_admin_acme).get(org_users_list_url(org_globex.pk))
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
-
     def test_org_admin_blocked_on_global_users_list(
         self, authed_client, org_admin_acme
     ):
@@ -195,8 +156,6 @@ class TestPermissionsApiKey:
         assert resp.status_code == status.HTTP_403_FORBIDDEN
 
     def test_system_api_key_acts_as_superadmin(self, issue_api_key):
-        """System keys resolve to SystemServicePrincipal (is_superadmin=True)
-        and pass superadmin-gated endpoints."""
         raw, _ = issue_api_key(user=None, name="system-test")
 
         client = APIClient()
@@ -231,12 +190,10 @@ class TestListUsers:
         assert "m@x.com" not in emails
 
     def test_filter_by_organization_id(self, authed_client, superadmin, org_globex):
-        # superadmin is in org_acme, not org_globex
         resp = authed_client(superadmin).get(
             USERS_LIST + f"?organization_id={org_globex.pk}"
         )
         assert resp.status_code == status.HTTP_200_OK
-        # No users in org_globex yet
         assert resp.data["count"] == 0
 
 
@@ -333,133 +290,6 @@ class TestGrantRevokeSuperadmin:
 
 
 # ============================================================================
-# Happy paths — OrganizationMembershipAdminViewSet
-# ============================================================================
-
-
-@pytest.mark.django_db
-class TestListOrgMembers:
-    def test_response_shape(self, authed_client, superadmin, org_acme):
-        resp = authed_client(superadmin).get(org_users_list_url(org_acme.pk))
-        assert resp.status_code == status.HTTP_200_OK
-        assert isinstance(resp.data, list)
-        assert all("membership" in m for m in resp.data)
-
-    def test_org_admin_sees_own_org(
-        self, authed_client, org_admin_acme, org_acme, member_acme
-    ):
-        resp = authed_client(org_admin_acme).get(org_users_list_url(org_acme.pk))
-        emails = [m["email"] for m in resp.data]
-        assert "m@x.com" in emails
-        assert "oa@x.com" in emails
-
-    def test_filter_by_role(self, authed_client, superadmin, org_acme, member_acme):
-        resp = authed_client(superadmin).get(
-            org_users_list_url(org_acme.pk) + f"?role={BuiltInRole.MEMBER}"
-        )
-        emails = [m["email"] for m in resp.data]
-        assert "m@x.com" in emails
-        assert "sa@x.com" not in emails
-
-
-@pytest.mark.django_db
-class TestAddMembership:
-    def test_create_and_link(
-        self, authed_client, org_admin_acme, org_acme, role_member
-    ):
-        resp = authed_client(org_admin_acme).post(
-            org_users_list_url(org_acme.pk),
-            {
-                "email": "fresh@x.com",
-                "password": "StrongPass123!",
-                "role_id": role_member.pk,
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_201_CREATED
-        assert resp.data["email"] == "fresh@x.com"
-
-    def test_create_and_link_defaults_to_member_role(
-        self, authed_client, org_admin_acme, org_acme, role_member
-    ):
-        resp = authed_client(org_admin_acme).post(
-            org_users_list_url(org_acme.pk),
-            {"email": "fresh2@x.com", "password": "StrongPass123!"},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_201_CREATED
-        assert resp.data["membership"]["role"]["id"] == role_member.pk
-
-
-@pytest.mark.django_db
-class TestChangeRole:
-    def test_promote_member_to_org_admin(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        member_acme,
-        role_org_admin,
-    ):
-        resp = authed_client(superadmin).patch(
-            org_user_detail_url(org_acme.pk, member_acme.pk),
-            {"role_id": role_org_admin.pk},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-        assert resp.data["membership"]["role"]["id"] == role_org_admin.pk
-
-    def test_idempotent_same_role(
-        self, authed_client, superadmin, org_acme, member_acme, role_member
-    ):
-        resp = authed_client(superadmin).patch(
-            org_user_detail_url(org_acme.pk, member_acme.pk),
-            {"role_id": role_member.pk},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.django_db
-class TestRemoveMembership:
-    def test_happy_path(self, authed_client, superadmin, org_acme, member_acme):
-        resp = authed_client(superadmin).delete(
-            org_user_detail_url(org_acme.pk, member_acme.pk)
-        )
-        assert resp.status_code == status.HTTP_204_NO_CONTENT
-        assert not OrganizationUser.objects.filter(
-            user=member_acme, org=org_acme
-        ).exists()
-
-    def test_self_removal_allowed(self, authed_client, member_acme, org_acme):
-        # member can't reach this endpoint per permissions, but add a
-        # non-last Org Admin who self-removes
-        pass  # covered by TestSelfRemovalOrgAdminNotLast below
-
-
-@pytest.mark.django_db
-class TestSelfRemovalOrgAdminNotLast:
-    def test_org_admin_removes_self_when_not_last(
-        self,
-        authed_client,
-        django_user_model,
-        org_acme,
-        role_org_admin,
-    ):
-        oa1 = django_user_model.objects.create_user(
-            email="oa1@x.com", password="StrongPass123!"
-        )
-        oa2 = django_user_model.objects.create_user(
-            email="oa2@x.com", password="StrongPass123!"
-        )
-        OrganizationUser.objects.create(user=oa1, org=org_acme, role=role_org_admin)
-        OrganizationUser.objects.create(user=oa2, org=org_acme, role=role_org_admin)
-
-        resp = authed_client(oa1).delete(org_user_detail_url(org_acme.pk, oa1.pk))
-        assert resp.status_code == status.HTTP_204_NO_CONTENT
-
-
-# ============================================================================
 # Edge cases & invariants
 # ============================================================================
 
@@ -481,21 +311,6 @@ class TestEmailConflict:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert resp.data["code"] == "email_already_exists"
 
-    def test_duplicate_email_add_membership_create_mode_400(
-        self, authed_client, org_admin_acme, org_acme, member_acme, role_member
-    ):
-        resp = authed_client(org_admin_acme).post(
-            org_users_list_url(org_acme.pk),
-            {
-                "email": member_acme.email,
-                "password": "StrongPass123!",
-                "role_id": role_member.pk,
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "email_already_exists"
-
 
 @pytest.mark.django_db
 class TestLastSuperadminGuard:
@@ -507,50 +322,6 @@ class TestLastSuperadminGuard:
         assert resp.data["code"] == "last_superadmin"
 
 
-@pytest.mark.django_db
-class TestLastOrgAdminGuard:
-    def test_remove_last_org_admin_400(
-        self, authed_client, superadmin, org_acme, org_admin_acme
-    ):
-        # org_admin_acme is the only Org Admin in org_acme
-        resp = authed_client(superadmin).delete(
-            org_user_detail_url(org_acme.pk, org_admin_acme.pk)
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "last_org_admin"
-
-    def test_demote_last_org_admin_400(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        org_admin_acme,
-        role_member,
-    ):
-        resp = authed_client(superadmin).patch(
-            org_user_detail_url(org_acme.pk, org_admin_acme.pk),
-            {"role_id": role_member.pk},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "last_org_admin"
-
-
-@pytest.mark.django_db
-class TestZeroOrgsSteadyState:
-    def test_user_with_zero_memberships_can_login(
-        self, authed_client, superadmin, member_acme, org_acme
-    ):
-        # Remove member's only membership
-        authed_client(superadmin).delete(
-            org_user_detail_url(org_acme.pk, member_acme.pk)
-        )
-        # /api/profile/ should still return the user, with empty memberships[]
-        resp = authed_client(member_acme).get("/api/profile/")
-        assert resp.status_code == status.HTTP_200_OK
-        assert resp.data["memberships"] == []
-
-
 # ============================================================================
 # Validation tests
 # ============================================================================
@@ -558,17 +329,6 @@ class TestZeroOrgsSteadyState:
 
 @pytest.mark.django_db
 class TestValidation:
-    def test_add_membership_missing_email_400(
-        self, authed_client, superadmin, org_acme, role_member
-    ):
-        resp = authed_client(superadmin).post(
-            org_users_list_url(org_acme.pk),
-            {"role_id": role_member.pk},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
-
     def test_weak_password_400(self, authed_client, superadmin):
         resp = authed_client(superadmin).post(
             USERS_LIST,
@@ -577,7 +337,6 @@ class TestValidation:
         )
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert resp.data["code"] == "invalid"
-        # Password should be redacted in the echo
         for err in resp.data.get("errors", []):
             if err["field"] == "password":
                 assert err["value"] == "***"
@@ -597,35 +356,9 @@ class TestValidation:
         assert resp.status_code == status.HTTP_404_NOT_FOUND
         assert resp.data["code"] == "user_not_found"
 
-    def test_unknown_org_id_404(self, authed_client, superadmin, role_member):
-        resp = authed_client(superadmin).post(
-            org_users_list_url(99999),
-            {
-                "email": "new@x.com",
-                "password": "StrongPass123!",
-                "role_id": role_member.pk,
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
-
-    def test_unknown_role_id_on_create_404(self, authed_client, superadmin, org_acme):
-        resp = authed_client(superadmin).post(
-            org_users_list_url(org_acme.pk),
-            {
-                "email": "fresh-role-404@x.com",
-                "password": "StrongPass123!",
-                "role_id": 99999,
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
-        assert resp.data["code"] == "role_not_found"
-
 
 # ============================================================================
-# Variant A regression: non-numeric pk on detail routes must 404 from the
-# URL resolver, not 500 from int(pk) ValueError.
+# Non-numeric pk on detail routes → 404 from the URL resolver, not 500.
 # ============================================================================
 
 
@@ -662,494 +395,139 @@ class TestOrganizationAdminNonNumericPkReturns404:
 
 
 # ============================================================================
-# Batch assign-users endpoint
+# User activate / deactivate (superadmin)
 # ============================================================================
 
 
-def org_assign_users_url(org_id):
-    return f"/api/admin/organizations/{org_id}/assign-users/"
-
-
-@pytest.fixture
-def detached_user(django_user_model):
-    """A user with no membership in any org — eligible to be assigned."""
-    return django_user_model.objects.create_user(
-        email="detached@x.com", password="StrongPass123!"
-    )
-
-
-@pytest.fixture
-def detached_user_2(django_user_model):
-    return django_user_model.objects.create_user(
-        email="detached2@x.com", password="StrongPass123!"
-    )
-
-
 @pytest.mark.django_db
-class TestAssignUsersHappyPath:
-    def test_superadmin_assigns_two_new_users_200(
-        self,
-        authed_client,
-        superadmin,
-        org_globex,
-        detached_user,
-        detached_user_2,
-        role_member,
-        role_org_admin,
-    ):
+class TestActivateDeactivate:
+    def test_superadmin_deactivates_user(self, authed_client, superadmin, member_acme):
         resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                    {"user_id": detached_user_2.pk, "role_id": role_org_admin.pk},
-                ]
-            },
-            format="json",
+            user_action_url(member_acme.pk, "deactivate")
         )
         assert resp.status_code == status.HTTP_200_OK
-        assert "created" in resp.data
-        assert "updated" in resp.data
-        assert len(resp.data["created"]) == 2
-        assert resp.data["updated"] == []
+        assert resp.data["is_active"] is False
 
-    def test_org_admin_assigns_two_new_users_200(
-        self,
-        authed_client,
-        org_admin_acme,
-        org_acme,
-        detached_user,
-        detached_user_2,
-        role_member,
-    ):
-        resp = authed_client(org_admin_acme).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                    {"user_id": detached_user_2.pk, "role_id": role_member.pk},
-                ]
-            },
-            format="json",
+    def test_reactivate(self, authed_client, superadmin, member_acme):
+        authed_client(superadmin).post(user_action_url(member_acme.pk, "deactivate"))
+        resp = authed_client(superadmin).post(
+            user_action_url(member_acme.pk, "reactivate")
         )
         assert resp.status_code == status.HTTP_200_OK
-        assert len(resp.data["created"]) == 2
-        assert resp.data["updated"] == []
+        assert resp.data["is_active"] is True
 
-    def test_response_preserves_submission_order_in_created(
-        self,
-        authed_client,
-        superadmin,
-        org_globex,
-        detached_user,
-        detached_user_2,
-        role_member,
-    ):
-        # Submit user_2 first, then user_1. Both are new memberships.
+    def test_cannot_deactivate_last_active_superadmin(self, authed_client, superadmin):
         resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user_2.pk, "role_id": role_member.pk},
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-        ids_in_response = [m["id"] for m in resp.data["created"]]
-        assert ids_in_response == [detached_user_2.pk, detached_user.pk]
-
-
-@pytest.mark.django_db
-class TestAssignUsersUpsert:
-    """Reassignment branch: rows whose (user_id, org_id) already exists
-    update the role instead of being rejected."""
-
-    def test_existing_membership_role_updated(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        member_acme,
-        role_viewer,
-    ):
-        # member_acme is currently Member of org_acme. Reassign to Viewer.
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": member_acme.pk, "role_id": role_viewer.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-        assert resp.data["created"] == []
-        assert len(resp.data["updated"]) == 1
-        assert resp.data["updated"][0]["membership"]["role"]["id"] == role_viewer.pk
-        # Confirm the DB row was actually updated.
-        membership = OrganizationUser.objects.get(user=member_acme, org=org_acme)
-        assert membership.role_id == role_viewer.pk
-
-    def test_no_op_same_role(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        member_acme,
-        role_member,
-    ):
-        # member_acme is already Member; same role re-submitted is a no-op
-        # but still returned in `updated`.
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": member_acme.pk, "role_id": role_member.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-        assert resp.data["created"] == []
-        assert len(resp.data["updated"]) == 1
-
-    def test_mixed_create_and_reassign(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        member_acme,
-        detached_user,
-        role_viewer,
-    ):
-        # member_acme already in org_acme as Member → reassign to Viewer.
-        # detached_user not in org_acme → create as Viewer.
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_viewer.pk},
-                    {"user_id": member_acme.pk, "role_id": role_viewer.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-        assert len(resp.data["created"]) == 1
-        assert len(resp.data["updated"]) == 1
-        assert resp.data["created"][0]["id"] == detached_user.pk
-        assert resp.data["updated"][0]["id"] == member_acme.pk
-
-
-@pytest.mark.django_db
-class TestAssignUsersNetEffectOrgAdminGuard:
-    """Net-effect last-Org-Admin check: the batch as a whole must not
-    leave the org with zero Org Admins."""
-
-    def test_demote_only_org_admin_400(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        org_admin_acme,
-        role_member,
-    ):
-        # org_admin_acme is the only Org Admin in org_acme. Demoting them
-        # in a batch must be refused.
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": org_admin_acme.pk, "role_id": role_member.pk},
-                ]
-            },
-            format="json",
+            user_action_url(superadmin.pk, "deactivate")
         )
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "last_org_admin"
+        assert resp.data["code"] == "last_superadmin"
 
-    def test_demote_org_admin_when_other_promoted_in_same_batch_200(
+    def test_deactivate_denied_for_org_admin(
+        self, authed_client, org_admin_acme, member_acme
+    ):
+        resp = authed_client(org_admin_acme).post(
+            user_action_url(member_acme.pk, "deactivate")
+        )
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestGrantSuperadminPurgesMemberships:
+    def test_grant_purges_memberships(
         self,
         authed_client,
         superadmin,
         org_acme,
-        org_admin_acme,
-        member_acme,
+        org_globex,
         role_member,
         role_org_admin,
+        django_user_model,
     ):
-        # Demote the existing Org Admin AND promote member_acme to Org Admin
-        # in the same batch. Net effect: org still has at least one Org Admin.
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": org_admin_acme.pk, "role_id": role_member.pk},
-                    {"user_id": member_acme.pk, "role_id": role_org_admin.pk},
-                ]
-            },
-            format="json",
+        target = django_user_model.objects.create_user(
+            email="promote@x.com", password="StrongPass123!"
         )
+        OrganizationUser.objects.create(user=target, org=org_acme, role=role_org_admin)
+        OrganizationUser.objects.create(user=target, org=org_globex, role=role_member)
+
+        resp = authed_client(superadmin).post(
+            user_action_url(target.pk, "grant-superadmin")
+        )
+
         assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["is_superadmin"] is True
+        assert resp.data["memberships"] == []
+        assert not OrganizationUser.objects.filter(user=target).exists()
+
+    def test_grant_on_existing_superadmin_leaves_rows(
+        self, authed_client, superadmin, org_acme, role_member, django_user_model
+    ):
+        """Already a superadmin: the method short-circuits before any write, so
+        a pre-existing row survives. The data migration reconciles those."""
+        target = django_user_model.objects.create_user(
+            email="already@x.com", password="StrongPass123!", is_superadmin=True
+        )
+        OrganizationUser.objects.create(user=target, org=org_acme, role=role_member)
+
+        resp = authed_client(superadmin).post(
+            user_action_url(target.pk, "grant-superadmin")
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert OrganizationUser.objects.filter(user=target).count() == 1
+
+    def test_revoke_does_not_restore_memberships(
+        self, authed_client, superadmin, org_acme, role_org_admin, django_user_model
+    ):
+        target = django_user_model.objects.create_user(
+            email="roundtrip@x.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=target, org=org_acme, role=role_org_admin)
+
+        authed_client(superadmin).post(user_action_url(target.pk, "grant-superadmin"))
+        resp = authed_client(superadmin).post(
+            user_action_url(target.pk, "revoke-superadmin")
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["is_superadmin"] is False
+        assert resp.data["memberships"] == []
 
 
 @pytest.mark.django_db
-class TestAssignUsersConflicts:
-    def test_unknown_user_id_404(
-        self, authed_client, superadmin, org_globex, role_member
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": [{"user_id": 99999, "role_id": role_member.pk}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
-        assert resp.data["code"] == "user_not_found"
-
-    def test_unknown_role_id_404(
-        self, authed_client, superadmin, org_globex, detached_user
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": [{"user_id": detached_user.pk, "role_id": 99999}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
-        assert resp.data["code"] == "role_not_found"
-
-    def test_assigning_global_superadmin_role_400(
+class TestSuperadminMembershipMigration:
+    def test_purges_lesser_roles_but_keeps_bootstrap(
         self,
-        authed_client,
-        superadmin,
-        org_globex,
-        detached_user,
+        org_acme,
+        role_member,
+        role_org_admin,
         role_superadmin,
+        django_user_model,
     ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_superadmin.pk}
-                ]
-            },
-            format="json",
+        sa_lesser = django_user_model.objects.create_user(
+            email="legacy-sa@x.com", password="StrongPass123!", is_superadmin=True
         )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid_role_assignment"
-
-    def test_assigning_custom_role_from_other_org_400(
-        self,
-        authed_client,
-        superadmin,
-        org_acme,
-        org_globex,
-        detached_user,
-    ):
-        other_role = Role.objects.create(
-            name="Custom-Other", is_built_in=False, org=org_globex
+        sa_bootstrap = django_user_model.objects.create_user(
+            email="bootstrap-sa@x.com", password="StrongPass123!", is_superadmin=True
         )
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_acme.pk),
-            {"assignments": [{"user_id": detached_user.pk, "role_id": other_role.pk}]},
-            format="json",
+        ordinary = django_user_model.objects.create_user(
+            email="ordinary@x.com", password="StrongPass123!"
         )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid_role_assignment"
-
-    def test_unknown_org_id_404(
-        self, authed_client, superadmin, detached_user, role_member
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(99999),
-            {"assignments": [{"user_id": detached_user.pk, "role_id": role_member.pk}]},
-            format="json",
+        OrganizationUser.objects.create(
+            user=sa_lesser, org=org_acme, role=role_org_admin
         )
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
-        assert resp.data["code"] == "organization_not_found"
-
-
-@pytest.mark.django_db
-class TestAssignUsersValidation:
-    def test_missing_assignments_400(self, authed_client, superadmin, org_globex):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk), {}, format="json"
+        OrganizationUser.objects.create(
+            user=sa_bootstrap, org=org_acme, role=role_superadmin
         )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
+        OrganizationUser.objects.create(user=ordinary, org=org_acme, role=role_member)
 
-    def test_empty_assignments_400(self, authed_client, superadmin, org_globex):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": []},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
+        module = import_module("tables.migrations.0211_purge_superadmin_memberships")
+        module.purge_superadmin_memberships(django_apps, None)
 
-    def test_too_many_assignments_400(
-        self, authed_client, superadmin, org_globex, role_member
-    ):
-        # 101 items — exceeds the cap.
-        items = [{"user_id": i, "role_id": role_member.pk} for i in range(1, 102)]
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": items},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
+        assert not OrganizationUser.objects.filter(user=sa_lesser).exists()
+        assert OrganizationUser.objects.filter(user=sa_bootstrap).exists()
+        assert OrganizationUser.objects.filter(user=ordinary).exists()
 
-    def test_missing_role_id_per_row_400(
-        self, authed_client, superadmin, org_globex, detached_user
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": [{"user_id": detached_user.pk}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
-
-    def test_missing_user_id_per_row_400(
-        self, authed_client, superadmin, org_globex, role_member
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": [{"role_id": role_member.pk}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
-
-    def test_duplicate_user_id_in_batch_400(
-        self,
-        authed_client,
-        superadmin,
-        org_globex,
-        detached_user,
-        role_member,
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
-
-    def test_non_int_role_id_400(
-        self, authed_client, superadmin, org_globex, detached_user
-    ):
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": [{"user_id": detached_user.pk, "role_id": "abc"}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "invalid"
-
-
-@pytest.mark.django_db
-class TestAssignUsersPermissions:
-    def test_anonymous_401(self, org_acme):
-        resp = APIClient().post(
-            org_assign_users_url(org_acme.pk),
-            {"assignments": []},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_member_403(
-        self, authed_client, member_acme, org_acme, detached_user, role_member
-    ):
-        resp = authed_client(member_acme).post(
-            org_assign_users_url(org_acme.pk),
-            {"assignments": [{"user_id": detached_user.pk, "role_id": role_member.pk}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_org_admin_other_org_403(
-        self,
-        authed_client,
-        org_admin_acme,
-        org_globex,
-        detached_user,
-        role_member,
-    ):
-        resp = authed_client(org_admin_acme).post(
-            org_assign_users_url(org_globex.pk),
-            {"assignments": [{"user_id": detached_user.pk, "role_id": role_member.pk}]},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_non_numeric_org_id_404(self, authed_client, superadmin):
-        resp = authed_client(superadmin).post(
-            "/api/admin/organizations/abc/assign-users/",
-            {"assignments": []},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
-
-
-@pytest.mark.django_db
-class TestAssignUsersSelfAssign:
-    """Caller-relationship UX rule: non-superadmin cannot include themselves
-    in the batch. Superadmin bypasses."""
-
-    def test_org_admin_includes_self_400_cannot_self_assign(
-        self,
-        authed_client,
-        org_admin_acme,
-        org_acme,
-        detached_user,
-        role_member,
-    ):
-        resp = authed_client(org_admin_acme).post(
-            org_assign_users_url(org_acme.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                    {"user_id": org_admin_acme.pk, "role_id": role_member.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["code"] == "cannot_self_assign"
-        # All-or-nothing: detached_user must NOT have been linked.
-        assert not OrganizationUser.objects.filter(
-            user=detached_user, org=org_acme
-        ).exists()
-
-    def test_superadmin_includes_self_200_bypasses_rule(
-        self,
-        authed_client,
-        superadmin,
-        org_globex,
-        detached_user,
-        role_member,
-        role_org_admin,
-    ):
-        # superadmin is in org_acme but not in org_globex; including self
-        # in a batch on org_globex must succeed.
-        resp = authed_client(superadmin).post(
-            org_assign_users_url(org_globex.pk),
-            {
-                "assignments": [
-                    {"user_id": detached_user.pk, "role_id": role_member.pk},
-                    {"user_id": superadmin.pk, "role_id": role_org_admin.pk},
-                ]
-            },
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_200_OK
-        assert len(resp.data["created"]) == 2
+        module.purge_superadmin_memberships(django_apps, None)
+        assert OrganizationUser.objects.filter(user=sa_bootstrap).count() == 1
+        assert OrganizationUser.objects.filter(user=ordinary).count() == 1
