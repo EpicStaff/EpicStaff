@@ -7,6 +7,9 @@ from loguru import logger
 from opensearchpy import AsyncOpenSearch
 from opensearchpy.helpers import async_bulk
 
+import binascii
+
+from app.filtering.ast import FilterError
 from app.repositories.base import SessionAuditRepository
 from src.shared.models import SessionAuditEvent
 
@@ -18,7 +21,10 @@ def _encode_cursor(sort_values: list) -> str:
 
 
 def _decode_cursor(cursor: str) -> list:
-    return json.loads(base64.urlsafe_b64decode(cursor.encode()))
+    try:
+        return json.loads(base64.urlsafe_b64decode(cursor.encode()))
+    except (binascii.Error, ValueError, UnicodeDecodeError) as exc:
+        raise FilterError("invalid or malformed cursor") from exc
 
 
 class OpenSearchSessionAuditRepository(SessionAuditRepository):
