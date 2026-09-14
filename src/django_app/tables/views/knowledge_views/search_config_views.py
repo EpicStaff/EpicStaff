@@ -57,14 +57,7 @@ def _validation_error_response(exc: ValidationError) -> Response:
 
 
 def _resolve_graph_llm_ctx(collection_id: int) -> tuple[int, str, str | None, bool]:
-    """Resolve the graph-suggest context window from the collection's own GraphRag.
-
-    The budget is sized against `GraphRag.llm` — the LLM that runs the search's
-    synthesis — not a caller-supplied id, so the KnowledgeNode surface (no owning
-    agent) needs nothing extra. When GraphRag has no llm, fall back to the default
-    context window (is_trusted=False → custom values pass through with the same
-    relaxed clamping as before).
-    """
+    """Resolve the graph-suggest context window from the collection's own GraphRag."""
     graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
     if graph_rag is None:
         raise NoGraphRagForCollectionException(collection_id)
@@ -136,8 +129,7 @@ class NaiveRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
                 req.knowledge_collection_id, "naive"
             )
             suggested, clamped = build_naive_params(metrics, req.user_custom_params)
-            # Naive params derive only from the corpus (chunk count); no LLM /
-            # context window is involved, so the ctx-based response fields are null.
+            # Naive params derive only from the corpus (chunk count);
             return _build_response(metrics, None, None, None, suggested, clamped, False)
         except (
             CollectionNotFoundException,
@@ -207,11 +199,7 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
             NoGraphRagForCollectionException,
             GraphRagIndexNotReadyException,
         ) as exc:
-            # User-actionable, no sensitive detail — safe to surface verbatim.
             return Response({"error": str(exc)}, status=exc.status_code)
         except Exception:
-            # No 5xx on the wire: log the traceback and defer to the project's
-            # custom_exception_handler, which envelopes unexpected errors without
-            # emitting a 500 in production.
             logger.exception("Unexpected error in GraphRagSuggestParamsView")
             raise
