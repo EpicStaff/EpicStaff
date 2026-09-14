@@ -35,7 +35,7 @@ export class NodeSecretsFieldComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly toastService = inject(ToastService);
 
-    public readonly activeColor = input<string>('#685fff');
+    public readonly activeColor = input<string>('var(--accent-color)');
     public readonly value = model<number[]>([]);
     public readonly tooltipText = input<string>(
         "Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."

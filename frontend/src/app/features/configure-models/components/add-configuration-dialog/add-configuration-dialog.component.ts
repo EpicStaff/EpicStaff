@@ -130,7 +130,6 @@ export class AddConfigurationDialogComponent implements OnInit {
             logit_bias: [null],
             response_format: [null],
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
-            headers: [{}],
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             is_visible: [true],
