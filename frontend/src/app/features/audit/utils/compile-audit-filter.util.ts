@@ -1,26 +1,19 @@
-import { AuditFilterLeaf, AuditFilterNode, AuditFilterState } from '../models/audit-filter.models';
+import { AuditFilterNode, AuditFilterState } from '../models/audit-filter.models';
 import { AuditMatchScope } from '../models/audit-session.models';
 
-const SESSION_ANCHOR: AuditFilterLeaf = {
-    field: 'kind',
-    op: 'in',
-    value: ['session'],
-};
+const MATCH_SCOPE: AuditMatchScope = { children: true, ancestors: true };
 
-const SESSION_END_ANCHOR: AuditFilterLeaf = {
-    field: 'details.message_type',
-    op: 'equals',
-    value: 'session_end',
-};
-
-export interface CompiledAuditFilter {
-    filters: AuditFilterNode;
+export interface AuditFilterQuery {
+    filters?: AuditFilterNode;
     matchScope: AuditMatchScope;
 }
 
-export function compileAuditFilter(state: AuditFilterState): CompiledAuditFilter {
-    const anchorOnSessionEnd = state.statuses.length > 0;
-    const leaves: AuditFilterNode[] = [anchorOnSessionEnd ? SESSION_END_ANCHOR : SESSION_ANCHOR];
+export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
+    const leaves: AuditFilterNode[] = [];
+
+    if (state.kinds.length > 0) {
+        leaves.push({ field: 'kind', op: 'in', value: state.kinds });
+    }
 
     if (state.flowNames.length > 0) {
         leaves.push({ field: 'flow_name', op: 'in', value: state.flowNames });
@@ -38,8 +31,12 @@ export function compileAuditFilter(state: AuditFilterState): CompiledAuditFilter
         leaves.push({ field: 'event_time', op: 'lte', value: state.dateTo });
     }
 
+    if (leaves.length === 0) {
+        return { matchScope: MATCH_SCOPE };
+    }
+
     return {
         filters: leaves.length === 1 ? leaves[0] : { op: 'and', children: leaves },
-        matchScope: anchorOnSessionEnd ? { full_session_history: true } : { children: true },
+        matchScope: MATCH_SCOPE,
     };
 }

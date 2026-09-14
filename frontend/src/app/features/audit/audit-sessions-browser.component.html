@@ -105,29 +105,38 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @for (row of rows(); track row.sessionId) {
-                                <tr>
+                            @for (row of rows(); track row.event.id) {
+                                <tr [class]="'audit-row--' + row.event.kind">
                                     <td class="audit-table__gutter"></td>
-                                    <td><span class="audit-kind">Session</span></td>
-                                    <td>{{ row.sessionId }}</td>
-                                    <td>{{ row.name }}</td>
-                                    <td>{{ row.flowName }}</td>
-                                    <td></td>
                                     <td>
                                         <span
-                                            class="audit-status"
-                                            [class]="'audit-status--' + row.status"
+                                            class="audit-kind"
+                                            [style.margin-left.px]="row.depth * 14"
                                         >
-                                            {{ row.status | titlecase }}
+                                            {{ row.event.kind | titlecase }}
                                         </span>
                                     </td>
-                                    <td class="audit-table__date">
-                                        {{ row.startTime | date: 'MMM dd yyyy HH:mm:ss' }}
+                                    <td>{{ row.event.session_id }}</td>
+                                    <td>{{ row.event.name }}</td>
+                                    <td>{{ row.event.flow_name }}</td>
+                                    <td>{{ row.event.node_type }}</td>
+                                    <td>
+                                        @if (row.sessionStatus ?? row.event.status; as status) {
+                                            <span
+                                                class="audit-status"
+                                                [class]="'audit-status--' + status"
+                                            >
+                                                {{ status | titlecase }}
+                                            </span>
+                                        }
                                     </td>
-                                    <td></td>
-                                    <td>{{ row.output | json }}</td>
-                                    <td>{{ row.error }}</td>
-                                    <td>{{ row.details | json }}</td>
+                                    <td class="audit-table__date">
+                                        {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
+                                    </td>
+                                    <td>{{ row.event.input | json }}</td>
+                                    <td>{{ row.event.output | json }}</td>
+                                    <td>{{ row.event.error }}</td>
+                                    <td>{{ row.event.details | json }}</td>
                                 </tr>
                             }
                         </tbody>
@@ -137,7 +146,7 @@
 
             <footer class="audit-browser__footer">
                 <div class="audit-pager">
-                    <span class="audit-pager__label">Sessions to display:</span>
+                    <span class="audit-pager__label">Rows to display:</span>
                     <button
                         class="audit-pager__step"
                         type="button"

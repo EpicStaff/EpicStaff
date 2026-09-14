@@ -6,8 +6,8 @@ import { AuditFiltersPanelComponent } from './components/audit-filters-panel/aud
 import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditSessionEvent } from './models/audit-session.models';
 import { AuditApiService } from './services/audit-api.service';
+import { buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
-import { groupAuditSessions } from './utils/group-audit-sessions.util';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -35,7 +35,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
-    public rows = computed(() => groupAuditSessions(this.rawEvents()));
+    public rows = computed(() => buildAuditRows(this.rawEvents()));
     public canGoNewer = computed(() => this.cursorStack().length > 1);
     public canGoOlder = computed(() => this.nextCursor() !== null);
 

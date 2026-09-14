@@ -166,10 +166,6 @@
         font-weight: 500;
     }
 
-    tbody tr:nth-child(even) {
-        background-color: var(--color-flow-card-bg);
-    }
-
     tbody tr:hover {
         background-color: var(--color-ghost-btn-hover);
     }
@@ -200,6 +196,20 @@
     background-color: var(--color-secondary-btn-background);
     color: var(--color-text-secondary);
     font-size: 11px;
+    white-space: nowrap;
+}
+
+.audit-row--session {
+    background-color: var(--color-flow-card-bg);
+
+    .audit-kind {
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-divider-regular);
+    }
+}
+
+.audit-row--node .audit-kind {
+    color: var(--color-nodes-flow-link);
 }
 
 .audit-status {
