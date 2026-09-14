@@ -103,7 +103,7 @@ export class AgentsService {
 
     // POST suggest search params for naive RAG
     suggestNaiveSearchParams(body: NaiveSuggestRequest): Observable<SuggestResponse> {
-        const key = `${body.knowledge_collection_id}|${body.llm_config_id}|${JSON.stringify(body.user_custom_params ?? null)}`;
+        const key = `${body.knowledge_collection_id}|${JSON.stringify(body.user_custom_params ?? null)}`;
         const existing = this.inFlightNaiveSuggest.get(key);
         if (existing) return existing;
 

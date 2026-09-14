@@ -14,6 +14,8 @@ from tables.models.knowledge_models.graphrag_models import (
     GraphRagDriftSearchConfig,
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
+    KnowledgeNodeGraphRagGlobalSearchConfig,
+    KnowledgeNodeGraphRagDriftSearchConfig,
 )
 from tables.models.crew_models import Agent
 from tables.exceptions import (
@@ -222,8 +224,8 @@ class SearchConfigService:
     """
 
     # Column sets shared by agent- and node-bound configs (same fields, different models).
-    _NAIVE_FIELDS = ("search_limit", "similarity_threshold")
-    _BASIC_FIELDS = ("prompt", "k", "max_context_tokens")
+    _NAIVE_FIELDS = ("search_limit", "similarity_threshold", "is_suggested")
+    _BASIC_FIELDS = ("prompt", "k", "max_context_tokens", "is_suggested")
     _LOCAL_FIELDS = (
         "prompt",
         "text_unit_prop",
@@ -232,6 +234,48 @@ class SearchConfigService:
         "top_k_entities",
         "top_k_relationships",
         "max_context_tokens",
+        "is_suggested",
+    )
+    _GLOBAL_FIELDS = (
+        "map_prompt",
+        "reduce_prompt",
+        "knowledge_prompt",
+        "max_context_tokens",
+        "data_max_tokens",
+        "map_max_length",
+        "reduce_max_length",
+        "dynamic_community_selection",
+        "dynamic_search_threshold",
+        "dynamic_search_keep_parent",
+        "dynamic_search_num_repeats",
+        "dynamic_search_use_summary",
+        "dynamic_search_max_level",
+        "is_suggested",
+    )
+    _DRIFT_FIELDS = (
+        "prompt",
+        "reduce_prompt",
+        "data_max_tokens",
+        "reduce_max_tokens",
+        "reduce_temperature",
+        "reduce_max_completion_tokens",
+        "concurrency",
+        "drift_k_followups",
+        "primer_folds",
+        "primer_llm_max_tokens",
+        "n_depth",
+        "community_level",
+        "local_search_text_unit_prop",
+        "local_search_community_prop",
+        "local_search_top_k_mapped_entities",
+        "local_search_top_k_relationships",
+        "local_search_max_data_tokens",
+        "local_search_temperature",
+        "local_search_top_p",
+        "local_search_n",
+        "local_search_llm_max_gen_tokens",
+        "local_search_llm_max_gen_completion_tokens",
+        "is_suggested",
     )
 
     # Read methods
@@ -385,6 +429,8 @@ class SearchConfigService:
     _NODE_GRAPH_METHOD_FIELDS = {
         "basic": ("graph_basic_search_config", _BASIC_FIELDS),
         "local": ("graph_local_search_config", _LOCAL_FIELDS),
+        "global": ("graph_global_search_config", _GLOBAL_FIELDS),
+        "drift": ("graph_drift_search_config", _DRIFT_FIELDS),
     }
 
     @staticmethod
@@ -405,6 +451,7 @@ class SearchConfigService:
             configs["naive"] = {
                 "search_limit": naive.search_limit,
                 "similarity_threshold": round(float(naive.similarity_threshold), 2),
+                "is_suggested": naive.is_suggested,
             }
 
         graph_cfg: dict = {}
@@ -625,6 +672,53 @@ class SearchConfigService:
         )
 
     @staticmethod
+    def apply_node_search_configs(node, search_configs_data: dict):
+        """Partial-merge node search configs from validated nested data.
+
+        Only provided rag types / fields are touched — omitted blocks keep their
+        stored values (unlike the bulk-save replace-on-write path).
+        """
+        for rag_type, config in search_configs_data.items():
+            if rag_type == "naive":
+                SearchConfigService.update_node_naive_search_config(node, **config)
+            elif rag_type == "graph":
+                SearchConfigService.apply_node_graph_search_configs(node, config)
+
+    @staticmethod
+    def apply_node_graph_search_configs(node, config: dict):
+        """Apply graph search config to a node: search_method lives on the node,
+        basic/local params on their own node-bound rows."""
+        search_method = config.get("search_method")
+        if search_method:
+            node.search_method = search_method
+            node.save(update_fields=["search_method"])
+        basic = config.get("basic")
+        if basic:
+            SearchConfigService.update_node_graph_basic_search_config(node, **basic)
+        local = config.get("local")
+        if local:
+            SearchConfigService.update_node_graph_local_search_config(node, **local)
+        global_ = config.get("global")
+        if global_:
+            SearchConfigService.update_node_graph_global_search_config(node, **global_)
+        drift = config.get("drift")
+        if drift:
+            SearchConfigService.update_node_graph_drift_search_config(node, **drift)
+
+    @staticmethod
+    def _update_node_config(model, node, valid_fields, kwargs):
+        """get_or_create the node-bound row and set only provided non-None fields."""
+        config, _ = model.objects.get_or_create(knowledge_node=node)
+        updated = False
+        for field, value in kwargs.items():
+            if field in valid_fields and value is not None:
+                setattr(config, field, value)
+                updated = True
+        if updated:
+            config.save()
+        return config
+
+    @staticmethod
     def update_node_naive_search_config(node, **kwargs):
         return SearchConfigService._update_node_config(
             KnowledgeNodeNaiveRagSearchConfig,
@@ -648,5 +742,23 @@ class SearchConfigService:
             KnowledgeNodeGraphRagLocalSearchConfig,
             node,
             SearchConfigService._LOCAL_FIELDS,
+            kwargs,
+        )
+
+    @staticmethod
+    def update_node_graph_global_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeGraphRagGlobalSearchConfig,
+            node,
+            SearchConfigService._GLOBAL_FIELDS,
+            kwargs,
+        )
+
+    @staticmethod
+    def update_node_graph_drift_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeGraphRagDriftSearchConfig,
+            node,
+            SearchConfigService._DRIFT_FIELDS,
             kwargs,
         )

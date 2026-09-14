@@ -16,7 +16,14 @@ from django_filters.rest_framework import (
     CharFilter,
     NumberFilter,
 )
-from rest_framework import generics, serializers, viewsets, mixins, status, filters as drf_filters
+from rest_framework import (
+    generics,
+    serializers,
+    viewsets,
+    mixins,
+    status,
+    filters as drf_filters,
+)
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
@@ -655,7 +662,9 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -767,6 +776,8 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, v
                         "naive_search_config",
                         "graph_basic_search_config",
                         "graph_local_search_config",
+                        "graph_global_search_config",
+                        "graph_drift_search_config",
                     ),
                 ),
             )
@@ -1189,6 +1200,8 @@ class KnowledgeNodeViewSet(
         "naive_search_config",
         "graph_basic_search_config",
         "graph_local_search_config",
+        "graph_global_search_config",
+        "graph_drift_search_config",
     )
     serializer_class = KnowledgeNodeWriteSerializer
 

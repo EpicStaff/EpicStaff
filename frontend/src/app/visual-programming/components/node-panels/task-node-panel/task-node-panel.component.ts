@@ -57,8 +57,6 @@ import {
     InstructionsView,
     InstructionsViewToggleComponent,
 } from '../shared/instructions-view-toggle/instructions-view-toggle.component';
-import { LlmChangedWarningComponent } from '../shared/llm-changed-warning/llm-changed-warning.component';
-import { LlmChangedWarningState } from '../shared/llm-changed-warning/llm-changed-warning.state';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
@@ -81,7 +79,6 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ValidationErrorsComponent,
         ToggleSwitchComponent,
         InstructionsViewToggleComponent,
-        LlmChangedWarningComponent,
         MarkdownComponent,
     ],
     templateUrl: './task-node-panel.component.html',
@@ -98,9 +95,6 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly outputSchemaExpanded = signal<boolean>(false);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
-
-    private readonly llmChangedWarningState = new LlmChangedWarningState();
-    public readonly llmChangedWarning = this.llmChangedWarningState.active;
 
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
     public readonly instructionsView = signal<InstructionsView>('preview');
@@ -252,13 +246,8 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     onAgentSelectionChange(values: unknown[]): void {
-        const previousLlmConfigId = this.selectedAgentLlmConfigId();
-
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
-
-        const nextLlmConfigId = this.selectedAgentLlmConfigId();
-        this.llmChangedWarningState.checkAgentChange(previousLlmConfigId, nextLlmConfigId, this.inlineSurface());
 
         const agentControl = this.form.get('agent_definition');
         agentControl?.setValue(id);
@@ -284,7 +273,6 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
         if (this.hasLocalSurface() && !values.includes(LOCAL_SURFACE_VALUE)) {
             this.inlineSurface.set(null);
-            this.llmChangedWarningState.clear();
         }
 
         this.sidePanelService.triggerAutosave();
@@ -298,7 +286,6 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             .subscribe((result) => {
                 if (result) {
                     this.inlineSurface.set(result);
-                    this.llmChangedWarningState.clear();
                     this.sidePanelService.triggerAutosave();
                     this.notifyExternalChange();
                 }
@@ -314,7 +301,6 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             .subscribe((result) => {
                 if (result) {
                     this.inlineSurface.set(result);
-                    this.llmChangedWarningState.clear();
                     this.sidePanelService.triggerAutosave();
                     this.notifyExternalChange();
                 }

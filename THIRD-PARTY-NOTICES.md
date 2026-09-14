@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 09 Sep 2026 21:18:25 GMT -->
-<!-- commit: 80daa20618092f350ab3f7243d23dd5bb9237196 -->
-<!-- package-lock.json sha256: d09494c0b0322d13 -->
+<!-- generated: Mon, 14 Sep 2026 09:51:32 GMT -->
+<!-- commit: 11f11e9dbb58b6330b204ea6286c75b231fe1013 -->
+<!-- package-lock.json sha256: a8a01bce84252414 -->
 
 # Third-Party Notices
 
@@ -17,7 +17,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 | License | Packages |
 |---|---|
-| MIT | 48 |
+| MIT | 47 |
 | Apache-2.0 | 2 |
 | ISC | 2 |
 | OFL-1.1 | 1 |
@@ -26,7 +26,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **58** |
+| **Total** | **57** |
 
 ---
 
@@ -34,7 +34,6 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 | Package | Version | License |
 |---|---|---|
-| `@angular/animations` | 22.1.2 | MIT |
 | `@angular/cdk` | 22.1.3 | MIT |
 | `@angular/common` | 22.1.2 | MIT |
 | `@angular/compiler` | 22.1.2 | MIT |
@@ -98,40 +97,6 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 ## Notices
 
 Per-package copyright notices and license texts. License text is included verbatim when the upstream package ships a LICENSE/COPYING/NOTICE file; otherwise the SPDX identifier and any available publisher / repository metadata are recorded.
-
-### @angular/animations@22.1.2
-
-- **License:** MIT
-- **Publisher:** angular
-- **Repository:** https://github.com/angular/angular
-
-<details><summary>License text</summary>
-
-```
-The MIT License
-
-Copyright (c) 2010-2026 Google LLC. https://angular.dev/license
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-</details>
 
 ### @angular/cdk@22.1.3
 
