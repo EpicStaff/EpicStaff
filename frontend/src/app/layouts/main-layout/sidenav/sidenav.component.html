@@ -2,7 +2,6 @@
     <div class="logo-container">
         <a
             class="app-logo"
-            routerLink="/agents"
             (mouseenter)="showLogoTooltip = true"
             (mouseleave)="showLogoTooltip = false"
         >
@@ -31,6 +30,47 @@
     </div>
 
     <ul class="sidenav-nav main-nav">
+        @if (user(); as user) {
+            @if (activeMembership(); as activeMembership) {
+                <div
+                    class="org-menu-container"
+                    appClickOutside
+                    (appClickOutside)="closeOrgMenu()"
+                    (mouseenter)="showOrgTooltip = true"
+                    (mouseleave)="showOrgTooltip = false"
+                >
+                    <div class="tooltip-wrapper org-menu-wrapper">
+                        <div
+                            class="org-menu-btn"
+                            [class.opened]="isOrgMenuOpen()"
+                            [class.active]="isWorkspaceRoute()"
+                            (click)="toggleOrgMenu($event)"
+                        >
+                            @if (isWorkspaceRoute()) {
+                                <app-svg-icon
+                                    size="16px"
+                                    icon="workspace"
+                                    class="workspace-icon"
+                                />
+                            } @else {
+                                <app-org-avatar [name]="activeMembership.organization.name" />
+                            }
+                        </div>
+                        <app-tooltip
+                            text="Organizations"
+                            [visible]="showOrgTooltip && !isOrgMenuOpen()"
+                        ></app-tooltip>
+                        @if (isOrgMenuOpen()) {
+                            <app-organizations-menu
+                                [user]="user"
+                                [(isMenuOpen)]="isOrgMenuOpen"
+                            />
+                        }
+                    </div>
+                </div>
+            }
+        }
+
         @for (item of topNavItems; track item.id) {
             @if (item.isPermitted) {
                 <li
@@ -148,7 +188,7 @@
                 <div class="tooltip-wrapper user-avatar-wrapper">
                     <div
                         class="user-avatar-btn"
-                        [class.active]="isUserMenuOpen()"
+                        [class.opened]="isUserMenuOpen()"
                         (click)="toggleUserMenu($event)"
                     >
                         <app-user-avatar
