@@ -43,7 +43,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class DecisionTableGridComponent implements OnInit {
     public conditionGroups = input.required<ConditionGroup[]>();
-    public activeColor = input<string>('#685fff');
+    public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
 
     public conditionGroupsChange = output<ConditionGroup[]>();
