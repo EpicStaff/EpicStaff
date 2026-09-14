@@ -34,4 +34,6 @@ class SessionAuditEvent(BaseModel):
 
     org_id: int
 
+    filter_matched: bool = False
+
     model_config = ConfigDict(from_attributes=True)

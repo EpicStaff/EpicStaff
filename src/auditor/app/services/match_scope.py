@@ -241,3 +241,31 @@ async def expand_matches(
         )
 
     return _dedupe_and_sort(matched_events + extra)
+
+
+async def mark_filter_matched(
+    events: list[SessionAuditEvent], matched_ids: set[str]
+) -> list[SessionAuditEvent]:
+    for event in events:
+        event.filter_matched = event.id in matched_ids
+    return events
+
+
+async def expand_and_mark(
+    repository: SessionAuditRepository,
+    events: list[SessionAuditEvent],
+    match_scope: MatchScope,
+    *,
+    org_id: int,
+    retention_days: int,
+) -> list[SessionAuditEvent]:
+    """Shared by search and export: expand per match_scope, then flag which
+    rows in the final list were original matches vs. pulled in by expansion.
+    id-based (not identity-based) because full_session_history re-fetches
+    fresh objects for the same ids - see mark_filter_matched."""
+    matched_ids = {e.id for e in events}
+    if not match_scope.is_noop():
+        events = await expand_matches(
+            repository, events, match_scope, org_id=org_id, retention_days=retention_days
+        )
+    return await mark_filter_matched(events, matched_ids)

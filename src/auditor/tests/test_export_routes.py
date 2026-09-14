@@ -13,7 +13,7 @@ os.environ.setdefault("AUDITOR_REDIS_DB", "1")
 
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -26,6 +26,7 @@ from app.core.security import verify_user_jwt
 from app.core.settings import settings
 from app.services.export_job_service import ExportJobService
 from src.shared.models import SessionAuditEvent
+from tests._fakes import InMemoryFakeRepository
 
 DEFAULT_CLAIMS = {"org_id": 7, "user_id": 42, "actions": ["export"], "retention_days": 0}
 
@@ -244,3 +245,120 @@ async def test_get_jobs_missing_action_claim_is_403(app_and_client):
     }
     resp = await client.get("/api/audit/export")
     assert resp.status_code == 403
+
+
+# --- match_scope / filter_matched (ExportRequest no longer has `detail`) ---
+
+
+def _tree_events(org_id: int = 7) -> list[SessionAuditEvent]:
+    now = datetime.now(timezone.utc)
+    return [
+        SessionAuditEvent(
+            id="sess-1",
+            parent_id="",
+            session_id=100,
+            kind="session",
+            status="failed",
+            event_time=now,
+            org_id=org_id,
+        ),
+        SessionAuditEvent(
+            id="node-1",
+            parent_id="sess-1",
+            session_id=100,
+            kind="node",
+            status="failed",
+            event_time=now + timedelta(seconds=1),
+            org_id=org_id,
+        ),
+        SessionAuditEvent(
+            id="evt-1",
+            parent_id="node-1",
+            session_id=100,
+            kind="event",
+            status="failed",
+            event_time=now + timedelta(seconds=2),
+            org_id=org_id,
+        ),
+    ]
+
+
+def _build_match_scope_app(events: list[SessionAuditEvent]) -> FastAPI:
+    app = FastAPI()
+    app.include_router(export_routes.router)
+    app.state.session_audit_repository = InMemoryFakeRepository(events)
+    app.state.export_job_service = ExportJobService(
+        FakeAsyncRedis(decode_responses=True)
+    )
+    app.dependency_overrides[verify_user_jwt] = lambda: dict(DEFAULT_CLAIMS)
+    return app
+
+
+@pytest_asyncio.fixture
+async def match_scope_client(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "EXPORT_DATA_DIR", str(tmp_path))
+
+    async def _make(events: list[SessionAuditEvent]):
+        app = _build_match_scope_app(events)
+        transport = ASGITransport(app=app)
+        return app, AsyncClient(transport=transport, base_url="http://test")
+
+    return _make
+
+
+@pytest.mark.asyncio
+async def test_export_legacy_detail_field_is_silently_ignored_not_rejected(
+    app_and_client,
+):
+    # `detail` was removed in favor of `match_scope`. `ExportRequest` has no
+    # `extra="forbid"`, so a client still sending the old `{"detail": "full"}`
+    # shape isn't validated against - it's just inert now (falls back to the
+    # match_scope default, i.e. old "base" behavior). This documents that
+    # behavior rather than asserting a 422 that would never actually happen.
+    _, client = app_and_client
+    resp = await client.post(
+        "/api/audit/export", json={"format": "json", "detail": "full"}
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_export_full_session_history_uses_expand_matches_and_sets_filter_matched(
+    match_scope_client,
+):
+    # The old implementation did its own per-session N+1 loop keyed on
+    # `detail == "full"`; this now goes through the same expand_matches
+    # machinery as search, keyed on match_scope.full_session_history.
+    app, client = await match_scope_client(_tree_events())
+    async with client:
+        resp = await client.post(
+            "/api/audit/export",
+            json={
+                "filters": {"field": "id", "op": "equals", "value": "evt-1"},
+                "match_scope": {"full_session_history": True},
+            },
+        )
+        job_id = resp.json()["job_id"]
+
+        resp = await client.get(f"/api/audit/export/{job_id}")
+        body = json.loads(resp.content)
+
+    by_id = {row["id"]: row["filter_matched"] for row in body}
+    assert by_id == {"sess-1": False, "node-1": False, "evt-1": True}
+
+
+@pytest.mark.asyncio
+async def test_export_no_match_scope_all_rows_filter_matched(match_scope_client):
+    app, client = await match_scope_client(_tree_events())
+    async with client:
+        resp = await client.post(
+            "/api/audit/export",
+            json={"filters": {"field": "session_id", "op": "equals", "value": 100}},
+        )
+        job_id = resp.json()["job_id"]
+
+        resp = await client.get(f"/api/audit/export/{job_id}")
+        body = json.loads(resp.content)
+
+    assert {row["id"] for row in body} == {"sess-1", "node-1", "evt-1"}
+    assert all(row["filter_matched"] is True for row in body)

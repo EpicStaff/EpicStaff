@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from loguru import logger
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from src.shared.models import SessionAuditEvent
 from app.core.security import require_audit_action
@@ -18,16 +18,29 @@ from app.repositories.base import SessionAuditRepository
 from app.repositories.opensearch_query_compiler import compile as compile_filters
 from app.filtering.ast import FilterNode, validate_filter_node
 from app.filtering.query_language import parse_query
+from app.services.duration_filter import (
+    _resolve_durations,
+    split_duration_filter,
+    DurationCondition,
+)
 from app.services.export_job_service import ExportJobService, JobStatus
+from app.services.match_scope import MatchScope, expand_and_mark
+from app.swagger_schemas import (
+    FILTERS_FIELD_DESCRIPTION,
+    QUERY_FIELD_DESCRIPTION,
+    MATCH_SCOPE_FIELD_DESCRIPTION,
+)
 
 router = APIRouter(tags=["Export"])
 
 
 class ExportRequest(BaseModel):
     format: Literal["json", "csv"] = "json"
-    detail: Literal["base", "full"] = "base"
-    filters: dict | None = None
-    query: str | None = None
+    filters: dict | None = Field(default=None, description=FILTERS_FIELD_DESCRIPTION)
+    query: str | None = Field(default=None, description=QUERY_FIELD_DESCRIPTION)
+    match_scope: MatchScope = Field(
+        default_factory=MatchScope, description=MATCH_SCOPE_FIELD_DESCRIPTION
+    )
 
     @model_validator(mode="after")
     def _filters_xor_query(self):
@@ -152,47 +165,37 @@ async def _run_export(
 ) -> None:
     try:
         org_id = claims["org_id"]
-        retention_days = claims.get("retention_days", 0)
+        retention_days = claims["retention_days"]
 
         filter_node = body.resolve_filter_node()
         if filter_node is not None:
             validate_filter_node(filter_node)
+
+        remainder_node, duration_cond = split_duration_filter(filter_node)
         compiled = compile_filters(
-            filter_node, org_id=org_id, retention_days=retention_days
+            remainder_node, org_id=org_id, retention_days=retention_days
         )
 
-        events = await _collect_all(repository, compiled)
+        if duration_cond is None:
+            events = await _collect_all(repository, compiled)
+        else:
+            events = await _collect_all_matching_duration(
+                repository,
+                compiled,
+                duration_cond,
+                org_id=org_id,
+                retention_days=retention_days,
+            )
 
-        if body.detail == "full":
-            expanded = []
-            seen_sessions: set[int] = set()
-            for matched in events:
-                if matched.session_id in seen_sessions:
-                    continue
-                seen_sessions.add(matched.session_id)
-                session_query = compile_filters(
-                    None,
-                    org_id=org_id,
-                    retention_days=retention_days,
-                    extra_filters=[{"term": {"session_id": matched.session_id}}],
-                )
-                tree = await _collect_all(repository, session_query)
-                expanded.extend(tree)
-            events = expanded
+        events = await expand_and_mark(
+            repository,
+            events,
+            body.match_scope,
+            org_id=org_id,
+            retention_days=retention_days,
+        )
 
-        rows = [e.model_dump(mode="json") for e in events]
-        ext = "csv" if body.format == "csv" else "json"
-        content = _to_csv(rows) if ext == "csv" else json.dumps(rows).encode()
-
-        os.makedirs(settings.EXPORT_DATA_DIR, exist_ok=True)
-        file_path = os.path.join(settings.EXPORT_DATA_DIR, f"{job_id}.{ext}")
-
-        with open(file_path, "wb") as f:
-            f.write(content)
-
-        was_recorded = await job_service.mark_done(job_id, file_path)
-        if not was_recorded:
-            pathlib.Path(file_path).unlink(missing_ok=True)
+        await _write_export_output(job_id, events, body.format, job_service)
 
     except Exception as e:
         logger.exception(f"Export job {job_id} failed: {e}")
@@ -212,6 +215,29 @@ async def _collect_all(
     return events
 
 
+async def _collect_all_matching_duration(
+    repository: SessionAuditRepository,
+    compiled_query: dict,
+    duration_cond: DurationCondition,
+    *,
+    org_id: int,
+    retention_days: int,
+) -> list:
+    kept = []
+    cursor = None
+    while True:
+        page, cursor = await repository.query(compiled_query, cursor=cursor, size=200)
+        if not page:
+            break
+        durations = await _resolve_durations(
+            repository, page, org_id=org_id, retention_days=retention_days
+        )
+        kept.extend(c for c in page if duration_cond.matches(durations.get(c.id)))
+        if cursor is None:
+            break
+    return kept
+
+
 def _to_csv(rows: list[dict]) -> bytes:
     # Columns come from the model, not from rows[0]: an empty result set used
     # to produce a zero-byte file with no header row at all, which reads as a
@@ -227,3 +253,24 @@ def _to_csv(rows: list[dict]) -> bytes:
             }
         )
     return output.getvalue().encode()
+
+
+async def _write_export_output(
+    job_id: str,
+    events: list,
+    format: Literal["json", "csv"],
+    job_service: ExportJobService,
+) -> None:
+    rows = [e.model_dump(mode="json") for e in events]
+    content = _to_csv(rows) if format == "csv" else json.dumps(rows).encode()
+
+    os.makedirs(settings.EXPORT_DATA_DIR, exist_ok=True)
+    file_path = os.path.join(settings.EXPORT_DATA_DIR, f"{job_id}.{format}")
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    was_recorded = await job_service.mark_done(job_id, file_path)
+
+    if not was_recorded:
+        pathlib.Path(file_path).unlink(missing_ok=True)

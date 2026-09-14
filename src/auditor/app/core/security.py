@@ -11,13 +11,17 @@ _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def verify_ingest_api_key(api_key: str | None = Security(_api_key_header)) -> None:
+async def verify_ingest_api_key(
+    api_key: str | None = Security(_api_key_header),
+) -> None:
     """
     FastAPI dependency gating the ingest endpoint. Compares the presented
     X-API-Key against AUDITOR_INGEST_API_KEY using a constant-time
     comparison to avoid a timing side-channel on the check itself.
     """
-    if api_key is None or not secrets.compare_digest(api_key, settings.AUDITOR_INGEST_API_KEY):
+    if api_key is None or not secrets.compare_digest(
+        api_key, settings.AUDITOR_INGEST_API_KEY
+    ):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
@@ -33,7 +37,9 @@ async def verify_user_jwt(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        return jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"])
+        return jwt.decode(
+            credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"]
+        )
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}")
 
@@ -50,6 +56,7 @@ def require_audit_action(action: str):
             raise HTTPException(
                 status_code=403, detail=f"Missing AUDIT:{action} permission"
             )
+        claims["retention_days"] = claims.get("retention_days", 0)
         return claims
 
     return _check

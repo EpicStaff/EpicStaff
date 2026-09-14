@@ -6,7 +6,7 @@ from app.filtering.ast import FilterNode, validate_filter_node
 from app.filtering.query_language import parse_query
 from app.repositories.opensearch_query_compiler import compile as compile_filters
 from app.services.duration_filter import apply_duration_filter, split_duration_filter
-from app.services.match_scope import MatchScope, expand_matches
+from app.services.match_scope import MatchScope, expand_and_mark
 from app.swagger_schemas import (
     CURSOR_FIELD_DESCRIPTION,
     FILTERS_FIELD_DESCRIPTION,
@@ -72,14 +72,16 @@ async def _run_search(
     extra_filters: list[dict] | None = None,
 ) -> SessionSearchResponse:
     repository = request.app.state.session_audit_repository
+
     org_id = claims["org_id"]
-    retention_days = claims.get("retention_days", 0)
+    retention_days = claims["retention_days"]
 
     filter_node = body.resolve_filter_node()
     if filter_node is not None:
         validate_filter_node(filter_node)
 
     remainder_node, duration_cond = split_duration_filter(filter_node)
+
     compiled = compile_filters(
         remainder_node,
         org_id=org_id,
@@ -103,14 +105,13 @@ async def _run_search(
             cursor=body.cursor,
         )
 
-    if not body.match_scope.is_noop():
-        events = await expand_matches(
-            repository,
-            events,
-            body.match_scope,
-            org_id=org_id,
-            retention_days=retention_days,
-        )
+    events = await expand_and_mark(
+        repository,
+        events,
+        body.match_scope,
+        org_id=org_id,
+        retention_days=retention_days,
+    )
 
     return SessionSearchResponse(
         items=[e.model_dump(mode="json") for e in events],
@@ -140,7 +141,7 @@ async def get_session_tree(
     compiled = compile_filters(
         None,
         org_id=claims["org_id"],
-        retention_days=claims.get("retention_days", 0),
+        retention_days=claims["retention_days", 0],
         extra_filters=[{"term": {"session_id": session_id}}],
     )
     events, _ = await repository.query(compiled, cursor=None, size=1000)

@@ -11,6 +11,8 @@ os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "")
 os.environ.setdefault("AUDITOR_REDIS_DB", "1")
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
@@ -21,6 +23,8 @@ from app.controllers import query_routes
 from app.core.security import verify_user_jwt
 from app.filtering.ast import FilterError
 from app.main import _extract_opensearch_reason
+from src.shared.models import SessionAuditEvent
+from tests._fakes import InMemoryFakeRepository
 
 DEFAULT_CLAIMS = {"org_id": 7, "user_id": 42, "actions": ["read"], "retention_days": 0}
 
@@ -146,3 +150,130 @@ async def test_opensearch_error_with_malformed_info_falls_back_to_str(client_wit
 
     assert resp.status_code == 400
     assert resp.json()["detail"] == str(exc)
+
+
+# --- filter_matched (mark_filter_matched wired through /sessions/search) ---
+
+ORG_ID = 7
+NOW = datetime.now(timezone.utc)
+
+
+def _tree_events() -> list[SessionAuditEvent]:
+    """One full session tree - session doc -> node doc -> event doc - plus
+    an unrelated session's event, so tests can assert the unrelated one
+    never gets pulled in by expansion."""
+    return [
+        SessionAuditEvent(
+            id="sess-1",
+            parent_id="",
+            session_id=100,
+            kind="session",
+            status="failed",
+            event_time=NOW,
+            org_id=ORG_ID,
+        ),
+        SessionAuditEvent(
+            id="node-1",
+            parent_id="sess-1",
+            session_id=100,
+            kind="node",
+            status="failed",
+            event_time=NOW + timedelta(seconds=1),
+            org_id=ORG_ID,
+        ),
+        SessionAuditEvent(
+            id="evt-1",
+            parent_id="node-1",
+            session_id=100,
+            kind="event",
+            status="failed",
+            event_time=NOW + timedelta(seconds=2),
+            org_id=ORG_ID,
+        ),
+        SessionAuditEvent(
+            id="evt-other",
+            parent_id="",
+            session_id=200,
+            kind="event",
+            status="failed",
+            event_time=NOW,
+            org_id=ORG_ID,
+        ),
+    ]
+
+
+def _build_search_app(events: list[SessionAuditEvent]) -> FastAPI:
+    app = FastAPI()
+    app.include_router(query_routes.router)
+    app.state.session_audit_repository = InMemoryFakeRepository(events)
+    app.dependency_overrides[verify_user_jwt] = lambda: dict(DEFAULT_CLAIMS)
+    return app
+
+
+@pytest_asyncio.fixture
+async def search_client():
+    async def _make(events: list[SessionAuditEvent]):
+        app = _build_search_app(events)
+        transport = ASGITransport(app=app)
+        return AsyncClient(transport=transport, base_url="http://test")
+
+    return _make
+
+
+@pytest.mark.asyncio
+async def test_no_match_scope_all_returned_events_are_filter_matched(search_client):
+    # Two rows match the filter directly (status=failed matches all 4 fixture
+    # rows, so scope it to session_id=100 to get exactly the tree's 3 rows) -
+    # with no match_scope expansion, every returned row IS a match.
+    async with await search_client(_tree_events()) as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={"filters": {"field": "session_id", "op": "equals", "value": 100}},
+        )
+
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert {i["id"] for i in items} == {"sess-1", "node-1", "evt-1"}
+    assert all(i["filter_matched"] is True for i in items)
+
+
+@pytest.mark.asyncio
+async def test_children_expansion_flags_only_originally_matched_rows(search_client):
+    # Filter matches only the session doc; match_scope.children pulls in the
+    # rest of its tree (node-1, evt-1) as unmatched expansion rows.
+    async with await search_client(_tree_events()) as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={
+                "filters": {"field": "id", "op": "equals", "value": "sess-1"},
+                "match_scope": {"children": True},
+            },
+        )
+
+    assert resp.status_code == 200
+    items = {i["id"]: i["filter_matched"] for i in resp.json()["items"]}
+    assert items == {"sess-1": True, "node-1": False, "evt-1": False}
+
+
+@pytest.mark.asyncio
+async def test_full_session_history_flags_original_matches_despite_refetch(
+    search_client,
+):
+    # full_session_history re-fetches the whole session via a fresh query
+    # (InMemoryFakeRepository returns model_copy() instances, mirroring how a
+    # real OpenSearch round-trip always produces brand-new SessionAuditEvent
+    # objects) - confirms evt-1 still comes back flagged as the original
+    # match even though it's a different Python object post-refetch, per the
+    # id-based design of mark_filter_matched/match_scope.py.
+    async with await search_client(_tree_events()) as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={
+                "filters": {"field": "id", "op": "equals", "value": "evt-1"},
+                "match_scope": {"full_session_history": True},
+            },
+        )
+
+    assert resp.status_code == 200
+    items = {i["id"]: i["filter_matched"] for i in resp.json()["items"]}
+    assert items == {"sess-1": False, "node-1": False, "evt-1": True}
