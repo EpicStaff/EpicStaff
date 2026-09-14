@@ -54,7 +54,6 @@ class LLMConfig(BaseModel):
     frequency_penalty = Column(Float, nullable=True)
     logit_bias = Column(JSON, nullable=True)
     seed = Column(Integer, nullable=True)
-    headers = Column(JSON, nullable=True, default=dict)
     extra_headers = Column(JSON, nullable=True, default=dict)
     timeout = Column(Float, nullable=True)
     is_visible = Column(Boolean, default=True)
