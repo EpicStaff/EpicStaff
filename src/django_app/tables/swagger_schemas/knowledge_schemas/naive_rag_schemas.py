@@ -995,7 +995,7 @@ PROCESS_RAG_INDEXING_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "rag_error",
-                        "message": "RagNotReadyForIndexingException: <detail>",
+                        "message": "<detail>",
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -1012,7 +1012,7 @@ PROCESS_RAG_INDEXING_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "rag_error",
-                        "message": "NaiveRagNotFoundException: NaiveRag with id 1 not found",
+                        "message": "NaiveRag with id 1 not found",
                     },
                     response_only=True,
                     status_codes=["404"],
