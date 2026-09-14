@@ -1,6 +1,6 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnDestroy, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { getLabelColorOption, LabelDto } from '@shared/models';
@@ -23,7 +23,7 @@ import { ToolCardMenuComponent } from './tool-card-menu.component';
     styleUrls: ['./tool-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ToolCardComponent {
+export class ToolCardComponent implements OnDestroy {
     public readonly tool = input.required<ToolCardVM>();
     public readonly selected = input<boolean>(false);
     public readonly showUsage = input<boolean>(false);
@@ -37,6 +37,10 @@ export class ToolCardComponent {
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
     public readonly menuOpen = signal<boolean>(false);
+    private readonly isMouseOnButton = signal<boolean>(false);
+    private readonly isMouseOnMenu = signal<boolean>(false);
+    private readonly isLabelsOpen = signal<boolean>(false);
+    private closeTimeout: ReturnType<typeof setTimeout> | null = null;
 
     public readonly labels = computed<LabelDto[]>(() => {
         const ids = new Set(this.tool().labelIds);
@@ -51,6 +55,16 @@ export class ToolCardComponent {
         this.selectedChange.emit({ tool: this.tool(), selected: next });
     }
 
+    public onCheckboxHitClick(event: MouseEvent): void {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('app-checkbox')) return;
+        this.onSelectToggle(!this.selected());
+    }
+
+    public onUsageChipClick(): void {
+        this.menuAction.emit({ tool: this.tool(), action: 'show_used_places' });
+    }
+
     public onStarClick(event: MouseEvent): void {
         event.stopPropagation();
         this.favoriteChange.emit({ tool: this.tool(), favorite: !this.tool().favorite });
@@ -58,11 +72,76 @@ export class ToolCardComponent {
 
     public toggleMenu(event: MouseEvent): void {
         event.stopPropagation();
-        this.menuOpen.update((v) => !v);
+        const next = !this.menuOpen();
+        this.menuOpen.set(next);
+        if (next) {
+            this.cancelCloseTimeout();
+            this.isMouseOnButton.set(true);
+            this.isMouseOnMenu.set(false);
+        }
     }
 
     public closeMenu(): void {
+        this.cancelCloseTimeout();
         this.menuOpen.set(false);
+        this.isMouseOnButton.set(false);
+        this.isMouseOnMenu.set(false);
+    }
+
+    public onButtonEnter(): void {
+        this.isMouseOnButton.set(true);
+        this.cancelCloseTimeout();
+    }
+
+    public onButtonLeave(): void {
+        this.isMouseOnButton.set(false);
+        this.scheduleClose();
+    }
+
+    public onMenuEnter(): void {
+        this.isMouseOnMenu.set(true);
+        this.cancelCloseTimeout();
+    }
+
+    public onMenuLeave(): void {
+        this.isMouseOnMenu.set(false);
+        this.scheduleClose();
+    }
+
+    public onOverlayOutsideClick(): void {
+        if (this.isLabelsOpen()) return;
+        this.closeMenu();
+    }
+
+    public onLabelsOpenChange(open: boolean): void {
+        this.isLabelsOpen.set(open);
+        if (open) {
+            this.cancelCloseTimeout();
+        } else {
+            this.scheduleClose();
+        }
+    }
+
+    private scheduleClose(): void {
+        if (this.isLabelsOpen()) return;
+        if (this.menuOpen() && !this.isMouseOnButton() && !this.isMouseOnMenu()) {
+            this.closeTimeout = setTimeout(() => {
+                if (!this.isLabelsOpen() && this.menuOpen() && !this.isMouseOnButton() && !this.isMouseOnMenu()) {
+                    this.closeMenu();
+                }
+            }, 100);
+        }
+    }
+
+    private cancelCloseTimeout(): void {
+        if (this.closeTimeout) {
+            clearTimeout(this.closeTimeout);
+            this.closeTimeout = null;
+        }
+    }
+
+    public ngOnDestroy(): void {
+        this.cancelCloseTimeout();
     }
 
     public onMenuAction(action: ToolCardMenuAction): void {

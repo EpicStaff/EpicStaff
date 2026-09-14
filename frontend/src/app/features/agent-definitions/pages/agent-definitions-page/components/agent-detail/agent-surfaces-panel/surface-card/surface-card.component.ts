@@ -334,39 +334,56 @@ export class SurfaceCardComponent {
         return `${t.kind}:${t.id}`;
     }
 
-    readonly toolSubtab = signal<'custom' | 'mcp'>('custom');
+    readonly toolSubtab = signal<'built' | 'custom' | 'mcp'>('custom');
     readonly toolTabs: SelectDropdownTab[] = [
+        { id: 'built', label: 'Built in tools' },
         { id: 'custom', label: 'Custom Tools' },
         { id: 'mcp', label: 'MCP Tools' },
     ];
-    readonly toolHeaderAction = computed<SelectDropdownHeaderAction>(() => ({
-        icon: 'plus',
-        label: this.toolSubtab() === 'custom' ? 'Create custom tool' : 'Add MCP tool',
-    }));
+    readonly toolHeaderAction = computed<SelectDropdownHeaderAction>(() => {
+        const sub = this.toolSubtab();
+        // Built-in tools can't be created; keep the button visible but disabled.
+        return {
+            icon: 'plus',
+            label: '',
+            disabled: sub === 'built',
+        };
+    });
+
+    private readonly toolSearchPlaceholders: Record<'built' | 'custom' | 'mcp', string> = {
+        built: 'Search built-in tools...',
+        custom: 'Search custom tools...',
+        mcp: 'Search MCP tools...',
+    };
+    readonly toolSearchPlaceholder = computed(() => this.toolSearchPlaceholders[this.toolSubtab()]);
 
     private readonly pendingToolKeys = signal<Set<string> | null>(null);
     private readonly effectiveToolKeys = computed(() => this.pendingToolKeys() ?? this.selectedToolKeys());
 
-    private toolItemsOfKind(kind: 'python' | 'mcp'): SelectDropdownListItem<number>[] {
-        return this.toolOptions()
-            .filter((t) => t.kind === kind)
-            .map((t) => ({ name: t.name, value: t.id }));
-    }
-
-    private idsOfKind(keys: Set<string>, kind: 'python' | 'mcp'): number[] {
-        const prefix = `${kind}:`;
-        return [...keys].filter((k) => k.startsWith(prefix)).map((k) => Number(k.split(':')[1]));
-    }
+    /** Options visible in the currently active tab (built-in python, custom python, or MCP). */
+    private readonly activeToolOptions = computed<SurfaceToolOption[]>(() => {
+        const sub = this.toolSubtab();
+        if (sub === 'mcp') return this.catalogs.mcpTools();
+        const wantBuiltIn = sub === 'built';
+        return this.catalogs.pythonTools().filter((t) => Boolean(t.built_in) === wantBuiltIn);
+    });
 
     readonly activeToolItems = computed<SelectDropdownListItem<number>[]>(() =>
-        this.toolItemsOfKind(this.toolSubtab() === 'custom' ? 'python' : 'mcp')
-    );
-    readonly activeToolIds = computed<number[]>(() =>
-        this.idsOfKind(this.effectiveToolKeys(), this.toolSubtab() === 'custom' ? 'python' : 'mcp')
+        this.activeToolOptions().map((t) => ({ name: t.name, value: t.id }))
     );
 
+    readonly activeToolIds = computed<number[]>(() => {
+        const optionIds = new Set(this.activeToolOptions().map((o) => o.id));
+        const kind: 'python' | 'mcp' = this.toolSubtab() === 'mcp' ? 'mcp' : 'python';
+        const prefix = `${kind}:`;
+        return [...this.effectiveToolKeys()]
+            .filter((k) => k.startsWith(prefix))
+            .map((k) => Number(k.split(':')[1]))
+            .filter((id) => optionIds.has(id));
+    });
+
     onToolTabChange(id: string): void {
-        this.toolSubtab.set(id === 'mcp' ? 'mcp' : 'custom');
+        this.toolSubtab.set(id === 'built' ? 'built' : id === 'mcp' ? 'mcp' : 'custom');
     }
 
     onToolsOpenedChange(opened: boolean): void {
@@ -379,9 +396,12 @@ export class SurfaceCardComponent {
     }
 
     private withKindMerged(base: Set<string>, values: unknown[]): Set<string> {
-        const kind: 'python' | 'mcp' = this.toolSubtab() === 'custom' ? 'python' : 'mcp';
+        const kind: 'python' | 'mcp' = this.toolSubtab() === 'mcp' ? 'mcp' : 'python';
+        const currentTabKeys = new Set(this.activeToolOptions().map((t) => this.toolKey(t)));
         const ids = values as number[];
-        const others = [...base].filter((k) => !k.startsWith(`${kind}:`));
+        // Drop only keys that belong to the current tab (built vs. custom python are
+        // separate tabs, so we must not clobber the other tab's selection).
+        const others = [...base].filter((k) => !currentTabKeys.has(k));
         return new Set([...others, ...ids.map((id) => `${kind}:${id}`)]);
     }
 
@@ -743,7 +763,9 @@ export class SurfaceCardComponent {
 
     openCreateTool(): void {
         if (this.readOnly()) return;
-        if (this.toolSubtab() === 'custom') {
+        const sub = this.toolSubtab();
+        if (sub === 'built') return; // Built-in tools can't be created from here.
+        if (sub === 'custom') {
             this.dialog
                 .open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent)
                 .closed.pipe(take(1))
@@ -754,6 +776,7 @@ export class SurfaceCardComponent {
                             name: tool.name,
                             description: tool.description ?? '',
                             kind: 'python',
+                            built_in: tool.built_in === true,
                         });
                 });
         } else {
