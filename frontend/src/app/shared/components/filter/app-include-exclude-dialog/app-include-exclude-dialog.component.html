@@ -54,6 +54,7 @@
                     [title]="item.name"
                 >
                     <app-checkbox
+                        color="secondary"
                         [checked]="isItemSelected(item.id)"
                         (changed)="toggleItem(item.id)"
                     />
@@ -88,21 +89,23 @@
                     [style.paddingLeft]="indentPadding(entry.depth)"
                     [title]="entry.node.name"
                 >
-                    <button
-                        type="button"
-                        class="expand-btn"
-                        [style.visibility]="entry.node.children.length > 0 ? 'visible' : 'hidden'"
-                        (click)="toggleExpand(entry.node.id)"
-                    >
-                        <app-svg-icon
-                            icon="expand"
-                            size="0.6rem"
-                            class="expand-icon"
-                            [class.expanded]="isExpanded(entry.node.id)"
-                        />
-                    </button>
+                    @if (entry.node.children.length > 0) {
+                        <button
+                            type="button"
+                            class="expand-btn"
+                            (click)="toggleExpand(entry.node.id)"
+                        >
+                            <app-svg-icon
+                                icon="expand"
+                                size="0.6rem"
+                                class="expand-icon"
+                                [class.expanded]="isExpanded(entry.node.id)"
+                            />
+                        </button>
+                    }
                     <label class="row-checkbox-wrap">
                         <app-checkbox
+                            color="secondary"
                             [checked]="isLabelSelected(entry.node.id)"
                             (changed)="toggleLabel(entry.node.id)"
                         />

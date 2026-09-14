@@ -1,9 +1,10 @@
 from django.db import models
 
+from tables.models.base_models import TimestampMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class McpTool(OrgScopedModel, models.Model):
+class McpTool(OrgScopedModel, TimestampMixin, models.Model):
     """
     Configuration for a FastMCP client connecting to remote MCP tools via SSE.
     """
