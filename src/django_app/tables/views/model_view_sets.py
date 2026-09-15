@@ -201,7 +201,7 @@ from tables.views.mixins import (
     SuperadminWriteMixin,
     ToolUsageActionsMixin,
 )
-from tables.models.rbac_models import ApiKey, Organization
+from tables.models.rbac_models import ApiKey
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permissions import (
     IsSuperadmin,
@@ -1268,11 +1268,6 @@ class TaskNodeViewSet(
     )
     serializer_class = TaskNodeSerializer
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(id=self.get_active_org_id())
-        return context
-
     def perform_update(self, serializer):
         # The serializer allows writing `graph`; without this check a PATCH
         # could move the node into another org's graph.
@@ -1318,11 +1313,6 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__graph_local_search_config",
     )
     serializer_class = AgentNodeSerializer
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(id=self.get_active_org_id())
-        return context
 
     def perform_update(self, serializer):
         # The serializer allows writing `graph`; without this check a PATCH
