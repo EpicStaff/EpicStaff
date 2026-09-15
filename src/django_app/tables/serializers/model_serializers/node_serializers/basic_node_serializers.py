@@ -155,9 +155,8 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
 
 
 class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
-    """Adds the nested read-back of node-bound search configs (mirror of
-    AgentReadSerializer.search_configs). Used for list/retrieve and inside
-    GraphSerializer.knowledge_node_list."""
+    """Adds the nested read-back of node-bound search configs, used for
+    list/retrieve and inside GraphSerializer.knowledge_node_list."""
 
     search_configs = serializers.SerializerMethodField()
 
@@ -167,8 +166,7 @@ class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
 
 class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
     """Accepts a partial nested `search_configs` block and merges it into the
-    node-bound config rows (mirror of AgentWriteSerializer). Only provided
-    fields are touched — the FE may send just what changed."""
+    node-bound config rows, touching only the fields provided."""
 
     search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
 
