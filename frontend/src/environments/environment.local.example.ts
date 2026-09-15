@@ -23,7 +23,7 @@ export const environment = {
     production: false,
 
     // Keep these relative. The dev-server proxy (proxy.conf.js) forwards them to
-    // whichever backend PROXY_TARGET points at — defaulting to http://localhost.
+    // whichever backend PROXY_TARGET points at, defaulting to http://localhost.
     apiUrl: '/api/',
     realtimeApiUrl: '/realtime/',
 
