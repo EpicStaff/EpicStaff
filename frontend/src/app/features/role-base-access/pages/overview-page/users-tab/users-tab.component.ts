@@ -44,6 +44,7 @@ import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar
 import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
+import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { adminUsersToAggregated, aggregateMembershipsByUser } from '../../../utils/aggregate-users.util';
 import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
@@ -82,6 +83,7 @@ export class UsersTabComponent implements OnInit {
     private profileService = inject(ProfileService);
     private permissionsService = inject(PermissionsService);
     private activeOrgService = inject(ActiveOrgService);
+    private orgStorage = inject(OrganizationsStorageService);
     private toast = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
 
@@ -90,14 +92,25 @@ export class UsersTabComponent implements OnInit {
     usersData = signal<TableRow[]>([]);
     searchTerm = signal('');
     isLoading = signal(true);
+    readonly orgFilterIds = signal<number[]>([]);
 
-    private orgFilterItems = signal<SelectItem[]>([]);
+    /** All orgs whose memberships the current user can list. Populated once on init. */
+    readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
+
     private roleFilterItems = signal<SelectItem[]>([]);
 
-    /** Preselected org filter — follows the currently active org (empty when none is chosen). */
+    readonly orgFilterItems = computed<SelectItem[]>(() =>
+        this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
+    );
+
+    /** Preselected org filter — follows the currently active org, but only if the caller can
+     *  actually read memberships there. Otherwise stays empty so the initial load falls back
+     *  to fetching across all readable orgs (see `ngOnInit`). */
     private readonly activeOrgDefault = computed<number[] | undefined>(() => {
         const id = this.activeOrgService.activeOrgId();
-        return id !== null ? [id] : undefined;
+        if (id === null) return undefined;
+        if (this.permissionsService.isSuperadmin) return [id];
+        return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
     });
 
     filteredUsers = computed(() => {
@@ -163,8 +176,10 @@ export class UsersTabComponent implements OnInit {
         {
             key: 'organization',
             label: 'ORGANIZATION',
-            width: 'minmax(140px, 1.5fr)',
+            width: 'minmax(175px, 1.5fr)',
             filterItems: this.orgFilterItems(),
+            filterKind: 'multi',
+            filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
         { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
@@ -173,6 +188,26 @@ export class UsersTabComponent implements OnInit {
     ]);
 
     ngOnInit(): void {
+        this.loadReadableOrgs();
+        if (!this.activeOrgDefault()) this.loadUsers();
+    }
+
+    private loadReadableOrgs(): void {
+        if (this.permissionsService.isSuperadmin) {
+            this.orgStorage
+                .getOrganizations()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((orgs) =>
+                    this.readableOrgs.set(orgs.filter((o) => o.is_active).map((o) => ({ id: o.id, name: o.name })))
+                );
+            return;
+        }
+        this.readableOrgs.set(this.permissionsService.orgsWith(ResourceCode.Memberships, ActionCode.Read));
+    }
+
+    onFilterChange(evt: { key: string; values: unknown[] }): void {
+        if (evt.key !== 'organization') return;
+        this.orgFilterIds.set(evt.values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
         this.loadUsers();
     }
 
@@ -339,10 +374,14 @@ export class UsersTabComponent implements OnInit {
 
     /** Superadmin → `/api/admin/users/` (full account list w/ memberships).
      *  Delegated admin → `/api/admin/memberships/` aggregated client-side.
-     *  Same shape either way so the table stays permission-agnostic. */
+     *  Same shape either way so the table stays permission-agnostic. Server-side org filter
+     *  is applied via `orgFilterIds` — memberships returned for other orgs are stripped. */
     private loadUsers(): void {
         this.isLoading.set(true);
-        const source$ = this.permissionsService.isSuperadmin ? this.loadFromAdminUsers() : this.loadFromMemberships();
+        const orgIds = this.orgFilterIds();
+        const source$ = this.permissionsService.isSuperadmin
+            ? this.loadFromAdminUsers(orgIds)
+            : this.loadFromMemberships(orgIds);
 
         source$
             .pipe(
@@ -353,28 +392,21 @@ export class UsersTabComponent implements OnInit {
                 next: (users) => {
                     this.aggregatedUsers.set(users);
                     this.usersData.set(users.map((u) => this.mapToRow(u)));
-                    this.orgFilterItems.set(this.extractOrgFilterItems(users));
                     this.roleFilterItems.set(this.extractRoleFilterItems(users));
                 },
             });
     }
 
-    private loadFromAdminUsers(): Observable<AggregatedUser[]> {
-        return this.adminUserService.getUsers().pipe(map((page) => adminUsersToAggregated(page.results)));
+    private loadFromAdminUsers(orgIds: number[]): Observable<AggregatedUser[]> {
+        return this.adminUserService
+            .getUsers(orgIds.length ? { orgIds } : {})
+            .pipe(map((page) => adminUsersToAggregated(page.results)));
     }
 
-    private loadFromMemberships(): Observable<AggregatedUser[]> {
-        return this.membershipsService.list().pipe(map((page) => aggregateMembershipsByUser(page.results)));
-    }
-
-    private extractOrgFilterItems(users: AggregatedUser[]): SelectItem[] {
-        const orgMap = new Map<number, string>();
-        for (const user of users) {
-            for (const m of user.memberships) {
-                orgMap.set(m.organization.id, m.organization.name);
-            }
-        }
-        return Array.from(orgMap, ([value, name]) => ({ name, value }));
+    private loadFromMemberships(orgIds: number[]): Observable<AggregatedUser[]> {
+        return this.membershipsService
+            .list(orgIds.length ? { org_ids: orgIds } : {})
+            .pipe(map((page) => aggregateMembershipsByUser(page.results)));
     }
 
     private extractRoleFilterItems(users: AggregatedUser[]): SelectItem[] {

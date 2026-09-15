@@ -4,7 +4,7 @@
         [width]="'240px'"
         [(searchTerm)]="searchTerm"
     />
-    <span class="count-label"> {{ filteredRows().length }} of {{ rows().length }} roles </span>
+    <span class="count-label"> {{ rows().length }} roles </span>
     <div class="toolbar-actions">
         @if (canCreateOrCopyAnywhere()) {
             <app-button
