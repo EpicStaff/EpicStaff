@@ -14,7 +14,7 @@ dependencies = [
     "datamodel-code-generator==0.64.0",
     "langchain-core==1.6.2",
     "langgraph==1.2.11",
-    "litellm==1.85.1",
+    "litellm==1.92.0",
     "loguru==0.7.2",
     "pydantic==2.13.4",
     "python-dotenv==1.2.2",
