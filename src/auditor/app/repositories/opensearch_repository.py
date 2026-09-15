@@ -6,6 +6,7 @@ from typing import Any
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 from opensearchpy.helpers import async_bulk
+from pydantic import ValidationError
 
 import binascii
 
@@ -92,7 +93,17 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
         hits = response["hits"]["hits"]
         logger.info(f"Audit query -> {len(hits)} hit(s)")
 
-        events = [SessionAuditEvent.model_validate(hit["_source"]) for hit in hits]
+        events = []
+        for hit in hits:
+            try:
+                events.append(SessionAuditEvent.model_validate(hit["_source"]))
+            except ValidationError as exc:
+                logger.warning(
+                    "Skipping malformed audit_events document id={doc_id!r}: {exc}",
+                    doc_id=hit.get("_id"),
+                    exc=exc,
+                )
+
         next_cursor = _encode_cursor(hits[-1]["sort"]) if len(hits) == size else None
 
         return events, next_cursor

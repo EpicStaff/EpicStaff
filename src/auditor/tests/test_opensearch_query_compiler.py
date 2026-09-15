@@ -51,6 +51,65 @@ def test_compile_flattened_numeric_op_uses_runtime_script_not_range():
     assert "range" not in compiled_leaf
 
 
+def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
+    """Regression test for the silent-0-results bug: `params._source` is
+    unavailable in a filter-context script query (verified live against the
+    running OpenSearch cluster - it silently resolves to `null`), so the
+    script must read the value via `doc[...]` instead."""
+    node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    scripted = compiled_leaf["bool"]["filter"][1]
+    source = scripted["script"]["script"]["source"]
+
+    assert "params._source" not in source
+    assert "doc[params.path]" in source
+    assert scripted["script"]["script"]["params"]["path"] == "details.tokens_used"
+    assert scripted["script"]["script"]["params"]["root"] == "details"
+    assert scripted["script"]["script"]["params"]["value"] == 5000.0
+    # exists check still guards against an absent key
+    assert compiled_leaf["bool"]["filter"][0] == {
+        "exists": {"field": "details.tokens_used"}
+    }
+
+
+def test_compile_numeric_flattened_filter_script_semantics_simulated():
+    """Simulates the compiled Painless script's actual logic in Python (no
+    JVM available in unit tests - see test_search_integration.py for the
+    live-OpenSearch equivalent, run against the real cluster to confirm this
+    simulation matches reality): `doc[path]` on a flat_object sub-key
+    doesn't hand back just that key's value - it returns doc-values for
+    every key under the root object, each formatted as
+    `"<root>.<root>.<leaf_path>=<value>"` (confirmed live, e.g.
+    `"details.details.tokens_used=8001"`). The script has to find its own
+    key's entry by that prefix before parsing the value."""
+    node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    params = compiled_leaf["bool"]["filter"][1]["script"]["script"]["params"]
+    threshold = params["value"]
+    prefix = f"{params['root']}.{params['path']}="
+
+    def _simulated_script(doc_values: list[str]) -> bool:
+        for entry in doc_values:
+            if entry.startswith(prefix):
+                value_str = entry[len(prefix):]
+                try:
+                    d = float(value_str)
+                except ValueError:
+                    return False
+                return d > threshold
+        return False
+
+    assert _simulated_script(["details.details.tokens_used=6000"]) is True
+    assert _simulated_script(["details.details.tokens_used=100"]) is False
+    assert _simulated_script(["details.details.test_batch=f03_tokens"]) is False
+    assert _simulated_script([]) is False
+    assert (
+        _simulated_script(["details.details.tokens_used=not-a-number"]) is False
+    )
+
+
 def test_compile_mixed_structured_and_flattened_and():
     node = {
         "op": "and",

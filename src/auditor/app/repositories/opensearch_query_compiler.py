@@ -129,18 +129,31 @@ def _free_text_clause(term: str) -> dict:
 def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
     """flat_object has no native numeric type per sub-key (everything is
     stored/queried as a string internally) - a numeric range comparison on a
-    nested key needs a runtime Painless script that casts at query time.
-    Guarded to return false (not throw) on an absent/non-numeric value, so
-    one malformed document doesn't 500 the whole query."""
+    nested key needs a Painless script that casts at query time.
+
+    This is a plain `script` query inside `bool.filter` - a filter/query
+    context script, not update/ingest/reindex - so `params._source` is
+    unavailable there (verified live against this cluster: it silently
+    resolves to `null`, so the old `params._source`-walking script always
+    fell through its own null-guard and matched nothing, for every request,
+    regardless of the literal value).
+    """
     comparator = _PAINLESS_COMPARATORS[op]
-    parts = path.split(".")
+    root = path.split(".", 1)[0]
     source = (
-        "def v = params._source; "
-        "for (part in params.path_parts) { if (v == null) { return false; } v = v.get(part); } "
-        "if (v == null) { return false; } "
+        "def fv = doc[params.path]; "
+        "if (fv == null) { return false; } "
+        "String prefix = params.root + '.' + params.path + '='; "
+        "for (entry in fv) { "
+        "if (entry.startsWith(prefix)) { "
+        "String valueStr = entry.substring(prefix.length()); "
         "double d; "
-        "try { d = Double.parseDouble(v.toString()); } catch (Exception e) { return false; } "
-        f"return d {comparator} params.value;"
+        "try { d = Double.parseDouble(valueStr); } "
+        "catch (Exception e) { return false; } "
+        f"return d {comparator} params.value; "
+        "} "
+        "} "
+        "return false;"
     )
     return {
         "bool": {
@@ -151,7 +164,11 @@ def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
                         "script": {
                             "lang": "painless",
                             "source": source,
-                            "params": {"path_parts": parts, "value": float(value)},
+                            "params": {
+                                "path": path,
+                                "root": root,
+                                "value": float(value),
+                            },
                         }
                     }
                 },

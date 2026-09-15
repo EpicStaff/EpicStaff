@@ -164,6 +164,64 @@ async def test_duration_filter_includes_and_excludes_correctly(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_numeric_flattened_filter_matches_docs_above_threshold(
+    repository, opensearch_client
+):
+    """Regression test for the `params._source` bug: a `gt` filter on a
+    `details.*` flat_object key must actually match documents whose value
+    clears the threshold, and reject ones that don't or lack the key."""
+    fixtures = [
+        _event(name="above", details={"tokens_used": 6000}),
+        _event(name="below", details={"tokens_used": 100}),
+        _event(name="missing"),
+    ]
+    await repository.write_batch(fixtures)
+    await opensearch_client.indices.refresh(index="audit_events")
+
+    ast = {"field": "details.tokens_used", "op": "gt", "value": 5000}
+    query = compile_filters(ast, org_id=ORG_A, retention_days=0)
+    events, _ = await repository.query(query, cursor=None, size=50)
+
+    names = {e.name for e in events}
+    assert "above" in names
+    assert "below" not in names
+    assert "missing" not in names
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_search_survives_a_document_with_out_of_literal_status(
+    repository, opensearch_client
+):
+    """A document with a `status` outside the SessionAuditEvent Literal
+    (written directly via the client, bypassing the model - this is
+    exactly the "legacy/manually-written document" scenario the fix
+    protects against) must not 500 the search; the other valid document on
+    the same page must still come back."""
+    good = _event(name="good-status-doc")
+    await repository.write_batch([good])
+
+    bad_source = good.model_copy(update={"id": str(uuid.uuid4())}).model_dump(
+        mode="json"
+    )
+    bad_source["status"] = "warning"
+    bad_source["name"] = "bad-status-doc"
+    await opensearch_client.index(
+        index="audit_events", id=bad_source["id"], body=bad_source
+    )
+    await opensearch_client.indices.refresh(index="audit_events")
+
+    ast = {"field": "name", "op": "contains", "value": "status-doc"}
+    query = compile_filters(ast, org_id=ORG_A, retention_days=0)
+    events, _ = await repository.query(query, cursor=None, size=50)
+
+    names = {e.name for e in events}
+    assert "good-status-doc" in names
+    assert "bad-status-doc" not in names
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_client_cannot_widen_org_scope(repository, opensearch_client):
     await repository.write_batch([_event(org_id=ORG_B, name="OrgBOnly")])
     await opensearch_client.indices.refresh(index="audit_events")

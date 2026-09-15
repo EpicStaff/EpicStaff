@@ -67,12 +67,16 @@ _DURATION_OPS = frozenset(
 )
 
 
+_STATUS_VALUES = frozenset({"completed", "failed"})
+
+
 class FieldSpec(NamedTuple):
     allowed_ops: frozenset[str]
     # True only for `duration` - not translatable to OpenSearch DSL at all;
     # split_duration_filter() must remove every leaf using this field before
     # the remainder AST reaches the OpenSearch compiler.
     computed: bool = False
+    allowed_values: frozenset[str] | None = None
 
 
 KNOWN_FIELDS: dict[str, FieldSpec] = {
@@ -80,7 +84,7 @@ KNOWN_FIELDS: dict[str, FieldSpec] = {
     "id": FieldSpec(_RANGE_OPS | _SELECT_OPS),
     "session_id": FieldSpec(_SELECT_OPS),
     "session_message_id": FieldSpec(_SELECT_OPS),
-    "status": FieldSpec(_SELECT_OPS),
+    "status": FieldSpec(_SELECT_OPS, allowed_values=_STATUS_VALUES),
     "kind": FieldSpec(_SELECT_OPS),
     "name": FieldSpec(_TEXT_CONDITION_OPS),
     "flow_name": FieldSpec(_SELECT_OPS),
@@ -187,6 +191,15 @@ def validate_filter_node(
         )
     if leaf_op in ("in", "not_in") and not isinstance(node.get("value"), list):
         raise FilterValidationError(f"{_path}: op {leaf_op!r} requires a list 'value'")
+    if spec.allowed_values is not None:
+        raw_value = node.get("value")
+        candidates = raw_value if isinstance(raw_value, list) else [raw_value]
+        invalid = [v for v in candidates if v not in spec.allowed_values]
+        if invalid:
+            raise FilterValidationError(
+                f"{_path}: value(s) {invalid!r} not allowed for field {field!r} "
+                f"(allowed: {sorted(spec.allowed_values)})"
+            )
 
 
 def iter_leaves(node: FilterNode) -> Iterator[FilterNode]:

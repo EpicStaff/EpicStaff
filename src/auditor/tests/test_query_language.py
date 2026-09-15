@@ -111,6 +111,30 @@ def test_validate_filter_node_allows_flattened_dotted_path():
     validate_filter_node({"field": "details.tool", "op": "equals", "value": "Web Search Tool"})
 
 
+def test_validate_filter_node_rejects_status_value_outside_whitelist():
+    """SessionAuditEvent.status is Literal["completed", "failed"] - a
+    filter/preset (or the index itself) using anything else must be
+    rejected here (400) rather than reaching OpenSearch and later crashing
+    pydantic deserialization on the read path."""
+    with pytest.raises(FilterValidationError):
+        validate_filter_node({"field": "status", "op": "equals", "value": "error"})
+
+
+def test_validate_filter_node_rejects_status_in_list_with_bad_value():
+    with pytest.raises(FilterValidationError):
+        validate_filter_node(
+            {"field": "status", "op": "in", "value": ["completed", "warning"]}
+        )
+
+
+def test_validate_filter_node_allows_known_status_values():
+    validate_filter_node({"field": "status", "op": "equals", "value": "completed"})
+    validate_filter_node({"field": "status", "op": "not_equal", "value": "failed"})
+    validate_filter_node(
+        {"field": "status", "op": "in", "value": ["completed", "failed"]}
+    )
+
+
 def test_split_duration_filter_rejects_or():
     with pytest.raises(FilterValidationError):
         split_duration_filter(
