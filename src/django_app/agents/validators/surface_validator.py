@@ -7,12 +7,12 @@ from tables.models.knowledge_models.collection_models import BaseRagType
 
 
 class SurfaceValidator:
-    # NOTE: cross-org rejection for python_tool/mcp_tool/collection/storage_file
-    # pks is enforced at the serializer layer (OrgScopedPrimaryKeyRelatedField /
-    # OrgVisiblePrimaryKeyRelatedField in surface_serializers.py) — a cross-org
-    # pk is rejected there before it ever reaches these validators. PythonCodeTool
-    # and SourceCollection own an `org` FK (PythonCodeTool is hybrid via
-    # `built_in`); McpTool and StorageFile own a strict `org` FK.
+    # NOTE: cross-org rejection for every referenced pk (python_tool/mcp_tool/
+    # collection/storage_file and the surface_list/default_surfaces surfaces) is
+    # enforced at the serializer layer (OrgScoped/OrganizationScoped/OrgVisible
+    # PrimaryKeyRelatedField) — a cross-org pk is rejected there before it ever
+    # reaches these validators, so they only enforce what the field layer cannot:
+    # duplicate ids and the surface↔owner_agent ownership binding.
 
     @staticmethod
     def _find_duplicate_ids(ids: list) -> list:
@@ -42,7 +42,7 @@ class SurfaceValidator:
             )
 
     @staticmethod
-    def validate_storage_items(storage_items_data, organization):
+    def validate_storage_items(storage_items_data):
         ids = [item["storage_file"].pk for item in storage_items_data]
         duplicates = SurfaceValidator._find_duplicate_ids(ids)
 
@@ -50,19 +50,6 @@ class SurfaceValidator:
             raise SurfaceValidationError(
                 detail={
                     "storage_items": f"Duplicate storage_file ids: {sorted(duplicates)}"
-                }
-            )
-
-        wrong_org = [
-            item["storage_file"].pk
-            for item in storage_items_data
-            if item["storage_file"].org_id != organization.pk
-        ]
-
-        if wrong_org:
-            raise SurfaceValidationError(
-                detail={
-                    "storage_items": f"storage_file ids do not belong to this organization: {sorted(wrong_org)}"
                 }
             )
 
@@ -139,7 +126,7 @@ class SurfaceValidator:
             )
 
     @staticmethod
-    def validate_agent_default_surfaces(items, agent_definition, organization):
+    def validate_agent_default_surfaces(items, agent_definition):
         """Validate surfaces attached to an AgentDefinition via `default_surfaces`.
 
         `agent_definition=None` is the create case (the instance doesn't exist
@@ -150,12 +137,6 @@ class SurfaceValidator:
 
         for item in items:
             surface = item["surface"]
-
-            if surface.organization_id != organization.pk:
-                errors.append(
-                    f"Surface {surface.pk} does not belong to this organization."
-                )
-                continue
 
             if surface.owner_agent_id is not None and (
                 agent_definition is None
@@ -170,7 +151,7 @@ class SurfaceValidator:
             raise SurfaceValidationError(detail={"default_surfaces": errors})
 
     @staticmethod
-    def validate_task_node_surfaces(surfaces, agent_definition, organization):
+    def validate_task_node_surfaces(surfaces, agent_definition):
         """Validate surfaces attached to a TaskNode via `surface_list`.
 
         A surface owned by an agent may only be attached to a task node whose
@@ -189,12 +170,6 @@ class SurfaceValidator:
         errors = []
 
         for surface in surfaces:
-            if surface.organization_id != organization.pk:
-                errors.append(
-                    f"Surface {surface.pk} does not belong to this organization."
-                )
-                continue
-
             if surface.owner_agent_id is not None and (
                 agent_definition is None
                 or surface.owner_agent_id != agent_definition.pk
@@ -208,7 +183,7 @@ class SurfaceValidator:
             raise SurfaceValidationError(detail={"surface_list": errors})
 
     @staticmethod
-    def validate_agent_node_surfaces(surfaces, agent_definition, organization):
+    def validate_agent_node_surfaces(surfaces, agent_definition):
         """Validate surfaces attached to an AgentNode via `surface_list`.
 
         A surface owned by an agent may only be attached to an agent node whose
@@ -227,12 +202,6 @@ class SurfaceValidator:
         errors = []
 
         for surface in surfaces:
-            if surface.organization_id != organization.pk:
-                errors.append(
-                    f"Surface {surface.pk} does not belong to this organization."
-                )
-                continue
-
             if surface.owner_agent_id is not None and (
                 agent_definition is None
                 or surface.owner_agent_id != agent_definition.pk
