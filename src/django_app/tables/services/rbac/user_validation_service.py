@@ -110,29 +110,13 @@ class UserValidationService(BaseRBACValidator):
     def validate_list_memberships_query(self, params) -> dict:
         """`GET /api/admin/memberships/` filters: ?search=&role_id=&status=.
         role_id must be a positive int; status must be active|inactive."""
-        search = params.get("search")
-        role_id_raw = params.get("role_id")
-        status_raw = params.get("status")
-
         errors: list[FieldError] = []
-        role_id = None
-        if role_id_raw not in (None, ""):
-            role_id_errors = self._validate_positive_int_field("role_id", role_id_raw)
-            errors.extend(role_id_errors)
-            if not role_id_errors:
-                role_id = int(role_id_raw)
+        role_id, role_errors = self._parse_role_id(params.get("role_id"))
+        errors.extend(role_errors)
+        status_value, status_errors = self._parse_status(params.get("status"))
+        errors.extend(status_errors)
 
-        status_value = None
-        if status_raw not in (None, ""):
-            if status_raw in ("active", "inactive"):
-                status_value = status_raw
-            else:
-                errors.append(
-                    FieldError(
-                        "status", status_raw, "Must be one of: active, inactive."
-                    )
-                )
-
+        search = params.get("search")
         self._raise_if_any(errors)
         return {
             "search": search if search else None,
@@ -140,11 +124,29 @@ class UserValidationService(BaseRBACValidator):
             "status_value": status_value,
         }
 
+    def _parse_role_id(self, raw) -> tuple[Any, list[FieldError]]:
+        if raw in (None, ""):
+            return None, []
+        errors = self._validate_positive_int_field("role_id", raw)
+        return (None if errors else int(raw)), errors
+
+    def _parse_status(self, raw) -> tuple[Any, list[FieldError]]:
+        if raw in (None, ""):
+            return None, []
+        if raw in ("active", "inactive"):
+            return raw, []
+        return None, [FieldError("status", raw, "Must be one of: active, inactive.")]
+
     # ---- list-users query params ----
 
-    def validate_list_users_query(self, params: dict) -> dict:
-        """Optional filters: ?email=substr&is_superadmin=bool&organization_id=N."""
-        email = params.get("email")
+    def validate_list_users_query(self, params) -> dict:
+        """`GET /api/admin/users/` filters:
+        ?search=&email=&is_superadmin=&status=&role_id=&organization_id=.
+
+        `search` supersedes the narrower `email`; `?org_ids=` is parsed by the
+        view (it carries its own error envelope) and supersedes
+        `organization_id` there.
+        """
         is_superadmin_raw = params.get("is_superadmin")
         organization_id_raw = params.get("organization_id")
 
@@ -168,19 +170,26 @@ class UserValidationService(BaseRBACValidator):
 
         organization_id: Any = None
         if organization_id_raw is not None and organization_id_raw != "":
-            errors.extend(
-                self._validate_positive_int_field(
-                    "organization_id", organization_id_raw
-                )
+            org_errors = self._validate_positive_int_field(
+                "organization_id", organization_id_raw
             )
-            if not errors or errors[-1].field != "organization_id":
+            errors.extend(org_errors)
+            if not org_errors:
                 organization_id = int(organization_id_raw)
 
+        role_id, role_errors = self._parse_role_id(params.get("role_id"))
+        errors.extend(role_errors)
+        status_value, status_errors = self._parse_status(params.get("status"))
+        errors.extend(status_errors)
+
+        search = params.get("search") or params.get("email")
         self._raise_if_any(errors)
         return {
-            "email": email if email else None,
+            "search": search if search else None,
             "is_superadmin": is_superadmin,
             "organization_id": organization_id,
+            "role_id": role_id,
+            "status_value": status_value,
         }
 
     # ---- Story 6: profile ----

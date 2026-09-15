@@ -13,6 +13,15 @@ from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthent
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.services.rbac.user_management_service import UserManagementService
 from tables.services.rbac.user_validation_service import UserValidationService
+from tables.swagger_schemas.user_admin_schema import USERS_LIST_GET
+from tables.views.cross_org_admin import CrossOrgAdminViewSet
+
+_ORDERING_WHITELIST = {
+    "email": "email",
+    "created_at": "created_at",
+    "display_name": "display_name",
+}
+_DEFAULT_ORDERING = ("-created_at", "email")
 
 
 class UserPagination(PageNumberPagination):
@@ -46,24 +55,38 @@ class UserAdminViewSet(viewsets.ViewSet):
     _service = UserManagementService()
     _validator = UserValidationService()
 
-    @extend_schema(
-        summary="List users (superadmin)",
-        responses={200: UserResponseSerializer(many=True)},
-    )
+    @extend_schema(**USERS_LIST_GET)
     def list(self, request):
+        org_ids = CrossOrgAdminViewSet.parse_org_ids(
+            request.query_params.get("org_ids")
+        )
         cleaned = self._validator.validate_list_users_query(request.query_params)
+        if org_ids is None and cleaned["organization_id"] is not None:
+            org_ids = [cleaned["organization_id"]]
         qs = self._service.list_users(
             actor=request.user,
-            email=cleaned["email"],
+            search=cleaned["search"],
             is_superadmin=cleaned["is_superadmin"],
-            organization_id=cleaned["organization_id"],
+            org_ids=org_ids,
+            status_value=cleaned["status_value"],
+            role_id=cleaned["role_id"],
         )
+        qs = self._apply_ordering(qs, request.query_params.get("ordering"))
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)
         serializer = UserResponseSerializer(
             page, many=True, context={"request": request}
         )
         return paginator.get_paginated_response(serializer.data)
+
+    def _apply_ordering(self, qs, raw):
+        if not raw:
+            return qs.order_by(*_DEFAULT_ORDERING)
+        descending = raw.startswith("-")
+        field = _ORDERING_WHITELIST.get(raw.lstrip("-"))
+        if field is None:
+            return qs.order_by(*_DEFAULT_ORDERING)
+        return qs.order_by(f"-{field}" if descending else field, "id")
 
     @extend_schema(
         summary="Create a user (superadmin)",

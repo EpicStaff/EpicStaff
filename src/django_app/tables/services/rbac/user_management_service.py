@@ -1,10 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
 
 from tables.models.rbac_models import OrganizationUser, Organization, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
+from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import (
     EmailAlreadyExistsError,
     OrganizationNotFoundError,
@@ -14,50 +15,72 @@ from tables.services.rbac.rbac_exceptions import (
 from tables.services.rbac.user_management_guards import UserManagementGuards
 
 
-class UserManagementService:
+class UserManagementService(CrossOrgResourceService):
     """Superadmin-only management of the global User account entity
     (list / create / grant-revoke superadmin / activate-deactivate).
 
     Membership management (add/change-role/remove within an org) is a
     separate, permission-driven surface — see MembershipManagementService.
 
+    A User owns no organization; its org dimension is the set its memberships
+    span, which is why the list scopes through MEMBERSHIPS on the cross-org
+    skeleton rather than an `org` column.
+
     Every write method wraps in transaction.atomic(), acquires
     SELECT FOR UPDATE on the contested row before any guard, translates
     IntegrityError to typed domain exceptions, and logs INFO via loguru.
     """
+
+    rbac_resource_type = ResourceType.MEMBERSHIPS
+    not_found_exception = UserNotFoundError
 
     # ---- read ----
 
     def list_users(
         self,
         actor,
-        email=None,
+        search=None,
         is_superadmin=None,
-        organization_id=None,
+        org_ids=None,
+        status_value=None,
+        role_id=None,
+        scopes=None,
     ) -> QuerySet:
-        """Cross-org user list. Caller is expected to be superadmin
-        (enforced by the view permission class). The actor argument is
-        accepted for symmetry and future audit logging — currently unused
-        in the read path.
+        """Cross-org user list, optionally scoped to `org_ids` through the
+        accounts' memberships. Filtering by `search` (email/display_name),
+        `is_superadmin`, `status` (active/inactive account) and `role_id`
+        (held in any in-scope org). Ordering is applied by the view.
+
+        `org_ids` and `role_id` both traverse a multi-valued join, so the
+        result is DISTINCT.
         """
         UserModel = get_user_model()
-        qs = (
-            UserModel.objects.all()
-            .order_by("-created_at", "email")
-            .prefetch_related(
-                Prefetch(
-                    "organization_memberships",
-                    queryset=OrganizationUser.objects.select_related("org", "role"),
-                )
+        base_qs = UserModel.objects.all().prefetch_related(
+            Prefetch(
+                "organization_memberships",
+                queryset=OrganizationUser.objects.select_related("org", "role"),
             )
         )
-        if email:
-            qs = qs.filter(email__icontains=email)
+        qs = self.apply_org_scope(
+            actor=actor,
+            org_ids=org_ids,
+            base_qs=base_qs,
+            org_field="organization_memberships__org_id",
+            scopes=scopes,
+        )
+        if search:
+            qs = qs.filter(
+                Q(email__icontains=search) | Q(display_name__icontains=search)
+            )
         if is_superadmin is not None:
             qs = qs.filter(is_superadmin=is_superadmin)
-        if organization_id is not None:
-            qs = qs.filter(organization_memberships__org_id=organization_id).distinct()
-        return qs
+        if status_value == "active":
+            qs = qs.filter(is_active=True)
+        elif status_value == "inactive":
+            qs = qs.filter(is_active=False)
+        if role_id is not None:
+            qs = qs.filter(organization_memberships__role_id=role_id)
+        return qs.distinct()
 
     # ---- create ----
 
