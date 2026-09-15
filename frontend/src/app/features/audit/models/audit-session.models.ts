@@ -3,6 +3,21 @@ import { AuditFilterNode } from './audit-filter.models';
 export type AuditEventKind = 'session' | 'node' | 'event';
 export type AuditEventStatus = 'completed' | 'failed';
 export type AuditSessionRowStatus = AuditEventStatus | 'running';
+export type AuditRunType = 'manual' | 'schedule' | 'webhook' | 'telegram' | 'parent_flow';
+export type AuditNodeType =
+    | 'AGENT'
+    | 'TASK'
+    | 'PYTHON'
+    | 'KNOWLEDGE'
+    | 'FILE_EXTRACTOR'
+    | 'AUDIO_TRANSCRIPTION'
+    | 'DECISION_TABLE'
+    | 'CLASSIFICATION_DECISION_TABLE'
+    | 'END'
+    | 'SCHEDULE_TRIGGER'
+    | 'WEBHOOK_TRIGGER'
+    | 'TELEGRAM_TRIGGER';
+export type AuditRunBucket = 'manual' | 'api';
 
 export const AUDIT_MESSAGE_TYPE = {
     sessionStart: 'session_start',
