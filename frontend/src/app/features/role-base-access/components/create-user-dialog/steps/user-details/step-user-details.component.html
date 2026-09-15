@@ -20,7 +20,7 @@
         <!--        <app-validation-errors [control]="form.get('full_name')!" />-->
         <div class="control">
             <label class="label">
-                Email <span class="required">*</span>
+                <span>Email<span class="required">*</span></span>
                 <app-help-tooltip
                     [text]="'The user\'s login email address. Must be unique across the system.'"
                     position="right"
@@ -37,8 +37,7 @@
         @if (!editMode()) {
             <div class="control">
                 <label class="label">
-                    Password
-                    <span class="required">*</span>
+                    <span>Password<span class="required">*</span></span>
                     <app-help-tooltip
                         [text]="'Minimum 8 characters. The user can change it after their first login.'"
                         position="right"

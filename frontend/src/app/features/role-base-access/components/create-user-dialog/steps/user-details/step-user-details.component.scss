@@ -3,55 +3,63 @@
 }
 
 .form {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    column-gap: 30px;
+    row-gap: 16px;
+    padding: 20px 40px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.primary,
+.secondary,
+.control {
+    display: contents;
+}
+
+.label {
+    grid-column: 1;
+    justify-self: end;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    white-space: nowrap;
+    gap: 8px;
+    color: var(--color-ks-text);
+}
 
-    .primary {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 12px 40px 8px 40px;
+app-custom-input,
+app-toggle-switch,
+app-validation-errors,
+app-password-strength {
+    grid-column: 2;
+}
 
-        .control {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding-top: 8px;
+app-validation-errors:empty,
+app-password-strength:empty {
+    display: none;
+}
 
-            .label {
-                width: 110px;
-                flex-shrink: 0;
-                display: flex;
-                justify-content: flex-end;
-                white-space: nowrap;
-                gap: 8px;
-            }
+app-validation-errors {
+    margin-top: -12px; // row-gap (16px) minus the desired 4px gap above the error text
+}
 
-            &.top {
-                align-items: flex-start;
+:host ::ng-deep app-validation-errors .validation-errors {
+    margin: 0;
+}
 
-                .label {
-                    padding-top: 10px;
-                }
-            }
-        }
+:host ::ng-deep app-validation-errors .validation-errors__item {
+    border-left: 2px solid var(--red-500);
+    background-color: var(--red-alpha-8);
+    color: var(--red-500);
+    font-family: var(--font-family);
+    font-weight: var(--text-body-small-weight);
+    font-size: var(--text-body-small-size);
+    line-height: 100%;
+    letter-spacing: 0;
+    vertical-align: middle;
+}
 
-        .required {
-            color: var(--accent-color);
-        }
-    }
-
-    .secondary {
-        display: flex;
-        gap: 16px;
-        padding: 8px 40px 20px 40px;
-        border-bottom: 1px solid var(--color-divider-subtle);
-
-        .label {
-            display: flex;
-            white-space: nowrap;
-            color: var(--text-secondary-60);
-            gap: 8px;
-        }
-    }
+.required {
+    color: var(--accent-color);
 }
