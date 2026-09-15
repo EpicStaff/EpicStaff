@@ -198,6 +198,181 @@ class TestListUsers:
 
 
 @pytest.mark.django_db
+class TestListUsersOrgScope:
+    def test_org_ids_single(self, authed_client, superadmin, member_acme, org_acme):
+        resp = authed_client(superadmin).get(USERS_LIST + f"?org_ids={org_acme.pk}")
+        assert resp.status_code == status.HTTP_200_OK
+        assert "m@x.com" in [u["email"] for u in resp.data["results"]]
+
+    def test_org_ids_multiple(
+        self,
+        authed_client,
+        superadmin,
+        member_acme,
+        org_acme,
+        org_globex,
+        role_member,
+        django_user_model,
+    ):
+        other = django_user_model.objects.create_user(
+            email="globex@x.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=other, org=org_globex, role=role_member)
+        resp = authed_client(superadmin).get(
+            USERS_LIST + f"?org_ids={org_acme.pk},{org_globex.pk}"
+        )
+        emails = [u["email"] for u in resp.data["results"]]
+        assert "m@x.com" in emails
+        assert "globex@x.com" in emails
+
+    def test_org_ids_excludes_accounts_without_membership_there(
+        self, authed_client, superadmin, member_acme, org_globex
+    ):
+        resp = authed_client(superadmin).get(USERS_LIST + f"?org_ids={org_globex.pk}")
+        assert "m@x.com" not in [u["email"] for u in resp.data["results"]]
+
+    def test_org_ids_excludes_superadmin_without_memberships(
+        self, authed_client, superadmin, org_acme, django_user_model
+    ):
+        lone = django_user_model.objects.create_user(
+            email="lone-sa@x.com", password="StrongPass123!", is_superadmin=True
+        )
+        resp = authed_client(superadmin).get(USERS_LIST + f"?org_ids={org_acme.pk}")
+        assert lone.email not in [u["email"] for u in resp.data["results"]]
+
+    def test_user_in_two_requested_orgs_appears_once(
+        self, authed_client, superadmin, org_acme, org_globex, role_member, member_acme
+    ):
+        OrganizationUser.objects.create(
+            user=member_acme, org=org_globex, role=role_member
+        )
+        resp = authed_client(superadmin).get(
+            USERS_LIST + f"?org_ids={org_acme.pk},{org_globex.pk}"
+        )
+        emails = [u["email"] for u in resp.data["results"]]
+        assert emails.count("m@x.com") == 1
+
+    def test_memberships_are_not_narrowed_by_org_ids(
+        self, authed_client, superadmin, org_acme, org_globex, role_member, member_acme
+    ):
+        OrganizationUser.objects.create(
+            user=member_acme, org=org_globex, role=role_member
+        )
+        resp = authed_client(superadmin).get(USERS_LIST + f"?org_ids={org_acme.pk}")
+        row = next(u for u in resp.data["results"] if u["email"] == "m@x.com")
+        assert {m["organization"]["id"] for m in row["memberships"]} == {
+            org_acme.pk,
+            org_globex.pk,
+        }
+
+    def test_empty_selection_scopes_to_nothing(
+        self, authed_client, superadmin, member_acme
+    ):
+        resp = authed_client(superadmin).get(USERS_LIST + "?org_ids=,")
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["count"] == 0
+
+    def test_blank_org_ids_applies_no_filter(
+        self, authed_client, superadmin, member_acme
+    ):
+        resp = authed_client(superadmin).get(USERS_LIST + "?org_ids=")
+        assert resp.status_code == status.HTTP_200_OK
+        assert "m@x.com" in [u["email"] for u in resp.data["results"]]
+
+    def test_malformed_org_ids_is_org_context_required(self, authed_client, superadmin):
+        resp = authed_client(superadmin).get(USERS_LIST + "?org_ids=abc")
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "org_context_required"
+
+    def test_org_ids_supersedes_organization_id(
+        self, authed_client, superadmin, member_acme, org_acme, org_globex
+    ):
+        resp = authed_client(superadmin).get(
+            USERS_LIST + f"?org_ids={org_acme.pk}&organization_id={org_globex.pk}"
+        )
+        assert "m@x.com" in [u["email"] for u in resp.data["results"]]
+
+
+@pytest.mark.django_db
+class TestListUsersFilters:
+    def test_search_matches_display_name(self, authed_client, superadmin, member_acme):
+        member_acme.display_name = "Zaphod"
+        member_acme.save(update_fields=["display_name"])
+        resp = authed_client(superadmin).get(USERS_LIST + "?search=zaph")
+        assert [u["email"] for u in resp.data["results"]] == ["m@x.com"]
+
+    def test_search_matches_email(self, authed_client, superadmin, member_acme):
+        resp = authed_client(superadmin).get(USERS_LIST + "?search=m@")
+        emails = [u["email"] for u in resp.data["results"]]
+        assert "m@x.com" in emails
+        assert "sa@x.com" not in emails
+
+    def test_search_supersedes_email(self, authed_client, superadmin, member_acme):
+        member_acme.display_name = "Zaphod"
+        member_acme.save(update_fields=["display_name"])
+        resp = authed_client(superadmin).get(USERS_LIST + "?search=zaph&email=sa@")
+        assert [u["email"] for u in resp.data["results"]] == ["m@x.com"]
+
+    def test_status_active(self, authed_client, superadmin, member_acme):
+        resp = authed_client(superadmin).get(USERS_LIST + "?status=active")
+        assert "m@x.com" in [u["email"] for u in resp.data["results"]]
+
+    def test_status_inactive(self, authed_client, superadmin, member_acme):
+        member_acme.is_active = False
+        member_acme.save(update_fields=["is_active"])
+        resp = authed_client(superadmin).get(USERS_LIST + "?status=inactive")
+        assert [u["email"] for u in resp.data["results"]] == ["m@x.com"]
+
+    def test_invalid_status(self, authed_client, superadmin):
+        resp = authed_client(superadmin).get(USERS_LIST + "?status=bogus")
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "invalid"
+
+    def test_role_id(self, authed_client, superadmin, member_acme, role_member):
+        resp = authed_client(superadmin).get(USERS_LIST + f"?role_id={role_member.pk}")
+        assert [u["email"] for u in resp.data["results"]] == ["m@x.com"]
+
+    def test_role_id_composes_with_org_ids(
+        self, authed_client, superadmin, member_acme, role_member, org_globex
+    ):
+        resp = authed_client(superadmin).get(
+            USERS_LIST + f"?role_id={role_member.pk}&org_ids={org_globex.pk}"
+        )
+        assert resp.data["count"] == 0
+
+    def test_invalid_role_id(self, authed_client, superadmin):
+        resp = authed_client(superadmin).get(USERS_LIST + "?role_id=abc")
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "invalid"
+
+
+@pytest.mark.django_db
+class TestListUsersOrdering:
+    def test_default_is_newest_account_first(
+        self, authed_client, superadmin, member_acme
+    ):
+        resp = authed_client(superadmin).get(USERS_LIST)
+        assert [u["email"] for u in resp.data["results"]][:2] == ["m@x.com", "sa@x.com"]
+
+    def test_ascending_email(self, authed_client, superadmin, member_acme):
+        resp = authed_client(superadmin).get(USERS_LIST + "?ordering=email")
+        emails = [u["email"] for u in resp.data["results"]]
+        assert emails == sorted(emails)
+
+    def test_descending_email(self, authed_client, superadmin, member_acme):
+        resp = authed_client(superadmin).get(USERS_LIST + "?ordering=-email")
+        emails = [u["email"] for u in resp.data["results"]]
+        assert emails == sorted(emails, reverse=True)
+
+    def test_unknown_key_falls_back_to_default(
+        self, authed_client, superadmin, member_acme
+    ):
+        resp = authed_client(superadmin).get(USERS_LIST + "?ordering=bogus")
+        assert resp.status_code == status.HTTP_200_OK
+        assert [u["email"] for u in resp.data["results"]][:2] == ["m@x.com", "sa@x.com"]
+
+
+@pytest.mark.django_db
 class TestCreateUser:
     def test_create_no_org(self, authed_client, superadmin):
         resp = authed_client(superadmin).post(

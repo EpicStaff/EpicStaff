@@ -175,7 +175,7 @@ members of an organization.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/admin/users/` | List all users (paginated) with their memberships |
+| GET | `/api/admin/users/` | List accounts (paginated, filterable) with their memberships |
 | POST | `/api/admin/users/` | Create an account; optionally assign an initial org + role |
 | POST | `/api/admin/users/{id}/grant-superadmin/` | Set `is_superadmin=true` |
 | POST | `/api/admin/users/{id}/revoke-superadmin/` | Set `is_superadmin=false` (last-active-superadmin guard) |
@@ -184,9 +184,39 @@ members of an organization.
 
 ### GET `/api/admin/users/`
 
-Paginated (default 50, max 200). Filters: `?email=substr&is_superadmin=true|false&organization_id=N`.
-Returns `UserResponse` (id, email, display_name, avatar_url, is_superadmin,
-is_active, created_at, updated_at, `memberships[]`).
+Paginated (`count/next/previous/results`, page size 50, max 200). Returns
+`UserResponse` (id, email, display_name, avatar_url, is_superadmin, is_active,
+created_at, updated_at, `memberships[]`).
+
+**Query params:**
+
+| Param | Behavior |
+|---|---|
+| `org_ids` | Comma-separated org ids, e.g. `10,20`. Keeps accounts holding a membership in at least one of them. A non-integer value → **400 `org_context_required`**. |
+| `search` | Case-insensitive match on email **or** display name. |
+| `status` | `active` \| `inactive`, on the account's `is_active`. Any other value → **400 `invalid`**. |
+| `role_id` | Exact role id, held in at least one org in scope. A built-in role id spans orgs. Non-integer → **400 `invalid`**. |
+| `is_superadmin` | `true` \| `false` \| `1` \| `0`. Any other value → **400 `invalid`**. |
+| `ordering` | `email` \| `created_at` \| `display_name`, prefix `-` for descending. An unrecognized value falls back to the default, newest account first then email. |
+| `email` | Email-substring match. Superseded by `search` when both are sent. |
+| `organization_id` | A single org id. Superseded by `org_ids` when both are sent. |
+| `page`, `page_size` | Standard pagination. |
+
+Filters compose; each narrows the previous.
+
+`org_ids` and `role_id` are resolved through the accounts' membership rows, so
+an account with no membership in the requested organizations is excluded. That
+includes **superadmins**, who hold no membership rows at all — `?is_superadmin=true`
+without `org_ids` lists them. It also includes accounts created without an
+`organization_id`, which belong nowhere until an admin adds them.
+
+`?org_ids=,` — separators carrying no ids — scopes the request to no
+organization and returns an empty page. `?org_ids=` with an empty value, and
+omitting the param altogether, both apply no org filter.
+
+Each row's `memberships[]` always lists every organization the account belongs
+to. `org_ids` selects which accounts appear, never which of their memberships
+are shown.
 
 ### POST `/api/admin/users/`
 
@@ -246,3 +276,4 @@ organization members" above.
 | `last_superadmin` | 400 | At least one active superadmin must remain |
 | `permission_denied` | 403 | You can see the membership but lack the required `MEMBERSHIPS` action (one you cannot see is a 404 instead) |
 | `invalid` | 400 | Field validation, or a bad list filter |
+| `org_context_required` | 400 | A non-integer value in `?org_ids=` |
