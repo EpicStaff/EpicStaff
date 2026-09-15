@@ -21,10 +21,12 @@ import {
                 (click)="toggleMessage()"
             >
                 <div class="play-arrow">
-                    <app-svg-icon
-                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                        size="1rem"
-                    />
+                    @if (hasContent()) {
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1rem"
+                        />
+                    }
                 </div>
                 <div class="icon-container">
                     <app-svg-icon
@@ -309,6 +311,7 @@ export class SubgraphFinishMessageComponent {
     }
 
     toggleMessage(): void {
+        if (!this.hasContent()) return;
         this.isMessageExpanded = !this.isMessageExpanded;
     }
 
@@ -325,6 +328,10 @@ export class SubgraphFinishMessageComponent {
     toggleStateHistory(event: Event): void {
         event.stopPropagation();
         this.isStateHistoryExpanded = !this.isStateHistoryExpanded;
+    }
+
+    hasContent(): boolean {
+        return this.hasOutput() || this.hasVariables();
     }
 
     hasOutput(): boolean {
