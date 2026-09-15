@@ -16,7 +16,7 @@ class EnvironmentNotFoundError(Exception):
 
 class Env:
     BOOLEAN_TRUE_VALUES = frozenset({"1", "y", "yes", "true", "on"})
-    EMPTY_SENTINEL = "__empty__"
+    NONE_VALUE = "none"
 
     def __init__(self):
         self._envs: dict[str, str] = {}
@@ -63,17 +63,16 @@ class Env:
             cast: Callable applied to the raw string value before returning.
 
         Returns:
-            The cast value; None when the variable holds the ``__empty__`` sentinel;
+            The cast value; None when the variable holds the ``none`` value;
             otherwise ``default`` or None when the variable is missing.
 
         Raises:
-            EnvironmentNotFoundError: The variable is missing and no ``default`` was
-                provided.
+            EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
         """
         value = self._envs.get(variable)
-        if value == self.EMPTY_SENTINEL:
-            return None
-        elif value is not None:
+        if value is not None:
+            if value.lower() == self.NONE_VALUE:
+                return None
             return cast(value)
         elif default is not ...:
             return default
@@ -106,8 +105,7 @@ class Env:
             when a required var is missing.
 
         Raises:
-            EnvironmentNotFoundError: A required var is missing and no ``default`` was
-                provided.
+            EnvironmentNotFoundError: A required var is missing and no ``default`` was provided.
         """
         try:
             host = self.str(host)
@@ -132,8 +130,7 @@ class Env:
             default: Value returned when the variable is missing.
 
         Returns:
-            The duration in seconds, or None when the variable holds the ``__empty__``
-            sentinel.
+            The duration in seconds, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, humanize.to_time)
 
@@ -145,8 +142,7 @@ class Env:
             default: Value returned when the variable is missing.
 
         Returns:
-            The size in bytes, or None when the variable holds the ``__empty__``
-            sentinel.
+            The size in bytes, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, humanize.to_byte_size)
 
@@ -158,7 +154,7 @@ class Env:
             default: Value returned when the variable is missing.
 
         Returns:
-            The path, or None when the variable holds the ``__empty__`` sentinel.
+            The path, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, Path)
 
@@ -171,8 +167,7 @@ class Env:
             split: Delimiter used to split the raw value.
 
         Returns:
-            The list of stripped items, or None when the variable holds the
-            ``__empty__`` sentinel.
+            The list of stripped items, or None when the variable holds the ``none`` value.
         """
         cast = lambda v: [s.strip() for s in v.strip().split(split)]
         return self.get_value(variable, default, cast)
@@ -185,7 +180,7 @@ class Env:
             default: Value returned when the variable is missing.
 
         Returns:
-            The int value, or None when the variable holds the ``__empty__`` sentinel.
+            The int value, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, int)
 
@@ -197,8 +192,7 @@ class Env:
             default: Value returned when the variable is missing.
 
         Returns:
-            The float value, or None when the variable holds the ``__empty__``
-            sentinel.
+            The float value, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, float)
 
@@ -211,7 +205,7 @@ class Env:
 
         Returns:
             True when the raw value is one of ``BOOLEAN_TRUE_VALUES``; None when the
-            variable holds the ``__empty__`` sentinel.
+            variable holds the ``none`` value.
         """
         cast = lambda v: v.lower() in self.BOOLEAN_TRUE_VALUES
         return self.get_value(variable, default, cast)
@@ -224,7 +218,6 @@ class Env:
             default: Value returned when the variable is missing.
 
         Returns:
-            The string value, or None when the variable holds the ``__empty__``
-            sentinel.
+            The string value, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, str)
