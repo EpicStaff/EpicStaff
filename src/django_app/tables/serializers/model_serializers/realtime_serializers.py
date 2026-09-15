@@ -6,6 +6,7 @@ from tables.models.webhook_models import (
     RealtimeChannel,
     TwilioChannel,
     WebhookTrigger,
+    WebhookTriggerAuthKind,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from agents.models.agent_models import AgentDefinition
@@ -25,6 +26,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from tables.services.secrets import secret_resolver
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -54,16 +56,6 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, attrs):
-        # `agent_definition` is this model's own primary key (a OneToOneField).
-        # It is writable so `create()` can specify which AgentDefinition a new
-        # row belongs to, but on `update()` it must never actually change: if
-        # a caller ever sent a value different from the instance being
-        # updated, `setattr()` + `instance.save()` would attempt an UPDATE
-        # that affects 0 rows, and Django's save() silently falls back to an
-        # INSERT — creating an orphan row while leaving the real target
-        # completely untouched (looks exactly like "the update didn't save").
-        # Reject the mismatch explicitly instead of allowing that silent
-        # fallback.
         if self.instance is not None and "agent_definition" in attrs:
             new_agent_definition = attrs["agent_definition"]
             if new_agent_definition.pk != self.instance.pk:
@@ -116,7 +108,11 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
+class OpenAIRealtimeConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -147,7 +143,11 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
+class ElevenLabsRealtimeConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -169,7 +169,11 @@ class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
+class GeminiRealtimeConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -191,7 +195,9 @@ class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class TwilioChannelSerializer(serializers.ModelSerializer):
+class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_token_secret_id",)
+
     webhook_trigger = OrgScopedPrimaryKeyRelatedField(
         queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
     )
@@ -213,6 +219,8 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
+
         wt = attrs.get("webhook_trigger")
         provider_type = wt.provider_type if wt else None
 
@@ -225,6 +233,21 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        auth = getattr(wt, "auth", None) if wt else None
+        if auth is not None and auth.kind not in (
+            WebhookTriggerAuthKind.TWILIO,
+        ):
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        f"This trigger's auth is already configured for "
+                        f"kind='{auth.kind}' and cannot be claimed by a "
+                        "Twilio channel."
+                    )
+                }
+            )
+
         return attrs
 
 

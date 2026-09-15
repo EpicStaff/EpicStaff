@@ -24,9 +24,9 @@
 
         .dialog-title {
             margin: 0;
-            font-size: 20px;
-            font-weight: 500;
-            line-height: 100%;
+            font-size: var(--text-h3-size);
+            font-weight: var(--text-h3-weight);
+            line-height: var(--text-h3-line-height);
             color: var(--color-text-primary);
         }
     }

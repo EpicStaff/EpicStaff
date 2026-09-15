@@ -11,6 +11,8 @@ every rotation. test_a_rotated_secret_relinks_by_name is the case that pins this
 """
 
 import pytest
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.graph_versioning.services import GraphVersioningService
@@ -28,6 +30,8 @@ from tables.models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
+from tables.models.rbac_models import OrganizationUser, Role, RolePermission
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.secrets import secret_service
 from tables.services.secrets.declaration_validator import SecretDeclarationValidator
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
@@ -545,3 +549,49 @@ class TestCreateGraphFromVersion:
         result = service.create_graph_from_version(version)
 
         assert [w["type"] for w in result["warnings"]] == ["secret_declaration_dropped"]
+
+
+@pytest.mark.django_db
+class TestRestoreDoesNotRequireSecretsUse:
+    """A role holding flows:UPDATE but not secrets:USE must still be able to restore a version that reattaches a declaration."""
+
+    # Task 8, Check 2 (path 2 of 3): restore reattaches PythonCode.secrets outside any
+    # serializer, and spec sec5 decides that reproducing an existing declaration inside
+    # one org is allowed.
+
+    def test_a_use_less_client_can_restore_a_version_that_reattaches_a_declaration(
+        self, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+
+        role = Role.objects.create(
+            name="restore-no-use", org=default_org, is_built_in=False
+        )
+        RolePermission.objects.create(
+            role=role,
+            resource_type=ResourceType.FLOWS.value,
+            permissions=int(Permission.CREATE | Permission.READ | Permission.UPDATE),
+        )
+        RolePermission.objects.create(
+            role=role,
+            resource_type=ResourceType.SECRETS.value,
+            permissions=int(Permission.READ),
+        )
+        user = get_user_model().objects.create_user(
+            email="restore_nouse@example.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=user, org=default_org, role=role)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+
+        response = client.post(
+            f"/api/graph-versions/{version.id}/restore/",
+            {"save_version": graph.save_version},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        assert _declared_names(graph=graph) == ["STRIPE_KEY"]

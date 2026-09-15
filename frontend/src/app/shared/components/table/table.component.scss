@@ -33,8 +33,8 @@
 .table-header-cell {
     display: flex;
     align-items: center;
-    font-size: 0.875rem;
-    font-weight: 700;
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
     color: var(--text-secondary-60);
     text-transform: uppercase;
     padding: 0 0.5rem;
@@ -49,8 +49,8 @@
 }
 
 .col-label {
-    font-size: 0.875rem;
-    font-weight: 700;
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
     color: var(--text-secondary-60);
     text-transform: uppercase;
     white-space: nowrap;
@@ -228,7 +228,7 @@
         justify-content: center;
         padding: 24px 16px;
         color: var(--text-secondary-60);
-        font-size: 14px;
+        font-size: 0.875rem;
         text-align: center;
     }
 
@@ -242,15 +242,15 @@
 
         .empty-title {
             margin: 0;
-            font-size: 1.125rem;
-            font-weight: 500;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
             color: var(--text);
         }
 
         .empty-subtitle {
             margin: 0;
-            font-size: 0.875rem;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             color: var(--text-secondary-60);
         }
     }

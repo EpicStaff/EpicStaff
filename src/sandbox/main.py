@@ -2,55 +2,49 @@ import asyncio
 import json
 import os
 import shutil
-from pathlib import Path
 from src.shared.models import CodeTaskData
 
 from services.storage_credential_manager import StorageCredentialManager
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
-from secret_scrubber import MASK_SECRET_ENV_VAR, masking_enabled
+import isolation
+import landlock
 from utils.logger import logger
 
+import settings
 
-redis_host = os.environ.get("REDIS_HOST", "127.0.0.1")
-redis_port = int(os.environ.get("REDIS_PORT", "6379"))
-redis_password = os.getenv("REDIS_PASSWORD")
-code_result_channel = os.environ.get("CODE_RESULT_CHANNEL", "code_results")
-storage_mutation_channel = os.environ.get(
-    "STORAGE_MUTATION_CHANNEL", "storage_mutations"
-)
-task_channel = os.environ.get("CODE_EXEC_TASK_CHANNEL", "code_exec_tasks")
-output_path = Path(os.environ.get("OUTPUT_PATH", "executions"))
-base_venv_path = Path(os.environ.get("BASE_VENV_PATH", "venvs"))
-storage_host = os.environ.get("STORAGE_ENDPOINT")
-storage_access_key = os.environ.get("STORAGE_ACCESS_KEY")
-storage_secret_key = os.environ.get("STORAGE_SECRET_KEY")
+
 storage_credential_manager = StorageCredentialManager(
-    host=storage_host,
-    access_key=storage_access_key,
-    secret_key=storage_secret_key,
+    host=settings.STORAGE_ENDPOINT,
+    access_key=settings.STORAGE_ACCESS_KEY,
+    secret_key=settings.STORAGE_SECRET_KEY,
 )
 executor_chain = DynamicVenvExecutorChain(
-    output_path=output_path,
-    base_venv_path=base_venv_path,
+    output_path=settings.OUTPUT_PATH,
+    base_venv_path=settings.BASE_VENV_PATH,
     storage_credential_manager=storage_credential_manager,
 )
-os.chdir("savefiles")
+redis_service = RedisService(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    user=settings.REDIS_USER,
+    password=settings.REDIS_PASSWORD,
+)
 
-redis_service = RedisService(host=redis_host, port=redis_port, password=redis_password)
+os.chdir("savefiles")
 
 
 def sweep_output_path():
     """
     Clean up orphan execution folders left over from past executions
     """
-    if not output_path.exists():
-        output_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Output path '{output_path}' did not exist, created it.")
+    if not settings.OUTPUT_PATH.exists():
+        settings.OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Output path '{settings.OUTPUT_PATH}' did not exist, created it.")
         return
 
     removed = 0
-    for entry in output_path.iterdir():
+    for entry in settings.OUTPUT_PATH.iterdir():
         if not entry.is_dir():
             continue
         try:
@@ -60,35 +54,59 @@ def sweep_output_path():
             logger.warning(f"Failed to remove orphan execution folder '{entry}': {e}")
 
     logger.info(
-        f"Startup sweep: removed {removed} orphan execution folder(s) from '{output_path}'."
+        f"Startup sweep: removed {removed} orphan execution folder(s) from '{settings.OUTPUT_PATH}'."
     )
 
 
 def log_secret_masking_state():
     """Announce the MASK_SECRET setting once per process."""
-    if masking_enabled():
+    if settings.MASK_SECRET:
         logger.info("Secret masking is ON: secret values are redacted from output.")
     else:
         logger.warning(
-            "Secret masking is OFF ({}=false): plaintext secret values will appear "
+            "Secret masking is OFF (SANDBOX_MASK_SECRET=false): plaintext secret values will appear "
             "in stdout, stderr, execution results and these logs. Do not use this "
-            "with real credentials.",
-            MASK_SECRET_ENV_VAR,
+            "with real credentials."
+        )
+
+
+def log_isolation_state():
+    """Announce the Landlock filesystem-jail state once per process."""
+    abi = landlock.abi_version()
+    if abi >= 1:
+        logger.info(
+            "Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi
+        )
+    elif isolation.isolation_required():
+        logger.warning(
+            "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
+            "{} is not false: executions will be refused until this is resolved.",
+            isolation.REQUIRE_ISOLATION_ENV_VAR,
+        )
+    else:
+        logger.warning(
+            "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
+            "{}=false: executions will run UNCONFINED. Do not use this in "
+            "production.",
+            isolation.REQUIRE_ISOLATION_ENV_VAR,
         )
 
 
 async def init():
     sweep_output_path()
     log_secret_masking_state()
+    log_isolation_state()
     await redis_service.connect()
 
 
 async def listen_redis():
-    logger.info(f"Subscribed to channel '{task_channel}' for code execution tasks.")
+    logger.info(
+        f"Subscribed to channel '{settings.CODE_EXEC_CHANNEL}' for code execution tasks."
+    )
 
     while True:
         try:
-            pubsub = await redis_service.async_subscribe(task_channel)
+            pubsub = await redis_service.async_subscribe(settings.CODE_EXEC_CHANNEL)
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     try:
@@ -112,7 +130,7 @@ async def run(code_task_data: CodeTaskData):
     """
     Run the dynamic virtual environment execution chain.
     """
-    execution_dir = output_path / code_task_data.execution_id
+    execution_dir = settings.OUTPUT_PATH / code_task_data.execution_id
     try:
         result = await executor_chain.run(
             venv_name=code_task_data.venv_name,
@@ -130,7 +148,9 @@ async def run(code_task_data: CodeTaskData):
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (
-                    output_path / code_task_data.execution_id / "storage_mutations.json"
+                    settings.OUTPUT_PATH
+                    / code_task_data.execution_id
+                    / "storage_mutations.json"
                 )
 
                 if mutations_path.exists():
@@ -145,13 +165,13 @@ async def run(code_task_data: CodeTaskData):
                             "mutations": mutations,
                         }
                         await redis_service.async_publish(
-                            channel=storage_mutation_channel, message=event
+                            channel=settings.STORAGE_MUTATION_CHANNEL, message=event
                         )
             except Exception as e:
                 logger.warning(f"Failed to publish storage mutations: {e}")
 
         await redis_service.async_publish(
-            channel=code_result_channel, message=result.model_dump()
+            channel=settings.CODE_RESULT_CHANNEL, message=result.model_dump()
         )
 
     finally:

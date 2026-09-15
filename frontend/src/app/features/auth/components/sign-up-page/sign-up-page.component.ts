@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -24,7 +23,6 @@ type PageState = 'form' | 'loading' | 'success';
 @Component({
     selector: 'app-sign-up',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         ButtonComponent,
         CustomInputComponent,

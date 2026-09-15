@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { Language } from '../../../../../../../shared/constants/languages-selector.constants';
@@ -7,9 +6,9 @@ import { ClickOutsideDirective } from '../../../../../../../shared/directives/cl
 
 @Component({
     selector: 'app-language-selector',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ReactiveFormsModule, ClickOutsideDirective],
+    imports: [FormsModule, ReactiveFormsModule, ClickOutsideDirective],
     templateUrl: './language-selector.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./language-selector.component.scss'],
 })
 export class LanguageSelectorComponent {

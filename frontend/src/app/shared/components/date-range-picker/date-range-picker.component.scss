@@ -7,7 +7,7 @@
     border: 1px solid var(--color-input-border);
     background-color: var(--color-background-body);
     color: var(--color-text-primary);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 10px var(--black-alpha-15);
 
     &_manual {
         display: grid;
@@ -100,8 +100,8 @@
         display: flex;
         justify-content: center;
         gap: 10px;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--active-color, var(--accent-color, #685fff));
     }
 
@@ -126,7 +126,7 @@
         background: var(--color-background-body);
         border: 1px solid var(--color-input-border);
         border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 8px 20px var(--black-alpha-35);
 
         &--years {
             grid-template-columns: repeat(4, 1fr);
@@ -136,12 +136,12 @@
 
     &_picker-option {
         padding: 8px 6px;
-        border: 1px solid rgba(43, 45, 48, 1);
+        border: 1px solid var(--graphite-750);
         border-radius: 4px;
         background: transparent;
         color: var(--color-text-primary);
-        font-size: 0.75rem;
-        font-weight: 400;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
         cursor: pointer;
 
         &:hover {
@@ -161,8 +161,8 @@
 
     &_weekday {
         text-align: center;
-        font-size: 0.75rem;
-        font-weight: 500;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         color: var(--color-input-text-placeholder);
         padding: 2px 0 6px;
     }
@@ -181,8 +181,8 @@
         aspect-ratio: 1;
         border-radius: 8px;
         border: 1px solid transparent;
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         cursor: pointer;
         color: var(--color-text-primary);
 
@@ -196,13 +196,13 @@
         }
 
         &--in-range {
-            background: rgb(39, 40, 54);
+            background: var(--graphite-870);
             border-radius: 0;
             color: var(--color-text-secondary);
         }
 
         &--edge {
-            background: rgb(104, 95, 255);
+            background: var(--purple-500);
             color: var(--color-white);
             font-weight: 500;
             border-radius: 4px;
@@ -233,9 +233,8 @@
         border-radius: 6px;
         background: transparent;
         color: var(--active-color, var(--accent-color, #685fff));
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 12px;
+        font-weight: var(--text-body-small-large-weight);
+        font-size: var(--text-body-small-large-size);
         line-height: 100%;
         letter-spacing: 0;
         vertical-align: middle;
@@ -257,17 +256,16 @@
         border-radius: 4px;
         background: transparent;
         color: var(--active-color, var(--accent-color, #685fff));
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 12px;
+        font-weight: var(--text-body-small-large-weight);
+        font-size: var(--text-body-small-large-size);
         line-height: 100%;
         letter-spacing: 0;
         vertical-align: middle;
         cursor: pointer;
 
         &:hover {
-            border-color: #e0575b;
-            color: #e0575b;
+            border-color: var(--red-580);
+            color: var(--red-580);
         }
     }
 
@@ -277,9 +275,8 @@
         border-radius: 4px;
         background: var(--active-color, var(--accent-color, #685fff));
         color: var(--color-white);
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 12px;
+        font-weight: var(--text-body-small-large-weight);
+        font-size: var(--text-body-small-large-size);
         line-height: 100%;
         letter-spacing: 0;
         vertical-align: middle;

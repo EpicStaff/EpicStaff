@@ -17,22 +17,33 @@ from tables.models.llm_models import (
 from tables.models.tag_models import LLMConfigTag, LLMModelTag
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
     OrgVisiblePrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
 )
 
 
 from ..utils.mixins import TagHandlingMixin
+from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealtimeModel
-        fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        fields = ["id", "name", "provider", "is_custom", "org", "created_by"]
+        read_only_fields = ["org", "created_by", "is_custom"]
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=RealtimeModel.objects.all(),
+                fields=["name", "provider"],
+                message="A model with this name already exists for this provider.",
+            )
+        ]
 
 
-class RealtimeConfigSerializer(serializers.ModelSerializer):
+class RealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -56,11 +67,22 @@ class RealtimeConfigSerializer(serializers.ModelSerializer):
 class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealtimeTranscriptionModel
-        fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        fields = ["id", "name", "provider", "is_custom", "org", "created_by"]
+        read_only_fields = ["org", "created_by", "is_custom"]
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=RealtimeTranscriptionModel.objects.all(),
+                fields=["name", "provider"],
+                message="A model with this name already exists for this provider.",
+            )
+        ]
 
 
-class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
+class RealtimeTranscriptionConfigSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -78,7 +100,11 @@ class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class LLMConfigSerializer(
+    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -112,5 +138,27 @@ class LLMModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
     class Meta:
         model = LLMModel
-        fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        fields = [
+            "id",
+            "name",
+            "llm_provider",
+            "description",
+            "deployment_id",
+            "api_version",
+            "base_url",
+            "is_visible",
+            "predefined",
+            "is_custom",
+            "capabilities",
+            "tags",
+            "org",
+            "created_by",
+        ]
+        read_only_fields = ["org", "created_by", "is_custom", "predefined"]
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=LLMModel.objects.all(),
+                fields=["name", "llm_provider"],
+                message="A model with this name already exists for this provider.",
+            )
+        ]

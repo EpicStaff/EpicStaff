@@ -4,7 +4,6 @@ import { ActionItem } from '../../models/flow-assistant.model';
 
 @Component({
     selector: 'app-flow-assistant-actions',
-    standalone: true,
     imports: [],
     templateUrl: './flow-assistant-actions.component.html',
     styleUrls: ['./flow-assistant-actions.component.scss'],

@@ -12,7 +12,7 @@
 
 .section-label {
     font-size: 0.75rem;
-    color: #d9d9d999;
+    color: var(--fog-alpha-60);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -31,15 +31,15 @@
 
 .field-label {
     font-size: 0.75rem;
-    color: #d9d9d999;
+    color: var(--fog-alpha-60);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .select-input {
-    background: var(--color-nodes-background, #1e1e1e);
-    color: #d4d4d4;
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    background: var(--color-nodes-background);
+    color: var(--gray-212);
+    border: 1px solid var(--color-divider-subtle);
     border-radius: 8px;
     padding: 0.45rem 0.75rem;
     font-size: 0.875rem;
@@ -49,12 +49,12 @@
     transition: border-color 0.2s ease;
 
     &:focus {
-        border-color: var(--active-color, #685fff);
+        border-color: var(--active-color);
     }
 
     option {
-        background: #1e1e1e;
-        color: #d4d4d4;
+        background: var(--graphite-875);
+        color: var(--gray-212);
     }
 }
 
@@ -67,9 +67,9 @@
 .input-map-key {
     font-family: 'Fira Code', 'Consolas', monospace;
     font-size: 0.8rem;
-    color: #d4d4d4;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    color: var(--gray-212);
+    background: var(--white-alpha-5);
+    border: 1px solid var(--color-divider-subtle);
     border-radius: 6px;
     padding: 0.3rem 0.6rem;
 }
@@ -83,9 +83,9 @@
 .code-preview-text {
     font-family: 'Fira Code', 'Consolas', monospace;
     font-size: 0.75rem;
-    color: #d4d4d4;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    color: var(--gray-212);
+    background: var(--white-alpha-5);
+    border: 1px solid var(--color-divider-subtle);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
     margin: 0;
@@ -94,8 +94,8 @@
 }
 
 .insert-btn {
-    background: var(--active-color, #685fff);
-    color: #fff;
+    background: var(--active-color);
+    color: var(--white);
     border: none;
     border-radius: 8px;
     padding: 0.45rem 0.9rem;

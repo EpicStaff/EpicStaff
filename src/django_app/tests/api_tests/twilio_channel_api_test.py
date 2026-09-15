@@ -171,6 +171,59 @@ class TestTwilioChannelWebhookTrigger:
         # The read path still returns the FK id (TwilioChannelSerializer is used for both)
         assert data["webhook_trigger"] == trigger.pk
 
+    def test_create_twilio_channel_rejected_when_trigger_already_kind_webhook(
+        self, auth_client, db, default_org
+    ):
+        """EST-3939: a trigger already claimed by `kind=webhook` auth cannot
+        be repointed to by a TwilioChannel -- claiming it would silently
+        collide with the Twilio-kind auth sync."""
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="claimed-webhook-kind")
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK
+        )
+        secret = _make_secret(default_org, "tok_conflict")
+
+        url = reverse("twiliochannel-list")
+        response = auth_client.post(
+            url,
+            {
+                "channel": rc.pk,
+                "account_sid": "AC_conflict",
+                "auth_token_secret_id": secret.id,
+                "webhook_trigger": trigger.pk,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert not TwilioChannel.objects.filter(channel=rc).exists()
+
+    def test_update_twilio_channel_rejected_when_trigger_already_kind_telegram(
+        self, auth_client, db, default_org
+    ):
+        """Same rejection on update (repointing an existing TwilioChannel at
+        an already-telegram-claimed trigger)."""
+        from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+
+        rc = _make_realtime_channel(db, default_org)
+        tc = _make_twilio_channel(rc, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="claimed-telegram-kind")
+        WebhookTriggerAuth.objects.create(
+            trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM
+        )
+
+        url = reverse("twiliochannel-detail", args=[tc.channel_id])
+        response = auth_client.patch(
+            url, {"webhook_trigger": trigger.pk}, format="json"
+        )
+
+        assert response.status_code == 400, response.json()
+        tc.refresh_from_db()
+        assert tc.webhook_trigger_id is None
+
     def test_two_channels_share_one_trigger(self, auth_client, db, default_org):
         """Two TwilioChannels may point at the same WebhookTrigger."""
         rc1 = _make_realtime_channel(db, default_org)
@@ -218,6 +271,35 @@ class TestTwilioChannelWebhookTrigger:
 
         tc.refresh_from_db()
         assert tc.webhook_trigger_id is None
+
+    def test_create_twilio_channel_rejected_when_trigger_is_localhost_provider(
+        self, auth_client, db, default_org
+    ):
+        """`TwilioChannelSerializer.validate()` already rejects a localhost
+        `provider_type` at attach time (this was live-tested to confirm it's
+        wired, not a dangling `TwilioChannel.validate_provider()` check that
+        only fires later at `configure-webhook` dispatch)."""
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_localhost(
+            default_org, path="create-time-localhost-reject"
+        )
+        secret = _make_secret(default_org, "tok_localhost_reject")
+
+        url = reverse("twiliochannel-list")
+        response = auth_client.post(
+            url,
+            {
+                "channel": rc.pk,
+                "account_sid": "AC_localhost_reject",
+                "auth_token_secret_id": secret.id,
+                "webhook_trigger": trigger.pk,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "localhost" in str(response.json()).lower()
+        assert not TwilioChannel.objects.filter(channel=rc).exists()
 
     def test_configure_webhook_rejects_localhost_provider(
         self, auth_client, db, default_org
@@ -478,6 +560,29 @@ class TestRealtimeChannelLookupByToken:
 
         assert response.status_code == 200, response.json()
         assert response.json()["id"] == rc.pk
+
+    def test_lookup_by_token_inactive_channel_returns_same_404_as_unknown_token(
+        self, api_client, db, default_org, env_api_key
+    ):
+        """Bug fix: an operator setting `is_enabled=False` as a containment
+        action must actually stop the channel from resolving here -- it was
+        previously a no-op since `filterset_fields` only applies to the
+        standard list endpoint, not this hand-built queryset. The disabled
+        channel must produce a response indistinguishable from an unknown
+        token: same status, no body -- anything else would leak channel
+        existence to a caller holding/guessing the token."""
+        raw_key, _key = env_api_key
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        inactive_response = api_client.get(self._url(), {"token": str(rc.token)})
+        unknown_response = api_client.get(
+            self._url(), {"token": "00000000-0000-0000-0000-000000000000"}
+        )
+
+        assert inactive_response.status_code == 404
+        assert unknown_response.status_code == 404
+        assert inactive_response.content == unknown_response.content
 
     def test_lookup_by_token_unknown_token_returns_404(
         self, api_client, db, env_api_key
@@ -831,6 +936,34 @@ class TestTwilioConfigureWebhookInputValidation:
         assert response.json() == {"error": "Channel not found"}
         mocked.assert_not_called()
 
+    def test_rejects_inactive_channel_same_as_missing_token(
+        self, auth_client, db, default_org
+    ):
+        """Bug fix: an operator setting `is_enabled=False` as a containment
+        action must actually stop this endpoint from reconfiguring the
+        channel's Twilio webhook too -- same gap, same fix, and the same
+        no-existence-leak treatment as the malformed/unknown-token case and
+        `RealtimeChannelViewSet.lookup_by_token`."""
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org, path="cfg-inactive-channel"
+        )
+        _make_twilio_channel(
+            rc, default_org, webhook_trigger=trigger, account_sid="AC" + "0" * 32
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 404, response.json()
+        assert response.json() == {"error": "Channel not found"}
+        mocked.assert_not_called()
+
     def test_twilio_http_error_returns_generic_sanitized_body(
         self, auth_client, db, default_org
     ):
@@ -1005,3 +1138,47 @@ class TestRealtimeChannelLegacyAgentPointer:
         assert response.status_code == 200, response.json()
         results = response.json()["results"]
         assert [row["id"] for row in results] == [matching_channel.pk]
+
+
+@pytest.mark.django_db
+class TestRealtimeChannelInactiveChannelStaysManageable:
+    """`RealtimeChannel.enabled_objects` (the is_enabled-filtered manager)
+    must only be used by inbound lookup paths (lookup_by_token,
+    TwilioService.configure_webhook). The admin CRUD surface
+    (RealtimeChannelViewSet) keeps using the plain, unfiltered `objects`
+    manager so an operator who disabled a channel can still find it
+    through list/retrieve in order to re-enable it -- disabling a
+    channel must never make it disappear from normal management."""
+
+    def test_inactive_channel_still_visible_in_list(self, auth_client, db, default_org):
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
+
+        url = reverse("realtimechannel-list")
+        response = auth_client.get(url)
+
+        assert response.status_code == 200, response.json()
+        ids = [row["id"] for row in response.json()["results"]]
+        assert rc.pk in ids
+
+    def test_inactive_channel_still_retrievable_by_id(
+        self, auth_client, db, default_org
+    ):
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
+
+        url = reverse("realtimechannel-detail", args=[rc.pk])
+        response = auth_client.get(url)
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["is_enabled"] is False
+
+    def test_inactive_channel_can_be_reactivated_via_patch(
+        self, auth_client, db, default_org
+    ):
+        rc = _make_realtime_channel(db, default_org, is_enabled=False)
+
+        url = reverse("realtimechannel-detail", args=[rc.pk])
+        response = auth_client.patch(url, {"is_enabled": True}, format="json")
+
+        assert response.status_code == 200, response.json()
+        rc.refresh_from_db()
+        assert rc.is_enabled is True

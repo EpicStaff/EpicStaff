@@ -14,13 +14,7 @@ import { ConsoleService } from './services/console.service';
 
 @Component({
     selector: 'app-chats-page',
-    standalone: true,
-    imports: [
-        ChatsSidebarComponent,
-        ChatsContentComponent,
-        SpinnerComponent,
-        HideInlineSubtitleOnOverflowDirective,
-    ],
+    imports: [ChatsSidebarComponent, ChatsContentComponent, SpinnerComponent, HideInlineSubtitleOnOverflowDirective],
     templateUrl: './chats-page.component.html',
     styleUrls: ['./chats-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

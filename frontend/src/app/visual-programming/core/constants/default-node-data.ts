@@ -87,7 +87,6 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     }),
     [NodeType.WEBHOOK_TRIGGER]: () => ({
         webhook_trigger: null,
-        webhook_node_auth: null,
         python_code: {
             name: 'Webhook trigger Node',
             libraries: [],

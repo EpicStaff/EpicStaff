@@ -25,15 +25,15 @@ from shared.models.agent_service import AgentSpec, LoopResult, StopReason
 
 
 def _default_max_iter() -> int:
-    from settings import load_settings
+    import settings
 
-    return load_settings().agent_default_max_iter
+    return settings.AGENT_DEFAULT_MAX_ITER
 
 
 def _schema_max_retries() -> int:
-    from settings import load_settings
+    import settings
 
-    return load_settings().agent_schema_max_retries
+    return settings.AGENT_SCHEMA_MAX_RETRIES
 
 
 async def run_task_through_loop(

@@ -25,7 +25,6 @@
                 tooltipText="The AI provider and model this configuration will use (e.g. OpenAI GPT-4o)"
                 [provider]="ModelTypes.TRANSCRIPTION"
                 [required]="true"
-                (modelChanged)="onModelChanged($event)"
             />
             <app-validation-errors [control]="form.get('realtime_transcription_model')!" />
         </div>

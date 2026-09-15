@@ -23,10 +23,11 @@ class AmbiguousWebhookPathError(Exception):
 
 def _connection_fingerprint(config: BaseTunnelConfigData) -> dict:
     """Fields that identify the tunnel's OWN connection parameters (name,
-    auth token, domain, region, ...) -- as opposed to inbound-request auth
-    credentials (`auths`/`has_unauthenticated_node`).
+    auth token, domain, region, ...) -- as opposed to the inbound-request
+    auth strategy (`auth`), which can change without needing to restart the
+    tunnel itself (see `needs_auth_update` below).
     """
-    return config.model_dump(exclude={"auths", "has_unauthenticated_node"})
+    return config.model_dump(exclude={"auth"})
 
 
 class UnregisteredWebhookPathError(Exception):

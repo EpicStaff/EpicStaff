@@ -32,7 +32,6 @@ export type { ContextMenuTab };
 
 @Component({
     selector: 'app-flow-graph-context-menu',
-    standalone: true,
     templateUrl: './flow-graph-context-menu.component.html',
     styleUrls: ['./flow-graph-context-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -92,7 +92,6 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = buildTimezoneOptions();
 
 @Component({
     selector: 'app-timezone-selector',
-    standalone: true,
     imports: [OverlayModule, FormsModule],
     templateUrl: './timezone-selector.component.html',
     styleUrls: ['./timezone-selector.component.scss'],

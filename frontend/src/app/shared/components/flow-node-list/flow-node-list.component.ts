@@ -1,4 +1,3 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { NgClass, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -26,13 +25,6 @@ export interface FlowNodeListItem {
     imports: [NgClass, NgTemplateOutlet, SearchComponent, SelectComponent],
     templateUrl: './flow-node-list.component.html',
     styleUrls: ['./flow-node-list.component.scss'],
-    animations: [
-        trigger('collapseExpand', [
-            state('expanded', style({ height: '*', opacity: 1, overflow: 'hidden' })),
-            state('collapsed', style({ height: '0', opacity: 0, overflow: 'hidden' })),
-            transition('expanded <=> collapsed', animate('200ms ease')),
-        ]),
-    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowNodeListComponent<T extends FlowNodeListItem = FlowNodeListItem> {
@@ -41,6 +33,7 @@ export class FlowNodeListComponent<T extends FlowNodeListItem = FlowNodeListItem
     public readonly nodeTypeLabels = input.required<Partial<Record<NodeType, string>>>();
     public readonly trailingTemplate = input<TemplateRef<{ $implicit: T }> | null>(null);
     public readonly searchPlaceholder = input<string>('Search node...');
+    public readonly nodeTypeFilterTransparent = input<boolean>(false);
 
     public readonly rowClick = output<T>();
 

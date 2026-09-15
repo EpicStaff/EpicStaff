@@ -44,7 +44,7 @@ make apply-backup
 ECHO.
 
 ECHO ============================================================
-ECHO  Done! Now run:  make start-prod
+ECHO  Done! Now run:  make up
 ECHO  Docker will rebuild only changed layers (fast if cached).
 ECHO ============================================================
 ENDLOCAL

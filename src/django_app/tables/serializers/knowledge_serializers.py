@@ -1,10 +1,15 @@
+import itertools
+
 from rest_framework import serializers
 from loguru import logger
+from django.db.models import Count, F
 
 from tables.models.knowledge_models import (
     SourceCollection,
     DocumentMetadata,
     BaseRagType,
+    NaiveRag,
+    GraphRag,
 )
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
@@ -61,10 +66,26 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
     embeddings_count = serializers.IntegerField(
         required=False, help_text="Total number of embeddings created"
     )
+    indexing_document_config_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="IDs of document configs included in the current/last indexing run",
+    )
+    processing_document_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="IDs of documents in the current/last graph rag indexing run",
+    )
     message = serializers.CharField(
         required=False,
         allow_null=True,
         help_text="Additional message (e.g., error or status info)",
+    )
+    outdated_reasons = serializers.DictField(
+        child=serializers.CharField(),
+        required=False,
+        allow_null=True,
+        help_text="Outdated reasons for this RAG configuration.",
     )
     created_at = serializers.DateTimeField(
         help_text="When this RAG configuration was created"
@@ -72,6 +93,21 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(
         help_text="When this RAG configuration was last updated"
     )
+
+
+class RagConfigurationBriefSerializer(serializers.Serializer):
+    """
+    Compact RAG configuration summary nested inside a SourceCollection.
+    """
+
+    rag_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="ID of the specific RAG implementation (e.g., NaiveRag.naive_rag_id)",
+    )
+    rag_type = serializers.ChoiceField(
+        choices=["naive", "graph"], help_text="Type of RAG implementation"
+    )
+    status = serializers.CharField(help_text="Current processing status of the RAG")
 
 
 class BaseRagTypeSerializer(serializers.ModelSerializer):
@@ -171,6 +207,24 @@ class DocumentBulkDeleteSerializer(serializers.Serializer):
         return unique_ids
 
 
+class CopyDocumentsSerializer(serializers.Serializer):
+    """
+    Serializer for copying documents into a target collection.
+    """
+
+    collection_id = serializers.IntegerField(
+        min_value=1, help_text="ID of the target collection to copy documents into"
+    )
+    document_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        help_text="List of document IDs to copy",
+    )
+
+    def validate_document_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
 class DocumentDetailSerializer(serializers.ModelSerializer):
     """
     Detailed serializer for single document view.
@@ -196,10 +250,17 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
 class SourceCollectionListSerializer(serializers.ModelSerializer):
     """
     Serializer for listing collections.
-    Shows basic collection info without related documents.
+    Shows basic collection info plus a compact view of available RAG
+    configurations (``rag_id``/``rag_type``/``status``). The full RAG summary is
+    served by the retrieve endpoint.
     """
 
-    document_count = serializers.IntegerField(source="documents.count", read_only=True)
+    document_count = serializers.IntegerField(
+        read_only=True,
+    )
+    rag_configurations = serializers.SerializerMethodField(
+        help_text="Compact list of RAG configurations (rag_id, rag_type, status)"
+    )
 
     class Meta:
         model = SourceCollection
@@ -210,10 +271,45 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             "user_id",
             "status",
             "document_count",
+            "rag_configurations",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_rag_configurations(self, obj):
+        """Compact RAG configs (rag_id/rag_type/status) for the collection list.
+
+        Queries NaiveRag/GraphRag directly (one query each) and merges them; the
+        rag_type comes from the BaseRagType discriminator column. Returns ``[]``
+        on error so one bad collection never breaks the list.
+        """
+        try:
+            naive_rags = (
+                NaiveRag.objects.filter(base_rag_type__source_collection=obj)
+                .annotate(
+                    rag_id=F("naive_rag_id"),
+                    rag_type=F("base_rag_type__rag_type"),
+                    status=F("rag_status"),
+                )
+                .values("rag_id", "rag_type", "status")
+            )
+            graph_rags = (
+                GraphRag.objects.filter(base_rag_type__source_collection=obj)
+                .annotate(
+                    rag_id=F("graph_rag_id"),
+                    rag_type=F("base_rag_type__rag_type"),
+                    status=F("rag_status"),
+                )
+                .values("rag_id", "rag_type", "status")
+            )
+            rag_configs = list(itertools.chain(naive_rags, graph_rags))
+            return RagConfigurationBriefSerializer(rag_configs, many=True).data
+        except Exception as e:
+            logger.error(
+                f"Error fetching RAG configurations for collection {obj.collection_id}: {e}"
+            )
+            return []
 
 
 class SourceCollectionDetailSerializer(serializers.ModelSerializer):
@@ -249,11 +345,33 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
         """
 
         try:
-            rag_configs = CollectionManagementService.get_rag_configurations(
-                obj.collection_id
+            naive_rags = (
+                NaiveRag.objects.filter(base_rag_type__source_collection=obj)
+                .select_related("embedder")
+                .annotate(
+                    document_configs_count=Count("naive_rag_configs", distinct=True),
+                    chunks_count=Count("naive_rag_configs__chunks", distinct=True),
+                    embeddings_count=Count(
+                        "naive_rag_configs__embeddings", distinct=True
+                    ),
+                )
             )
-            serializer = RagConfigurationSummarySerializer(rag_configs, many=True)
-            return serializer.data
+            graph_rags = (
+                GraphRag.objects.filter(base_rag_type__source_collection=obj)
+                .select_related("embedder", "llm")
+                .annotate(documents_count=Count("graph_rag_documents"))
+            )
+            rag_configs = [
+                *(
+                    CollectionManagementService._get_naive_rag_summary(r)
+                    for r in naive_rags
+                ),
+                *(
+                    CollectionManagementService._get_graph_rag_summary(r)
+                    for r in graph_rags
+                ),
+            ]
+            return RagConfigurationSummarySerializer(rag_configs, many=True).data
         except Exception as e:
             logger.error(
                 f"Error fetching RAG configurations for collection {obj.collection_id}: {e}"

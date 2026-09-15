@@ -160,4 +160,9 @@ def upload_tools():
         )
         to_delete = db_tools.difference(tool_name_set)
 
-        PythonCodeTool.objects.filter(name__in=to_delete).delete()
+        # Queryset .delete() bypasses Model.delete() entirely (Django never calls
+        # instance delete() for queryset-level deletes), so it always hard-deletes
+        # regardless of settings.SOFT_DELETE. Delete per-instance instead so
+        # SoftDeleteMixin.delete() (and thus DeleteService) fires.
+        for tool in PythonCodeTool.objects.filter(name__in=to_delete):
+            tool.delete()

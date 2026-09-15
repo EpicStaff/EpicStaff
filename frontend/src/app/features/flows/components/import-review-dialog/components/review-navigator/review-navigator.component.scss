@@ -17,9 +17,9 @@
 
 .right-panel-title {
     margin: 0;
-    font-size: 20px;
-    font-weight: 500;
-    line-height: 100%;
+    font-size: var(--text-h3-size);
+    font-weight: var(--text-h3-weight);
+    line-height: var(--text-h3-line-height);
     color: var(--color-text-primary);
 }
 
@@ -31,17 +31,17 @@
 }
 
 .right-panel-nav-label {
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 130%;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
     color: var(--text-secondary-60);
     white-space: nowrap;
 }
 
 .nav-counter {
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 130%;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
     color: var(--text-secondary-60);
     white-space: nowrap;
 }
@@ -95,16 +95,16 @@
 
 .mcp-field-label {
     white-space: nowrap;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 130%;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
     text-align: right;
     color: var(--text-secondary-60);
 }
 
 .mcp-field-value {
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     line-height: 100%;
     color: var(--color-text-primary);
 }
@@ -116,9 +116,9 @@
 .mcp-warning-text {
     margin: 0;
     width: calc(100% - 64px);
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 130%;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
     color: var(--text-secondary-60);
 }
 
@@ -155,16 +155,16 @@
 
 .code-editor-title {
     flex-shrink: 0;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 130%;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
     color: var(--color-text-primary);
 }
 
 .code-editor-subtitle {
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 130%;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
     color: var(--text-secondary-60);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -222,8 +222,8 @@
     border: none;
     border-bottom: 2px solid transparent;
     padding: 0 8px;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     line-height: 100%;
     color: var(--accent-color);
     cursor: pointer;
@@ -239,8 +239,8 @@
 }
 
 .code-editor-tab-separator {
-    font-size: 20px;
-    font-weight: 500;
-    line-height: 100%;
+    font-size: var(--text-h3-size);
+    font-weight: var(--text-h3-weight);
+    line-height: var(--text-h3-line-height);
     color: var(--transparent-white-16);
 }

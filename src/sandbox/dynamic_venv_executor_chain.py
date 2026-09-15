@@ -1,18 +1,29 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
+from dataclasses import asdict
 import hashlib
 import json
 import os
 import pwd
+import signal
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from secret_scrubber import masking_enabled, scrub
+
+import settings
+
+from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
+from jail import build_jail
+from landlock import abi_version
+
+from secret_scrubber import scrub
 from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
 from utils.environment import build_base_env
 from utils.logger import logger
+
+LAUNCHER_PATH = Path(__file__).parent / "launcher.py"
 
 try:
     _SANDBOX_PW = pwd.getpwnam("sandboxuser")
@@ -41,6 +52,38 @@ def _privilege_drop_kwargs() -> dict[str, object]:
     if not _can_drop_privileges():
         return {}
     return {"user": SANDBOX_UID, "group": SANDBOX_GID, "extra_groups": []}
+
+
+# Bound the post-kill wait for communicate() to drain the pipes. A grandchild
+# that escaped the process group (e.g. one that re-parented itself outside the
+# killed group) could still hold a pipe's write end open, which would keep
+# communicate() from ever seeing EOF; without this bound that would hang again.
+_TIMEOUT_DRAIN_GRACE_SECONDS = 5
+
+
+def _kill_process_tree(process: asyncio.subprocess.Process, execution_id: str) -> bool:
+    """Kill a timed-out execution and every child it spawned."""
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        return True
+    except ProcessLookupError:
+        return True
+    except (AttributeError, OSError):
+        pass
+
+    try:
+        process.kill()
+        return True
+    except ProcessLookupError:
+        return True
+    except OSError as kill_error:
+        logger.error(
+            "Could not signal timed-out execution {}: {}. Process is still "
+            "running / has leaked; the container is likely missing CAP_KILL.",
+            execution_id,
+            kill_error,
+        )
+        return False
 
 
 class Handler(ABC):
@@ -342,9 +385,13 @@ except Exception:
         logger.info("Executing code using {}...", python_executable)
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
+        env["TMPDIR"] = context["tmp_path"]
+        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get(
+            "CONTAINER_SAVEFILES_PATH", "."
+        )
         if context.get("use_storage"):
-            env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
-            env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
+            env["STORAGE_ENDPOINT"] = settings.STORAGE_ENDPOINT
+            env["STORAGE_BUCKET_NAME"] = settings.STORAGE_BUCKET_NAME
             env["STORAGE_ACCESS_KEY"] = context["temp_storage_access_key"]
             env["STORAGE_SECRET_KEY"] = context["temp_storage_secret_key"]
         if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
@@ -355,21 +402,74 @@ except Exception:
             env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
 
         drop_kwargs = _privilege_drop_kwargs()
+
+        isolation_abi = abi_version()
+        argv = [str(python_executable), str(temp_code_path)]
+        if isolation_abi < 1:
+            if isolation_required():
+                logger.error(
+                    "Sandbox isolation unavailable (kernel lacks Landlock); "
+                    "refusing to execute {}.",
+                    context["execution_id"],
+                )
+                return CodeResultData(
+                    execution_id=context["execution_id"],
+                    stderr=(
+                        "Sandbox isolation unavailable (kernel lacks Landlock); "
+                        "refusing to execute."
+                    ),
+                    stdout="",
+                    returncode=1,
+                )
+            logger.warning(
+                "Sandbox isolation unavailable (kernel lacks Landlock); "
+                "executing {} UNCONFINED because {}=false.",
+                context["execution_id"],
+                REQUIRE_ISOLATION_ENV_VAR,
+            )
+        else:
+            # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
+            # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
+            # ExecuteCodeHandler only receives "python_executable" when driven directly,
+            # without CreateVenvHandler ahead of it (as the unit tests do).
+            jail = build_jail(
+                exec_dir=Path(context["result_file_path"]).parent,
+                venv_path=Path(python_executable).parent.parent,
+                savefiles_root=Path(context["work_dir"]),
+            )
+            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(asdict(jail)), *argv]
+
         process = await asyncio.create_subprocess_exec(
-            str(python_executable),
-            str(temp_code_path),
+            *argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            cwd=context["work_dir"],
+            start_new_session=True,
             **drop_kwargs,
         )
-        stdout, stderr = await process.communicate()
+
+        secrets = context.get("secrets") or {}
+        mask_secrets = settings.MASK_SECRET
+
+        comm_task = asyncio.ensure_future(process.communicate())
+        done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
+
+        if comm_task not in done:
+            return await self._handle_timeout(
+                process=process,
+                comm_task=comm_task,
+                context=context,
+                secrets=secrets,
+                mask_secrets=mask_secrets,
+            )
+
+        stdout, stderr = comm_task.result()
+
         stderr = stderr.decode("utf-8", errors="replace")
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
 
-        secrets = context.get("secrets") or {}
-        mask_secrets = masking_enabled()
         if mask_secrets:
             stderr = scrub(text=stderr, secrets=secrets)
             stdout = scrub(text=stdout, secrets=secrets)
@@ -404,6 +504,73 @@ except Exception:
             stderr=stderr,
             stdout=stdout,
             returncode=returncode,
+        )
+
+    async def _handle_timeout(
+        self,
+        process: asyncio.subprocess.Process,
+        comm_task: asyncio.Task,
+        context: dict[str, Any],
+        secrets: dict[str, str],
+        mask_secrets: bool,
+    ) -> CodeResultData:
+        """Terminate a hung execution and report it as a timed-out result.
+
+        The job never finishes writing output.txt, so unlike the normal path
+        this never reads the result file: result_data stays None.
+        """
+        timeout = settings.EXECUTION_TIMEOUT
+        logger.error(
+            "Execution {} exceeded {} seconds; killing process tree.",
+            context["execution_id"],
+            f"{timeout:g}",
+        )
+
+        killed = _kill_process_tree(process, execution_id=context["execution_id"])
+
+        stdout_bytes, stderr_bytes = b"", b""
+        if killed:
+            done, _ = await asyncio.wait(
+                {comm_task}, timeout=_TIMEOUT_DRAIN_GRACE_SECONDS
+            )
+            if comm_task in done:
+                try:
+                    stdout_bytes, stderr_bytes = comm_task.result()
+                except Exception:
+                    logger.exception(
+                        "Failed to drain partial output for timed-out execution {}",
+                        context["execution_id"],
+                    )
+            else:
+                comm_task.cancel()
+                logger.warning(
+                    "Could not recover partial output for timed-out execution {} "
+                    "within {} seconds; a grandchild may still hold a pipe open.",
+                    context["execution_id"],
+                    _TIMEOUT_DRAIN_GRACE_SECONDS,
+                )
+        else:
+            comm_task.cancel()
+
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+
+        if mask_secrets:
+            stdout = scrub(text=stdout, secrets=secrets)
+            stderr = scrub(text=stderr, secrets=secrets)
+
+        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
+        if not killed:
+            timeout_message += (
+                " Process could not be terminated and may still be running."
+            )
+        stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
+
+        return CodeResultData(
+            execution_id=context["execution_id"],
+            stdout=stdout,
+            stderr=stderr,
+            returncode=124,
         )
 
 
@@ -455,14 +622,17 @@ class DynamicVenvExecutorChain:
         os.makedirs(self.base_venv_path, exist_ok=True)
         home_path = output_path / "home"
         os.makedirs(home_path, exist_ok=True)
+        tmp_path = output_path / "tmp"
+        os.makedirs(tmp_path, exist_ok=True)
 
         if _can_drop_privileges():
-            """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and 
+            """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and
             HOME state into.
             """
             try:
                 os.chown(output_path, SANDBOX_UID, SANDBOX_GID)
                 os.chown(home_path, SANDBOX_UID, SANDBOX_GID)
+                os.chown(tmp_path, SANDBOX_UID, SANDBOX_GID)
             except OSError as chown_error:
                 logger.error(
                     "Failed to chown execution dirs (EPERM?): {}",
@@ -486,6 +656,8 @@ class DynamicVenvExecutorChain:
             "execution_id": execution_id,
             "global_kwargs": global_kwargs,
             "home_path": str(home_path),
+            "tmp_path": str(tmp_path),
+            "work_dir": os.environ.get("CONTAINER_SAVEFILES_PATH", "."),
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
@@ -494,15 +666,19 @@ class DynamicVenvExecutorChain:
         temp_access_key: str | None = None
         if use_storage:
             try:
+                if not storage_org_prefix:
+                    raise ValueError(
+                        "storage_org_prefix is required when use_storage is set"
+                    )
                 policy = self.storage_credential_manager.build_policy(
-                    allowed_bucket=os.environ["STORAGE_BUCKET_NAME"],
-                    allowed_folders=self._scoped_folders(
-                        storage_org_prefix, storage_allowed_paths
-                    ),
+                    allowed_bucket=settings.STORAGE_BUCKET_NAME,
+                    org_prefix=storage_org_prefix,
+                    allowed_paths=storage_allowed_paths,
                 )
-                temp_access_key, temp_secret_key = (
-                    await self.storage_credential_manager.create(policy)
-                )
+                (
+                    temp_access_key,
+                    temp_secret_key,
+                ) = await self.storage_credential_manager.create(policy)
             except Exception as e:
                 logger.error("Failed to provision scoped storage credentials: {}", e)
                 return CodeResultData(
@@ -522,11 +698,3 @@ class DynamicVenvExecutorChain:
 
         logger.info(result)
         return result
-
-    @staticmethod
-    def _scoped_folders(org_prefix: str | None, allowed_paths: list[str] | None) -> set[str]:
-        if not org_prefix:
-            raise ValueError("storage_org_prefix is required when use_storage is set")
-        if not allowed_paths:
-            return {f"{org_prefix}/"}  # whole org (folder)
-        return {f"{org_prefix}/{path.lstrip('/')}" for path in allowed_paths}

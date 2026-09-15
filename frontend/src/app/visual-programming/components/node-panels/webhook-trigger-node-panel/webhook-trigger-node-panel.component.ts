@@ -1,21 +1,17 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import {
-    AppSvgIconComponent,
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
-    ToggleSwitchComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { ResourceCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
@@ -27,14 +23,10 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         ReactiveFormsModule,
         CustomInputComponent,
         CodeEditorComponent,
-        CommonModule,
         ClipboardModule,
-        MatTooltipModule,
         NodeSecretsFieldComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
-        ToggleSwitchComponent,
-        AppSvgIconComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -42,27 +34,30 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
 })
 export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTriggerNodeModel> {
     private readonly clipboard = inject(Clipboard);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private secretsRestoredForNodeId: string | null = null;
+    private readonly permissionsService = inject(PermissionsService);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
 
-    public readonly isCodeEditorFullWidth = signal<boolean>(true);
-    protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 400);
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 406);
 
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly secretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."
+    );
     public readonly selectedSecretIds = signal<number[]>([]);
-    public readonly secretNames = computed(() => {
-        const selected = new Set(this.selectedSecretIds());
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
-    });
+    public readonly secretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
+            : (this.node().data.python_code.secret_names ?? [])
+    );
 
     copied = signal<boolean>(false);
     selectedTrigger = signal<WebhookTriggerModel | null>(null);
@@ -72,58 +67,8 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         return !!t && !t.live_url;
     });
 
-    public readonly webhookAuthEnabled = signal<boolean>(false);
-    // Detail fields (header names, signing secret) are server-generated and only exist once
-    // the backend has created this node's auth row -- null for a node not yet saved.
-    public readonly webhookAuthDetails = computed(() => this.node().data.webhook_node_auth ?? null);
-    public readonly secretCopied = signal<boolean>(false);
-    public readonly secretMasked = signal<boolean>(true);
-    public readonly secretDisplayValue = computed(() => {
-        const secret = this.webhookAuthDetails()?.signing_secret ?? '';
-        return this.secretMasked() ? '•'.repeat(Math.max(secret.length, 12)) : secret;
-    });
-
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
         this.selectedTrigger.set(trigger);
-    }
-
-    constructor() {
-        super();
-        effect(() => {
-            const graphId = this.graphId();
-            const node = this.node();
-            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
-            this.secretsRestoredForNodeId = node.id;
-            if (node.data.python_code.secret_ids !== undefined) return;
-
-            const nodeId = node.id;
-            const nodeName = node.node_name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    if (this.node().id !== nodeId) return;
-                    const declared = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.WEBHOOK_TRIGGER,
-                        'python_code'
-                    );
-                    if (declared.length) {
-                        this.selectedSecretIds.set(declared);
-                        // Patch only secret_ids into the baseline — resetBaseline() would
-                        // recompute the whole node snapshot and bake in any other field the
-                        // user edited while this async lookup was in flight.
-                        if (this.initialNodeSnapshot) {
-                            const snapshot = JSON.parse(this.initialNodeSnapshot);
-                            snapshot.data.python_code.secret_ids = [...declared].sort();
-                            this.initialNodeSnapshot = JSON.stringify(snapshot);
-                            this.notifyExternalChange();
-                        }
-                    }
-                });
-        });
     }
 
     // Fixed to the accent purple regardless of the node's own (green) identity color --
@@ -146,11 +91,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.notifyExternalChange();
     }
 
-    onWebhookAuthToggle(enabled: boolean): void {
-        this.webhookAuthEnabled.set(enabled);
-        this.notifyExternalChange();
-    }
-
     initializeForm(): FormGroup {
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -160,8 +100,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
         this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
-        this.webhookAuthEnabled.set(this.node().data.webhook_node_auth?.enabled ?? false);
-        this.secretMasked.set(true);
         return form;
     }
 
@@ -181,13 +119,13 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             data: {
                 ...this.node().data,
                 webhook_trigger: this.form.value.webhook_trigger ?? null,
-                webhook_node_auth: { ...this.node().data.webhook_node_auth, enabled: this.webhookAuthEnabled() },
                 python_code: {
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
                     entrypoint: 'main',
                     libraries: librariesArray,
                     secret_ids: this.selectedSecretIds(),
+                    secret_names: this.secretNames(),
                 },
             },
         };
@@ -199,21 +137,5 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
         this.clipboard.copy(url);
         this.copied.set(true);
-    }
-
-    copySigningSecret(): void {
-        const secret = this.webhookAuthDetails()?.signing_secret;
-        if (!secret) return;
-
-        this.clipboard.copy(secret);
-        this.secretCopied.set(true);
-    }
-
-    toggleSecretVisibility(): void {
-        this.secretMasked.update((value) => !value);
-    }
-
-    toggleCodeEditorFullWidth(): void {
-        this.isCodeEditorFullWidth.update((value) => !value);
     }
 }

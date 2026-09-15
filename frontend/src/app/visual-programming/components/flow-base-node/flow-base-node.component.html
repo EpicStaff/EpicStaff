@@ -1,44 +1,46 @@
 <!-- Node badge number -->
-<div
-    class="node-name-wrapper"
-    *ngIf="
-        !noteNode &&
-        node.nodeNumber != null &&
-        node.type !== NodeType.CLASSIFICATION_TABLE &&
-        node.type !== NodeType.START &&
-        node.type !== NodeType.END
-    "
->
-    <div class="node-name-label">#{{ node.nodeNumber }}</div>
-</div>
+@if (
+    !noteNode &&
+    node.nodeNumber != null &&
+    node.type !== NodeType.CLASSIFICATION_TABLE &&
+    node.type !== NodeType.START &&
+    node.type !== NodeType.END
+) {
+    <div class="node-name-wrapper">
+        <div class="node-name-label">#{{ node.nodeNumber }}</div>
+    </div>
+}
 
 <!-- Control buttons positioned above the node -->
-<div
-    class="actions"
-    *ngIf="node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE"
-    (mousedown)="$event.stopPropagation()"
->
-    <!-- Edit Button for Note -->
+@if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
     <div
-        *ngIf="node.type === NodeType.NOTE"
-        class="action-button edit-button"
-        matTooltip="Edit note"
-        matTooltipPosition="above"
-        (click)="onEditClick($event)"
+        class="actions"
+        (mousedown)="$event.stopPropagation()"
     >
-        <app-svg-icon icon="edit"></app-svg-icon>
+        <!-- Edit Button for Note -->
+        @if (node.type === NodeType.NOTE) {
+            <div
+                class="action-button edit-button"
+                matTooltip="Edit note"
+                matTooltipPosition="above"
+                (click)="onEditClick($event)"
+            >
+                <app-svg-icon icon="edit"></app-svg-icon>
+            </div>
+        }
+        <!-- Delete Button -->
+        @if (node.type !== NodeType.START) {
+            <div
+                class="action-button delete-button"
+                matTooltip="Delete node"
+                matTooltipPosition="above"
+                (click)="onDeleteClick($event)"
+            >
+                <i class="ti ti-trash"></i>
+            </div>
+        }
     </div>
-    <!-- Delete Button -->
-    <div
-        *ngIf="node.type !== NodeType.START"
-        class="action-button delete-button"
-        matTooltip="Delete node"
-        matTooltipPosition="above"
-        (click)="onDeleteClick($event)"
-    >
-        <i class="ti ti-trash"></i>
-    </div>
-</div>
+}
 
 <!-- Ports (skip all ports for table nodes as they render internally) -->
 @for (port of this.node.ports; track port.id) {
@@ -85,69 +87,72 @@
         (actualClick)="onEditClick()"
     >
         <!-- Header Section -->
-        <div
-            class="header"
-            *ngIf="node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE"
-        >
-            <div class="icon-wrapper">
-                <i
-                    [class]="node.icon"
-                    [style.color]="node.color"
-                ></i>
-            </div>
-            <div
-                class="title"
-                [title]="getNodeTitle()"
-            >
-                @if (isScheduleTriggerActive) {
-                    <span class="active-dot"></span>
+        @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
+            <div class="header">
+                <div class="icon-wrapper">
+                    <i
+                        [class]="node.icon"
+                        [style.color]="node.color"
+                    ></i>
+                </div>
+                <div
+                    class="title"
+                    [title]="getNodeTitle()"
+                >
+                    @if (isScheduleTriggerActive) {
+                        <span class="active-dot"></span>
+                    }
+                    {{ getNodeTitle() }}
+                </div>
+                @if (node.type === NodeType.SUBGRAPH && !isBlockedSubgraph && getSelectedFlowUrl()) {
+                    <div
+                        class="go-to-flow"
+                        (mousedown)="$event.stopPropagation()"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <app-go-to-button
+                            variant="icon"
+                            [href]="getSelectedFlowUrl()!"
+                            target="_blank"
+                        ></app-go-to-button>
+                    </div>
                 }
-                {{ getNodeTitle() }}
+                @if (isBlockedSubgraph) {
+                    <div
+                        class="blocked-badge"
+                        title="Referenced subgraph was deleted"
+                    >
+                        Missing flow
+                    </div>
+                }
+                @if (hasMissingAgent) {
+                    <div
+                        class="llm-warning-badge"
+                        [matTooltip]="missingAgentTooltip"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="0.875rem"
+                        ></app-svg-icon>
+                        <span>No agent assigned</span>
+                    </div>
+                }
+                @if (hasMissingAgentLlm) {
+                    <div
+                        class="llm-warning-badge"
+                        [matTooltip]="agentLlmWarningTooltip"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="0.875rem"
+                        ></app-svg-icon>
+                        <span>No LLM</span>
+                    </div>
+                }
             </div>
-            <div
-                class="go-to-flow"
-                *ngIf="node.type === NodeType.SUBGRAPH && !isBlockedSubgraph && getSelectedFlowUrl()"
-                (mousedown)="$event.stopPropagation()"
-                (click)="$event.stopPropagation()"
-            >
-                <app-go-to-button
-                    variant="icon"
-                    [href]="getSelectedFlowUrl()!"
-                    target="_blank"
-                ></app-go-to-button>
-            </div>
-            <div
-                class="blocked-badge"
-                *ngIf="isBlockedSubgraph"
-                title="Referenced subgraph was deleted"
-            >
-                Missing flow
-            </div>
-            <div
-                class="llm-warning-badge"
-                *ngIf="hasMissingAgent"
-                [matTooltip]="missingAgentTooltip"
-                matTooltipPosition="above"
-            >
-                <app-svg-icon
-                    icon="alert-triangle"
-                    size="0.875rem"
-                ></app-svg-icon>
-                <span>No agent assigned</span>
-            </div>
-            <div
-                class="llm-warning-badge"
-                *ngIf="hasMissingAgentLlm"
-                [matTooltip]="agentLlmWarningTooltip"
-                matTooltipPosition="above"
-            >
-                <app-svg-icon
-                    icon="alert-triangle"
-                    size="0.875rem"
-                ></app-svg-icon>
-                <span>No LLM</span>
-            </div>
-        </div>
+        }
     </div>
 </ng-template>
 @switch (node.type) {

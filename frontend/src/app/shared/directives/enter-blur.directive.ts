@@ -2,7 +2,6 @@ import { Directive, ElementRef, HostListener, inject } from '@angular/core';
 
 @Directive({
     selector: '[appEnterBlur]',
-    standalone: true,
 })
 export class EnterBlurDirective {
     private readonly el = inject(ElementRef<HTMLElement>);

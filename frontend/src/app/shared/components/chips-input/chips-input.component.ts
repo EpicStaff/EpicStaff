@@ -146,6 +146,7 @@ export class ChipsInputComponent implements ControlValueAccessor {
     private updateValue(next: string[]) {
         this.value.set(next);
         this.onChange(next);
+        this.onTouched();
     }
 
     writeValue(value: string[] | null): void {

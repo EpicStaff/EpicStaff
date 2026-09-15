@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -30,11 +29,10 @@ export interface JsonError {
 
 @Component({
     selector: 'app-json-editor',
-    imports: [FormsModule, NgIf, MonacoEditorModule, ResizableDirective, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, MonacoEditorModule, ResizableDirective, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './json-editor.component.html',
     styleUrls: ['./json-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    standalone: true,
 })
 export class JsonEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) public editorContainer!: ElementRef;
@@ -46,7 +44,9 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public title: string = 'JSON Editor';
     @Input() public subtitle: string = '';
     @Input() public collapsible: boolean = false;
+    @Input() public collapsed: boolean = true;
     @Input() public allowCopy: boolean = false;
+    @Input() public readonly: boolean = false;
     @Input() public allowExpand: boolean = false;
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
@@ -73,7 +73,6 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
     @Output() public expand = new EventEmitter<void>();
 
-    public collapsed: boolean = true;
     public editorLoaded = false;
     public jsonIsValid = true;
     public exampleCollapsed = false;
@@ -117,6 +116,11 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     ) {}
 
     ngOnChanges(changes: SimpleChanges): void {
+        // TODO allow to update any param
+        if (changes['readonly'] && this.monacoEditor) {
+            this.monacoEditor.updateOptions({ readOnly: this.readonly });
+        }
+
         if (!changes['jsonData']) {
             return;
         }
@@ -139,7 +143,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         this.editorLoaded = true;
         this.monacoEditor = editor;
         this.lastExternalValue = this.jsonData;
-        this.monacoEditor.updateOptions(this.editorOptions);
+        this.monacoEditor.updateOptions({
+            ...this.editorOptions,
+            readOnly: this.readonly || this.editorOptions.readOnly,
+        });
         this.setValueAndFormat(this.jsonData || '{}');
         this.editorReady.emit(editor);
         if (this.usesMarkers) {
@@ -249,10 +256,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     private registerSchema(): void {
         const monaco = this.monacoGlobal;
         const modelUri = this.monacoEditor?.getModel()?.uri?.toString();
-        if (!monaco?.languages?.json || !modelUri) {
+        if (!monaco?.json || !modelUri) {
             return;
         }
-        const defaults = monaco.languages.json.jsonDefaults;
+        const defaults = monaco.json.jsonDefaults;
         const current = defaults.diagnosticsOptions?.schemas ?? [];
         const others = current.filter((s: { uri?: string }) => s.uri !== this.schemaId);
         defaults.setDiagnosticsOptions({
@@ -265,10 +272,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
 
     private unregisterSchema(): void {
         const monaco = this.monacoGlobal;
-        if (!monaco?.languages?.json) {
+        if (!monaco?.json) {
             return;
         }
-        const defaults = monaco.languages.json.jsonDefaults;
+        const defaults = monaco.json.jsonDefaults;
         const current = defaults.diagnosticsOptions?.schemas ?? [];
         defaults.setDiagnosticsOptions({
             ...defaults.diagnosticsOptions,

@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -43,7 +42,7 @@ export interface AppCustomFilterDialogResult {
  */
 @Component({
     selector: 'app-custom-filter-dialog',
-    imports: [CommonModule, FormsModule, ButtonComponent, AppSvgIconComponent],
+    imports: [FormsModule, ButtonComponent, AppSvgIconComponent],
     templateUrl: './app-custom-filter-dialog.component.html',
     styleUrls: ['./app-custom-filter-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

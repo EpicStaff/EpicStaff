@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -11,9 +10,8 @@ interface InputMapPair {
     value: string;
 }
 @Component({
-    standalone: true,
     selector: 'app-audio-to-text-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CommonModule],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -88,7 +86,7 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
     }
 
     public get activeColor(): string {
-        return this.node().color || '#2196F3';
+        return 'var(--accent-color)';
     }
 
     public get inputMapPairs(): FormArray {

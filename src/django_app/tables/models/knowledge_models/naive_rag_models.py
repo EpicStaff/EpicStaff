@@ -1,25 +1,36 @@
-from django.db import models
 import uuid
 
+from django.contrib.postgres.fields import ArrayField
+from django.db import models
+from django.db.models import PositiveIntegerField
 from pgvector.django import VectorField
 
-
+from ..crew_models import Agent
+from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
 from ..embedding_models import EmbeddingConfig
 from .collection_models import BaseRagType, DocumentMetadata
-from ..crew_models import Agent
 
 
-class NaiveRag(models.Model):
+class NaiveRag(SoftDeleteFields, models.Model):
     class NaiveRagStatus(models.TextChoices):
         """
-        Status of document in SourceCollection
+        - NEW - new rag
+        - PROCESSING - rag is in indexing.
+        - COMPLETED - rag is indexed.
+        - FAILED - rag failed at indexing.
+        - CANCELLED - rag indexing is cancelled.
+        - PARTIAL - rag is completed and has completed and failed documents.
+        - OUTDATED - rag completed, but outdated by changes of indexing config, embedding config
+         or document content.
         """
 
         NEW = "new"
         PROCESSING = "processing"
         COMPLETED = "completed"
-        WARNING = "warning"
         FAILED = "failed"
+        CANCELLED = "cancelled"
+        PARTIAL = "partial"
+        OUTDATED = "outdated"
 
     naive_rag_id = models.AutoField(primary_key=True)
     base_rag_type = models.ForeignKey(
@@ -47,43 +58,52 @@ class NaiveRag(models.Model):
         default=NaiveRagStatus.NEW,
     )
     error_message = models.TextField(null=True, blank=True)
+    outdated_reasons = models.JSONField(default=dict, blank=True)
+
+    indexing_document_config_ids = ArrayField(
+        base_field=PositiveIntegerField(),
+        default=list,
+        blank=True,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     indexed_at = models.DateTimeField(null=True, blank=True)
 
-    def update_rag_status(self: "NaiveRag"):
-        naive_rag_document_statuses = set(
-            self.naive_rag_configs.values_list("status", flat=True)
+    def add_outdated_reason(self, code: str, detail: str):
+        self.outdated_reasons.setdefault(code, detail)
+
+    def clear_outdated_reason(self):
+        self.outdated_reasons.clear()
+
+    def update_rag_status(self) -> bool:
+        config_statuses = set(
+            self.naive_rag_configs.values_list("status", flat=True).distinct()
         )
+        config_status_enum = NaiveRagDocumentConfig.NaiveRagDocumentStatus
 
-        NEW = NaiveRag.NaiveRagStatus.NEW
-        PROCESSING = NaiveRag.NaiveRagStatus.PROCESSING
-        WARNING = NaiveRag.NaiveRagStatus.WARNING
-        FAILED = NaiveRag.NaiveRagStatus.FAILED
-        COMPLETED = NaiveRag.NaiveRagStatus.COMPLETED
-
-        if not naive_rag_document_statuses or naive_rag_document_statuses == {NEW}:
-            current_status = NEW
-        elif naive_rag_document_statuses == {COMPLETED}:
-            current_status = COMPLETED
-        elif naive_rag_document_statuses == {FAILED}:
-            current_status = FAILED
-        elif PROCESSING in naive_rag_document_statuses:
-            current_status = PROCESSING
-        elif (
-            FAILED in naive_rag_document_statuses
-            or WARNING in naive_rag_document_statuses
+        if config_status_enum.OUTDATED in config_statuses or self.outdated_reasons:
+            new_status = self.NaiveRagStatus.OUTDATED
+        elif config_status_enum.PROCESSING in config_statuses:
+            new_status = self.NaiveRagStatus.PROCESSING
+        elif config_statuses.issuperset(
+            [config_status_enum.COMPLETED, config_status_enum.FAILED]
         ):
-            current_status = WARNING
+            new_status = self.NaiveRagStatus.PARTIAL
+        elif config_status_enum.COMPLETED in config_statuses:
+            new_status = self.NaiveRagStatus.COMPLETED
+        elif config_status_enum.FAILED in config_statuses:
+            new_status = self.NaiveRagStatus.FAILED
         else:
-            current_status = WARNING
+            new_status = self.NaiveRagStatus.NEW
 
-        self.status = current_status
-        self.save()
+        if self.rag_status != new_status:
+            self.rag_status = new_status
+            return True
+        return False
 
 
-class NaiveRagDocumentConfig(models.Model):
+class NaiveRagDocumentConfig(SoftDeleteFields, models.Model):
     """
     Document-level RAG type with per-document parameters.
 
@@ -95,6 +115,15 @@ class NaiveRagDocumentConfig(models.Model):
     - Has many NaiveRAGEmbedding (embeddings from this document)
     """
 
+    class DocumentErrorCode(models.TextChoices):
+        CHUNKING_FAILED = "chunking_failed"
+        NO_CHUNKS_PRODUCED = "no_chunks_produced"
+        EMBEDDING_FAILED = "embedding_failed"
+        EMBEDDER_AUTH = "embedder_auth"
+        EMBEDDER_RATE_LIMIT = "embedder_rate_limit"
+        UNKNOWN = "unknown"
+        NONE = "none"
+
     class ChunkStrategy(models.TextChoices):
         TOKEN = "token"
         CHARACTER = "character"
@@ -105,17 +134,19 @@ class NaiveRagDocumentConfig(models.Model):
 
     class NaiveRagDocumentStatus(models.TextChoices):
         """
-        Status flow: new → chunking → chunked → indexing → completed
-        Error states: failed, warning (can occur at any step)
+        - NEW - new document config.
+        - PROCESSING - document config is in indexing.
+        - COMPLETED - document config is indexed.
+        - FAILED - document config failed at indexing
+        - OUTDATED - document config completed, but outdated by changes of indexing config,
+        embedding config or document content.
         """
 
         NEW = "new"
-        CHUNKING = "chunking"
-        CHUNKED = "chunked"  # Preview chunks created
-        INDEXING = "indexing"
-        COMPLETED = "completed"  # Indexed chunks created
-        WARNING = "warning"
+        PROCESSING = "processing"
+        COMPLETED = "completed"
         FAILED = "failed"
+        OUTDATED = "outdated"
 
     naive_rag_document_id = models.AutoField(primary_key=True)
 
@@ -153,6 +184,20 @@ class NaiveRagDocumentConfig(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
+    outdated_reasons = models.JSONField(default=dict, blank=True)
+    error_code = models.CharField(
+        max_length=32, choices=DocumentErrorCode.choices, default=DocumentErrorCode.NONE
+    )
+    error_message = models.TextField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+
+    indexed_chunk_strategy = models.CharField(
+        max_length=20, choices=ChunkStrategy.choices, null=True, blank=True
+    )
+
+    indexed_chunk_size = models.PositiveIntegerField(null=True, blank=True)
+    indexed_chunk_overlap = models.PositiveIntegerField(null=True, blank=True)
+    indexed_additional_params = models.JSONField(null=True, blank=True)
 
     @property
     def total_chunks(self):
@@ -163,6 +208,8 @@ class NaiveRagDocumentConfig(models.Model):
         return self.embeddings.count()
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         indexes = [
             models.Index(fields=["naive_rag", "status"]),
             models.Index(fields=["document"]),
@@ -170,17 +217,21 @@ class NaiveRagDocumentConfig(models.Model):
         # support only one configuration of document per one naive rag implementation
         # (could be many implementations per collection)
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["naive_rag", "document"],
                 name="unique_document_per_naive_rag",
-            )
+            ),
         ]
 
     def __str__(self):
         return f"NaiveRAG: {self.document.file_name}"
 
+    def add_outdated_reason(self, code: str, detail: str):
+        self.outdated_reasons.setdefault(code, detail)
 
-class NaiveRagChunk(models.Model):
+
+class NaiveRagChunk(SoftDeleteFields, models.Model):
     """
     Text chunks generated by NaiveRAG strategy.
     """
@@ -209,22 +260,25 @@ class NaiveRagChunk(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         ordering = ["chunk_index"]
         indexes = [
             models.Index(fields=["naive_rag_document_config", "chunk_index"]),
         ]
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["naive_rag_document_config", "chunk_index"],
                 name="unique_chunk_index_per_naive_rag_document_config",
-            )
+            ),
         ]
 
     def __str__(self):
         return f"Chunk {self.chunk_index} of {self.naive_rag_document_config.document.file_name}"
 
 
-class NaiveRagEmbedding(models.Model):
+class NaiveRagEmbedding(SoftDeleteFields, models.Model):
     """
     Vector embeddings for NaiveRAG chunks.
     """
@@ -253,13 +307,16 @@ class NaiveRagEmbedding(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         indexes = [models.Index(fields=["naive_rag_document_config"])]
 
     def __str__(self):
         return f"Embedding for {self.chunk}"
 
 
-class AgentNaiveRag(models.Model):
+class AgentNaiveRag(SoftDeleteFields, models.Model):
     """
     Link table connecting Agents to NaiveRag implementations.
 
@@ -309,6 +366,10 @@ class NaiveRagSearchConfigBase(models.Model):
         blank=True,
         help_text="Float between 0.00 and 1.00 for knowledge",
     )
+    is_suggested = models.BooleanField(
+        default=False,
+        help_text="Whether these values came from parameter suggestion.",
+    )
 
     class Meta:
         abstract = True
@@ -332,7 +393,7 @@ class KnowledgeNodeNaiveRagSearchConfig(NaiveRagSearchConfigBase):
         db_table = "knowledge_node_naive_search_config"
 
 
-class NaiveRagPreviewChunk(models.Model):
+class NaiveRagPreviewChunk(SoftDeleteFields, models.Model):
     """
     Temporary preview chunks for testing different chunking parameters.
 
@@ -371,6 +432,9 @@ class NaiveRagPreviewChunk(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         ordering = ["chunk_index"]
         indexes = [
             models.Index(fields=["naive_rag_document_config", "chunk_index"]),

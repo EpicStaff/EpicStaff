@@ -12,7 +12,6 @@ import { FlowSettingsService } from '../../services/flow-settings.service';
 
 @Component({
     selector: 'app-flow-settings-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         ReactiveFormsModule,

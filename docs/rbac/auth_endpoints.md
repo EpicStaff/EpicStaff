@@ -137,7 +137,7 @@ create_superadmin` workflow).
 
 | Env var | Default | Notes |
 |---|---|---|
-| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local development (`.dev.env`) ships `open`. |
+| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
 | `LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
 | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
 | `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |

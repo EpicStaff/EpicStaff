@@ -21,7 +21,6 @@ class LLMConfigData(BaseModel):
     """In-memory carrier for SecretResolver; excluded from every dump so no
     Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
-    headers: dict[str, str] | None = None
     extra_headers: dict[str, str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -51,28 +50,17 @@ class EmbedderData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class WebhookNodeAuthData(BaseModel):
-    enabled: bool = True
-    scheme: str
+class WebhookTriggerAuthData(BaseModel):
+    kind: Literal["webhook", "telegram"]
     header_name: str
-    timestamp_header_name: Optional[str] = None
-    tolerance_seconds: int = 300
-    secret_hash: Optional[str] = None
-    signing_secret: Optional[str] = None
-    # Stable identifier of the single node this credential belongs to, e.g.
-    # "tables.telegramtriggernode:42" / "tables.webhooktriggernode:17"
-    # (Django's own `_meta.label_lower` + pk). The `webhook` service echoes
-    # this back as `WebhookEventData.auth_principal` once this credential
-    # matches, so Django's `webhook_events_handler` can restrict dispatch to
-    # only the node that owns the matched credential.
-    principal: Optional[str] = None
+    secret: Optional[str] = None
 
 
 class BaseTunnelConfigData(BaseModel):
     name: str
     org_id: int | None = None
-    auths: list[WebhookNodeAuthData] = []
-    has_unauthenticated_node: bool = False
+
+    auth: WebhookTriggerAuthData | None = None
 
     @classmethod
     def _tunnel_prefix(cls) -> str:

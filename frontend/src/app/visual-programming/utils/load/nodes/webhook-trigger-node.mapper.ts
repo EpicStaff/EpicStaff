@@ -1,5 +1,6 @@
 import { generateUuid } from '@shared/utils';
 
+import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import { GetWebhookTriggerNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { NodeType } from '../../../core/enums/node-type';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
@@ -15,12 +16,13 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
         nodeNumber: ui.nodeNumber,
         data: {
             webhook_trigger: wn.webhook_trigger,
-            webhook_node_auth: wn.webhook_node_auth ?? null,
             python_code: {
                 name: wn.node_name,
                 libraries: wn.python_code.libraries,
                 code: wn.python_code.code,
                 entrypoint: wn.python_code.entrypoint,
+                secret_ids: toSecretIds(wn.python_code.secrets),
+                secret_names: toSecretNames(wn.python_code.secrets),
             },
         },
         position: ui.position,

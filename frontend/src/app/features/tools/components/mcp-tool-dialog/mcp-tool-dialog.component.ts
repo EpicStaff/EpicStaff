@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -51,7 +50,6 @@ interface DialogData {
     selector: 'app-mcp-tool-dialog',
     imports: [
         ReactiveFormsModule,
-        CommonModule,
         DialogModule,
         AppSvgIconComponent,
         CustomInputComponent,

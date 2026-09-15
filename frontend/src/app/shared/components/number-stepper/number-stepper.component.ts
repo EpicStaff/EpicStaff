@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormControl, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
@@ -9,8 +8,7 @@ export type StepperSize = 'sm' | 'md' | 'lg';
 
 @Component({
     selector: 'app-number-stepper',
-    standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, TooltipComponent],
+    imports: [FormsModule, AppSvgIconComponent, TooltipComponent],
     templateUrl: './number-stepper.component.html',
     styleUrls: ['./number-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

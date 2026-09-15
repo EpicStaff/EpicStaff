@@ -1,10 +1,11 @@
-import { Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl } from '@angular/forms';
 
 @Component({
     selector: 'app-validation-errors',
     templateUrl: './validation-errors.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./validation-errors.component.scss'],
 })
 export class ValidationErrorsComponent {
@@ -40,6 +41,7 @@ export class ValidationErrorsComponent {
         email: () => 'Invalid email address.',
         numericOnly: () => 'Password cannot be entirely numeric.',
         whitespace: () => 'Value cannot be blank string.',
+        uniqueName: () => 'A tool with this name already exists.',
     };
 
     messagesList = computed<string[]>(() => {
