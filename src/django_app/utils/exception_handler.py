@@ -1,14 +1,31 @@
-from rest_framework.exceptions import ValidationError
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from rest_framework import exceptions
 from rest_framework.exceptions import APIException
+from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
 
 from django_app.settings import DEBUG
 
 
-MESSAGE_PATTERN = "{error_name}: {error_detail}"
+# Keys DRF generates itself; naming them back at the client adds no information.
+_UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
+
+
+def _flatten_detail(detail) -> str:
+    """Render DRF's nested error detail as plain text, one message per error."""
+    if isinstance(detail, dict):
+        return "; ".join(
+            _flatten_detail(value)
+            if key in _UNLABELLED_KEYS
+            else f"{key}: {_flatten_detail(value)}"
+            for key, value in detail.items()
+        )
+
+    if isinstance(detail, (list, tuple)):
+        return "; ".join(_flatten_detail(item) for item in detail)
+
+    return str(detail)
 
 
 def custom_exception_handler(exc, context):
@@ -20,40 +37,17 @@ def custom_exception_handler(exc, context):
         exc = exceptions.PermissionDenied(*exc.args)
 
     response = exception_handler(exc, context)
+
     if isinstance(exc, APIException):
-        error_data = {
+        detail = exc.detail if exc.detail else exc.default_detail
+        response.data = {
             "status_code": exc.status_code,
             "code": exc.default_code,
-            "message": MESSAGE_PATTERN.format(
-                error_name=type(exc).__name__,
-                error_detail=exc.args[0] if exc.args else exc.detail or exc.default_detail
-            ),
+            "message": _flatten_detail(detail),
         }
-
-        if (errors := getattr(exc, 'errors', None)) is not None:
-            error_data["errors"] = errors
-
-        elif errors is None and isinstance(exc, ValidationError):
-            if isinstance(exc.detail, dict):
-                detail = [exc.detail]
-            elif isinstance(exc.detail, list) and exc.detail and isinstance(exc.detail[0], dict):
-                detail = exc.detail
-            else:
-                detail = [{None: exc.detail}]
-
-            errors = [
-                {
-                    "field": field,
-                    "value": None,
-                    "reason": "; ".join(reason if isinstance(reason, list) else [str(reason)])
-                }
-                for data in detail
-                for field, reason in data.items()
-            ]
-
-            error_data["errors"] = errors
-
-        response.data = error_data
+        errors = getattr(exc, 'errors', None)
+        if isinstance(errors, list):
+            response.data["errors"] == errors
         return response
 
     if not DEBUG:
@@ -61,7 +55,7 @@ def custom_exception_handler(exc, context):
             {
                 "status_code": 500,
                 "code": exc.__class__.__name__,
-                "message": f"{exc.__class__.__name__}: Unpredictable error",
+                "message": "Unpredictable error",
             },
             status=500,
         )
