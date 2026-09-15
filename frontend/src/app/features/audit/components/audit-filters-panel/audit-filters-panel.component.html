@@ -41,9 +41,29 @@
     <div class="filters-panel__body">
         @if (activeTab() === 'builder') {
             <div class="filters-panel__group">
+                <span class="filters-panel__group-title">Kind</span>
+                <app-audit-checkbox-enum
+                    [options]="kindOptions"
+                    [value]="filter().kinds"
+                    [disabledValues]="disabledKinds()"
+                    disabledHint="Not available with the filters you already picked"
+                    (valueChange)="setKinds($event)"
+                />
+            </div>
+
+            <div
+                class="filters-panel__group"
+                [class.is-disabled]="!isStatusEnabled()"
+            >
                 <span class="filters-panel__group-title">Status</span>
-                <app-audit-status-filter
+                @if (!isStatusEnabled()) {
+                    <span class="filters-panel__group-hint">Only events carry a status</span>
+                }
+                <app-audit-checkbox-enum
+                    [options]="statusOptions"
                     [value]="filter().statuses"
+                    [disabledValues]="isStatusEnabled() ? [] : ['completed', 'failed']"
+                    disabledHint="Only events carry a status"
                     (valueChange)="setStatuses($event)"
                 />
             </div>

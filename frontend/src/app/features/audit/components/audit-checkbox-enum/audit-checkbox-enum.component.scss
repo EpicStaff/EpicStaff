@@ -4,7 +4,7 @@
     gap: 6px;
 }
 
-.status-filter__option {
+.checkbox-enum__option {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -13,9 +13,14 @@
     cursor: pointer;
 }
 
-.status-filter__checkbox {
+.checkbox-enum__option.is-disabled {
+    color: var(--color-input-text-placeholder);
+    cursor: not-allowed;
+}
+
+.checkbox-enum__box {
     width: 14px;
     height: 14px;
     accent-color: var(--accent-color);
-    cursor: pointer;
+    cursor: inherit;
 }

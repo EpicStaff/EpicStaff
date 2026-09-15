@@ -82,7 +82,7 @@
                 } @else if (loadError()) {
                     <p class="audit-browser__state audit-browser__state--error">Failed to load audit sessions.</p>
                 } @else if (rows().length === 0) {
-                    <p class="audit-browser__state">No sessions found</p>
+                    <p class="audit-browser__state">No matching records found</p>
                 } @else {
                     <table
                         class="audit-table"
@@ -146,13 +146,13 @@
 
             <footer class="audit-browser__footer">
                 <div class="audit-pager">
-                    <span class="audit-pager__label">Rows to display:</span>
+                    <span class="audit-pager__label">Matches to display:</span>
                     <button
                         class="audit-pager__step"
                         type="button"
                         [disabled]="!canDecreasePageSize()"
                         (click)="stepPageSize(-1)"
-                        aria-label="Fewer sessions per page"
+                        aria-label="Fewer matches per page"
                     >
                         −
                     </button>
@@ -162,7 +162,7 @@
                         type="button"
                         [disabled]="!canIncreasePageSize()"
                         (click)="stepPageSize(1)"
-                        aria-label="More sessions per page"
+                        aria-label="More matches per page"
                     >
                         +
                     </button>

@@ -1,0 +1,16 @@
+@for (option of options(); track option.value) {
+    <label
+        class="checkbox-enum__option"
+        [class.is-disabled]="isDisabled(option.value)"
+        [title]="isDisabled(option.value) ? disabledHint() : ''"
+    >
+        <input
+            class="checkbox-enum__box"
+            type="checkbox"
+            [checked]="isSelected(option.value)"
+            [disabled]="isDisabled(option.value)"
+            (change)="toggle(option.value)"
+        />
+        <span>{{ option.label }}</span>
+    </label>
+}

@@ -84,9 +84,22 @@
     background-color: var(--color-secondary-btn-background);
 }
 
+.filters-panel__group + .filters-panel__group {
+    margin-top: 10px;
+}
+
+.filters-panel__group.is-disabled {
+    opacity: 0.6;
+}
+
 .filters-panel__group-title {
     color: var(--color-text-secondary);
     font-weight: 500;
+}
+
+.filters-panel__group-hint {
+    color: var(--color-input-text-placeholder);
+    font-size: 12px;
 }
 
 .filters-panel__footer {

@@ -1,7 +1,7 @@
 import { AuditFilterNode, AuditFilterState } from '../models/audit-filter.models';
 import { AuditMatchScope } from '../models/audit-session.models';
 
-const MATCH_SCOPE: AuditMatchScope = { children: true, ancestors: true };
+const MATCH_SCOPE: AuditMatchScope = { children: true };
 
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
