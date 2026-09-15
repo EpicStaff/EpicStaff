@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { ActionCode, AdminCreateUserRequest, AdminCreateUserResponse, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
@@ -6,6 +6,12 @@ import { Observable } from 'rxjs';
 import { withCrossOrgPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
+
+export interface ListAdminUsersParams {
+    orgIds?: number[];
+    page?: number;
+    pageSize?: number;
+}
 
 @Injectable({
     providedIn: 'root',
@@ -28,8 +34,13 @@ export class AdminUserService {
         });
     }
 
-    getUsers(): Observable<ApiGetRequest<AdminCreateUserResponse>> {
+    getUsers(params: ListAdminUsersParams = {}): Observable<ApiGetRequest<AdminCreateUserResponse>> {
+        let httpParams = new HttpParams();
+        if (params.orgIds?.length) httpParams = httpParams.set('org_ids', params.orgIds.join(','));
+        if (params.page !== undefined) httpParams = httpParams.set('page', String(params.page));
+        if (params.pageSize !== undefined) httpParams = httpParams.set('page_size', String(params.pageSize));
         return this.http.get<ApiGetRequest<AdminCreateUserResponse>>(this.apiUrl, {
+            params: httpParams,
             context: withCrossOrgPermission<ApiGetRequest<AdminCreateUserResponse>>(
                 ResourceCode.Memberships,
                 ActionCode.Read,

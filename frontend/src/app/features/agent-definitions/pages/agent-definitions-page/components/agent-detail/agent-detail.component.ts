@@ -16,8 +16,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
-import { EnterBlurDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../files/services/storage-api.service';
@@ -92,6 +94,7 @@ interface AgentFormValue {
         EnterBlurDirective,
         AgentSurfacesPanelComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-detail.component.html',
     styleUrls: ['./agent-detail.component.scss'],
@@ -106,6 +109,7 @@ export class AgentDetailComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly toast: ToastService = inject(ToastService);
+    private readonly permissionService = inject(PermissionsService);
     private readonly realtimeApi = inject(RealtimeAgentDefinitionsApiService);
 
     readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
@@ -120,6 +124,8 @@ export class AgentDetailComponent implements OnInit {
     bootIsDoc = input<boolean>(false);
     surfacesOnly = input<boolean>(false);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
+    /** When true, disables the reactive form and blocks save/delete/duplicate emissions. */
+    readOnly = input<boolean>(false);
 
     readonly save = output<AgentSavePayload>();
     readonly delete = output<AgentDefinition>();
@@ -141,6 +147,14 @@ export class AgentDetailComponent implements OnInit {
     readonly renameSurface = output<{ id: number; name: string }>();
     readonly surfaceChange = output<{ id: number; patch: PartialUpdateSurfaceRequest }>();
     readonly viewSummary = output<{ place: SurfaceCategoryId; surfaceIds: number[] }>();
+
+    readonly canOpenSettings = computed<boolean>(() => {
+        return (
+            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read) &&
+            this.permissionService.can(ResourceCode.Voice, ActionCode.Read) &&
+            this.permissionService.can(ResourceCode.Agents, ActionCode.Update)
+        );
+    });
 
     readonly form = this.fb.nonNullable.group({
         name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -207,6 +221,15 @@ export class AgentDetailComponent implements OnInit {
             if (!this.agent()) return;
             untracked(() => this.sections.set({ basics: false, surfaces: true }));
         });
+
+        // Reflect readOnly on the reactive form so text fields render disabled.
+        effect(() => {
+            if (this.readOnly()) {
+                this.form.disable({ emitEvent: false });
+            } else {
+                this.form.enable({ emitEvent: false });
+            }
+        });
     }
 
     ngOnInit(): void {
@@ -239,6 +262,7 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private persist(fromNameBlur: boolean): void {
+        if (this.readOnly()) return;
         if (this.saving()) return;
         if (this.form.controls.name.hasError('maxlength')) return;
 
@@ -546,12 +570,17 @@ export class AgentDetailComponent implements OnInit {
     }
 
     onDelete(): void {
+        if (this.readOnly()) return;
         const a = this.agent();
         if (a) this.delete.emit(a);
     }
 
     onDuplicate(): void {
+        if (this.readOnly()) return;
         const a = this.agent();
         if (a) this.duplicate.emit(a);
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

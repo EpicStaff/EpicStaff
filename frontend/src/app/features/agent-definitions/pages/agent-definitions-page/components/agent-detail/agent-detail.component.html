@@ -23,7 +23,7 @@
                     <span class="section__title">Basics</span>
                 </button>
 
-                @if (!isCreating() && agent()) {
+                @if (!isCreating() && agent() && canOpenSettings()) {
                     <button
                         type="button"
                         class="section__settings"
@@ -96,6 +96,7 @@
                                 />
                                 <span class="doc-chip__name">{{ bootDocName }}</span>
                                 <span
+                                    *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                     class="doc-chip__remove"
                                     role="button"
                                     aria-label="Remove document"
@@ -136,6 +137,7 @@
                             />
                             <div class="doc-actions">
                                 <button
+                                    *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                     type="button"
                                     class="doc-actions__btn"
                                     matTooltip="Convert text to .md file"
@@ -151,22 +153,27 @@
                                     />
                                     Create Markdown
                                 </button>
+                                <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Read]">
+                                    <button
+                                        *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+                                        type="button"
+                                        class="doc-actions__btn"
+                                        matTooltip="Read a text file from storage as instructions"
+                                        matTooltipPosition="above"
+                                        matTooltipClass="custom-tooltip"
+                                        [disabled]="isCreating()"
+                                        (click)="onExtractFromStorage()"
+                                    >
+                                        <app-svg-icon
+                                            icon="extract-from-storage"
+                                            size="12px"
+                                        />
+                                        Extract Text from Storage
+                                    </button>
+                                </ng-container>
+
                                 <button
-                                    type="button"
-                                    class="doc-actions__btn"
-                                    matTooltip="Read a text file from storage as instructions"
-                                    matTooltipPosition="above"
-                                    matTooltipClass="custom-tooltip"
-                                    [disabled]="isCreating()"
-                                    (click)="onExtractFromStorage()"
-                                >
-                                    <app-svg-icon
-                                        icon="extract-from-storage"
-                                        size="12px"
-                                    />
-                                    Extract Text from Storage
-                                </button>
-                                <button
+                                    *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                     type="button"
                                     class="doc-actions__btn"
                                     matTooltip="Read a text file from your computer as instructions"

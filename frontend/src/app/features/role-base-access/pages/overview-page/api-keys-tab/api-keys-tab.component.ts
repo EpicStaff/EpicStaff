@@ -225,6 +225,10 @@ export class ApiKeysTabComponent {
     }
 
     private canRetireRow(row: TableRow): boolean {
+        if (this.permissionsService.isSuperadmin) {
+            return true;
+        }
+
         const orgIds = (row['orgIds'] as number[] | undefined) ?? [];
         return orgIds.some((id) => this.permissionsService.canInOrg(id, ResourceCode.ApiKeys, ActionCode.Delete));
     }

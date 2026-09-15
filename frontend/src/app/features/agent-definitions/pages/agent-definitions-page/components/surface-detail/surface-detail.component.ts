@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { AgentSurfacePlace } from '../../../../models/agent-definition.model';
 import {
     CreateSurfaceRequest,
@@ -18,6 +20,8 @@ import { SurfaceCardComponent } from '../agent-detail/agent-surfaces-panel/surfa
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SurfaceDetailComponent {
+    private readonly permissionService = inject(PermissionsService);
+
     surface = input<Surface | null>(null);
     isCreating = input<boolean>(false);
     readOnly = input<boolean>(false);
@@ -27,6 +31,8 @@ export class SurfaceDetailComponent {
     surfacePlaces = input<AgentSurfacePlace[]>([]);
     placesBusy = input<boolean>(false);
     saveError = input<SurfaceSaveError | null>(null);
+
+    readonly canEditSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
 
     readonly create = output<CreateSurfaceRequest>();
     readonly rename = output<string>();
