@@ -233,6 +233,16 @@
         }
     }
 
+    .error-message {
+        margin: 0;
+        font-size: 0.75rem;
+        color: var(--red-427);
+    }
+
+    .description-textarea {
+        --color-ks-text: var(--white);
+    }
+
     .parameters-section {
         gap: 8px;
     }
