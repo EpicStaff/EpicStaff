@@ -23,7 +23,6 @@ server {
     include /etc/nginx/conf.d/ssl-${NGINX_SSL_MODE}.snippet;
 
     client_max_body_size 50M;
-    underscores_in_headers on;
 
     # ---- Security response headers --------------------------------------
     # WARNING: nginx inherits add_header into a location only if that location
@@ -83,6 +82,7 @@ server {
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 86400;
     }
 
@@ -148,10 +148,12 @@ server {
     location /static/ {
         proxy_pass http://backend_server/static/;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /media/ {
         proxy_pass http://backend_server/media/;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
