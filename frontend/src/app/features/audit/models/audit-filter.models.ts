@@ -1,4 +1,4 @@
-import { AuditEventKind, AuditEventStatus } from './audit-session.models';
+import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from './audit-session.models';
 
 export type AuditFilterOp = 'equals' | 'not_equal' | 'in' | 'not_in' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte';
 
@@ -24,14 +24,18 @@ export interface AuditFilterState {
     statuses: AuditEventStatus[];
     dateFrom: string | null;
     dateTo: string | null;
+    nodeTypes: AuditNodeType[];
+    runTypes: AuditRunBucket[];
 }
 
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
 
 export const EMPTY_AUDIT_FILTER: AuditFilterState = {
-    kinds: ['session'],
+    kinds: [],
     flowNames: [],
     statuses: [],
     dateFrom: null,
     dateTo: null,
+    nodeTypes: [],
+    runTypes: [],
 };

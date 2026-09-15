@@ -22,6 +22,14 @@ export const AUDIT_FILTER_FIELDS: Record<string, AuditFilterFieldMeta> = {
         kinds: ALL_KINDS,
         isActive: (state) => state.dateFrom !== null || state.dateTo !== null,
     },
+    nodeType: {
+        kinds: ['node', 'event'],
+        isActive: (state) => state.nodeTypes.length > 0,
+    },
+    run: {
+        kinds: ['session', 'event'],
+        isActive: (state) => state.runTypes.length > 0,
+    },
 };
 
 // shows whick kinds can still be chosen

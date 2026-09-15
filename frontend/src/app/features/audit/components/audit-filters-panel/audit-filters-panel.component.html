@@ -40,32 +40,61 @@
 
     <div class="filters-panel__body">
         @if (activeTab() === 'builder') {
-            <div class="filters-panel__group">
-                <span class="filters-panel__group-title">Kind</span>
-                <app-audit-checkbox-enum
-                    [options]="kindOptions"
-                    [value]="filter().kinds"
-                    [disabledValues]="disabledKinds()"
-                    disabledHint="Not available with the filters you already picked"
-                    (valueChange)="setKinds($event)"
-                />
-            </div>
+            <div class="filters-panel__groups">
+                <app-audit-filter-group label="Kind">
+                    <app-audit-checkbox-enum
+                        [options]="kindOptions"
+                        [value]="filter().kinds"
+                        [disabledValues]="disabledKinds()"
+                        disabledHint="Not available with the filters you already picked"
+                        (valueChange)="setKinds($event)"
+                    />
+                </app-audit-filter-group>
 
-            <div
-                class="filters-panel__group"
-                [class.is-disabled]="!isStatusEnabled()"
-            >
-                <span class="filters-panel__group-title">Status</span>
-                @if (!isStatusEnabled()) {
-                    <span class="filters-panel__group-hint">Only events carry a status</span>
-                }
-                <app-audit-checkbox-enum
-                    [options]="statusOptions"
-                    [value]="filter().statuses"
-                    [disabledValues]="isStatusEnabled() ? [] : ['completed', 'failed']"
-                    disabledHint="Only events carry a status"
-                    (valueChange)="setStatuses($event)"
-                />
+                <app-audit-filter-group
+                    label="Status"
+                    [disabled]="!isStatusEnabled()"
+                    [class.is-disabled]="!isStatusEnabled()"
+                    [hint]="isStatusEnabled() ? '' : 'Only events carry a status'"
+                >
+                    <app-audit-checkbox-enum
+                        [options]="statusOptions"
+                        [value]="filter().statuses"
+                        [disabledValues]="disabledStatuses()"
+                        disabledHint="Only events carry a status"
+                        (valueChange)="setStatuses($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Node Type"
+                    [disabled]="!isNodeTypeEnabled()"
+                    [class.is-disabled]="!isNodeTypeEnabled()"
+                    [hint]="isNodeTypeEnabled() ? '' : 'Only nodes and events carry a node type'"
+                >
+                    <app-audit-checkbox-enum
+                        [options]="nodeTypeOptions"
+                        [value]="filter().nodeTypes"
+                        [disabledValues]="disabledNodeTypes()"
+                        disabledHint="Only nodes and events carry a node type"
+                        (valueChange)="setNodeTypes($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Run"
+                    [disabled]="!isRunTypeEnabled()"
+                    [class.is-disabled]="!isRunTypeEnabled()"
+                    [hint]="isRunTypeEnabled() ? '' : 'Only sessions carry a run type'"
+                >
+                    <app-audit-checkbox-enum
+                        [options]="runTypeOptions"
+                        [value]="filter().runTypes"
+                        [disabledValues]="disabledRunTypes()"
+                        disabledHint="Only sessions carry a run type"
+                        (valueChange)="setRunTypes($event)"
+                    />
+                </app-audit-filter-group>
             </div>
         }
     </div>
