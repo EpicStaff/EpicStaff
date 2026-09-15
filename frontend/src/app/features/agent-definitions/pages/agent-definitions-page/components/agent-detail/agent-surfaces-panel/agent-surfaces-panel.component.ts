@@ -63,6 +63,7 @@ export class AgentSurfacesPanelComponent {
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly permissionService = inject(PermissionsService);
 
+    readonly canCreateSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
     readonly canEditSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
 
     surfaces = input<Surface[]>([]);

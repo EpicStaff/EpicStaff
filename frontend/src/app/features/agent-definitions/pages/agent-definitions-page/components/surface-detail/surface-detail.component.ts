@@ -32,7 +32,12 @@ export class SurfaceDetailComponent {
     placesBusy = input<boolean>(false);
     saveError = input<SurfaceSaveError | null>(null);
 
+    readonly canCreateSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
     readonly canEditSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
+    // Draft flow requires Create; editing an existing surface requires Update.
+    readonly cardReadOnly = computed(
+        () => this.readOnly() || (this.isCreating() ? !this.canCreateSurfaces() : !this.canEditSurfaces())
+    );
 
     readonly create = output<CreateSurfaceRequest>();
     readonly rename = output<string>();

@@ -2,7 +2,7 @@
     class="detail__surface-card"
     [surface]="surface()"
     [isCreating]="isCreating()"
-    [readOnly]="readOnly() || !canEditSurfaces()"
+    [readOnly]="cardReadOnly()"
     [isShared]="isShared()"
     [showMeta]="showMeta()"
     [currentPlace]="currentPlace()"
