@@ -28,11 +28,13 @@ class SubGraphNode:
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
+        org_id: int | None = None,
     ):
         self.unique_subgraph_list = unique_subgraph_list
         self.subgraph_node_data = subgraph_node_data
         self._graph_builder = graph_builder
         self.session_id = session_id
+        self.org_id = org_id
         self.node_name = subgraph_node_data.node_name
         self.input_map = subgraph_node_data.input_map
         self.subgraph_data = self._get_graph_data(subgraph_node_data.subgraph_id)
@@ -69,6 +71,7 @@ class SubGraphNode:
             graph=self.subgraph_data.data,
             unique_subgraph_list=self.unique_subgraph_list,
             initial_state=initial_state,
+            org_id=self.org_id,
         )
 
     def _create_subgraph_builder(self):

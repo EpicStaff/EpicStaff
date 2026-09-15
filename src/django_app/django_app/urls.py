@@ -37,6 +37,7 @@ from tables.views.api_key_views import (
     ProfileApiKeyRevokeView,
     ProfileApiKeysView,
 )
+from tables.views.audit_token_views import AuditTokenView
 from tables.views.permission_views import (
     MyPermissionsView,
     PermissionCatalogView,
@@ -58,6 +59,7 @@ urlpatterns = [
     path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="refresh"),
     path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
     path("api/auth/ws-ticket/", WsTicketView.as_view(), name="ws_ticket"),
+    path("api/audit/token/", AuditTokenView.as_view(), name="audit_token"),
     path(
         "api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"
     ),

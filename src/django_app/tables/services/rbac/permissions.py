@@ -128,7 +128,7 @@ class IsSystemApiKeyAuthenticated(BasePermission):
     is scoped to its owner's own org's RBAC but this permission class runs
     before, and instead of, any org check — e.g.
     `RealtimeChannelViewSet.lookup_by_token`, restricted to the trusted
-    `realtime`/`voice_app` services.
+    `realtime` service.
     """
 
     message = "This endpoint requires system API key authentication."

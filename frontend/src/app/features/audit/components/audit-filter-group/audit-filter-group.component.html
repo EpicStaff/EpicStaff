@@ -1,0 +1,28 @@
+<button
+    class="filter-group__header"
+    type="button"
+    [attr.aria-expanded]="expanded()"
+    (click)="toggle()"
+>
+    <app-svg-icon
+        class="filter-group__chevron"
+        [class.filter-group__chevron--collapsed]="!expanded()"
+        icon="chevron-down-filled"
+        size="8px"
+    />
+    <span class="filter-group__title">{{ label() }}</span>
+</button>
+
+<div
+    class="filter-group__body"
+    [class.is-collapsed]="!expanded()"
+>
+    <div class="filter-group__clip">
+        <div class="filter-group__content">
+            @if (hint()) {
+                <span class="filter-group__hint">{{ hint() }}</span>
+            }
+            <ng-content />
+        </div>
+    </div>
+</div>

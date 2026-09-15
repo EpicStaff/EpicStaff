@@ -12,6 +12,7 @@ else
 {
   "apiUrl": "${API_URL:-http://localhost/api/}",
   "realtimeApiUrl": "${REALTIME_API_URL:-http://localhost/realtime/}",
+  "auditorUrl": "${AUDITOR_API_URL:-http://localhost:8060/}",
   "isEpicChatEnabled": ${EPIC_CHAT_ENABLED:-true}
 }
 EOF

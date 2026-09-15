@@ -197,3 +197,40 @@
     color: var(--color-text-primary);
     line-height: 130%;
 }
+
+@keyframes panel-fade-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes panel-fade-slide-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+.panel-enter {
+    animation: panel-fade-slide-in 200ms ease-out;
+}
+
+.panel-leave {
+    animation: panel-fade-slide-out 150ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel-enter,
+    .panel-leave {
+        animation-duration: 1ms;
+    }
+}

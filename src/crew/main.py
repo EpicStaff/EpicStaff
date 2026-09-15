@@ -3,6 +3,7 @@ import asyncio
 import settings
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
+from services.graph.session_audit_provider import get_session_audit_writer
 from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
@@ -56,6 +57,17 @@ async def main():
         logger.error(f"An error occurred: {e}", exc_info=True)
     finally:
         logger.info("Shutting down...")
+        # Best-effort drain of whatever's still queued in the audit client.
+        # NOTE: this only runs on an exception or KeyboardInterrupt (Ctrl+C) -
+        # a plain `docker stop`/`docker compose down` sends SIGTERM, which
+        # this process has no handler for, so this path is NOT hit on a
+        # normal container stop today. That's a pre-existing gap in this
+        # file (redis_service has the same exposure), not something this
+        # change introduces or fixes.
+        try:
+            await get_session_audit_writer().shutdown()
+        except Exception as shutdown_exc:
+            logger.warning(f"Audit client shutdown failed: {shutdown_exc}")
 
 
 if __name__ == "__main__":
