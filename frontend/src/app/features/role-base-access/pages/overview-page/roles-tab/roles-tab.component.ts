@@ -62,7 +62,7 @@ export class RolesTabComponent implements OnInit {
         { key: 'name', label: 'ROLE NAME', width: 'minmax(140px, 1fr)' },
         { key: 'description', label: 'DESCRIPTION', width: 'minmax(200px, 3fr)' },
         { key: 'members', label: 'MEMBERS', width: 'minmax(100px, 1fr)' },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'end', actions: this.rowActions },
     ];
 
     readonly tableData = computed<TableRow[]>(() =>
