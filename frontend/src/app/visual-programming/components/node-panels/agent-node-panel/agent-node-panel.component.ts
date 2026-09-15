@@ -9,6 +9,7 @@ import {
     input,
     signal,
     untracked,
+    viewChild,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -58,6 +59,7 @@ import {
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
     InstructionsViewToggleComponent,
@@ -88,6 +90,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         InstructionsViewToggleComponent,
         MarkdownComponent,
         ColumnResizeDividerComponent,
+        InputsYouCanUseComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -111,6 +114,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
      *  dropdown — used to force-close whichever is open after the local-surface dialog
      *  resolves, so reopening re-seeds `tempSelected` from the up-to-date `selectedValues`. */
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
+
+    private readonly rightInstructionsTextarea =
+        viewChild<VariableHighlightTextareaComponent>('rightInstructionsTextarea');
 
     public readonly rightPane = signal<RightPaneSelection | null>(null);
 
@@ -433,6 +439,29 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         const task = this.selectedTask();
         if (!task) return;
         this.updateSelectedTaskField(task.tempId, { instructions: value });
+    }
+
+    insertInputToInstructions(name: string): void {
+        if (!this.isExpanded()) {
+            // No instructions editor exists in the collapsed layout — append straight to the
+            // selected task's data instead of expanding the panel.
+            const task = this.selectedTask();
+            if (!task) return;
+            const current = task.instructions ?? '';
+            const needsLeadingSpace = current !== '' && !/\s$/.test(current);
+            this.updateSelectedTaskField(task.tempId, {
+                instructions: `${current}${needsLeadingSpace ? ' ' : ''}{${name}}`,
+            });
+            return;
+        }
+
+        if (this.effectiveRightPane()?.field === 'schema') {
+            this.toggleRightPaneField();
+        }
+        if (this.instructionsView() === 'preview') {
+            this.setInstructionsView('edit');
+        }
+        setTimeout(() => this.rightInstructionsTextarea()?.insertAtCursor(name));
     }
 
     copyRightInstructions(): void {

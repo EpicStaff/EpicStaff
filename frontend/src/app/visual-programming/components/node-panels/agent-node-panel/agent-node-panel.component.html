@@ -115,6 +115,11 @@
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
 
+                        <app-inputs-you-can-use
+                            [names]="inputMapKeys()"
+                            (insert)="insertInputToInstructions($event)"
+                        />
+
                         <app-custom-input
                             label="Output Variable Path"
                             tooltipText="Path where the Agent node output will be stored in flow variables."
@@ -245,6 +250,7 @@
                                     ></markdown>
                                 } @else {
                                     <app-variable-highlight-textarea
+                                        #rightInstructionsTextarea
                                         class="main-editor-pane__textarea"
                                         placeholder="Enter task instructions..."
                                         [value]="rightInstructionsValue()"
@@ -355,6 +361,11 @@
                     <div class="input-map">
                         <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
+
+                    <app-inputs-you-can-use
+                        [names]="inputMapKeys()"
+                        (insert)="insertInputToInstructions($event)"
+                    />
 
                     <app-custom-input
                         label="Output Variable Path"

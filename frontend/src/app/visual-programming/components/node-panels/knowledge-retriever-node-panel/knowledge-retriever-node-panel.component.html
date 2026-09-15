@@ -30,36 +30,10 @@
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
 
-                        <div class="inputs-list-section">
-                            <button
-                                type="button"
-                                class="inputs-list-toggle"
-                                (click)="toggleInputsList()"
-                            >
-                                <span
-                                    class="chevron"
-                                    [class.open]="inputsListOpen()"
-                                    >▶</span
-                                >
-                                Inputs You Can Use
-                            </button>
-                            @if (inputsListOpen()) {
-                                <div class="inputs-chip-list">
-                                    @for (name of availableInputs(); track name) {
-                                        <div
-                                            class="inputs-chip"
-                                            (click)="insertInputToQuery(name)"
-                                        >
-                                            {{ name }}
-                                        </div>
-                                    } @empty {
-                                        <span class="inputs-chip-empty">
-                                            Add entries to Input List to use them here.
-                                        </span>
-                                    }
-                                </div>
-                            }
-                        </div>
+                        <app-inputs-you-can-use
+                            [names]="availableInputs()"
+                            (insert)="insertInputToQuery($event)"
+                        />
 
                         <app-custom-input
                             label="Output Variable Path"
@@ -198,34 +172,10 @@
                         />
                     </div>
 
-                    <div class="inputs-list-section">
-                        <button
-                            type="button"
-                            class="inputs-list-toggle"
-                            (click)="toggleInputsList()"
-                        >
-                            <span
-                                class="chevron"
-                                [class.open]="inputsListOpen()"
-                                >▶</span
-                            >
-                            Inputs You Can Use
-                        </button>
-                        @if (inputsListOpen()) {
-                            <div class="inputs-chip-list">
-                                @for (name of availableInputs(); track name) {
-                                    <div
-                                        class="inputs-chip"
-                                        (click)="insertInputToQuery(name)"
-                                    >
-                                        {{ name }}
-                                    </div>
-                                } @empty {
-                                    <span class="inputs-chip-empty"> Add entries to Input List to use them here. </span>
-                                }
-                            </div>
-                        }
-                    </div>
+                    <app-inputs-you-can-use
+                        [names]="availableInputs()"
+                        (insert)="insertInputToQuery($event)"
+                    />
 
                     <app-custom-input
                         label="Output Variable Path"
