@@ -30,6 +30,8 @@ class KnowledgeNodeData(BaseModel):
     output_variable_path: str | None = None
     embedder_api_key: str | None = None
     embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    llm_api_key: str | None = None
+    llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 

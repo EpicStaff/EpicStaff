@@ -151,6 +151,7 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id, all_search_configs
         )
         embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
+        llm_api_key_secret_id = self._node_rag_llm_secret_id(knowledge_node)
         return KnowledgeNodeData(
             node_name=resolver(knowledge_node.id),
             collection_id=collection_id,
@@ -160,6 +161,7 @@ class ConverterService(metaclass=SingletonMeta):
             input_map=knowledge_node.input_map,
             output_variable_path=knowledge_node.output_variable_path,
             embedder_api_key_secret_id=embedder_api_key_secret_id,
+            llm_api_key_secret_id=llm_api_key_secret_id,
         )
 
     @staticmethod
@@ -175,6 +177,20 @@ class ConverterService(metaclass=SingletonMeta):
         )
         embedder = rag.embedder
         return embedder.api_key_secret_id if embedder else None
+
+    @staticmethod
+    def _node_rag_llm_secret_id(knowledge_node: KnowledgeNode) -> int | None:
+        """Secret id of the node's RAG LLM (graph search synthesis). Only graph
+        RAGs carry an LLM; naive RAGs have none, so this is None for them."""
+        if not (knowledge_node.rag_type and knowledge_node.rag_id):
+            return None
+        rag = resolve_rag_in_collection(
+            knowledge_node.rag_type,
+            knowledge_node.rag_id,
+            knowledge_node.source_collection,
+        )
+        llm = getattr(rag, "llm", None)
+        return llm.api_key_secret_id if llm else None
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
