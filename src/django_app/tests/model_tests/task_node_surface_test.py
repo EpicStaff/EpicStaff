@@ -14,7 +14,6 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from rest_framework.test import APIClient
 
 from agents.exceptions import SurfaceValidationError
 from agents.models import AgentDefinition, Surface
@@ -29,15 +28,17 @@ from agents.validators.surface_validator import SurfaceValidator
 
 
 @pytest.fixture
-def client():
-    return APIClient()
+def client(auth_client):
+    """`auth_client` (conftest) is authenticated as a member of `default_org`
+    and sends its id as the active-org header, so `org` below is aliased to
+    `default_org` rather than a separate Organization — the org-scoped
+    endpoints under test resolve the active org from that header."""
+    return auth_client
 
 
 @pytest.fixture
-def org(db):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-
-    return Organization.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+def org(default_org):
+    return default_org
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def other_org(db):
 
 @pytest.fixture
 def graph(db, org):
-    return Graph.objects.create(name="task-node-surface-graph")
+    return Graph.objects.create(name="task-node-surface-graph", org=org)
 
 
 @pytest.fixture
