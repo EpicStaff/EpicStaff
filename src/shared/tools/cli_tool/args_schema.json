@@ -1,0 +1,11 @@
+{
+  "title": "CLIToolArgs",
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "description": "command to be executed."
+    }
+  },
+  "required": ["command"]
+}

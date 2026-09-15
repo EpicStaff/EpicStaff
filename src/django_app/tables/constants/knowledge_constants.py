@@ -4,6 +4,20 @@ from tables.models.knowledge_models import DocumentMetadata
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 
 
+# Content types for inline document preview (Content-Disposition: inline)
+PREVIEW_CONTENT_TYPES = {
+    DocumentMetadata.DocumentFileType.PDF: "application/pdf",
+    DocumentMetadata.DocumentFileType.CSV: "text/csv; charset=utf-8",
+    DocumentMetadata.DocumentFileType.DOCX: (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ),
+    DocumentMetadata.DocumentFileType.TXT: "text/plain; charset=utf-8",
+    DocumentMetadata.DocumentFileType.JSON: "application/json; charset=utf-8",
+    DocumentMetadata.DocumentFileType.HTML: "text/html; charset=utf-8",
+    DocumentMetadata.DocumentFileType.MD: "text/markdown; charset=utf-8",
+}
+
+
 # Default RAG configuration values
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 150
@@ -50,3 +64,4 @@ GRAPHRAG_MIN_MAX_GLEANINGS = 0
 GRAPHRAG_MAX_MAX_GLEANINGS = 10
 GRAPHRAG_MIN_MAX_CLUSTER_SIZE = 1
 GRAPHRAG_MAX_MAX_CLUSTER_SIZE = 100
+MAX_TOKEN_FIELD_VALUE = 2_000_000

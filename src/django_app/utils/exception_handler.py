@@ -45,9 +45,9 @@ def custom_exception_handler(exc, context):
             "code": exc.default_code,
             "message": _flatten_detail(detail),
         }
-        errors = getattr(exc, "errors", None)
+        errors = getattr(exc, 'errors', None)
         if isinstance(errors, list):
-            response.data["errors"] = errors
+            response.data["errors"] == errors
         return response
 
     if not DEBUG:
