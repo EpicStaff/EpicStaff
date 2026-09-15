@@ -45,7 +45,7 @@ import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
-import { adminUsersToAggregated, aggregateMembershipsByUser } from '../../../utils/aggregate-users.util';
+import { aggregateMembershipsByUser } from '../../../utils/aggregate-users.util';
 import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
 const STATUS_ITEMS: SelectItem[] = [
@@ -379,11 +379,8 @@ export class UsersTabComponent implements OnInit {
     private loadUsers(): void {
         this.isLoading.set(true);
         const orgIds = this.orgFilterIds();
-        const source$ = this.permissionsService.isSuperadmin
-            ? this.loadFromAdminUsers(orgIds)
-            : this.loadFromMemberships(orgIds);
 
-        source$
+        this.loadFromMemberships(orgIds)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isLoading.set(false))
@@ -395,12 +392,6 @@ export class UsersTabComponent implements OnInit {
                     this.roleFilterItems.set(this.extractRoleFilterItems(users));
                 },
             });
-    }
-
-    private loadFromAdminUsers(orgIds: number[]): Observable<AggregatedUser[]> {
-        return this.adminUserService
-            .getUsers(orgIds.length ? { orgIds } : {})
-            .pipe(map((page) => adminUsersToAggregated(page.results)));
     }
 
     private loadFromMemberships(orgIds: number[]): Observable<AggregatedUser[]> {
