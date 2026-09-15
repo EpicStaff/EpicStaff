@@ -144,7 +144,7 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
             align: 'center',
         },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'center', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end', actions: this.rowActions },
     ]);
 
     protected readonly tableData = computed<TableRow[]>(() =>
