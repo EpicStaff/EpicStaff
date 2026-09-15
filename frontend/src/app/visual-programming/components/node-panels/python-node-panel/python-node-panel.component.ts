@@ -462,7 +462,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     get inputMapPairs(): FormArray {

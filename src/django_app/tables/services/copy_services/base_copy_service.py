@@ -11,4 +11,9 @@ class BaseCopyService(ABC):
     """
 
     @abstractmethod
-    def copy(self, entity: models.Model, name: str | None = None) -> models.Model: ...
+    def copy(
+        self,
+        entity: models.Model,
+        name: str | None = None,
+        org_id: int | None = None,
+    ) -> models.Model: ...

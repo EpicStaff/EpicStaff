@@ -15,8 +15,8 @@ import { takeUntil } from 'rxjs/operators';
 
 import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
+import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 
@@ -533,7 +533,7 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
     private readonly destroy$ = new Subject<void>();
 
     constructor(
-        private pythonCodeToolService: PythonCodeToolService,
+        private pythonCodeToolService: CustomToolsService,
         private mcpToolsService: McpToolsService,
         private cdr: ChangeDetectorRef
     ) {}

@@ -14,6 +14,22 @@
                 Retry
             </button>
         } @else {
+            @if (recentTools().length > 0) {
+                <div class="recent-section">
+                    <h3 class="recent-section__title">Last modified</h3>
+                    <ul class="recent-tools-list">
+                        @for (tool of recentTools(); track tool.id) {
+                            <li
+                                class="recent-tool-card"
+                                data-selection-safe
+                                (click)="onRecentToolClick(tool.id)"
+                            >
+                                <span class="recent-tool-name">{{ tool.name }}</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
             <div class="tools-list-grid">
                 @if (cards().length === 0) {
                     <div class="empty-message">
@@ -22,6 +38,7 @@
                 } @else {
                     @for (card of cards(); track card.id) {
                         <app-tool-card
+                            data-selection-safe
                             [tool]="card"
                             [selected]="viewState.isSelected(card.id)"
                             [showUsage]="viewState.showUsageAndUnused()"

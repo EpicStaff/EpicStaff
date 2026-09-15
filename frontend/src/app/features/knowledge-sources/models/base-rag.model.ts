@@ -25,11 +25,23 @@ export type Rag = {
     };
 }[RagName];
 
-export type RagStatus = 'new' | 'processing' | 'completed' | 'warning' | 'failed';
+export type RagStatus = 'new' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'partial' | 'outdated';
 
 export type RagType = RagValueMap[keyof RagValueMap];
 
+export interface RagStatusConfiguration {
+    rag_id: number;
+    rag_type: RagType;
+    status: RagStatus;
+}
+
 export interface StartIndexingDtoRequest {
+    rag_id: number;
+    rag_type: RagType;
+    document_config_ids?: number[];
+}
+
+export interface StopIndexingDtoRequest {
     rag_id: number;
     rag_type: RagType;
 }
@@ -39,4 +51,6 @@ export interface StartIndexingDtoResponse {
     rag_id: number;
     rag_type: string;
     collection_id: number;
+    accepted_config_ids: number[] | null;
+    skipped_completed_config_ids: number[];
 }

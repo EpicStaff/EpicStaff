@@ -41,6 +41,7 @@ export class ValidationErrorsComponent {
         email: () => 'Invalid email address.',
         numericOnly: () => 'Password cannot be entirely numeric.',
         whitespace: () => 'Value cannot be blank string.',
+        uniqueName: () => 'A tool with this name already exists.',
     };
 
     messagesList = computed<string[]>(() => {

@@ -135,6 +135,12 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
     });
 
+    public readonly selectedAgentLlmConfigId = computed<number | null>(() => {
+        const id = this.agentDefinitionId();
+        if (id == null) return null;
+        return this.agentDefinitions().find((agent) => agent.id === id)?.llm_config ?? null;
+    });
+
     public readonly agentInvalid = computed<boolean>(() => {
         this.dirtyCheckTick();
         const control = this.form?.get('agent_definition');
@@ -292,6 +298,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     onAgentSelectionChange(values: unknown[]): void {
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
+
         const agentControl = this.form.get('agent_definition');
         agentControl?.setValue(id);
         agentControl?.markAsTouched();
@@ -325,7 +332,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     onCreateLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'create', inlineSurface: null })
+            .open({ mode: 'create', inlineSurface: null, llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
@@ -339,7 +346,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     onEditLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'edit', inlineSurface: this.inlineSurface() })
+            .open({ mode: 'edit', inlineSurface: this.inlineSurface(), llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
