@@ -22,7 +22,15 @@ export class WsTicketService {
 
     fetchTicket(): Observable<string> {
         const accessToken = this.authService.getAccessToken();
-        if (!accessToken) return throwError(() => new Error('No access token available'));
+        if (!accessToken) {
+            return this.authService.refreshToken().pipe(
+                switchMap((newToken) =>
+                    newToken
+                        ? this.requestTicket(newToken)
+                        : throwError(() => new Error('No access token available')),
+                ),
+            );
+        }
 
         return this.requestTicket(accessToken).pipe(
             catchError((err) => {
