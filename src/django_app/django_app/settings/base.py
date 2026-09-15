@@ -102,3 +102,5 @@ MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
 # Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
 SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
+
+REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
