@@ -24,8 +24,6 @@ ACTION_METADATA = [
     # {"code": "list", "label": "List", "bit": int(Permission.LIST)},
 ]
 
-GRANTABLE_ACTION_BITS: int = reduce(or_, (entry["bit"] for entry in ACTION_METADATA), 0)
-
 
 # Resource type metadata: ordered as the FE renders the matrix rows,
 # grouped by `group` (admin | workspace | config).
@@ -239,6 +237,35 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "delete": (("secrets", "read"),),
     },
 }
+
+
+_ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
+
+# The bits a role can actually be granted, **per resource**. Grantability is a
+# per-resource property -- `use` is an action of `secrets` and of nothing else --
+# so a global union over ACTION_METADATA is the wrong granularity: enabling an
+# action for one resource would admit its bit on every other resource, where it
+# is neither applicable nor enforced. A code that is not a rendered action
+# (`list`, today) contributes nothing.
+_GRANTABLE_BITS_BY_RESOURCE = {
+    entry["code"]: reduce(
+        or_,
+        (_ACTION_BIT_BY_CODE.get(code, 0) for code in entry["applicable_actions"]),
+        0,
+    )
+    for entry in RESOURCE_TYPE_METADATA
+}
+
+
+def grantable_bits_for(resource_type: str) -> int:
+    """Bitmask of the actions that can be granted on `resource_type`.
+
+    The escalation ceiling compares through this so that a bit stored in the
+    database which is not an action of that resource -- and therefore grants
+    nothing and is enforced nowhere -- cannot refuse a legitimate grant. An
+    unknown resource type yields 0.
+    """
+    return _GRANTABLE_BITS_BY_RESOURCE.get(resource_type, 0)
 
 
 _METADATA_BY_CODE = {entry["code"]: entry for entry in RESOURCE_TYPE_METADATA}

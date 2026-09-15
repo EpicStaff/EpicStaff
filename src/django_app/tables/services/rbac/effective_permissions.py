@@ -3,8 +3,8 @@ from typing import Mapping, Optional, Union
 
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permission_catalog import (
-    GRANTABLE_ACTION_BITS,
     RESOURCE_TYPE_METADATA,
+    grantable_bits_for,
 )
 from tables.services.rbac.utils.permission_bitmask import bitmask_to_actions
 
@@ -65,17 +65,20 @@ class EffectivePermissions:
         nothing on a resource is never an escalation. Superadmin covers
         everything.
 
-        Only `GRANTABLE_ACTION_BITS` are compared. USE and LIST are not in the
-        catalog, are rejected by role validation and are read by no code, but
-        they do occur in the built-in seeds -- comparing them would let dead
-        data refuse a legitimate grant (Org Admin, `flows: 31`, could not
-        assign Viewer, `flows: 66`).
+        Only the bits grantable **on that resource** are compared
+        (`grantable_bits_for`). Grantability is per-resource -- `use` is an
+        action of `secrets` and of nothing else -- and the database holds bits
+        that are not actions of their own resource, seeded before the catalog
+        settled. Comparing those lets dead data refuse a legitimate grant:
+        Org Admin (`flows: 31`) could not assign Viewer (`flows: 66`), whose
+        USE bit is enforced nowhere for flows.
         """
         if self.is_superadmin:
             return True
         return all(
             not (
-                (mask & GRANTABLE_ACTION_BITS) & ~self.by_resource.get(resource_type, 0)
+                (mask & grantable_bits_for(resource_type))
+                & ~self.by_resource.get(resource_type, 0)
             )
             for resource_type, mask in by_resource.items()
         )

@@ -99,13 +99,18 @@ def test_create_role_ceiling_blocks_escalation(service, django_user_model, org):
     )
     OrganizationUser.objects.create(user=manager, org=org, role=manager_role)
 
+    # DELETE, not UPDATE: the ceiling compares only actions the catalog can
+    # actually grant on that resource, and `secrets` has no `update` action
+    # (a Secret is immutable, so SecretViewSet exposes no update route).
+    # Escalating on an ungrantable bit would prove nothing -- the validator
+    # rejects it long before the ceiling runs.
     with pytest.raises(PermissionEscalationError):
         service.create_role(
             actor=manager,
             org_id=org.id,
             name="TooPowerful",
             description=None,
-            permissions=[_perm("secrets", int(Permission.READ | Permission.UPDATE))],
+            permissions=[_perm("secrets", int(Permission.READ | Permission.DELETE))],
         )
 
 
@@ -325,13 +330,15 @@ def test_update_role_ceiling_blocks_added_bit(service, django_user_model, org):
         description=None,
         permissions=[_perm("secrets", int(Permission.READ))],
     )
+    # DELETE rather than UPDATE, for the reason given in
+    # test_create_role_ceiling_blocks_escalation.
     with pytest.raises(PermissionEscalationError):
         service.update_role(
             actor=manager,
             role_id=target.id,
             changes={
                 "permissions": [
-                    _perm("secrets", int(Permission.READ | Permission.UPDATE))
+                    _perm("secrets", int(Permission.READ | Permission.DELETE))
                 ]
             },
         )

@@ -67,36 +67,55 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 
 ```python
 class ResourceType(models.TextChoices):
-    ORGANIZATIONS, FLOWS, AGENTS, TOOLS, KNOWLEDGE_SOURCES,
-    FILES, PROJECTS, LLM_CONFIGS, SECRETS, MEMBERSHIPS, ROLES, API_KEYS
+    ORGANIZATIONS, ROLES, MEMBERSHIPS, API_KEYS, FLOWS, AGENTS, TOOLS,
+    KNOWLEDGE_SOURCES, FILES, PROJECTS, LLM_CONFIGS, SECRETS, VOICE, SURFACES
 
 class Permission(IntFlag):
     CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
     EXPORT = 16          # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64; LIST = 128 # reserved — present in bitmasks, not yet in the catalog UI
+    USE = 64             # catalog action of `secrets` only; enforced by SecretReferenceGuard
+    LIST = 128           # reserved — not in the catalog, checked nowhere
 ```
 
-### 2.2 Built-in roles (seeded by migrations 0171 + 0183, idempotent)
+### 2.2 Built-in roles (seeded by a chain of idempotent data migrations)
 
 Superadmin role row has **zero** `RolePermission` rows — authority comes exclusively from
-`User.is_superadmin`. Current seeded bitmasks (`0183_seed_builtin_role_permissions.py`):
+`User.is_superadmin`. The seeds run 0171 → 0183 → 0205 → 0209 → 0210 → 0212 → 0236 → 0242,
+each overriding the last; `0242_reseed_builtin_role_permissions` is the authoritative end
+state. Current bitmasks:
 
 | resource_type | Org Admin | Member | Viewer |
 |---|---|---|---|
-| flows | 31 (CRUD+E) | 7 (CRU) | 66 (R+use) |
+| flows | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | agents | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
-| tools | 15 (CRUD) | 7 (CRU) | 2 (R) |
+| tools | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
+| surfaces | 15 (CRUD) | 7 (CRU) | 2 (R) |
 | knowledge_sources | 15 (CRUD) | 2 (R) | 2 (R) |
 | files | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
-| secrets — reserved for provider credentials, grants nothing until the `Secret` model ships | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
+| voice | 15 (CRUD) | 2 (R) | 2 (R) |
+| secrets | 75 (CRD+use) | 0 | 0 |
 | memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
 | organizations | 6 (R+U) | 0 | 0 |
 | api_keys | 10 (R+D) | 0 | 0 |
 
-If you change a seed, do it with a new idempotent data migration — never edit an applied one.
+Migration `0242` re-seeds all three roles so that every stored bit is one the
+code enforces **and** the catalog can grant. It removed three kinds of dead bit
+the earlier seeds had accumulated — `flows:USE` on Viewer (nothing enforces it;
+running a flow checks `FLOWS.READ`), `secrets:LIST` (`Permission.LIST` is
+checked nowhere), and `secrets:UPDATE` (`SecretViewSet` has no update route) —
+all behaviour-neutral, since none of them gated anything. This matters beyond
+tidiness: the escalation ceiling compares these masks when deciding whether the
+holder of one role may assign another, so a bit that grants nothing could still
+refuse a legitimate assignment. `use` is an action of `secrets` only, and among
+the built-ins only Org Admin holds it.
+
+If you change a seed, do it with a new idempotent data migration — never edit an
+applied one. `tests/conftest.py::seed_builtin_roles_and_permissions` replays the
+whole chain after `flush`; a new seed must be appended there too, and the
+re-seed must stay last.
 
 ---
 

@@ -103,16 +103,20 @@ def test_from_role_and_bits_of_agree(db):
 
 # ---- ungrantable bits are excluded from the comparison ----
 #
-# USE (64) and LIST (128) are absent from ACTION_METADATA, rejected by role
-# validation, and read by no code -- but the migration 0183 seeds do contain
-# them (Viewer `flows: 66`, Member/Viewer `secrets: 192`). Comparing them would
-# let dead data refuse a legitimate grant.
+# Grantability is per-resource: `use` is an action of `secrets` and of nothing
+# else, `list` of nothing at all. The database nonetheless holds bits that are
+# not actions of their own resource (Viewer `flows: 66` carries USE), seeded
+# before the catalog settled. Comparing those lets dead data refuse a
+# legitimate grant, which is exactly what broke Org Admin -> Viewer once `use`
+# was enabled for secrets.
 
 
 def test_ungrantable_bits_in_the_request_are_ignored():
     """Viewer's `flows: 66` is READ|USE. Org Admin's `flows: 31` is CRUD+Export
-    and carries no USE bit, so a raw comparison would refuse the assignment --
-    the most ordinary delegated operation there is."""
+    and carries no USE bit, so a raw comparison refuses the assignment -- the
+    most ordinary delegated operation there is. `use` is not an action of
+    `flows`, so it must not be compared there even though it is an action of
+    `secrets`."""
     org_admin = _effective({FLOWS: 31})
 
     assert org_admin.covers({FLOWS: 66})
@@ -127,7 +131,8 @@ def test_ungrantable_bits_do_not_widen_the_ceiling():
 
 
 def test_grantable_bits_are_still_compared_exactly():
-    """Masking is confined to USE/LIST -- every catalog action still counts."""
+    """Masking drops only what is ungrantable on that resource -- every action
+    the resource does declare still counts."""
     caller = _effective({FLOWS: int(Permission.READ | Permission.USE)})
 
     assert caller.covers({FLOWS: int(Permission.READ)})
