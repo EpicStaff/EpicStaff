@@ -204,26 +204,24 @@ class SurfaceWriteSerializer(serializers.Serializer):
         )
 
     def validate(self, attrs):
-        organization = self.context["organization"]
+        organization_id = self.context["organization_id"]
 
         SurfaceService.validate_surface_data(
             instance=self.instance,
-            organization=organization,
+            organization_id=organization_id,
             attrs=attrs,
         )
         SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
         SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
-        SurfaceValidator.validate_storage_items(
-            attrs.get("storage_items", []), organization
-        )
+        SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
         SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
 
         return attrs
 
     def create(self, validated_data):
-        organization = self.context["organization"]
+        organization_id = self.context["organization_id"]
         return SurfaceService.create_surface(
-            organization=organization,
+            organization_id=organization_id,
             validated_data=validated_data,
         )
 
@@ -253,11 +251,11 @@ class SurfaceCombineRequestSerializer(serializers.Serializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        organization = self.context.get("organization")
+        organization_id = self.context.get("organization_id")
 
-        if organization is not None:
+        if organization_id is not None:
             self.fields["surface_ids"].child_relation.queryset = Surface.objects.filter(
-                organization=organization
+                organization_id=organization_id
             )
 
     def validate_surface_ids(self, value):
