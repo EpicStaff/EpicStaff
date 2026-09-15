@@ -403,17 +403,16 @@ Two patterns beyond plain org ownership:
   `realtime-models`, `realtime-transcription-models` via `is_custom`) and **python-code tools**
   (`python-code-tool` via `built_in`) show *built-ins to every org* + *that org's custom rows*.
   Creating one through the API always makes it the org's custom row (never a global built-in).
-- **Global registry, superadmin-only writes.** `providers`, `ngrok-config`, the `default-*` config
-  singletons, and `voice-settings`/Twilio are readable by any member but writable only by a
-  superadmin (`voice-settings`/Twilio are superadmin for **read too** — they hold the platform
-  Twilio secret). Cross-org file `move`/`copy` is likewise superadmin-only.
+- **Global registry, superadmin-only writes.** `providers` and the `default-*` config singletons
+  are readable by any member but writable only by a superadmin. Cross-org file `move`/`copy` is
+  likewise superadmin-only.
 
 | Resource type | Endpoints (examples) | Member | Org Admin |
 |---|---|---|---|
 | FLOWS | graphs, nodes, sessions, **labels**, **webhook-triggers** | C R U | C R U D E |
-| AGENTS | agents, realtime-agents, **realtime-agent-chats** | C R U | C R U D E |
+| AGENTS | agent-definitions, realtime-agent-definitions | C R U | C R U D E |
 | PROJECTS | crews, tasks | C R U | C R U D E |
-| TOOLS | python-code-tool(-configs/-fields), mcp-tools, python-code | C R U | C R U D |
+| TOOLS | python-code-tool(-configs), mcp-tools | C R U | C R U D |
 | KNOWLEDGE_SOURCES | source-collections, documents, naive-rag, graph-rag, indexing | **R** | C R U D |
 | LLM_CONFIGS | llm/embedding/realtime configs **and custom models** | **R** | C R U D |
 | FILES | storage | C R U E | C R U D E |
@@ -422,7 +421,6 @@ Two patterns beyond plain org ownership:
 write in org A cannot attach org B's tool (`tool_ids`), knowledge collection, rag, or LLM/embedding
 config.
 
-**Deprecated / deferred (not gated):** `/api/tools/`, `/api/tool-configs/`, `*-tags`,
-`template-agents`, `environment/config` (deprecating); `memory`, `realtime-session-items`,
-`python-code-result` (opaque runtime — pending a denormalized org); and the run/voice/trigger
-execution callbacks.
+**Deprecated / deferred (not gated):** `environment/config` (deprecating); `memory`,
+`realtime-session-items`, `python-code-result` (opaque runtime — pending a denormalized org);
+and the run/voice/trigger execution callbacks.
