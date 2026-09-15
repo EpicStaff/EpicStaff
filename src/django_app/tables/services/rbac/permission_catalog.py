@@ -184,22 +184,17 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "export": (("flows", "read"),),
     },
     ResourceType.AGENTS.value: {
-        "read": (
-            ("knowledge_sources", "read"),
-            ("tools", "read"),
-            ("llm_configs", "read"),
-        ),
+        "read": (("surfaces", "read"), ("llm_configs", "read")),
         "create": (
             ("agents", "read"),
-            ("knowledge_sources", "read"),
-            ("tools", "read"),
+            ("surfaces", "read"),
             ("llm_configs", "read"),
         ),
         "update": (
             ("agents", "read"),
-            ("knowledge_sources", "read"),
-            ("tools", "read"),
+            ("surfaces", "read"),
             ("llm_configs", "read"),
+            ("voice", "read"),
         ),
         "delete": (("agents", "read"),),
         "export": (("agents", "read"),),
@@ -208,6 +203,26 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("tools", "read"),),
         "update": (("tools", "read"),),
         "delete": (("tools", "read"),),
+    },
+    ResourceType.SURFACES.value: {
+        "read": (
+            ("tools", "read"),
+            ("files", "read"),
+            ("knowledge_sources", "read"),
+        ),
+        "create": (
+            ("surfaces", "read"),
+            ("tools", "read"),
+            ("files", "read"),
+            ("knowledge_sources", "read"),
+        ),
+        "update": (
+            ("surfaces", "read"),
+            ("tools", "read"),
+            ("files", "read"),
+            ("knowledge_sources", "read"),
+        ),
+        "delete": (("surfaces", "read"),),
     },
     ResourceType.KNOWLEDGE_SOURCES.value: {
         "create": (("knowledge_sources", "read"), ("llm_configs", "read")),
@@ -235,6 +250,12 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("secrets", "read"),),
         "update": (("secrets", "read"),),
         "delete": (("secrets", "read"),),
+    },
+    ResourceType.VOICE.value: {
+        "read": (("agents", "read"),),
+        "create": (("voice", "read"), ("agents", "read")),
+        "update": (("voice", "read"), ("agents", "read")),
+        "delete": (("voice", "read"),),
     },
 }
 

@@ -85,7 +85,8 @@ of caller and org. Cache-friendly.
     { "code": "create", "label": "Create", "bit": 1 },
     { "code": "update", "label": "Edit",   "bit": 4 },
     { "code": "delete", "label": "Delete", "bit": 8 },
-    { "code": "export", "label": "Export", "bit": 16 }
+    { "code": "export", "label": "Export", "bit": 16 },
+    { "code": "use",    "label": "Use",    "bit": 64 }
   ],
   "resource_types": [
     { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Rename and manage organization settings",        "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"] },
@@ -94,12 +95,14 @@ of caller and org. Cache-friendly.
     { "code": "api_keys",          "label": "API Keys",            "group": "admin",     "description": "Members' personal API keys — view and revoke",   "applicable_actions": ["read", "delete"] },
     { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
-    { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "surfaces",          "label": "Surfaces",            "group": "workspace", "description": "Agent tool/storage/knowledge access surfaces",   "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "knowledge_sources", "label": "Knowledge Sources",   "group": "workspace", "description": "RAG collections and embeddings",                 "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
-    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider credentials and sensitive configuration", "applicable_actions": ["create", "read", "update", "delete"] }
+    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "delete", "use"] },
+    { "code": "voice",             "label": "Voice",               "group": "config",    "description": "Voice model configurations and settings",        "applicable_actions": ["create", "read", "update", "delete"] }
   ]
 }
 ```
@@ -166,8 +169,8 @@ on them is unreachable.
 The shape of the advice:
 
 - **Reading** a resource suggests reading whatever it references — a flow
-  points at projects and LLM configs, an agent at knowledge sources, tools
-  and LLM configs.
+  points at projects and LLM configs, an agent at its surfaces and LLM
+  configs, a surface at tools, files and knowledge sources.
 - **Creating or editing** suggests the resource's own `read` plus everything
   that read suggests. You cannot sensibly author what you cannot see.
 - **Deleting and exporting** suggest only the resource's own `read`.
@@ -176,6 +179,19 @@ Suggestions are direct, not transitive: `projects:create` recommends
 `flows:create`, and `flows:create` has recommendations of its own. Look up
 each cell as the user accepts it and the chain unfolds one step at a time,
 which keeps the initial suggestion short and lets the user stop early.
+
+Agents are the clearest case of that chain. An agent no longer points at
+tools or knowledge itself — a **surface** is the join between an agent and
+what it may touch, holding the python and MCP tools, the storage files and
+the knowledge collections. So `agents:read` suggests `surfaces:read`, and
+accepting that suggestion surfaces the next step (`tools`, `files`,
+`knowledge_sources`) rather than presenting all of it at once.
+
+One suggestion is deliberately looser than a foreign key: `agents:update`
+suggests `voice:read`, although an agent reaches voice only through a surface
+whose `place` is `realtime`. Editing an agent that speaks is hard to reason
+about without seeing its voice configuration, so the suggestion is worth the
+indirection. Nothing here is enforced either way.
 
 The shape holds however small the resource is. `api_keys` has only two
 applicable actions and one recommendation:
