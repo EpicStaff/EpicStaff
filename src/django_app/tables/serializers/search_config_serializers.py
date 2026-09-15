@@ -16,7 +16,6 @@ class SuggestCollectionMetricsSerializer(serializers.Serializer):
 
 class NaiveRagSuggestInputSerializer(serializers.Serializer):
     knowledge_collection_id = serializers.IntegerField(min_value=1)
-    llm_config_id = serializers.IntegerField(min_value=1)
     user_custom_params = serializers.DictField(required=False, allow_null=True)
 
 
@@ -26,7 +25,15 @@ class GraphRagSuggestInputSerializer(serializers.Serializer):
         choices=GRAPH_SEARCH_METHODS,
         help_text="Graph RAG search method to tune.",
     )
-    llm_config_id = serializers.IntegerField(min_value=1)
+    llm_config_id = serializers.IntegerField(
+        min_value=1,
+        required=False,
+        allow_null=True,
+        help_text=(
+            "Ignored — the budget is sized against the collection's "
+            "GraphRag.llm, resolved server-side."
+        ),
+    )
     user_custom_params = serializers.DictField(required=False, allow_null=True)
 
 
@@ -34,8 +41,12 @@ class SuggestOutputSerializer(serializers.Serializer):
     metrics = SuggestCollectionMetricsSerializer()
     resolved_llm_name = serializers.CharField(allow_null=True, allow_blank=True)
     llm_resolution_warning = serializers.CharField(allow_null=True, allow_blank=True)
-    effective_llm_context_window = serializers.IntegerField(min_value=1)
-    safe_token_budget = serializers.IntegerField(min_value=1)
+    effective_llm_context_window = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True
+    )
+    safe_token_budget = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True
+    )
     clamped_fields = serializers.ListField(child=serializers.CharField())
     suggested_params = serializers.DictField()
     recommended_search_method = serializers.ChoiceField(

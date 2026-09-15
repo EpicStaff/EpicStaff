@@ -20,6 +20,7 @@ type DocMode = 'preview' | 'markdown';
 export class AgentDocPreviewComponent {
     agent = input.required<AgentDefinition>();
     showSidebar = input<boolean>(true);
+    initialEditMode = input<boolean>(false);
 
     readonly toggleSidebar = output<void>();
     readonly save = output<string>();
@@ -27,6 +28,19 @@ export class AgentDocPreviewComponent {
 
     readonly mode = signal<DocMode>('preview');
     readonly draft = signal<string>('');
+
+    private initialModeApplied = false;
+
+    constructor() {
+        effect(() => this.draft.set(this.agent().instructions ?? ''));
+        effect(() => {
+            const edit = this.initialEditMode();
+            if (!this.initialModeApplied) {
+                this.initialModeApplied = true;
+                if (edit) this.mode.set('markdown');
+            }
+        });
+    }
 
     readonly fileName = 'Boot_Instructions.md';
     readonly crumbs = computed<DetailCrumb[]>(() => [
@@ -45,10 +59,6 @@ export class AgentDocPreviewComponent {
         lineNumbers: 'on',
         tabSize: 2,
     };
-
-    constructor() {
-        effect(() => this.draft.set(this.agent().instructions ?? ''));
-    }
 
     setMode(mode: DocMode): void {
         this.mode.set(mode);

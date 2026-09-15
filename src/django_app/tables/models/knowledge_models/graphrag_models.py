@@ -420,6 +420,7 @@ class GraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
     def __str__(self):
         return f"GraphRagLocalSearchConfig({self.pk})"
 
+
 class KnowledgeNodeGraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
     knowledge_node = models.OneToOneField(
         "KnowledgeNode",
@@ -442,22 +443,7 @@ class KnowledgeNodeGraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
         db_table = "knowledge_node_graph_local_search_config"
 
 
-class GraphRagGlobalSearchConfig(models.Model):
-    """
-    The default configuration section for Global Search.
-    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
-
-    Global Search runs a map-reduce over community reports: the map step
-    answers the query against each community report batch, and the reduce
-    step aggregates those partial answers into the final response.
-    """
-
-    agent = models.OneToOneField(
-        Agent,
-        on_delete=models.CASCADE,
-        related_name="graph_global_search_config",
-        help_text="Agent this global search configuration belongs to",
-    )
+class GraphRagGlobalSearchConfigBase(models.Model):
     map_prompt = models.TextField(
         null=True,
         blank=True,
@@ -522,30 +508,45 @@ class GraphRagGlobalSearchConfig(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class GraphRagGlobalSearchConfig(GraphRagGlobalSearchConfigBase):
+    """
+    The default configuration section for Global Search.
+    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
+
+    Global Search runs a map-reduce over community reports: the map step
+    answers the query against each community report batch, and the reduce
+    step aggregates those partial answers into the final response.
+    """
+
+    agent = models.OneToOneField(
+        Agent,
+        on_delete=models.CASCADE,
+        related_name="graph_global_search_config",
+        help_text="Agent this global search configuration belongs to",
+    )
+
+    class Meta:
         db_table = "graph_rag_global_search_config"
 
     def __str__(self):
         return f"GraphRagGlobalSearchConfig({self.pk})"
 
 
-class GraphRagDriftSearchConfig(models.Model):
-    """
-    The default configuration section for DRIFT Search.
-    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
-
-    DRIFT (Dynamic Reasoning and Inference with Flexible Traversal) starts
-    from a primer over community reports to seed follow-up questions, then
-    iteratively runs local searches to a bounded depth before a final reduce
-    step. The local_search_* fields configure the local searches spawned
-    during traversal.
-    """
-
-    agent = models.OneToOneField(
-        Agent,
+class KnowledgeNodeGraphRagGlobalSearchConfig(GraphRagGlobalSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode",
         on_delete=models.CASCADE,
-        related_name="graph_drift_search_config",
-        help_text="Agent this drift search configuration belongs to",
+        related_name="graph_global_search_config",
     )
+
+    class Meta:
+        db_table = "knowledge_node_graph_global_search_config"
+
+
+class GraphRagDriftSearchConfigBase(models.Model):
     prompt = models.TextField(
         null=True,
         blank=True,
@@ -652,7 +653,41 @@ class GraphRagDriftSearchConfig(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class GraphRagDriftSearchConfig(GraphRagDriftSearchConfigBase):
+    """
+    The default configuration section for DRIFT Search.
+    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
+
+    DRIFT (Dynamic Reasoning and Inference with Flexible Traversal) starts
+    from a primer over community reports to seed follow-up questions, then
+    iteratively runs local searches to a bounded depth before a final reduce
+    step. The local_search_* fields configure the local searches spawned
+    during traversal.
+    """
+
+    agent = models.OneToOneField(
+        Agent,
+        on_delete=models.CASCADE,
+        related_name="graph_drift_search_config",
+        help_text="Agent this drift search configuration belongs to",
+    )
+
+    class Meta:
         db_table = "graph_rag_drift_search_config"
 
     def __str__(self):
         return f"GraphRagDriftSearchConfig({self.pk})"
+
+
+class KnowledgeNodeGraphRagDriftSearchConfig(GraphRagDriftSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode",
+        on_delete=models.CASCADE,
+        related_name="graph_drift_search_config",
+    )
+
+    class Meta:
+        db_table = "knowledge_node_graph_drift_search_config"

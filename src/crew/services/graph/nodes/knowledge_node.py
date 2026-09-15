@@ -29,6 +29,7 @@ class KnowledgeNode(BaseNode):
         rag_search_config: RagSearchConfig | None,
         knowledge_search_service: KnowledgeSearchService,
         embedder_api_key: str | None = None,
+        llm_api_key: str | None = None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
     ):
         super().__init__(
@@ -45,6 +46,7 @@ class KnowledgeNode(BaseNode):
         self.rag_search_config = rag_search_config
         self.knowledge_search_service = knowledge_search_service
         self.embedder_api_key = embedder_api_key
+        self.llm_api_key = llm_api_key
 
     def _build_query(self, input_: Any) -> str:
         """Interpolate mapped variables into the template ({name}).
@@ -103,6 +105,7 @@ class KnowledgeNode(BaseNode):
                 rag_search_config=rag_search_config,
                 stop_event=self.stop_event,
                 rag_embedder_api_key=self.embedder_api_key,
+                rag_llm_api_key=self.llm_api_key,
             )
         except (RuntimeError, TimeoutError, ValueError) as e:
             raise KnowledgeSearchError(

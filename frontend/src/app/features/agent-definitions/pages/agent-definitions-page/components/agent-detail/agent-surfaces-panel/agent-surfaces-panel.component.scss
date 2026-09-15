@@ -151,7 +151,7 @@
 
     &:disabled {
         opacity: 0.55;
-        cursor: not-allowed;
+        cursor: default;
     }
 
     &:not(:disabled):hover {
@@ -168,6 +168,7 @@
     display: flex;
     align-items: center;
     min-height: 40px;
+    flex-shrink: 0;
     margin: 0;
     padding-right: 1rem;
     color: var(--color-text-secondary);
@@ -417,7 +418,7 @@
 
     &:disabled {
         opacity: 0.55;
-        cursor: not-allowed;
+        cursor: default;
     }
 
     &--accent {

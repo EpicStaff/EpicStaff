@@ -88,8 +88,8 @@ export interface SuggestResponse {
     metrics: SuggestCollectionMetrics;
     resolved_llm_name: string | null;
     llm_resolution_warning: string | null;
-    effective_llm_context_window: number;
-    safe_token_budget: number;
+    effective_llm_context_window: number | null;
+    safe_token_budget: number | null;
     clamped_fields: string[];
     suggested_params: Record<string, unknown>;
     recommended_search_method?: GraphSearchMethod | null;
@@ -97,13 +97,12 @@ export interface SuggestResponse {
 
 export interface NaiveSuggestRequest {
     knowledge_collection_id: number;
-    llm_config_id: number;
     user_custom_params?: Record<string, unknown> | null;
 }
 
 export interface GraphSuggestRequest {
     knowledge_collection_id: number;
-    llm_config_id: number;
+    llm_config_id?: number;
     search_method: GraphSearchMethod;
     user_custom_params?: Record<string, unknown> | null;
 }

@@ -33,6 +33,7 @@ export class FlowNodeListComponent<T extends FlowNodeListItem = FlowNodeListItem
     public readonly nodeTypeLabels = input.required<Partial<Record<NodeType, string>>>();
     public readonly trailingTemplate = input<TemplateRef<{ $implicit: T }> | null>(null);
     public readonly searchPlaceholder = input<string>('Search node...');
+    public readonly nodeTypeFilterTransparent = input<boolean>(false);
 
     public readonly rowClick = output<T>();
 

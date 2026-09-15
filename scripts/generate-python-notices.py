@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generates scripts/python-notices-partial.md.
+Generates the `backend` region of THIRD-PARTY-NOTICES.md.
 
 Scope: production Python dependencies of every backend microservice under
 src/. For each service that has a pyproject.toml the script reconciles its
@@ -21,9 +21,12 @@ Excluding them previously caused real shipped dependencies to be missing from
 the notices. Packages present in multiple services are deduplicated by name +
 version.
 
-The output is a partial Markdown fragment intended to be stitched into
-THIRD-PARTY-NOTICES.md by scripts/merge-notices.py. Idempotent — re-running
-overwrites the partial in place.
+The generated Markdown is spliced directly into THIRD-PARTY-NOTICES.md between
+the `<!-- BEGIN GENERATED: backend -->` / `<!-- END GENERATED: backend -->`
+markers. The frontend half of that file is owned by
+frontend/scripts/generate-third-party-notices.mjs, which splices its own
+`frontend` region the same way — the two never touch each other's region.
+Idempotent — re-running overwrites the backend region in place.
 
 Usage (from repository root):
     python scripts/generate-python-notices.py
@@ -46,7 +49,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
-OUTPUT_FILE = SCRIPTS_DIR / "python-notices-partial.md"
+NOTICES_FILE = REPO_ROOT / "THIRD-PARTY-NOTICES.md"
+NOTICES_SKELETON_FILE = SCRIPTS_DIR / "notices-skeleton.md"
+
+BACKEND_BEGIN_MARKER = "<!-- BEGIN GENERATED: backend -->"
+BACKEND_END_MARKER = "<!-- END GENERATED: backend -->"
 
 SERVICES = [
     "src/django_app",
@@ -595,8 +602,56 @@ def build_markdown(
     return "\n".join(lines).rstrip() + "\n"
 
 
+class NoticesSpliceError(Exception):
+    """Raised when THIRD-PARTY-NOTICES.md (or its fallback skeleton) is
+    missing, or when the backend BEGIN/END markers are missing, duplicated,
+    or out of order — the file must be restored from
+    scripts/notices-skeleton.md before this script can run."""
+
+
+def load_notices_document() -> str:
+    """Read THIRD-PARTY-NOTICES.md. Falls back to scripts/notices-skeleton.md
+    if the notices file doesn't exist yet (e.g. first run in a fresh
+    checkout). Raises NoticesSpliceError if neither exists."""
+    if NOTICES_FILE.exists():
+        return NOTICES_FILE.read_text(encoding="utf-8")
+    if NOTICES_SKELETON_FILE.exists():
+        log(f"{NOTICES_FILE} not found — starting from {NOTICES_SKELETON_FILE}")
+        return NOTICES_SKELETON_FILE.read_text(encoding="utf-8")
+    raise NoticesSpliceError(
+        f"neither {NOTICES_FILE} nor {NOTICES_SKELETON_FILE} exists — "
+        "cannot generate the backend notices region"
+    )
+
+
+def splice_backend_region(document: str, body: str) -> str:
+    """Replace the region between the backend BEGIN/END markers in
+    `document` with `body`, leaving every byte outside the markers
+    untouched. Raises NoticesSpliceError if the markers are missing,
+    duplicated, or out of order."""
+    begin_count = document.count(BACKEND_BEGIN_MARKER)
+    end_count = document.count(BACKEND_END_MARKER)
+    if begin_count != 1 or end_count != 1:
+        raise NoticesSpliceError(
+            f"expected exactly one '{BACKEND_BEGIN_MARKER}' and one "
+            f"'{BACKEND_END_MARKER}' marker, found {begin_count} and "
+            f"{end_count} — restore both marker pairs from "
+            f"{NOTICES_SKELETON_FILE}"
+        )
+    begin_index = document.index(BACKEND_BEGIN_MARKER)
+    end_index = document.index(BACKEND_END_MARKER)
+    if end_index < begin_index:
+        raise NoticesSpliceError(
+            f"'{BACKEND_END_MARKER}' appears before '{BACKEND_BEGIN_MARKER}' "
+            f"— restore both marker pairs from {NOTICES_SKELETON_FILE}"
+        )
+    head = document[: begin_index + len(BACKEND_BEGIN_MARKER)]
+    tail = document[end_index:]
+    spliced = head + "\n" + body.strip() + "\n" + tail
+    return spliced.rstrip("\n") + "\n"
+
+
 def main() -> int:
-    SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
     sha = get_git_sha()
     date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     lock_hashes_str = ", ".join(
@@ -606,10 +661,18 @@ def main() -> int:
     log(f"provenance: commit={sha[:12]}, date={date}")
 
     packages = collect_packages()
-    md = build_markdown(packages, provenance)
-    OUTPUT_FILE.write_text(md, encoding="utf-8", newline="\n")
+    body = build_markdown(packages, provenance)
+
+    try:
+        document = load_notices_document()
+        spliced = splice_backend_region(document, body)
+    except NoticesSpliceError as exc:
+        log(f"error: {exc}")
+        return 1
+
+    NOTICES_FILE.write_text(spliced, encoding="utf-8", newline="\n")
     log(f"discovered {len(packages)} unique backend packages")
-    log(f"wrote {OUTPUT_FILE}")
+    log(f"wrote backend region of {NOTICES_FILE}")
     return 0
 
 

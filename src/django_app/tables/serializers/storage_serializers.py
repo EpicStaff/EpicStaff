@@ -46,8 +46,9 @@ class StorageUploadSerializer(serializers.Serializer):
     def validate_path(self, value: str) -> str:
         return _normalize_path(value)
 
-    def validate_files(self, value):
-        return FileValidator().validate(value)
+    def validate(self, attrs):
+        FileValidator().validate(attrs["files"])
+        return attrs
 
 
 class StorageMkdirSerializer(serializers.Serializer):

@@ -52,6 +52,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     collections = input.required<SurfaceCollectionOption[]>();
     knowledge = input.required<SurfaceKnowledge[]>();
     readOnly = input<boolean>(false);
+    flat = input<boolean>(false);
     /** The owning AgentDefinition's llm_config — forwarded to the embedded RAG tab
      * so suggested-params requests know which LLM's context window to use. */
     llmConfigId = input<number | null>(null);

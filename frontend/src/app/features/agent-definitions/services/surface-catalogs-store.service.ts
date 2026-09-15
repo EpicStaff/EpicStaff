@@ -97,6 +97,7 @@ export class SurfaceCatalogsStore {
                     name: t.name,
                     description: t.description ?? '',
                     kind: 'python',
+                    built_in: t.built_in,
                 }))
             ),
             tap((py) => {
