@@ -1,6 +1,8 @@
 <div class="dialog">
     <div class="dialog__header">
-        <span class="dialog__header-title"> Create New Collection </span>
+        <span class="dialog__header-title">
+            {{ data.isUpdate ? 'Update RAG in Collection' : 'Create New Collection' }}
+        </span>
 
         <div class="dialog__stepper">
             <app-stepper
@@ -18,14 +20,24 @@
             >
                 Back
             </app-button>
-            <app-button
-                type="primary"
-                [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
-                [disabled]="nextDisabled()"
-                (click)="nextStep()"
-            >
-                {{ nextText() }}
-            </app-button>
+            @if (currentStepIndex() === 2 && isIndexing()) {
+                <app-button
+                    type="primary"
+                    (click)="stopIndexing()"
+                >
+                    Stop indexing
+                </app-button>
+            } @else {
+                <app-button
+                    type="primary"
+                    [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
+                    [disabled]="nextDisabled()"
+                    (click)="nextStep()"
+                >
+                    {{ nextText() }}
+                </app-button>
+            }
+
             <app-svg-icon
                 icon="x"
                 class="dialog__actions--close"
@@ -43,12 +55,13 @@
                 class="dialog__content"
                 [collection]="collection()"
                 [(documents)]="selectedDocuments"
+                [initialDocumentId]="data.initialDocumentId"
             />
         }
         @case (CreateCollectionStep.SELECT_RAG) {
             <app-step-select-rag
                 class="dialog__content"
-                [forceType]="data.forceType"
+                [collection]="collection()"
                 [(selectedRag)]="selectedRagType"
                 [(selectedEmbedder)]="selectedEmbedder"
                 [(selectedLLM)]="selectedLLM"
