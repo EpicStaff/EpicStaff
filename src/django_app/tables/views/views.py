@@ -209,7 +209,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph", "trigger").filter(
+        qs = Session.objects.select_related("graph", "trigger", "principal").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -476,13 +476,14 @@ class RunSession(APIView):
             if parent_session_id is not None
             else TriggerSpec.manual()
         )
-
+        api_key = request.auth if isinstance(request.auth, ApiKey) else None
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
                 graph_id=graph_id,
                 variables=variables,
                 user=request.user,
+                api_key=api_key,
                 trigger=trigger,
                 parent_session_id=parent_session_id,
                 token_budget=serializer.validated_data.get("token_budget"),
@@ -984,7 +985,9 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+                client.cancel(
+                    strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index"
+                )
         except ClientResourceNotFoundError:
             pass
         except ClientError as e:
