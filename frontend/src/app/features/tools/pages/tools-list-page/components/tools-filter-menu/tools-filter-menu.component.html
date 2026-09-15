@@ -3,81 +3,97 @@
     role="menu"
     (click)="$event.stopPropagation()"
 >
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('show_favorite')"
-    >
-        <span class="label">Show Favorite</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('sort_asc')"
-    >
-        <span class="label">Sort from A to Z</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('sort_desc')"
-    >
-        <span class="label">Sort from Z to A</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('used_in_projects')"
-    >
-        <span class="label">Used in Projects</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('used_in_agents')"
-    >
-        <span class="label">Used in Agents</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('most_used')"
-    >
-        <span class="label">Most Used</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('unused_first')"
-    >
-        <span class="label">Unused First</span>
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('include_exclude')"
-    >
-        <span class="label">Include / Exclude</span>
-        <app-svg-icon
-            icon="arrow-right"
-            size="0.7rem"
-            class="chevron"
-        />
-    </button>
-    <button
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('custom_filter')"
-    >
-        <span class="label">Custom filter</span>
-    </button>
+    <input
+        type="text"
+        class="filter-menu__search"
+        placeholder="Search item..."
+        [ngModel]="searchTerm()"
+        (ngModelChange)="searchTerm.set($event)"
+    />
+
+    <div class="filter-menu__list">
+        @for (section of sections(); track section.title) {
+            <div class="filter-menu__group-header">
+                <label class="filter-menu__group-label">{{ section.title }}</label>
+            </div>
+            @for (item of section.items; track item.key) {
+                <div
+                    class="filter-menu__item"
+                    [class.filter-menu__item--selected]="item.checked()"
+                    (click)="item.toggle()"
+                >
+                    <app-checkbox
+                        color="secondary"
+                        [checked]="item.checked()"
+                    />
+                    <span class="filter-menu__item-name">{{ item.label }}</span>
+                </div>
+            }
+        }
+
+        @if (showAdvanced().includeExclude || showAdvanced().customFilter) {
+            <div class="filter-menu__group-header">
+                <label class="filter-menu__group-label">Advanced</label>
+            </div>
+            @if (showAdvanced().includeExclude) {
+                <div
+                    class="filter-menu__item filter-menu__item--action"
+                    [class.filter-menu__item--selected]="includeExcludeIsSet()"
+                    (click)="onOpenIncludeExclude()"
+                >
+                    <span class="filter-menu__item-name">Include / Exclude</span>
+                    @if (includeExcludeIsSet()) {
+                        <span class="filter-menu__item-set">Set</span>
+                    }
+                    <app-svg-icon
+                        icon="arrow-right"
+                        size="0.7rem"
+                        class="filter-menu__item-chevron"
+                    />
+                </div>
+            }
+            @if (showAdvanced().customFilter) {
+                <div
+                    class="filter-menu__item filter-menu__item--action"
+                    [class.filter-menu__item--selected]="customFilterIsSet()"
+                    (click)="onOpenCustomFilter()"
+                >
+                    <span class="filter-menu__item-name">Custom filter</span>
+                    @if (customFilterIsSet()) {
+                        <span class="filter-menu__item-set">Set</span>
+                    }
+                    <app-svg-icon
+                        icon="arrow-right"
+                        size="0.875rem"
+                        class="filter-menu__item-chevron"
+                    />
+                </div>
+            }
+        }
+    </div>
+
+    <div class="filter-menu__footer">
+        <app-button
+            type="outline-primary"
+            (click)="onClear()"
+        >
+            Clear Filter
+        </app-button>
+
+        <div class="filter-menu__footer-actions">
+            <app-button
+                type="outline-primary"
+                (click)="onCancel()"
+            >
+                Cancel
+            </app-button>
+
+            <app-button
+                type="primary"
+                (click)="onSave()"
+            >
+                Save Changes
+            </app-button>
+        </div>
+    </div>
 </div>

@@ -68,20 +68,23 @@ class Env:
         port: str,
         user: str,
         password: str,
+        name: str,
         default: str | EllipsisType = ...
     ) -> str:
         try:
             host = self.str(host)
             port = self.int(port)
+            name = self.str(name)
             user = self.str(user, "")
             password = self.str(password, "")
+
         except EnvironmentNotFoundError:
             if default is not ...:
                 return default
             raise
         else:
             credential = f"{user}:{password}@" if user or password else ""
-            return f"{provider}://{credential}{host}:{port}"
+            return f"{provider}://{credential}{host}:{port}/{name}"
 
     def time(self, variable: str, default: float | EllipsisType = ...) -> float:
         return self.get_value(variable, default, humanize.to_time)

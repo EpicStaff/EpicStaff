@@ -3,8 +3,8 @@ KnowledgeSearchTarget — the minimal wire-ready description of one search call.
 
 Decoupled from ``CollectionSpec`` / ``SearchConfigEntry`` so that
 ``KnowledgeClient`` and ``KnowledgeSearchExecutor`` have no dependency on the
-full collection model.  Maps 1-to-1 onto the fields required by
-``BaseKnowledgeSearchMessage``, including the resolved embedder credential.
+full collection model.  Carries the resolved embedder/LLM credentials the
+knowledge_new REST search endpoint expects.
 """
 
 from __future__ import annotations
@@ -30,3 +30,4 @@ class KnowledgeSearchTarget(BaseModel):
     rag_type: Literal["naive", "graph"]
     search_config: RagSearchConfig
     embedder_api_key: str | None = None
+    llm_api_key: str | None = None

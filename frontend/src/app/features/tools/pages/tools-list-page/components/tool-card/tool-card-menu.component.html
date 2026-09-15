@@ -1,4 +1,5 @@
 <div
+    #panel
     class="card-menu"
     role="menu"
     (click)="$event.stopPropagation()"
@@ -17,7 +18,7 @@
         type="button"
         class="menu-item"
         role="menuitem"
-        (click)="$event.stopPropagation(); ld.openAt($any($event.currentTarget))"
+        (click)="$event.stopPropagation(); ld.openAt(panel, labelsPositions)"
     >
         <span class="label">Manage Labels</span>
     </button>
@@ -38,15 +39,17 @@
     >
         <span class="label">Show Used Places</span>
     </button>
-    <button
-        *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
-        type="button"
-        class="menu-item"
-        role="menuitem"
-        (click)="onSelect('delete')"
-    >
-        <span class="label">Delete</span>
-    </button>
+    @if (!isBuiltIn()) {
+        <button
+            *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
+            type="button"
+            class="menu-item"
+            role="menuitem"
+            (click)="onSelect('delete')"
+        >
+            <span class="label">Delete</span>
+        </button>
+    }
 
     <!-- Label picker (custom trigger: the "Add Label" menu-item button above). -->
     <app-label-dropdown
