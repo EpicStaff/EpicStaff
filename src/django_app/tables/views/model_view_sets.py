@@ -763,6 +763,8 @@ class GraphViewSet(
                         "inline_surface__knowledge__naive_search_config",
                         "inline_surface__knowledge__graph_basic_search_config",
                         "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
                     ),
                 ),
                 Prefetch(
@@ -779,6 +781,8 @@ class GraphViewSet(
                         "inline_surface__knowledge__naive_search_config",
                         "inline_surface__knowledge__graph_basic_search_config",
                         "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
                     ),
                 ),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
@@ -799,6 +803,8 @@ class GraphViewSet(
                         "naive_search_config",
                         "graph_basic_search_config",
                         "graph_local_search_config",
+                        "graph_global_search_config",
+                        "graph_drift_search_config",
                     ),
                 ),
             )
@@ -1246,6 +1252,8 @@ class KnowledgeNodeViewSet(
         "naive_search_config",
         "graph_basic_search_config",
         "graph_local_search_config",
+        "graph_global_search_config",
+        "graph_drift_search_config",
     )
     serializer_class = KnowledgeNodeWriteSerializer
 
@@ -1294,6 +1302,8 @@ class TaskNodeViewSet(
         "inline_surface__knowledge__naive_search_config",
         "inline_surface__knowledge__graph_basic_search_config",
         "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = TaskNodeSerializer
 
@@ -1345,6 +1355,8 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__naive_search_config",
         "inline_surface__knowledge__graph_basic_search_config",
         "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = AgentNodeSerializer
 

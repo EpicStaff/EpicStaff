@@ -7,7 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from src.shared.models import ScheduleTriggerNodePayload
+from ..models import ScheduleTriggerNodePayload
 
 
 def _ensure_aware(dt: datetime | None) -> datetime | None:
@@ -40,10 +40,6 @@ class StartClock:
 
 class ScheduleTriggerStrategy(ABC):
     _WEEKDAY_SHORT = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-
-    # Wall-clock length of one `every` step, used to rate-limit schedules.
-    # None on strategies whose cadence is not a fixed duration (run_mode="once").
-    unit_seconds: int | None = None
 
     @staticmethod
     def _extract_start_clock(ctx: ScheduleTriggerContext) -> StartClock:
@@ -87,8 +83,6 @@ class OnceTriggerStrategy(ScheduleTriggerStrategy):
 
 
 class SecondsTriggerStrategy(ScheduleTriggerStrategy):
-    unit_seconds = 1
-
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         return IntervalTrigger(
             seconds=ctx.every,
@@ -99,8 +93,6 @@ class SecondsTriggerStrategy(ScheduleTriggerStrategy):
 
 
 class MinutesTriggerStrategy(ScheduleTriggerStrategy):
-    unit_seconds = 60
-
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         return IntervalTrigger(
             minutes=ctx.every,
@@ -111,8 +103,6 @@ class MinutesTriggerStrategy(ScheduleTriggerStrategy):
 
 
 class HoursTriggerStrategy(ScheduleTriggerStrategy):
-    unit_seconds = 3600
-
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         return IntervalTrigger(
             hours=ctx.every,
@@ -123,8 +113,6 @@ class HoursTriggerStrategy(ScheduleTriggerStrategy):
 
 
 class DaysTriggerStrategy(ScheduleTriggerStrategy):
-    unit_seconds = 86_400
-
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         clock = self._extract_start_clock(ctx)
         if ctx.weekdays:
@@ -142,8 +130,6 @@ class DaysTriggerStrategy(ScheduleTriggerStrategy):
 
 
 class WeeksTriggerStrategy(ScheduleTriggerStrategy):
-    unit_seconds = 604_800
-
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         clock = self._extract_start_clock(ctx)
         wd = (
@@ -168,8 +154,6 @@ class WeeksTriggerStrategy(ScheduleTriggerStrategy):
 
 
 class MonthsTriggerStrategy(ScheduleTriggerStrategy):
-    unit_seconds = 2_592_000
-
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         clock = self._extract_start_clock(ctx)
         return self._build_cron_trigger(
@@ -187,11 +171,3 @@ UNIT_STRATEGIES: dict[str, ScheduleTriggerStrategy] = {
     "weeks": WeeksTriggerStrategy(),
     "months": MonthsTriggerStrategy(),
 }
-
-
-def interval_seconds(*, unit: str, every: int) -> int | None:
-    """Return how many seconds apart a repeat schedule fires, or None if the unit is unknown."""
-    strategy = UNIT_STRATEGIES.get(unit)
-    if strategy is None or strategy.unit_seconds is None:
-        return None
-    return strategy.unit_seconds * every
