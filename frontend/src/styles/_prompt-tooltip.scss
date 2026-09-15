@@ -60,14 +60,14 @@
 }
 
 .ptp-title {
-    font-weight: 600;
-    font-size: 13px;
+    font-weight: 500;
+    font-size: 0.8125rem;
     color: #e0e0e0;
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
 .ptp-badge {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: rgba(104, 95, 255, 0.9);
     background: rgba(104, 95, 255, 0.12);
     padding: 2px 8px;
@@ -82,7 +82,7 @@
 }
 
 .ptp-label {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 500;
     color: rgba(255, 255, 255, 0.5);
     text-transform: uppercase;
@@ -97,7 +97,7 @@
     border-radius: 6px;
     padding: 8px 10px;
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.5;
     resize: vertical;
     outline: none;

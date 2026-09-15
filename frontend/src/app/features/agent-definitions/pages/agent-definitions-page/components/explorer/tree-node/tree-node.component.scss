@@ -80,8 +80,8 @@
     }
 
     &__label {
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -107,15 +107,15 @@
 
     &__shared {
         flex-shrink: 0;
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
     }
 
     &__empty {
         flex-shrink: 0;
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
         color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
     }
 

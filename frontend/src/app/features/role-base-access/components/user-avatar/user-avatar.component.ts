@@ -25,8 +25,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
                 border-radius: 50%;
                 background: var(--transparent-white-8);
                 color: var(--text-secondary-60);
-                font-size: 12px;
-                font-weight: 500;
+                font-size: var(--text-body-small-large-size);
+                font-weight: var(--text-body-small-large-weight);
                 line-height: 1;
                 overflow: hidden;
             }

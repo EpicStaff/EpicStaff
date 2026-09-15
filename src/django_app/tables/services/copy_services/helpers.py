@@ -1,9 +1,40 @@
+import zlib
+
+from django.db import connection
+
 from tables.models.python_models import PythonCode
 
 #: Distinguishes "the payload omitted secrets" from "the payload sent an empty list".
 #: A PATCH that omits secret_ids must leave the declaration alone; one that sends []
 #: must clear it.
 _UNSET = object()
+
+# Postgres int4 range for the two-key form of pg_advisory_xact_lock.
+_INT4_MAX = 2**31
+
+
+def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
+    """Serializes concurrent tool-copy name generation for the same
+    (org, clean_base) name family via a transaction-scoped Postgres advisory
+    lock (`pg_advisory_xact_lock`).
+
+    Why: `ensure_unique_identifier` strips any trailing "#N" suffix before
+    computing the next free number, so two DIFFERENT source rows whose names
+    both collapse to the same clean_base (e.g. copying "Foo #2" and "Foo #3"
+    concurrently) contend for the same generated name even though they don't
+    share a source row. A lock on the source row does not cover this — the
+    actual contended resource is the (org, clean_base) name space itself.
+
+    Must be called inside an open `transaction.atomic()` block that wraps the
+    whole generate-name -> insert step: `pg_advisory_xact_lock` auto-releases
+    on commit/rollback of that transaction, no manual unlock needed.
+    """
+    key1 = org_id if org_id is not None else 0
+    key2 = zlib.crc32(clean_base.encode("utf-8"))
+    if key2 >= _INT4_MAX:
+        key2 -= 2**32
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [key1, key2])
 
 
 def create_python_code(*, python_code_data: dict) -> PythonCode:

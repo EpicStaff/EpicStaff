@@ -125,6 +125,7 @@
                                 <div class="action-cell">
                                     @if (isApplicable(resource, action)) {
                                         <app-checkbox
+                                            color="secondary"
                                             [checked]="isChecked(resource.code, action.code)"
                                             [disabled]="readonly()"
                                             (checkedChange)="

@@ -12,7 +12,7 @@ import {
     signal,
     untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
@@ -51,6 +51,7 @@ export interface AgentSavePayload {
     description: string;
     instructions: string;
     bootIsDoc: boolean;
+    openBootDocInEdit?: boolean;
     llm_config: number | null;
     fcm_llm_config: number | null;
     max_iter?: number;
@@ -128,7 +129,7 @@ export class AgentDetailComponent implements OnInit {
     readonly openBootDoc = output<void>();
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
+    readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
@@ -146,6 +147,12 @@ export class AgentDetailComponent implements OnInit {
         description: [''],
         instructions: [''],
         llm_config: [null as number | null],
+    });
+
+    // Live (unsaved) LLM selection — the Surfaces panel's RAG config needs this
+    // immediately when creating/editing an agent, not just after autosave round-trips.
+    readonly liveLlmConfigId = toSignal(this.form.controls.llm_config.valueChanges, {
+        initialValue: this.form.controls.llm_config.value,
     });
 
     readonly bootAsDoc = signal<boolean>(false);
@@ -431,7 +438,30 @@ export class AgentDetailComponent implements OnInit {
 
     createBootDoc(): void {
         this.bootAsDoc.set(true);
+
+        if (this.isCreating()) {
+            this.createDraftAgentAsBootDoc();
+            return;
+        }
+
         this.bootDocChange.emit(true);
+    }
+
+    private createDraftAgentAsBootDoc(): void {
+        if (this.saving()) return;
+        const v = this.form.getRawValue();
+        const name = v.name.trim();
+        this.savedSnapshot = { ...v, name };
+        this.save.emit({
+            id: null,
+            name,
+            description: v.description ?? '',
+            instructions: v.instructions ?? '',
+            bootIsDoc: true,
+            openBootDocInEdit: true,
+            llm_config: v.llm_config,
+            fcm_llm_config: null,
+        });
     }
 
     removeBootDoc(): void {

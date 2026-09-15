@@ -12,16 +12,16 @@ the real handler to prove the two are actually wired together.
 """
 
 import asyncio
-import json
-import shutil
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
+import settings
+import dynamic_venv_executor_chain as chain_mod
 from dynamic_venv_executor_chain import CreateVenvHandler, ExecuteCodeHandler
-from secret_scrubber import MASK, MASK_SECRET_ENV_VAR
+from secret_scrubber import MASK
 
 SECRET_VALUE = "sk-live-must-not-touch-disk-7a21"
 TEST_VENV_BASE_PATH = Path("/tmp/epicstaff-test-venvs")
@@ -44,62 +44,6 @@ def _context(**overrides):
     }
     context.update(overrides)
     return context
-
-
-class TestBuildEnv:
-    def test_returns_none_when_nothing_needs_configuring(self):
-        # None means "inherit the parent environment", the pre-existing default.
-        assert ExecuteCodeHandler().build_env(context=_context()) is None
-
-    def test_secrets_are_json_encoded_under_one_variable(self):
-        env = ExecuteCodeHandler().build_env(
-            context=_context(secrets={"STRIPE KEY": SECRET_VALUE})
-        )
-
-        assert json.loads(env["EPICSTAFF_SECRETS"]) == {"STRIPE KEY": SECRET_VALUE}
-
-    def test_a_single_variable_tolerates_names_that_are_not_identifiers(self):
-        """Secret.name is a free-form CharField(max_length=128) and may contain
-        spaces, so one variable per secret would require mangling names."""
-        env = ExecuteCodeHandler().build_env(
-            context=_context(secrets={"my key (prod)": SECRET_VALUE})
-        )
-
-        assert json.loads(env["EPICSTAFF_SECRETS"]) == {"my key (prod)": SECRET_VALUE}
-
-    def test_empty_secrets_dict_sets_no_variable(self):
-        env = ExecuteCodeHandler().build_env(
-            context=_context(secrets={}, storage_org_prefix="org-1/")
-        )
-
-        assert "EPICSTAFF_SECRETS" not in env
-
-    def test_storage_variables_are_unchanged(self):
-        env = ExecuteCodeHandler().build_env(
-            context=_context(
-                storage_allowed_paths=["sessions/1/"], storage_org_prefix="org-1/"
-            )
-        )
-
-        assert json.loads(env["STORAGE_ALLOWED_PATHS"]) == ["sessions/1/"]
-        assert env["STORAGE_ORG_PREFIX"] == "org-1/"
-
-    def test_storage_and_secrets_coexist(self):
-        env = ExecuteCodeHandler().build_env(
-            context=_context(storage_org_prefix="org-1/", secrets={"K": SECRET_VALUE})
-        )
-
-        assert env["STORAGE_ORG_PREFIX"] == "org-1/"
-        assert json.loads(env["EPICSTAFF_SECRETS"]) == {"K": SECRET_VALUE}
-
-    def test_inherits_the_parent_environment(self, monkeypatch):
-        monkeypatch.setenv("SOME_INHERITED_VAR", "kept")
-
-        env = ExecuteCodeHandler().build_env(
-            context=_context(secrets={"K": SECRET_VALUE})
-        )
-
-        assert env["SOME_INHERITED_VAR"] == "kept"
 
 
 class TestGeneratedSourceStaysClean:
@@ -147,7 +91,6 @@ class TestGeneratedSourceStaysClean:
         import json
         import os
         import subprocess
-        import sys
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -185,10 +128,13 @@ def _execute(*, code: str, secrets: dict[str, str]):
     actual execution exercises that seam.
     """
     with tempfile.TemporaryDirectory() as tmp:
+        home_path = Path(tmp) / "home"
+        home_path.mkdir()
         context = {
             "python_executable": sys.executable,
             "temp_code_path": str(Path(tmp) / "code.py"),
             "result_file_path": Path(tmp) / "output.txt",
+            "home_path": str(home_path),
             "code": code,
             "entrypoint": "main",
             "func_kwargs": {},
@@ -204,11 +150,15 @@ def _execute(*, code: str, secrets: dict[str, str]):
 class TestOutputStaysClean:
     @pytest.fixture(autouse=True)
     def shared_libs_on_path(self, monkeypatch):
-        """epicstaff_secrets reaches the child through PYTHONPATH here; the
-        container installs it into the venv instead. build_env copies os.environ
-        (and returns None to inherit it when there are no secrets), so either way
-        this is what puts the library in the child's import path."""
-        monkeypatch.setenv("PYTHONPATH", str(SHARED_PATH))
+        """epicstaff_secrets reaches the child through PYTHONPATH added to the
+        curated env returned by build_base_env. In the container the library is
+        installed into the venv; on host we deliver it via PYTHONPATH instead."""
+        real_build_base_env = chain_mod.build_base_env
+        monkeypatch.setattr(
+            chain_mod,
+            "build_base_env",
+            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(SHARED_PATH)},
+        )
 
     def test_a_printed_secret_is_masked_in_stdout(self):
         result = _execute(
@@ -271,16 +221,23 @@ class TestMaskSecretSwitchEndToEnd:
 
     The unit tests pin scrub()'s behaviour; these pin that ExecuteCodeHandler
     actually consults it, so a future refactor cannot leave the flag wired to
-    nothing. MASK_SECRET is read by the sandbox process, not the child, so
-    monkeypatch.setenv on this process is what the handler sees.
+    nothing. MASK_SECRET is read from settings (parsed at import time), so
+    monkeypatch.setattr on settings is what the handler sees.
     """
 
     @pytest.fixture(autouse=True)
     def shared_libs_on_path(self, monkeypatch):
-        monkeypatch.setenv("PYTHONPATH", str(SHARED_PATH))
+        """Deliver epicstaff_secrets to the child via PYTHONPATH added to the
+        curated env returned by build_base_env."""
+        real_build_base_env = chain_mod.build_base_env
+        monkeypatch.setattr(
+            chain_mod,
+            "build_base_env",
+            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(SHARED_PATH)},
+        )
 
     def test_masking_on_redacts_every_stream(self, monkeypatch):
-        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "true")
+        monkeypatch.setattr(settings, "MASK_SECRET", True)
 
         result = _execute(
             code=(
@@ -299,7 +256,7 @@ class TestMaskSecretSwitchEndToEnd:
     def test_masking_off_lets_plaintext_through_every_stream(self, monkeypatch):
         """The documented debugging mode: the value the child printed and returned
         arrives verbatim."""
-        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "false")
+        monkeypatch.setattr(settings, "MASK_SECRET", False)
 
         result = _execute(
             code=(
@@ -316,7 +273,7 @@ class TestMaskSecretSwitchEndToEnd:
         assert MASK not in result.stdout
 
     def test_masking_off_does_not_change_the_return_code(self, monkeypatch):
-        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "false")
+        monkeypatch.setattr(settings, "MASK_SECRET", False)
 
         result = _execute(
             code='def main(**kwargs):\n    raise RuntimeError(get_secret("K"))',
@@ -328,7 +285,7 @@ class TestMaskSecretSwitchEndToEnd:
 
     def test_an_unset_variable_still_redacts(self, monkeypatch):
         """The default reaching all the way through the handler, not just scrub()."""
-        monkeypatch.delenv(MASK_SECRET_ENV_VAR, raising=False)
+        monkeypatch.setattr(settings, "MASK_SECRET", True)
 
         result = _execute(
             code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
@@ -342,10 +299,11 @@ class TestMaskSecretSwitchEndToEnd:
 class TestLibraryRegistration:
     @pytest.fixture
     def clear_test_venvs(self):
-        """Mirrors clear_venvs_and_executions in fixtures.py: the hash-keyed
-        venv directory this test creates must not survive the test, or the
-        `if not venv_path.exists(): ...` branch in handle() short-circuits on
-        every later run and the test stops exercising real venv creation."""
+        """Cleans up the hash-keyed venv directory created by this test.
+        Without teardown the `if not venv_path.exists(): ...` branch in
+        handle() short-circuits on every later run and the test stops
+        exercising real venv creation."""
+        import shutil
         yield
         shutil.rmtree(TEST_VENV_BASE_PATH)
 

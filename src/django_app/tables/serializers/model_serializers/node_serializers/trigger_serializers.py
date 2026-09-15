@@ -27,6 +27,7 @@ from tables.serializers.base_serializer import (
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 
 
@@ -115,9 +116,12 @@ class TelegramTriggerNodeFieldSerializer(
 
 
 class TelegramTriggerNodeSerializer(
+    SecretReferenceGuardMixin,
     ContentHashWritableMixin,
     serializers.ModelSerializer,
 ):
+    secret_reference_fields = ("telegram_bot_api_key_secret_id",)
+
     telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="telegram_bot_api_key_secret",
@@ -142,6 +146,8 @@ class TelegramTriggerNodeSerializer(
         ] + BaseGraphEntityMixin.Meta.common_fields
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
+
         wt = attrs.get("webhook_trigger")
         provider_type = wt.provider_type if wt else None
 

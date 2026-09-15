@@ -15,25 +15,24 @@
             </li>
         </ul>
 
-        <!--        <ul class="info__meta-list">-->
-        <!--            <h3 class="info__meta-title">-->
-        <!--                MEMORY CAPACITY-->
-        <!--            </h3>-->
-        <!--            <li class="info__meta-item">-->
-        <!--                <span class="info__meta-label">Size of collection: </span>-->
-        <!--                <span class="info__meta-value">60 KB</span>-->
-        <!--            </li>-->
+        <ul class="info__meta-list">
+            <h3 class="info__meta-title">MEMORY CAPACITY</h3>
 
-        <!--            <li class="info__meta-item">-->
-        <!--                <span class="info__meta-label">Largest file: </span>-->
-        <!--                <span class="info__meta-value">10 KB</span>-->
-        <!--            </li>-->
+            <li class="info__meta-item">
+                <span class="info__meta-label">Size of collection: </span>
+                <span class="info__meta-value">{{ totalSize() }}</span>
+            </li>
 
-        <!--            <li class="info__meta-item">-->
-        <!--                <span class="info__meta-label">Smallest file: </span>-->
-        <!--                <span class="info__meta-value">1 KB</span>-->
-        <!--            </li>-->
-        <!--        </ul>-->
+            <li class="info__meta-item">
+                <span class="info__meta-label">Largest file: </span>
+                <span class="info__meta-value">{{ largestFile() }}</span>
+            </li>
+
+            <li class="info__meta-item">
+                <span class="info__meta-label">Smallest file: </span>
+                <span class="info__meta-value">{{ smallestFile() }}</span>
+            </li>
+        </ul>
 
         <ul class="info__meta-list">
             <h3 class="info__meta-title">TIME DATA</h3>

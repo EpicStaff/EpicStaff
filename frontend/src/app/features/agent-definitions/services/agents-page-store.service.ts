@@ -1,6 +1,6 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { computeUniqueCopyName } from '@shared/utils';
+import { computeUniqueCopyName, computeUniqueName } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
@@ -128,6 +128,10 @@ export class AgentsPageStore {
         }
     }
 
+    activateStorage(): void {
+        this.storageActivated.set(true);
+    }
+
     setVisibleSections(ids: Set<ExplorerSectionId>): void {
         const next = new Set(ids);
         next.add('agents');
@@ -213,6 +217,11 @@ export class AgentsPageStore {
             instructions_format: isDoc ? 'markdown' : 'text',
         };
         this.updateAgent(agentId, { metadata });
+    }
+
+    createAndOpenBootDoc(agentId: number): void {
+        this.setBootDoc(agentId, true);
+        this.selectAgentDoc(agentId, 'boot');
     }
 
     /**
@@ -448,6 +457,48 @@ export class AgentsPageStore {
         this.assignSurfaceToAgent(surfaceId, agentId, category ? categoryToPlace(category) : 'all');
     }
 
+    setSharedSurfacesInCategory(surfaceIds: number[], agentId: number, category: SurfaceCategoryId): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent) return;
+
+        const place = categoryToPlace(category);
+        const shared = this.sharedSurfaceIdSet();
+        const wanted = new Set(surfaceIds);
+        const rows: AgentDefaultSurface[] = [];
+
+        for (const ds of agent.default_surfaces) {
+            if (!shared.has(ds.surface)) {
+                rows.push(ds);
+                continue;
+            }
+            if (ds.place === place) {
+                if (wanted.has(ds.surface)) rows.push(ds);
+                continue;
+            }
+            if (place !== 'all' && ds.place === 'all' && wanted.has(ds.surface)) continue;
+            rows.push(ds);
+        }
+
+        for (const surfaceId of wanted) {
+            if (!shared.has(surfaceId)) continue;
+            if (rows.some((ds) => ds.surface === surfaceId && ds.place === place)) continue;
+            if (place === 'all') {
+                const kept = rows.filter((ds) => ds.surface !== surfaceId);
+                rows.length = 0;
+                rows.push(...kept);
+            }
+            rows.push({ surface: surfaceId, place });
+        }
+
+        const key = (list: AgentDefaultSurface[]) =>
+            list
+                .map((ds) => `${ds.surface}:${ds.place}`)
+                .sort()
+                .join('|');
+        if (key(rows) === key(agent.default_surfaces)) return;
+        this.patchAgentDefaultSurfaces(agentId, rows);
+    }
+
     dropSharedSurfaceOnAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;
@@ -649,17 +700,27 @@ export class AgentsPageStore {
         });
     }
 
-    saveNewAgent(body: CreateAgentDefinitionRequest): void {
-        const trimmed = (body.name ?? '').trim();
+    saveNewAgent(body: CreateAgentDefinitionRequest, openBootDoc = false): void {
+        let trimmed = (body.name ?? '').trim();
         if (!trimmed) {
-            this.toast.error('Agent name is required');
-            return;
+            if (!openBootDoc) {
+                this.toast.error('Agent name is required');
+                return;
+            }
+            trimmed = computeUniqueName(
+                'Untitled Agent',
+                this.agents().map((a) => a.name)
+            );
         }
         this.saving.set(true);
         this.agentsApi.create({ ...body, name: trimmed, instructions: body.instructions ?? '' }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
+                if (openBootDoc) {
+                    this.selectAgentDoc(created.id, 'boot');
+                } else {
+                    this.selectAgent(created.id);
+                }
                 this.saving.set(false);
                 this.toast.success('Agent created');
             },

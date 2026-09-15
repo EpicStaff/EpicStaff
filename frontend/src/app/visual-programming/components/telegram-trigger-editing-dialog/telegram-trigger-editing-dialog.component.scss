@@ -40,7 +40,7 @@
 
         &--save {
             background-color: var(--accent-color);
-            color: var(--color-text);
+            color: var(--color-text-primary);
         }
 
         &:hover {
@@ -99,7 +99,7 @@
     &__mock-data-info {
         display: flex;
         align-items: center;
-        font-size: 12px;
+        font-size: 0.75rem;
         padding: 0.5rem 2.5rem 0 1.875rem;
         color: var(--color-ks-transparent-text-80);
         opacity: 0.7;

@@ -25,12 +25,12 @@
     transition: all 0.2s ease;
     margin-bottom: 2px;
     &:hover {
-        background-color: rgba(255, 255, 255, 0.1);
+        background-color: var(--white-alpha-10);
         color: var(--color-text-primary);
     }
 
     &.active {
-        background-color: rgba(255, 255, 255, 0.1);
+        background-color: var(--white-alpha-10);
     }
 
     &::before {
@@ -53,7 +53,7 @@
     min-width: 180px;
     background: var(--color-sidenav-background);
     border-radius: 8px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 6px 16px var(--black-alpha-30);
     z-index: 1000;
     padding: 6px;
     opacity: 0;

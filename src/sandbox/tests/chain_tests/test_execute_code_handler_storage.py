@@ -23,11 +23,6 @@ import pytest
 from dynamic_venv_executor_chain import ExecuteCodeHandler
 
 
-# ---------------------------------------------------------------------------
-# Helpers shared across both classes
-# ---------------------------------------------------------------------------
-
-
 def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
     """Minimal valid context for ExecuteCodeHandler.handle().
 
@@ -78,11 +73,6 @@ def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> No
         "create_subprocess_exec",
         _fake_create,
     )
-
-
-# ---------------------------------------------------------------------------
-# Behavior A — wrap_code storage block (pure, sync)
-# ---------------------------------------------------------------------------
 
 
 class TestWrapCodeStorageMutationsBlock:
@@ -144,11 +134,6 @@ class TestWrapCodeStorageMutationsBlock:
         wrapped = self._wrap(tmp_path, storage_mutations_path=None)
 
         assert wrapped.rstrip().endswith("sys.exit(0)")
-
-
-# ---------------------------------------------------------------------------
-# Behavior B — handle wires the mutations path from context["use_storage"]
-# ---------------------------------------------------------------------------
 
 
 class TestHandleStorageMutationsWiring:

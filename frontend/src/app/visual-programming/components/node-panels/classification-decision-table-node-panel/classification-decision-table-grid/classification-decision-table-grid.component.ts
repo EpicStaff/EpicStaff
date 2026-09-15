@@ -85,7 +85,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public conditionGroups = input.required<ConditionGroup[]>();
-    public activeColor = input<string>('#685fff');
+    public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
     public storageNodeId = input<string>('');
     public prompts = input<Record<string, PromptConfig>>({});
@@ -470,6 +470,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         backgroundColor: '#1e1e1e',
         foregroundColor: '#d4d4d4',
         headerBackgroundColor: '#27272b',

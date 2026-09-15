@@ -51,7 +51,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                 justify-content: center;
                 align-items: center;
                 gap: 1rem;
-                font-size: 16px;
+                font-size: 1rem;
                 color: #fff;
 
                 app-svg-icon {

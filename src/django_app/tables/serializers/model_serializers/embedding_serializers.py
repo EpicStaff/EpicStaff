@@ -8,6 +8,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueValidator,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.models.secret_models import Secret
 from tables.models.embedding_models import (
     EmbeddingConfig,
@@ -49,7 +50,11 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
         ]
 
 
-class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class EmbeddingConfigSerializer(
+    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",

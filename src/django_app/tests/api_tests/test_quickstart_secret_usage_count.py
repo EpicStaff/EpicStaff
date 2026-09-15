@@ -24,6 +24,13 @@ from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.secrets.usage_service import secret_usage_service
 
 
+def _all_readable():
+    """An EffectivePermissions that can read every resource type, matching the pre-RBAC behaviour these tests describe."""
+    from tables.services.rbac.effective_permissions import EffectivePermissions
+
+    return EffectivePermissions(is_superadmin=True, role=None, by_resource={})
+
+
 @pytest.fixture
 def org(db):
     return Organization.objects.create(name="Org QuickstartUsageCount")
@@ -88,7 +95,7 @@ def run_quickstart(client, url, *, provider="openai", api_key="sk-test"):
 
 def llm_config_items(secret):
     """The `llm_configs` category of this secret's usage payload."""
-    summary = secret_usage_service.summary(secret=secret)
+    summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
     return next(
         category["items"]
         for category in summary["categories"]
@@ -122,7 +129,12 @@ class TestABundleSecretReportsEveryConfigItBacks:
         run_quickstart(client_a, quickstart_url)
         secret = Secret.objects.filter(org=org).get()
 
-        assert secret_usage_service.count_for(secret=secret) == 4
+        assert (
+            secret_usage_service.count_for(
+                secret=secret, effective=_all_readable()
+            ).readable
+            == 4
+        )
 
     def test_a_gemini_bundle_reports_the_three_configs_it_creates(
         self, client_a, org, gemini_seeded, quickstart_url
@@ -137,7 +149,12 @@ class TestABundleSecretReportsEveryConfigItBacks:
             "llm_config",
             "realtime_config",
         ]
-        assert secret_usage_service.count_for(secret=secret) == 3
+        assert (
+            secret_usage_service.count_for(
+                secret=secret, effective=_all_readable()
+            ).readable
+            == 3
+        )
 
     def test_each_run_gets_its_own_secret_counted_separately(
         self, client_a, org, openai_seeded, quickstart_url
@@ -148,4 +165,9 @@ class TestABundleSecretReportsEveryConfigItBacks:
         run_quickstart(client_a, quickstart_url, api_key="sk-2")
 
         for secret in Secret.objects.filter(org=org):
-            assert secret_usage_service.count_for(secret=secret) == 4
+            assert (
+                secret_usage_service.count_for(
+                    secret=secret, effective=_all_readable()
+                ).readable
+                == 4
+            )

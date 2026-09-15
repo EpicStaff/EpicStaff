@@ -97,11 +97,16 @@ jobs:
         with:
           python-version: '3.12.10'
 
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
       - name: Generate compose config json
         shell: bash
         run: |
           set -euo pipefail
-          docker compose --env-file src/.env.example -f "$COMPOSE_FILE" config --format json > compose.json
+          docker compose --env-file src/.env -f "$COMPOSE_FILE" config --format json > compose.json
           ls -la compose.json
 
       - name: Generate build matrix

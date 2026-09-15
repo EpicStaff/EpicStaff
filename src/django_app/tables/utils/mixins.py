@@ -100,7 +100,6 @@ session_status_channel_name = os.environ.get(
 graph_messages_channel_name = os.environ.get(
     "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
 )
-memory_updates_channel_name = os.environ.get("MEMORY_UPDATE_CHANNEL", "memory:update")
 
 
 class SSEMixin(View, ABC):
@@ -193,7 +192,6 @@ class SSEMixin(View, ABC):
             channels = [
                 session_status_channel_name,
                 graph_messages_channel_name,
-                memory_updates_channel_name,
             ]
             pubsub = redis_service.async_redis_client.pubsub()
             await pubsub.subscribe(*channels)

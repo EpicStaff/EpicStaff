@@ -96,8 +96,8 @@ import { GraphNoteModel } from '../../core/models/node.model';
             }
 
             .title {
-                font-size: 1.125rem;
-                font-weight: 600;
+                font-size: var(--text-h4-size);
+                font-weight: var(--text-h4-weight);
                 margin: 0;
             }
 
@@ -114,9 +114,9 @@ import { GraphNoteModel } from '../../core/models/node.model';
             }
 
             .esc-label {
-                font-size: 0.75rem;
+                font-size: var(--text-body-small-large-size);
                 color: #666;
-                font-weight: 500;
+                font-weight: var(--text-body-small-large-weight);
                 padding: 0.15rem 0.3rem;
                 border: 1px solid #444;
                 border-radius: 4px;

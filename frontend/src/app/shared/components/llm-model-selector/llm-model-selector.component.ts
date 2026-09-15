@@ -333,7 +333,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: 1rem;
                 }
             }
 

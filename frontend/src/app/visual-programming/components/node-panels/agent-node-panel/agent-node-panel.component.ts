@@ -15,6 +15,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
     JsonEditorComponent,
@@ -85,6 +87,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         VariableHighlightTextareaComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -100,6 +103,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly tasks = signal<AgentNodeTaskUi[]>([]);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
+
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('agent-node', 480);
 
     /** Both `<app-multi-select>` instances (compact + expanded views) for the surfaces
      *  dropdown — used to force-close whichever is open after the local-surface dialog
@@ -127,6 +133,12 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         const id = this.agentDefinitionId();
         if (id == null) return null;
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
+    });
+
+    public readonly selectedAgentLlmConfigId = computed<number | null>(() => {
+        const id = this.agentDefinitionId();
+        if (id == null) return null;
+        return this.agentDefinitions().find((agent) => agent.id === id)?.llm_config ?? null;
     });
 
     public readonly agentInvalid = computed<boolean>(() => {
@@ -286,6 +298,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     onAgentSelectionChange(values: unknown[]): void {
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
+
         const agentControl = this.form.get('agent_definition');
         agentControl?.setValue(id);
         agentControl?.markAsTouched();
@@ -319,7 +332,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     onCreateLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'create', inlineSurface: null })
+            .open({ mode: 'create', inlineSurface: null, llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
@@ -333,7 +346,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     onEditLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'edit', inlineSurface: this.inlineSurface() })
+            .open({ mode: 'edit', inlineSurface: this.inlineSurface(), llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {

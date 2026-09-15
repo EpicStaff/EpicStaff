@@ -20,14 +20,14 @@ def test_http404_renders_as_404(any_debug):
     assert response.status_code == 404
     assert response.data["status_code"] == 404
     assert response.data["code"] == "not_found"
-    assert response.data["message"] == "NotFound: No Graph matches the given query."
+    assert response.data["message"] == "No Graph matches the given query."
 
 
 def test_bare_http404_falls_back_to_default_detail(any_debug):
     response = custom_exception_handler(Http404(), {})
 
     assert response.status_code == 404
-    assert response.data["message"] == "NotFound: Not found."
+    assert response.data["message"] == "Not found."
 
 
 def test_django_permission_denied_renders_as_403(any_debug):
@@ -35,7 +35,7 @@ def test_django_permission_denied_renders_as_403(any_debug):
 
     assert response.status_code == 403
     assert response.data["status_code"] == 403
-    assert response.data["message"] == "PermissionDenied: Nope."
+    assert response.data["message"] == "Nope."
 
 
 def test_unknown_exception_still_renders_as_500(monkeypatch):
@@ -44,4 +44,5 @@ def test_unknown_exception_still_renders_as_500(monkeypatch):
     response = custom_exception_handler(RuntimeError("boom"), {})
 
     assert response.status_code == 500
-    assert b"RuntimeError: Unpredictable error" in response.content
+    assert b'"code": "RuntimeError"' in response.content
+    assert b'"message": "Unpredictable error"' in response.content

@@ -14,7 +14,7 @@
     background-color: var(--gray-900);
     border-radius: 12px;
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px var(--black-alpha-30);
     border: 1px solid var(--gray-800);
     max-width: calc(100% - 1rem);
     transition: all 0.3s ease;
@@ -41,7 +41,7 @@
             max-height: 120px;
             min-height: 40px;
             overflow-y: auto;
-            font-size: 14px;
+            font-size: 0.875rem;
             line-height: 1.5;
 
             &:focus {
@@ -56,7 +56,7 @@
         .send-btn {
             background-color: transparent;
             border: none;
-            color: var(--accent-color, #685fff);
+            color: var(--accent-color);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -69,11 +69,11 @@
             transition: all 0.2s ease;
 
             &:hover {
-                background-color: rgba(104, 95, 255, 0.1);
+                background-color: var(--purple-alpha-10);
             }
 
             i {
-                font-size: 18px;
+                font-size: 1.125rem;
             }
         }
     }
@@ -98,13 +98,13 @@
         justify-content: center;
         flex: 0 1 auto;
         gap: 0.5rem;
-        background-color: var(--accent-color, #685fff);
+        background-color: var(--accent-color);
         color: var(--white);
         border: none;
         border-radius: 8px;
         padding: 0.6rem 1.2rem;
-        font-weight: 500;
-        font-size: 14px;
+        font-weight: var(--text-body-medium-weight);
+        font-size: var(--text-body-medium-size);
         cursor: pointer;
         transition: background-color 0.2s ease;
         height: 40px;
@@ -114,7 +114,7 @@
         overflow: hidden;
 
         &:hover:not(:disabled) {
-            background-color: rgba(104, 95, 255, 0.8);
+            background-color: var(--purple-alpha-80);
         }
 
         &:disabled {
@@ -170,7 +170,7 @@
             transition: all 0.2s ease;
 
             i {
-                font-size: 18px;
+                font-size: 1.125rem;
                 width: 18px;
                 height: 18px;
                 display: flex;
@@ -184,14 +184,14 @@
             }
 
             &.active {
-                background-color: rgba(104, 95, 255, 0.2);
-                color: var(--accent-color, #685fff);
+                background-color: var(--purple-alpha-20);
+                color: var(--accent-color);
             }
 
             &.end-btn {
                 &:hover {
-                    background-color: rgba(220, 53, 69, 0.2);
-                    color: #dc3545;
+                    background-color: var(--crimson-600-alpha-20);
+                    color: var(--crimson-600);
                 }
             }
 
@@ -223,7 +223,7 @@
         padding: 0.5rem;
 
         .start-speaking-btn {
-            font-size: 13px;
+            font-size: 0.8125rem;
             padding: 0.5rem 1rem;
         }
 

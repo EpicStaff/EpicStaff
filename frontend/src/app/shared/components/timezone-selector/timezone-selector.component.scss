@@ -18,7 +18,7 @@
     background-color: var(--color-input-background);
     color: var(--color-text-primary);
     font-size: 0.875rem;
-    line-height: 130%;
+    line-height: var(--text-body-line-height);
     cursor: pointer;
     transition: border-color 0.2s ease;
     min-width: 0;
@@ -70,7 +70,7 @@
     border: 1px solid var(--color-input-border);
     background-color: var(--color-input-background);
     color: var(--color-text-primary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    box-shadow: 0 8px 24px var(--black-alpha-24);
     max-height: 280px;
     overflow: hidden;
     display: flex;
@@ -90,7 +90,7 @@
     outline: none;
     color: var(--color-text-primary);
     font-size: 0.875rem;
-    line-height: 130%;
+    line-height: var(--text-body-line-height);
 
     &::placeholder {
         color: var(--color-input-text-placeholder);
@@ -130,13 +130,13 @@
 .tz-selector__iana {
     font-size: 0.875rem;
     color: var(--color-text-primary);
-    line-height: 130%;
+    line-height: var(--text-body-line-height);
 }
 
 .tz-selector__offset {
     font-size: 0.75rem;
     color: var(--color-input-text-placeholder);
-    line-height: 130%;
+    line-height: var(--text-body-small-line-height);
 }
 
 .tz-selector__empty {

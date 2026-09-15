@@ -21,7 +21,7 @@
     }
 
     &.invalid {
-        border-color: #e53935;
+        border-color: var(--red-540);
     }
 
     &.disabled {

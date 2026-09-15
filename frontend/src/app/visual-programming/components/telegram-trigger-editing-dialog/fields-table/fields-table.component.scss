@@ -51,8 +51,8 @@
     }
 
     &__header {
-        font-weight: bold;
-        font-size: 0.875rem;
+        font-weight: var(--text-body-bold-weight);
+        font-size: var(--text-body-bold-size);
         width: calc(880px - 1.25rem);
         margin: 0 0 0.5rem 3.125rem;
         padding: 0;
