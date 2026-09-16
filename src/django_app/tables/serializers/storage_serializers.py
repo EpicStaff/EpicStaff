@@ -15,7 +15,7 @@ def _normalize_path(value: str) -> str:
             f"Path too long: max {_MAX_STORAGE_PATH_BYTES} bytes."
         )
     try:
-        return sanitize_storage_path(value, allow_empty=True)
+        return sanitize_storage_path(value, allow_empty=True, allow_leading_slash=True)
     except ValueError as exc:
         raise serializers.ValidationError(str(exc))
 
