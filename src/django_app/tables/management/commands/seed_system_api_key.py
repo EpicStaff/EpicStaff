@@ -1,8 +1,8 @@
-import os
-
 from django.core.management.base import BaseCommand
+from django.conf import settings
 
 from tables.services.rbac.api_key.system_key_service import SystemKeyService
+
 
 
 class Command(BaseCommand):
@@ -11,8 +11,7 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        raw_key = os.environ.get("DJANGO_API_KEY", "")
-        key = SystemKeyService().seed_from_env(raw_key)
+        key = SystemKeyService().seed_from_env(settings.DJANGO_API_KEY)
         if key is None:
             self.stderr.write(
                 self.style.WARNING(
