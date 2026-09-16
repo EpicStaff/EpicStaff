@@ -106,6 +106,10 @@ class KnowledgeNode(BaseNode):
                 stop_event=self.stop_event,
                 rag_embedder_api_key=self.embedder_api_key,
                 rag_llm_api_key=self.llm_api_key,
+                writer=writer,
+                session_id=self.session_id,
+                node_name=self.node_name,
+                execution_order=execution_order,
             )
         except (RuntimeError, TimeoutError, ValueError) as e:
             raise KnowledgeSearchError(
