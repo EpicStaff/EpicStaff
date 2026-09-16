@@ -1,9 +1,12 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { catchError, map, Observable, of, throwError } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
+import { AgentDefinition } from '../models/agent-definition.model';
 import {
     CreateRealtimeAgentDefinitionRequest,
     PartialUpdateRealtimeAgentDefinitionRequest,
@@ -24,7 +27,16 @@ export class RealtimeAgentDefinitionsApiService {
     list(): Observable<RealtimeAgentDefinition[]> {
         const params = new HttpParams().set('limit', '1000');
         return this.http
-            .get<ApiGetRequest<RealtimeAgentDefinition>>(this.baseUrl, { headers: this.httpHeaders, params })
+            .get<ApiGetRequest<RealtimeAgentDefinition>>(this.baseUrl, {
+                headers: this.httpHeaders,
+                params,
+                context: withPermission<ApiGetRequest<AgentDefinition>>(ResourceCode.Agents, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(
                 map((res) => {
                     // Single-page fetch (matches getAgentDefinitions). Warn instead of silently

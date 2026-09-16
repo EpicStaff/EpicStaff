@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Mapping, Optional, Union
 
 from tables.models.rbac_models.rbac_enums import Permission
-from tables.services.rbac.permission_catalog import RESOURCE_TYPE_METADATA
+from tables.services.rbac.permission_catalog import (
+    RESOURCE_TYPE_METADATA,
+    grantable_bits_for,
+)
 from tables.services.rbac.utils.permission_bitmask import bitmask_to_actions
 
 
@@ -34,6 +37,51 @@ class EffectivePermissions:
             return True
         mask = self.by_resource.get(resource_type, 0)
         return bool(mask & int(action))
+
+    @staticmethod
+    def bits_of(role) -> dict[str, int]:
+        """A Role's per-resource bitmasks. The single way to read a role's
+        bits, so the resolver and the escalation ceiling cannot disagree
+        about what a role grants. `role.permissions_set` should be
+        prefetched by the caller."""
+        return {
+            row.resource_type: row.permissions for row in role.permissions_set.all()
+        }
+
+    @classmethod
+    def from_role(cls, role) -> "EffectivePermissions":
+        """Build a non-superadmin EffectivePermissions from a Role's
+        permission rows. `role.permissions_set` should be prefetched by
+        the caller when resolving many roles at once."""
+        return cls(is_superadmin=False, role=role, by_resource=cls.bits_of(role))
+
+    def covers(self, by_resource: Mapping[str, int]) -> bool:
+        """Whether every bit in `by_resource` is within these permissions.
+
+        The escalation ceiling as a pure comparison, shared by role
+        authoring (the bits being written into a role) and role assignment
+        (the bits the assigned role grants) so the two cannot drift. A
+        resource absent from this principal's map counts as zero, so requesting
+        nothing on a resource is never an escalation. Superadmin covers
+        everything.
+
+        Only the bits grantable **on that resource** are compared
+        (`grantable_bits_for`). Grantability is per-resource -- `use` is an
+        action of `secrets` and of nothing else -- and the database holds bits
+        that are not actions of their own resource, seeded before the catalog
+        settled. Comparing those lets dead data refuse a legitimate grant:
+        Org Admin (`flows: 31`) could not assign Viewer (`flows: 66`), whose
+        USE bit is enforced nowhere for flows.
+        """
+        if self.is_superadmin:
+            return True
+        return all(
+            not (
+                (mask & grantable_bits_for(resource_type))
+                & ~self.by_resource.get(resource_type, 0)
+            )
+            for resource_type, mask in by_resource.items()
+        )
 
     def to_action_codes(self) -> Union[str, dict[str, list[str]]]:
         """Serialize for the wire — either "*" (superadmin) or
