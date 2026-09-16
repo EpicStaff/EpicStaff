@@ -39,6 +39,7 @@ class RealtimeAgentSurfaceResolution:
     rag_type_id: str | None
     rag_search_config: RagSearchConfig | None
     rag_embedder_api_key_secret_id: int | None = None
+    rag_llm_api_key_secret_id: int | None = None
 
 
 class RealtimeSurfaceService:
@@ -68,6 +69,7 @@ class RealtimeSurfaceService:
             rag_type_id,
             rag_search_config,
             rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id,
         ) = self._resolve_knowledge(combined_surface["knowledge"])
 
         return RealtimeAgentSurfaceResolution(
@@ -76,6 +78,7 @@ class RealtimeSurfaceService:
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
             rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id=rag_llm_api_key_secret_id,
         )
 
     def _build_combined_surface(self, agent_definition: AgentDefinition) -> dict:
@@ -166,9 +169,9 @@ class RealtimeSurfaceService:
 
     def _resolve_knowledge(
         self, knowledge_entries: list[dict]
-    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
+    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None, int | None]:
         if not knowledge_entries:
-            return None, None, None, None
+            return None, None, None, None, None
 
         if len(knowledge_entries) > 1:
             logger.warning(
@@ -195,11 +198,11 @@ class RealtimeSurfaceService:
         logger.warning(
             "Collection {} has no usable RAG search config, skipping.", collection_id
         )
-        return None, None, None, None
+        return None, None, None, None, None
 
     def _resolve_naive_rag(
         self, collection_id: int, naive_config: dict
-    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
+    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None, int | None]:
         naive_rag = RagLookupService.latest_rag(
             NaiveRag, collection_id, pk_field="naive_rag_id"
         )
@@ -210,7 +213,7 @@ class RealtimeSurfaceService:
             logger.warning(
                 "No completed NaiveRag for collection {}, skipping.", collection_id
             )
-            return None, None, None, None
+            return None, None, None, None, None
 
         rag_type_id = f"naive:{naive_rag.naive_rag_id}"
         rag_search_config = NaiveRagSearchConfig(
@@ -220,11 +223,13 @@ class RealtimeSurfaceService:
         embedder_secret_id = (
             naive_rag.embedder.api_key_secret_id if naive_rag.embedder else None
         )
-        return collection_id, rag_type_id, rag_search_config, embedder_secret_id
+        # Naive RAG has no LLM call (no completion-model synthesis step) —
+        # only graph RAG carries an `llm` FK. Leave the LLM secret id unset.
+        return collection_id, rag_type_id, rag_search_config, embedder_secret_id, None
 
     def _resolve_graph_rag(
         self, collection_id: int, knowledge: dict
-    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
+    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None, int | None]:
         graph_rag = RagLookupService.latest_rag(
             GraphRag, collection_id, pk_field="graph_rag_id"
         )
@@ -235,7 +240,7 @@ class RealtimeSurfaceService:
             logger.warning(
                 "No completed GraphRag for collection {}, skipping.", collection_id
             )
-            return None, None, None, None
+            return None, None, None, None, None
 
         rag_type_id = f"graph:{graph_rag.graph_rag_id}"
 
@@ -257,4 +262,11 @@ class RealtimeSurfaceService:
         embedder_secret_id = (
             graph_rag.embedder.api_key_secret_id if graph_rag.embedder else None
         )
-        return collection_id, rag_type_id, rag_search_config, embedder_secret_id
+        llm_secret_id = graph_rag.llm.api_key_secret_id if graph_rag.llm else None
+        return (
+            collection_id,
+            rag_type_id,
+            rag_search_config,
+            embedder_secret_id,
+            llm_secret_id,
+        )

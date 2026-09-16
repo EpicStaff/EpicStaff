@@ -60,6 +60,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 rag_search_config=rag_search_config,
                 knowledge_client=self.knowledge_client,
                 rag_embedder_api_key=realtime_agent_chat_data.rag_embedder_api_key,
+                rag_llm_api_key=realtime_agent_chat_data.rag_llm_api_key,
             )
             self.connection_tool_executors[connection_key].append(
                 knowledge_tool_executor

@@ -22,9 +22,11 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
         rag_search_config: Dict[str, Any],
         knowledge_client: KnowledgeClient,
         rag_embedder_api_key: str | None = None,
+        rag_llm_api_key: str | None = None,
     ):
         super().__init__(tool_name="knowledge_tool")
         self.rag_embedder_api_key = rag_embedder_api_key
+        self.rag_llm_api_key = rag_llm_api_key
         self.knowledge_collection_id = knowledge_collection_id
         self.knowledge_client = knowledge_client
         self._realtime_model = self._gen_knowledge_realtime_tool_model()
@@ -44,6 +46,7 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
             rag_type=self.rag_type,
             search_config=self.rag_search_config,
             embedder_api_key=self.rag_embedder_api_key,
+            llm_api_key=self.rag_llm_api_key,
         )
 
         try:
