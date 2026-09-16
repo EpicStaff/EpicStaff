@@ -185,7 +185,8 @@ export class OrgMembersEditorComponent implements OnInit {
             : this.memberships.list({ page_size: 1000 }).pipe(map((page) => aggregateMembershipsByUser(page.results)));
 
         source$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-            next: (users) => {
+            next: (allUsers) => {
+                const users = allUsers.filter((u) => !u.isSuperadmin);
                 const currentUserId = this.profileService.currentUserSignal()?.id;
                 this.usersTableData.set(users.map((u) => this.mapToRow(u, u.id === currentUserId)));
 
