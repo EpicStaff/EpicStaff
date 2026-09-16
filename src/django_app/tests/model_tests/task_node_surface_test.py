@@ -14,7 +14,6 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from rest_framework.test import APIClient
 
 from agents.exceptions import SurfaceValidationError
 from agents.models import AgentDefinition, Surface
@@ -29,15 +28,17 @@ from agents.validators.surface_validator import SurfaceValidator
 
 
 @pytest.fixture
-def client():
-    return APIClient()
+def client(auth_client):
+    """`auth_client` (conftest) is authenticated as a member of `default_org`
+    and sends its id as the active-org header, so `org` below is aliased to
+    `default_org` rather than a separate Organization — the org-scoped
+    endpoints under test resolve the active org from that header."""
+    return auth_client
 
 
 @pytest.fixture
-def org(db):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-
-    return Organization.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+def org(default_org):
+    return default_org
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def other_org(db):
 
 @pytest.fixture
 def graph(db, org):
-    return Graph.objects.create(name="task-node-surface-graph")
+    return Graph.objects.create(name="task-node-surface-graph", org=org)
 
 
 @pytest.fixture
@@ -386,18 +387,8 @@ def test_content_hash_unchanged_by_surface_edit(graph, shared_surface):
 @pytest.mark.django_db
 def test_validator_shared_surface_passes(org, shared_surface):
     SurfaceValidator.validate_task_node_surfaces(
-        surfaces=[shared_surface], agent_definition=None, organization=org
+        surfaces=[shared_surface], agent_definition=None
     )
-
-
-@pytest.mark.django_db
-def test_validator_rejects_cross_org_surface(org, other_org_surface):
-    with pytest.raises(SurfaceValidationError) as exc_info:
-        SurfaceValidator.validate_task_node_surfaces(
-            surfaces=[other_org_surface], agent_definition=None, organization=org
-        )
-
-    assert "surface_list" in exc_info.value.detail
 
 
 @pytest.mark.django_db
@@ -408,7 +399,6 @@ def test_validator_rejects_surface_owned_by_other_agent(
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=[agent_b_owned_surface],
             agent_definition=agent,
-            organization=org,
         )
 
     assert "surface_list" in exc_info.value.detail
@@ -419,7 +409,7 @@ def test_validator_accepts_surface_owned_by_matching_agent(
     org, agent, agent_owned_surface
 ):
     SurfaceValidator.validate_task_node_surfaces(
-        surfaces=[agent_owned_surface], agent_definition=agent, organization=org
+        surfaces=[agent_owned_surface], agent_definition=agent
     )
 
 
@@ -429,7 +419,7 @@ def test_validator_rejects_owned_surface_when_agent_definition_none(
 ):
     with pytest.raises(SurfaceValidationError) as exc_info:
         SurfaceValidator.validate_task_node_surfaces(
-            surfaces=[agent_owned_surface], agent_definition=None, organization=org
+            surfaces=[agent_owned_surface], agent_definition=None
         )
 
     assert "surface_list" in exc_info.value.detail
@@ -441,7 +431,6 @@ def test_validator_rejects_duplicate_ids(org, shared_surface):
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=[shared_surface, shared_surface],
             agent_definition=None,
-            organization=org,
         )
 
     assert "surface_list" in exc_info.value.detail

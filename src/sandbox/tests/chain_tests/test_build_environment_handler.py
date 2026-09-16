@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+pytest.importorskip(
+    "pwd",
+    reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
+)
+
 import settings
 
 from dynamic_venv_executor_chain import AbstractHandler, ExecuteCodeHandler
@@ -234,7 +240,9 @@ async def test_execute_code_handler_use_storage_absent_omits_storage_vars(
 
 
 @pytest.mark.asyncio
-async def test_execute_code_handler_storage_allowed_paths_present(tmp_path, monkeypatch):
+async def test_execute_code_handler_storage_allowed_paths_present(
+    tmp_path, monkeypatch
+):
     allowed = ["/data/org1", "/data/org2"]
     recorded: dict = {}
     context = _make_execute_context(tmp_path, storage_allowed_paths=allowed)

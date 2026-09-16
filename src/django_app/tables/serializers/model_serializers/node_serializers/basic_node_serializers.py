@@ -246,10 +246,6 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return validate_output_schema(value)
 
     def validate(self, attrs):
-        organization = self.context.get("organization")
-        if organization is None:
-            return attrs
-
         if "surface_list" in attrs:
             surfaces = attrs["surface_list"]
         elif "agent_definition" in attrs and self.instance is not None:
@@ -268,7 +264,6 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=surfaces,
             agent_definition=agent_definition,
-            organization=organization,
         )
 
         return attrs
@@ -368,10 +363,6 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         if "tasks" in attrs:
             self._validate_tasks(attrs["tasks"])
 
-        organization = self.context.get("organization")
-        if organization is None:
-            return attrs
-
         if "surface_list" in attrs:
             surfaces = attrs["surface_list"]
         elif "agent_definition" in attrs and self.instance is not None:
@@ -390,7 +381,6 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         SurfaceValidator.validate_agent_node_surfaces(
             surfaces=surfaces,
             agent_definition=agent_definition,
-            organization=organization,
         )
 
         return attrs
