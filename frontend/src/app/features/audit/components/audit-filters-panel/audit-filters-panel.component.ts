@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, model, output, signal } from '@angular/core';
 
 import { AuditFilterState, EMPTY_AUDIT_FILTER } from '../../models/audit-filter.models';
+import { KIND_OPTIONS, NODE_TYPE_OPTIONS, RUN_TYPE_OPTIONS, STATUS_OPTIONS } from '../../models/audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from '../../models/audit-session.models';
 import { allowedKinds, isFieldEnabled } from '../../utils/audit-filter-compatibility.util';
-import { AuditCheckboxEnumComponent, AuditEnumOption } from '../audit-checkbox-enum/audit-checkbox-enum.component';
+import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
 
 export type AuditFilterTab = 'builder' | 'query' | 'presets';
@@ -24,36 +25,10 @@ export class AuditFiltersPanelComponent {
     public activeTab = signal<AuditFilterTab>('builder');
     public filter = model<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
-    public readonly kindOptions: AuditEnumOption[] = [
-        { value: 'session', label: 'Session' },
-        { value: 'node', label: 'Node' },
-        { value: 'event', label: 'Event' },
-    ];
-
-    public readonly statusOptions: AuditEnumOption[] = [
-        { value: 'completed', label: 'Completed' },
-        { value: 'failed', label: 'Failed' },
-    ];
-
-    public readonly runTypeOptions: AuditEnumOption[] = [
-        { value: 'manual', label: 'Manual' },
-        { value: 'api', label: 'API' },
-    ];
-
-    public readonly nodeTypeOptions: AuditEnumOption[] = [
-        { value: 'AGENT', label: 'Agent' },
-        { value: 'TASK', label: 'Task' },
-        { value: 'PYTHON', label: 'Python' },
-        { value: 'KNOWLEDGE', label: 'Knowledge' },
-        { value: 'FILE_EXTRACTOR', label: 'File Extractor' },
-        { value: 'AUDIO_TRANSCRIPTION', label: 'Audio Transcription' },
-        { value: 'DECISION_TABLE', label: 'Decision Table' },
-        { value: 'CLASSIFICATION_DECISION_TABLE', label: 'Classification Decision Table' },
-        { value: 'END', label: 'End' },
-        { value: 'SCHEDULE_TRIGGER', label: 'Schedule Trigger' },
-        { value: 'WEBHOOK_TRIGGER', label: 'Webhook Trigger' },
-        { value: 'TELEGRAM_TRIGGER', label: 'Telegram Trigger' },
-    ];
+    public readonly kindOptions = KIND_OPTIONS;
+    public readonly statusOptions = STATUS_OPTIONS;
+    public readonly runTypeOptions = RUN_TYPE_OPTIONS;
+    public readonly nodeTypeOptions = NODE_TYPE_OPTIONS;
 
     public setActiveTab(tab: AuditFilterTab): void {
         this.activeTab.set(tab);

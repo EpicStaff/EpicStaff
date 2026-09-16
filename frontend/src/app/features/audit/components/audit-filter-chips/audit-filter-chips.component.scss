@@ -1,0 +1,70 @@
+:host {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 4px 0 8px;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 12px;
+    background-color: var(--color-secondary-btn-background);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.filter-chip__label {
+    color: var(--color-text-secondary);
+}
+
+.filter-chip__value {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-primary);
+}
+
+.filter-chip__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--color-text-secondary);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-secondary-btn-background-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.filter-chips__clear {
+    padding: 0 4px;
+    border: none;
+    background: none;
+    color: var(--accent-color);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}

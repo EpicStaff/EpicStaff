@@ -2,6 +2,11 @@ import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from 
 
 export type AuditFilterOp = 'equals' | 'not_equal' | 'in' | 'not_in' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte';
 
+export interface AuditEnumOption {
+    value: string;
+    label: string;
+}
+
 export interface AuditFilterLeaf {
     field: string;
     op: AuditFilterOp;
