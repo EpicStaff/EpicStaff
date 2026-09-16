@@ -77,8 +77,8 @@
         display: grid;
         grid-template-columns: 1rem // checkbox
             1fr // file name
-            145px // chunk strategy
-            100px // chunk size
+            150px // chunk strategy
+            110px // chunk size
             100px // overlap
             60px; // tune chunks
         gap: 0.5rem;
@@ -123,7 +123,7 @@
 
     &__bulk-row {
         font-size: 0.75rem;
-        padding: 0 3.75rem 0.5rem 3.125rem;
+        padding: 0 3rem 0.5rem 3.125rem;
         color: var(--fog-alpha-80);
     }
 

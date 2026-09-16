@@ -16,6 +16,7 @@ from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
     KnowledgeSearchExecutor,
 )
+from settings import GRAPH_RAG_SEARCH_TIMEOUT, NAIVE_RAG_SEARCH_TIMEOUT
 from shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagLocalSearchParams,

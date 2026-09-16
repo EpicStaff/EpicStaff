@@ -1,3 +1,5 @@
+import importlib.util
+
 import httpx
 import pytest
 
@@ -5,6 +7,19 @@ from conftest import load_tool_main
 
 web_fetch_module = load_tool_main("web_fetch_tool")
 web_fetch_main = web_fetch_module.main
+
+# web_fetch_tool/main.py converts HTML to markdown via trafilatura, falling
+# back to markdownify — both installed into this tool's own dedicated venv by
+# the sandbox at execution time (per requirements.txt), not into any service
+# venv. Tests that exercise that conversion need at least one of them.
+_HTML_TO_MARKDOWN_MISSING = (
+    importlib.util.find_spec("trafilatura") is None
+    and importlib.util.find_spec("markdownify") is None
+)
+requires_html_to_markdown = pytest.mark.skipif(
+    _HTML_TO_MARKDOWN_MISSING,
+    reason="neither trafilatura nor markdownify is installed in this test environment",
+)
 
 HTML_PAGE = """
 <html>
@@ -30,6 +45,7 @@ def _mock_httpx_client(monkeypatch, handler):
 
 
 class TestWebFetchTool:
+    @requires_html_to_markdown
     def test_markdown_extraction_happy_path(self, monkeypatch):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -79,8 +95,12 @@ class TestWebFetchTool:
 
         result = web_fetch_main(url="https://example.com/")
 
-        assert result == "Redirects to https://other-host.com/target — call again with that URL"
+        assert (
+            result
+            == "Redirects to https://other-host.com/target — call again with that URL"
+        )
 
+    @requires_html_to_markdown
     def test_same_host_redirect_is_followed(self, monkeypatch):
         def handler(request: httpx.Request) -> httpx.Response:
             if request.url.path == "/start":
@@ -112,6 +132,7 @@ class TestWebFetchTool:
         assert result.startswith("Error:")
         assert "image/png" in result
 
+    @requires_html_to_markdown
     def test_oversize_download_is_announced(self, monkeypatch):
         oversized_html = "<html><body>" + ("x" * (6 * 1024 * 1024)) + "</body></html>"
 

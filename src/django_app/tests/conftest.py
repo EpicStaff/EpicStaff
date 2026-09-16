@@ -218,6 +218,27 @@ def superadmin_client(api_client, superadmin_jwt_tokens) -> APIClient:
 
 
 @pytest.fixture
+def superadmin_client_with_org(
+    api_client, superadmin_jwt_tokens, default_org
+) -> APIClient:
+    """Superadmin client with an active-org header set.
+
+    `OrgContextService` requires the `X-Organization-Id` header on every
+    request even for a superadmin caller — it only skips the *membership*
+    check for superadmins, not the header itself. Endpoints that call
+    `get_active_org_id()`/`OrgContextService.resolve()` unconditionally
+    (e.g. cross-org storage transfers, which resolve an active org even
+    though the actual source/destination orgs come from the payload) need
+    this over plain `superadmin_client`.
+    """
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {superadmin_jwt_tokens['access']}",
+        HTTP_X_ORGANIZATION_ID=str(default_org.id),
+    )
+    return api_client
+
+
+@pytest.fixture
 def issue_api_key(db):
     """Factory: create an ApiKey directly (bypasses endpoint/cap) and
     return (raw_key, ApiKey). user=None + key_type=SYSTEM makes a system key."""
