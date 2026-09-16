@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, LLMProvider, ResourceCode } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 import {
@@ -25,7 +27,17 @@ export class SurfacesApiService {
 
     getSurfaces(): Observable<Surface[]> {
         const params = new HttpParams().set('limit', '1000');
-        return this.http.get<ApiGetRequest<Surface>>(this.baseUrl, { params }).pipe(map((res) => res.results));
+        return this.http
+            .get<ApiGetRequest<Surface>>(this.baseUrl, {
+                params,
+                context: withPermission<ApiGetRequest<LLMProvider>>(ResourceCode.Surfaces, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((res) => res.results));
     }
 
     getById(id: number): Observable<Surface> {

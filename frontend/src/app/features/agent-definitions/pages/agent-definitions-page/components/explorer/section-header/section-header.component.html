@@ -17,6 +17,7 @@
     <span class="header__actions">
         @if (showAdd()) {
             <button
+                *appHasPermission="[resource(), ActionCode.Create]"
                 type="button"
                 class="header__action"
                 aria-label="Add"
@@ -30,6 +31,7 @@
         }
         @if (showMenu()) {
             <button
+                *appHasPermission="[resource(), menuActions()]"
                 type="button"
                 class="header__action"
                 aria-label="More"

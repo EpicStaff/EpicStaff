@@ -37,8 +37,8 @@ export class ProfilePageComponent implements OnInit {
     protected isLoading = signal(!this.currentUserService.currentUserSignal());
 
     protected readonly tabs: RouteTab[] = [
-        { routerLink: 'overview', icon: 'home', label: 'Overview', isPermitted: true },
-        { routerLink: 'api-keys', icon: 'key', label: 'API Keys', isPermitted: true },
+        { routerLink: 'overview', icon: 'home', label: 'Overview', isPermitted: () => true },
+        { routerLink: 'api-keys', icon: 'key', label: 'API Keys', isPermitted: () => true },
     ];
 
     ngOnInit(): void {

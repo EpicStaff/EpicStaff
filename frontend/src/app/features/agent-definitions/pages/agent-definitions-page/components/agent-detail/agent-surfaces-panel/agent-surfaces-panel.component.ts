@@ -19,9 +19,11 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { CollapseOnOverflowDirective, EnterBlurDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { computeUniqueName } from '@shared/utils';
 
+import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { AgentDefaultSurface, AgentSurfacePlace } from '../../../../../models/agent-definition.model';
 import {
     CreateSurfaceRequest,
@@ -52,6 +54,7 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
         SelectDropdownTriggerDirective,
         CollapseOnOverflowDirective,
         HelpTooltipComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-surfaces-panel.component.html',
     styleUrls: ['./agent-surfaces-panel.component.scss'],
@@ -59,6 +62,10 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
 })
 export class AgentSurfacesPanelComponent {
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly permissionService = inject(PermissionsService);
+
+    readonly canCreateSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
+    readonly canEditSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
 
     surfaces = input<Surface[]>([]);
     agentId = input<number | null>(null);
@@ -231,6 +238,11 @@ export class AgentSurfacesPanelComponent {
     });
 
     canViewSummary(category: SurfaceCategoryId): boolean {
+        const canViewTools = this.permissionService.can(ResourceCode.Tools, ActionCode.Read);
+        const canViewFiles = this.permissionService.can(ResourceCode.Files, ActionCode.Read);
+        const canViewKnowledges = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read);
+        if (!canViewTools && !canViewFiles && !canViewKnowledges) return false;
+
         return this.summaryAvailableByCategory().get(category) ?? false;
     }
 
@@ -305,10 +317,11 @@ export class AgentSurfacesPanelComponent {
     }
 
     activeTabFor(surface: Surface): SurfaceTabId {
-        return this.activeTabBySurfaceId().get(surface.id) ?? 'tools';
+        return this.activeTabBySurfaceId().get(surface.id) ?? ResourceCode.Tools;
     }
 
-    onCardActiveTabChange(surface: Surface, tab: SurfaceTabId): void {
+    onCardActiveTabChange(surface: Surface, tab: SurfaceTabId | null): void {
+        if (!tab) return;
         this.activeTabBySurfaceId.update((map) => new Map(map).set(surface.id, tab));
     }
 
@@ -368,4 +381,7 @@ export class AgentSurfacesPanelComponent {
     surfaceTrackBy(_index: number, surface: Surface): number {
         return surface.id;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
