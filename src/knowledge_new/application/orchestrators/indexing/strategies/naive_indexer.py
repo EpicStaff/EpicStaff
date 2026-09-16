@@ -23,7 +23,10 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex) -> None:
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
-            embedder = await self._get_embedder_under_uow(rag.id, command.embedding_api_key)
+            embedder = await self._get_embedder_under_uow(
+                rag.id,
+                command.embedding_api_key.get_secret_value(),
+            )
             documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         rag.mark_as_processing(command.document_ids)

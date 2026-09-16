@@ -26,6 +26,7 @@ from domain.models import (
     PreviewChunk,
     Rag,
 )
+from pydantic import SecretStr
 
 
 class FakeNaiveRagRepo:
@@ -78,9 +79,7 @@ class FakeNaiveRagRepo:
     async def update_document(self, rag_id: int, document: Document) -> None:
         self.doc_status_log.append(document.status)
 
-    async def save_indexed_chunks(
-        self, document_id: int, chunks: list[IndexedChunk]
-    ) -> None:
+    async def save_indexed_chunks(self, document_id: int, chunks: list[IndexedChunk]) -> None:
         self.saved_indexed_chunks.append((document_id, list(chunks)))
 
 
@@ -163,17 +162,13 @@ async def test_index_success_full_flow_sets_document_and_rag_statuses(monkeypatc
         ),
     )
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, config: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, config: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -209,17 +204,13 @@ async def test_index_skips_already_completed_document_with_unchanged_config(
         last_indexing_config=config,  # unchanged since last index → reindex not required
     )
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -251,17 +242,13 @@ async def test_index_success_skips_chunking_when_preview_chunks_exist(monkeypatc
         preview_chunks=preview_chunks,
     )
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -309,17 +296,13 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
         preview_chunks=stale_chunks,
     )
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -408,12 +391,10 @@ async def test_cancellation_marks_rag_cancelled(
     )
     uow = FakeUoW(repo, commit_errors=commit_errors)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -499,17 +480,13 @@ async def test_document_error_marks_document_failed_and_rag_failed(
 ):
     document = Document(id=7, **doc_kwargs)
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2], raises=embed_raises)
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -552,12 +529,10 @@ async def test_index_partial_when_one_document_succeeds_and_one_fails(monkeypatc
     )
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({1, 2}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({1, 2}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -604,16 +579,12 @@ async def test_top_level_error_marks_rag_failed_and_reraises(
     expected_exc,
 ):
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=embedding_config, documents=documents, rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=embedding_config, documents=documents, rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
-    request = RunIndex(rag_id=1, document_ids=document_ids, embedding_api_key="sk-test")
+    request = RunIndex(rag_id=1, document_ids=document_ids, embedding_api_key=SecretStr("sk-test"))
 
     with pytest.raises(expected_exc):
         await NaiveIndexOrchestrator(uow).execute(request)
@@ -627,13 +598,9 @@ async def test_missing_rag_raises_and_does_not_mark_anything(monkeypatch):
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[], rag=None)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
-    request = RunIndex(
-        rag_id=999, document_ids=frozenset(), embedding_api_key="sk-test"
-    )
+    request = RunIndex(rag_id=999, document_ids=frozenset(), embedding_api_key=SecretStr("sk-test"))
 
     with pytest.raises(RagNotFoundError):
         await NaiveIndexOrchestrator(uow).execute(request)
@@ -721,17 +688,13 @@ async def test_finalize_rag_status_considers_documents_outside_ids(
     doc2 = _processed_document(doc2_outcome, doc_id=2)  # the one actually indexed
     rag = _new_rag()
 
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[doc1, doc2], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[doc1, doc2], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({2}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({2}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -760,17 +723,13 @@ async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkey
         indexing_document_ids=set(),
         outdated_reasons={"doc_7": "content_changed"},
     )
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({7}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
@@ -806,12 +765,10 @@ async def test_outdated_reasons_preserved_when_outdated_document_remains(monkeyp
     )
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
 
     request = RunIndex(
-        rag_id=1, document_ids=frozenset({2}), embedding_api_key="sk-test"
+        rag_id=1, document_ids=frozenset({2}), embedding_api_key=SecretStr("sk-test")
     )
 
     await NaiveIndexOrchestrator(uow).execute(request)
