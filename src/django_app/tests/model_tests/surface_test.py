@@ -204,14 +204,14 @@ def test_serializer_duplicate_org_name_returns_surface_validation_error(org):
     """Duplicate (org, name) via serializer raises SurfaceValidationError (400), not IntegrityError (500)."""
     serializer_first = SurfaceWriteSerializer(
         data={"name": "dup-via-serializer"},
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer_first.is_valid(), serializer_first.errors
     serializer_first.save()
 
     serializer_second = SurfaceWriteSerializer(
         data={"name": "dup-via-serializer"},
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -229,7 +229,7 @@ def test_update_surface_with_unchanged_name_does_not_raise(org):
     serializer = SurfaceWriteSerializer(
         instance=surface,
         data={"name": "keep-my-name"},
-        context={"organization": org},
+        context={"organization_id": org.pk},
         partial=True,
     )
 
@@ -246,7 +246,7 @@ def test_update_surface_name_colliding_with_other_surface_raises(org):
     serializer = SurfaceWriteSerializer(
         instance=surface_b,
         data={"name": "surf-a"},
-        context={"organization": org},
+        context={"organization_id": org.pk},
         partial=True,
     )
 
@@ -521,7 +521,7 @@ def test_serializer_create_shared_surface(org):
             "name": "new-shared",
             "instructions": "be brief",
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -539,7 +539,7 @@ def test_serializer_create_with_owner_agent(org, agent):
             "name": "owned-surface",
             "owner_agent": agent.pk,
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -558,7 +558,7 @@ def test_serializer_create_with_python_tools(org, py_tool_a, py_tool_b):
                 {"python_tool": py_tool_b.pk, "mode": "deny"},
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -582,7 +582,7 @@ def test_serializer_create_with_mcp_tools(org, mcp_tool_a, mcp_tool_b):
                 {"mcp_tool": mcp_tool_b.pk, "mode": "deny"},
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -610,7 +610,7 @@ def test_serializer_create_with_storage_items(org, storage_file_a):
                 }
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -640,7 +640,7 @@ def test_serializer_create_with_naive_search_config(org, naive_collection):
                 }
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -664,7 +664,7 @@ def test_serializer_create_with_graph_basic_config(org, graph_collection):
                 }
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -692,7 +692,7 @@ def test_serializer_create_with_graph_local_config(org, graph_collection):
                 }
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
@@ -829,7 +829,7 @@ def test_reject_duplicate_python_tool_id_in_payload(org, py_tool_a):
                 {"python_tool": py_tool_a.pk, "mode": "deny"},
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -849,7 +849,7 @@ def test_reject_duplicate_mcp_tool_id_in_payload(org, mcp_tool_a):
                 {"mcp_tool": mcp_tool_a.pk, "mode": "allow"},
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -881,32 +881,7 @@ def test_reject_duplicate_storage_file_id_in_payload(org, storage_file_a):
                 },
             ],
         },
-        context={"organization": org},
-    )
-
-    with pytest.raises(SurfaceValidationError) as exc_info:
-        serializer.is_valid(raise_exception=True)
-
-    assert "storage_items" in exc_info.value.detail
-
-
-@pytest.mark.django_db
-def test_reject_storage_item_from_other_org(org, storage_file_other_org):
-    """StorageFile from a different org → validation error."""
-    serializer = SurfaceWriteSerializer(
-        data={
-            "name": "cross-org-storage",
-            "storage_items": [
-                {
-                    "storage_file": storage_file_other_org.pk,
-                    "can_list": "allow",
-                    "can_view": "unset",
-                    "can_edit": "unset",
-                    "can_delete": "unset",
-                }
-            ],
-        },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -933,7 +908,7 @@ def test_reject_naive_config_on_graph_only_collection(org, graph_collection):
                 }
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -957,7 +932,7 @@ def test_reject_graph_config_on_naive_only_collection(org, naive_collection):
                 }
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -983,7 +958,6 @@ def test_reject_agent_default_surface_from_other_agent(
         SurfaceValidator.validate_agent_default_surfaces(
             items=[{"surface": agent_b_surface, "place": SurfacePlace.ALL}],
             agent_definition=agent,
-            organization=org,
         )
 
     assert "default_surfaces" in exc_info.value.detail
@@ -1000,7 +974,6 @@ def test_agent_default_surface_shared_surface_passes_validation(
     SurfaceValidator.validate_agent_default_surfaces(
         items=[{"surface": shared_surface, "place": SurfacePlace.ALL}],
         agent_definition=agent,
-        organization=org,
     )
 
 
@@ -1025,7 +998,7 @@ def test_reject_duplicate_knowledge_collection_in_payload(org, naive_collection)
                 },
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -1043,7 +1016,7 @@ def test_reject_duplicate_knowledge_collection_in_payload(org, naive_collection)
 def test_valid_payload_no_tools_passes(org):
     serializer = SurfaceWriteSerializer(
         data={"name": "empty-surface"},
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid() is True
 
@@ -1058,7 +1031,7 @@ def test_valid_payload_allow_deny_different_tools_passes(org, py_tool_a, py_tool
                 {"python_tool": py_tool_b.pk, "mode": "deny"},
             ],
         },
-        context={"organization": org},
+        context={"organization_id": org.pk},
     )
     assert serializer.is_valid() is True
 

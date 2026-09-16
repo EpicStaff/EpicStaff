@@ -8,6 +8,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
@@ -47,11 +48,20 @@ export class FilesListPageComponent {
     private readonly storageApiService = inject(StorageApiService);
     private readonly collectionsStorageService = inject(CollectionsStorageService);
     private readonly toastService = inject(ToastService);
+    private readonly permissionService = inject(PermissionsService);
     readonly filesSearchService = inject(FilesSearchService);
 
     public tabs = [
-        { label: 'Knowledge Sources', link: 'knowledge-sources' },
-        { label: 'Storage', link: 'storage' },
+        {
+            label: 'Knowledge Sources',
+            link: 'knowledge-sources',
+            isPermitted: () => this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read),
+        },
+        {
+            label: 'Storage',
+            link: 'storage',
+            isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+        },
     ];
 
     readonly searchTerm = this.filesSearchService.searchTerm;

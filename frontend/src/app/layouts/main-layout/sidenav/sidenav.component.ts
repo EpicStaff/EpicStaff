@@ -29,11 +29,13 @@ import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string;
+    routeLink?: string | (() => string | null);
     icon?: string;
     label: string;
     showTooltip: boolean;
-    isPermitted: boolean;
+    /** Function (not boolean) so signal reads inside happen at template-eval time.
+     *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
+    isPermitted: () => boolean;
     action?: () => void;
     customClass?: string;
 }
@@ -133,6 +135,12 @@ export class LeftSidebarComponent implements AfterViewInit {
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
+    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
+     *  binding re-evaluates when active-org permissions reload after an org switch. */
+    public canReadFlows(): boolean {
+        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
+    }
+
     constructor(
         public epicChatService: EpicChatService,
         public activeOrgService: ActiveOrgService,
@@ -158,7 +166,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'agents',
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -166,17 +174,15 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'tools',
                 icon: 'tools',
                 label: 'Tools',
-                isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'files',
-                routeLink: 'files',
+                routeLink: () => this.resolveFilesRoute(),
                 icon: 'sources',
                 label: 'Files',
-                isPermitted:
-                    this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
-                    this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+                isPermitted: () => this.resolveFilesRoute() !== null,
                 showTooltip: false,
             },
             {
@@ -184,14 +190,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'flows',
                 icon: 'flows',
                 label: 'Flows',
-                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'chats',
                 routeLink: 'chats',
                 icon: 'chats',
-                isPermitted: true,
+                isPermitted: () => true,
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -202,7 +208,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
-            isPermitted: this.permissionService.canOpenConfigureModelsDialog(),
+            isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
@@ -248,5 +254,18 @@ export class LeftSidebarComponent implements AfterViewInit {
             event.preventDefault();
             item.action();
         }
+    }
+
+    public resolveRouteLink(item: NavItem): string | null {
+        if (typeof item.routeLink === 'function') return item.routeLink();
+        return item.routeLink ?? null;
+    }
+
+    /** Route to whichever `/files/*` sub-tab the user has read access to in the current org, or `null` if none. */
+    private resolveFilesRoute(): string | null {
+        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read))
+            return '/files/knowledge-sources';
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        return null;
     }
 }
