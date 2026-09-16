@@ -387,18 +387,8 @@ def test_content_hash_unchanged_by_surface_edit(graph, shared_surface):
 @pytest.mark.django_db
 def test_validator_shared_surface_passes(org, shared_surface):
     SurfaceValidator.validate_task_node_surfaces(
-        surfaces=[shared_surface], agent_definition=None, organization=org
+        surfaces=[shared_surface], agent_definition=None
     )
-
-
-@pytest.mark.django_db
-def test_validator_rejects_cross_org_surface(org, other_org_surface):
-    with pytest.raises(SurfaceValidationError) as exc_info:
-        SurfaceValidator.validate_task_node_surfaces(
-            surfaces=[other_org_surface], agent_definition=None, organization=org
-        )
-
-    assert "surface_list" in exc_info.value.detail
 
 
 @pytest.mark.django_db
@@ -409,7 +399,6 @@ def test_validator_rejects_surface_owned_by_other_agent(
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=[agent_b_owned_surface],
             agent_definition=agent,
-            organization=org,
         )
 
     assert "surface_list" in exc_info.value.detail
@@ -420,7 +409,7 @@ def test_validator_accepts_surface_owned_by_matching_agent(
     org, agent, agent_owned_surface
 ):
     SurfaceValidator.validate_task_node_surfaces(
-        surfaces=[agent_owned_surface], agent_definition=agent, organization=org
+        surfaces=[agent_owned_surface], agent_definition=agent
     )
 
 
@@ -430,7 +419,7 @@ def test_validator_rejects_owned_surface_when_agent_definition_none(
 ):
     with pytest.raises(SurfaceValidationError) as exc_info:
         SurfaceValidator.validate_task_node_surfaces(
-            surfaces=[agent_owned_surface], agent_definition=None, organization=org
+            surfaces=[agent_owned_surface], agent_definition=None
         )
 
     assert "surface_list" in exc_info.value.detail
@@ -442,7 +431,6 @@ def test_validator_rejects_duplicate_ids(org, shared_surface):
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=[shared_surface, shared_surface],
             agent_definition=None,
-            organization=org,
         )
 
     assert "surface_list" in exc_info.value.detail

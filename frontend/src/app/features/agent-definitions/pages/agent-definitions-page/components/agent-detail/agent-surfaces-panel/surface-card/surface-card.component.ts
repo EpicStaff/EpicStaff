@@ -28,9 +28,16 @@ import {
     SelectDropdownTab,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { DragHoverDirective, EnterBlurDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import {
+    DragHoverDirective,
+    EnterBlurDirective,
+    HasPermissionDirective,
+    TooltipOnOverflowDirective,
+} from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, switchMap, take } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../../../services/notifications/toast.service';
 import { CreateCustomToolDialogComponent } from '../../../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import {
@@ -91,6 +98,7 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
         SurfaceKnowledgeAdvancedComponent,
         CheckboxComponent,
         OverlayModule,
+        HasPermissionDirective,
     ],
     templateUrl: './surface-card.component.html',
     styleUrls: ['./surface-card.component.scss'],
@@ -105,6 +113,7 @@ export class SurfaceCardComponent {
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
+    private readonly permissionService = inject(PermissionsService);
 
     surface = input<Surface | null>(null);
     readOnly = input<boolean>(false);
@@ -144,7 +153,7 @@ export class SurfaceCardComponent {
     readonly deleteSurface = output<void>();
     readonly draftContentChanged = output<void>();
 
-    readonly activeTab = model<SurfaceTabId>('tools');
+    readonly activeTab = model<SurfaceTabId | null>(null);
     readonly instructions = signal<string>('');
     private readonly instructionsFocused = signal<boolean>(false);
     private lastSentInstructions: string | null = null;
@@ -166,9 +175,21 @@ export class SurfaceCardComponent {
     readonly chatChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('chat'));
     readonly realtimeChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('realtime'));
 
-    readonly showAgentSpecificMenu = computed(() => !this.isShared() && !this.readOnly());
-    readonly showSharedInAgentMenu = computed(() => this.isShared() && this.readOnly());
-    readonly showSharedSurfacesMenu = computed(() => this.isShared() && !this.readOnly() && this.showMeta());
+    readonly canCreateSurface = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
+    readonly canUpdateSurface = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
+    readonly canUpdateAgent = computed(() => this.permissionService.can(ResourceCode.Agents, ActionCode.Update));
+
+    readonly showAgentSpecificMenu = computed(
+        () => !this.isShared() && !this.readOnly() && (this.canCreateSurface() || this.canUpdateSurface())
+    );
+
+    readonly sharedInAgent = computed(() => this.isShared() && !this.showMeta());
+    readonly showSharedInAgentMenu = computed(
+        () => this.sharedInAgent() && (this.canCreateSurface() || this.canUpdateAgent())
+    );
+    readonly showSharedSurfacesMenu = computed(
+        () => this.isShared() && !this.readOnly() && this.showMeta() && this.canCreateSurface()
+    );
     readonly hasMenuItems = computed(
         () => this.showAgentSpecificMenu() || this.showSharedInAgentMenu() || this.showSharedSurfacesMenu()
     );
@@ -612,7 +633,7 @@ export class SurfaceCardComponent {
             if (!this.storageDrag.isDragging()) return;
             if (this.readOnly()) return;
             if (!this.expanded() && !this.hideHeader()) return;
-            this.activeTab.set('files');
+            this.activeTab.set(ResourceCode.Files);
         });
 
         effect(() => {
@@ -644,6 +665,21 @@ export class SurfaceCardComponent {
             // scrollHeight can read the minimal rows height before reflow.
             requestAnimationFrame(() => this.adjustInstructionsHeight(ta));
         });
+
+        this.activeTab.set(this.getFirstAvailableTab());
+    }
+
+    private getFirstAvailableTab(): SurfaceTabId | null {
+        if (this.permissionService.can(ResourceCode.Tools, ActionCode.Read)) {
+            return ResourceCode.Tools;
+        }
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) {
+            return ResourceCode.Files;
+        }
+        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read)) {
+            return ResourceCode.KnowledgeSources;
+        }
+        return null;
     }
 
     private catalogsRequested = false;
@@ -654,7 +690,10 @@ export class SurfaceCardComponent {
         this.catalogs.loadPythonTools().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.catalogs.loadMcpTools().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.catalogs.loadCollections().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-        this.refreshStorageRoot();
+
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) {
+            this.refreshStorageRoot();
+        }
     }
 
     private refreshStorageRoot(): void {
@@ -902,7 +941,7 @@ export class SurfaceCardComponent {
     onStorageDragHover(): void {
         if (!this.canAcceptFileDrop()) return;
         if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
-        this.activeTab.set('files');
+        this.activeTab.set(ResourceCode.Files);
     }
 
     onStorageDragOver(event: DragEvent): void {
@@ -929,7 +968,7 @@ export class SurfaceCardComponent {
         this.storageDrag.end();
         if (!dragged) return;
         if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
-        this.activeTab.set('files');
+        this.activeTab.set(ResourceCode.Files);
         this.catalogs
             .loadStorageTree()
             .pipe(take(1), takeUntilDestroyed(this.destroyRef))
@@ -1120,6 +1159,9 @@ export class SurfaceCardComponent {
         if (row.kind === 'file') return `file:${row.row.id}`;
         return row.row ? `folder:${row.row.id}` : `folder-path:${row.path}`;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
 
 function defaultFilePerms(): SurfaceFilePerms {

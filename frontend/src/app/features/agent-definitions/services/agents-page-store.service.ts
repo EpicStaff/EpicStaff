@@ -1,9 +1,11 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { computeUniqueCopyName, computeUniqueName } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 import {
     AgentDefaultSurface,
@@ -48,17 +50,22 @@ const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
 const SURFACE_PATCH_DEBOUNCE_MS = 400;
 
 function loadVisibleSections(): Set<ExplorerSectionId> {
-    const all = EXPLORER_SECTIONS.map((s) => s.id);
+    const permissionService = inject(PermissionsService);
+
+    const permittedSections = EXPLORER_SECTIONS.filter((s) =>
+        permissionService.can(s.resourceCode, ActionCode.Read)
+    ).map((s) => s.id);
+
     try {
         const raw = localStorage.getItem(VISIBLE_SECTIONS_STORAGE_KEY);
-        if (!raw) return new Set(all);
+        if (!raw) return new Set(permittedSections);
         const parsed = JSON.parse(raw) as ExplorerSectionId[];
-        const valid = parsed.filter((id) => all.includes(id));
+        const valid = parsed.filter((id) => permittedSections.includes(id));
         const set = new Set(valid);
         set.add('agents');
         return set;
     } catch {
-        return new Set(all);
+        return new Set(permittedSections);
     }
 }
 
@@ -69,6 +76,7 @@ export class AgentsPageStore {
     private readonly toast: ToastService = inject(ToastService);
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissionService = inject(PermissionsService);
 
     private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
     private readonly surfacePatch$ = new Subject<number>();
@@ -367,14 +375,17 @@ export class AgentsPageStore {
                         placeholder: true,
                     });
                 }
-                children.push({
-                    kind: 'group',
-                    id: `agent:${a.id}:surfaces`,
-                    label: 'Surfaces',
-                    icon: 'surfaces-tab',
-                    children: ownSurfaces,
-                    defaultExpanded: false,
-                });
+                // Add surface node if permitted
+                if (this.permissionService.can(ResourceCode.Surfaces, ActionCode.Read)) {
+                    children.push({
+                        kind: 'group',
+                        id: `agent:${a.id}:surfaces`,
+                        label: 'Surfaces',
+                        icon: 'surfaces-tab',
+                        children: ownSurfaces,
+                        defaultExpanded: false,
+                    });
+                }
 
                 return {
                     node: {
