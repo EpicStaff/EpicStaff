@@ -135,10 +135,12 @@
               "buildTarget": "epicstaff-frontend:build:production"
             },
             "development": {
-              "buildTarget": "epicstaff-frontend:build:development"
+              "buildTarget": "epicstaff-frontend:build:development",
+              "proxyConfig": "proxy.conf.js"
             },
             "local": {
-              "buildTarget": "epicstaff-frontend:build:local"
+              "buildTarget": "epicstaff-frontend:build:local",
+              "proxyConfig": "proxy.conf.js"
             }
           },
           "defaultConfiguration": "development"

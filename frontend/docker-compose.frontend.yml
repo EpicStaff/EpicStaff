@@ -7,8 +7,12 @@ services:
       - "4200:80"
     networks:
       - frontend-network
-    volumes:
-      - ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro
+    environment:
+      # Absolute on purpose: this standalone frontend has no reverse proxy, so the browser
+      # reaches django/realtime directly. Use localhost (not 127.0.0.1) to stay same-site
+      # with the app on :4200 so the SameSite=Lax refresh cookie is kept.
+      API_URL: ${API_URL}
+      REALTIME_API_URL: ${REALTIME_API_URL}
 
 networks:
   frontend-network:
