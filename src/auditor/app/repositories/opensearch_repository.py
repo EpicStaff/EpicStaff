@@ -83,6 +83,11 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
             "query": query,
             "sort": [{"event_time": "desc"}, {"id": "desc"}],
             "size": size,
+            # Pagination here is search_after/next_cursor-based, and the API
+            # response never surfaces a hit count (see SessionSearchResponse
+            # in query_routes.py) - so there is no reason to pay for an
+            # exact match count on every query.
+            "track_total_hits": False,
         }
         if cursor:
             body["search_after"] = _decode_cursor(cursor)

@@ -42,13 +42,20 @@ def test_compile_error_contains_targets_error_raw_not_error():
 
 
 def test_compile_flattened_numeric_op_uses_runtime_script_not_range():
+    """The numeric-runtime leaf itself compiles to a pure `exists` +
+    `script` filter conjunction - a root-level leaf like this one gets
+    flattened directly into the top-level `bool.filter` array alongside
+    org_id/retention (same flattening as an explicit `and`), so both the
+    `exists` guard and the `script` clause land as direct siblings rather
+    than nested one level deeper."""
     node = {"field": "output.tokens", "op": "gt", "value": 500}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
-    scripted = compiled_leaf["bool"]["filter"][1]
+    clauses = _filter_clauses(query)
+    scripted = clauses[-1]
     assert "script" in scripted
     assert scripted["script"]["script"]["params"]["value"] == 500.0
-    assert "range" not in compiled_leaf
+    assert clauses[-2] == {"exists": {"field": "output.tokens"}}
+    assert not any("range" in c for c in clauses)
 
 
 def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
@@ -58,8 +65,8 @@ def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
     script must read the value via `doc[...]` instead."""
     node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
-    scripted = compiled_leaf["bool"]["filter"][1]
+    clauses = _filter_clauses(query)
+    scripted = clauses[-1]
     source = scripted["script"]["script"]["source"]
 
     assert "params._source" not in source
@@ -67,10 +74,9 @@ def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
     assert scripted["script"]["script"]["params"]["path"] == "details.tokens_used"
     assert scripted["script"]["script"]["params"]["root"] == "details"
     assert scripted["script"]["script"]["params"]["value"] == 5000.0
-    # exists check still guards against an absent key
-    assert compiled_leaf["bool"]["filter"][0] == {
-        "exists": {"field": "details.tokens_used"}
-    }
+    # exists check still guards against an absent key - now a direct
+    # sibling filter clause rather than nested inside the script's own bool
+    assert clauses[-2] == {"exists": {"field": "details.tokens_used"}}
 
 
 def test_compile_numeric_flattened_filter_script_semantics_simulated():
@@ -85,8 +91,7 @@ def test_compile_numeric_flattened_filter_script_semantics_simulated():
     key's entry by that prefix before parsing the value."""
     node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
-    params = compiled_leaf["bool"]["filter"][1]["script"]["script"]["params"]
+    params = _filter_clauses(query)[-1]["script"]["script"]["params"]
     threshold = params["value"]
     prefix = f"{params['root']}.{params['path']}="
 
@@ -111,6 +116,11 @@ def test_compile_numeric_flattened_filter_script_semantics_simulated():
 
 
 def test_compile_mixed_structured_and_flattened_and():
+    """A top-level `and` of two plain leaves is a pure filter conjunction,
+    so it gets flattened directly into the outer org_id/retention filter
+    array - both leaves land as direct siblings of org_id, not nested one
+    level deeper inside their own `bool.filter` wrapper. Same match
+    semantics (still an AND of all three), flatter shape."""
     node = {
         "op": "and",
         "children": [
@@ -119,13 +129,66 @@ def test_compile_mixed_structured_and_flattened_and():
         ],
     }
     query = compile_filters(node, org_id=1, retention_days=0)
-    and_clause = _filter_clauses(query)[-1]
-    inner_clauses = and_clause["bool"]["filter"]
-    assert {"term": {"status": "failed"}} in inner_clauses
+    clauses = _filter_clauses(query)
+    assert {"term": {"org_id": 1}} in clauses
+    assert {"term": {"status": "failed"}} in clauses
     assert any(
         c.get("wildcard", {}).get("details.tool", {}).get("value") == "*Web Search*"
-        for c in inner_clauses
+        for c in clauses
     )
+    # No nested `bool.filter` wrapper left over for this AND - it was fully
+    # flattened into the top-level array.
+    assert not any(
+        isinstance(c, dict) and set(c.keys()) == {"bool"} and "filter" in c["bool"]
+        for c in clauses
+    )
+
+
+def test_compile_negation_sibling_stays_a_flat_filter_clause():
+    """Mirrors stress-test filter #6's shape:
+    `not agent = "x" and (status = "completed" or status = "failed")`.
+    The `not` and `or` branches must land as direct siblings of org_id in
+    one flat `bool.filter` array - never nested one level deeper inside an
+    opaque `bool.filter` wrapper for the `and` - so OpenSearch's
+    conjunction cost-based clause ordering can weigh the cheap org_id/status
+    clauses against the expensive negation together, not as a single
+    opaque nested clause."""
+    node = {
+        "op": "and",
+        "children": [
+            {
+                "op": "not",
+                "child": {"field": "agent", "op": "equals", "value": "agent-bot-1"},
+            },
+            {
+                "op": "or",
+                "children": [
+                    {"field": "status", "op": "equals", "value": "completed"},
+                    {"field": "status", "op": "equals", "value": "failed"},
+                ],
+            },
+        ],
+    }
+    query = compile_filters(node, org_id=1, retention_days=30)
+    clauses = _filter_clauses(query)
+
+    assert {"term": {"org_id": 1}} in clauses
+    assert {"range": {"event_time": {"gte": "now-30d"}}} in clauses
+    assert {
+        "bool": {"must_not": [{"term": {"details.agent_id": "agent-bot-1"}}]}
+    } in clauses
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"status": "completed"}},
+                {"term": {"status": "failed"}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in clauses
+    # Exactly 4 flat siblings - no leftover nested `bool.filter` wrapper for
+    # the `and` node itself.
+    assert len(clauses) == 4
 
 
 def test_compile_never_lets_client_ast_touch_org_id():

@@ -245,10 +245,46 @@ def _compile_leaf(field: str, op: str, value: Any) -> dict:
     return _compile_structured_leaf(field, op, value)
 
 
+def _is_pure_filter_conjunction(compiled: dict) -> bool:
+    """True when `compiled` is exactly `{"bool": {"filter": [...]}}` with no
+    sibling `must`/`should`/`must_not` key - i.e. splicing its inner list
+    into a surrounding `bool.filter` array is a pure flattening (same set of
+    ANDed clauses), never a semantic change."""
+    return (
+        isinstance(compiled, dict)
+        and set(compiled.keys()) == {"bool"}
+        and set(compiled["bool"].keys()) == {"filter"}
+    )
+
+
+def _compile_and_children(children: list[FilterNode]) -> list[dict]:
+    """Compile every child of an `and` node and flatten out any nested pure
+    `bool.filter` conjunction into this level's filter list instead of
+    nesting bool-in-bool.
+
+    This is a query-shape optimization only, not a behavior change: an AND
+    of ANDs matches exactly the same documents either way. The point is to
+    put every leaf clause - including cheap, highly-selective ones like
+    org_id/retention scoping or a plain `term`/`terms` filter - as a direct
+    sibling of expensive `must_not`/`should` negation clauses in one flat
+    array, so OpenSearch's conjunction cost-based clause ordering (used in
+    scoring-free `filter` context) can weigh all of them together rather
+    than treating a nested `and` subtree as one opaque clause it can't look
+    inside of."""
+    flat: list[dict] = []
+    for child in children:
+        compiled = _compile_node(child)
+        if _is_pure_filter_conjunction(compiled):
+            flat.extend(compiled["bool"]["filter"])
+        else:
+            flat.append(compiled)
+    return flat
+
+
 def _compile_node(node: FilterNode) -> dict:
     op = node.get("op")
     if op == "and":
-        return {"bool": {"filter": [_compile_node(c) for c in node["children"]]}}
+        return {"bool": {"filter": _compile_and_children(node["children"])}}
     if op == "or":
         return {
             "bool": {
@@ -289,5 +325,9 @@ def compile(
     """
     clauses = []
     if filter_node is not None:
-        clauses.append(_compile_node(filter_node))
+        compiled = _compile_node(filter_node)
+        if _is_pure_filter_conjunction(compiled):
+            clauses.extend(compiled["bool"]["filter"])
+        else:
+            clauses.append(compiled)
     return scoped_query(clauses, org_id=org_id, retention_days=retention_days)

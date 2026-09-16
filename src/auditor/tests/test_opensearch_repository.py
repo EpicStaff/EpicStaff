@@ -18,8 +18,10 @@ def _hit(_id: str, source: dict, sort: list | None = None) -> dict:
 class _FakeOpenSearchClient:
     def __init__(self, hits: list[dict]):
         self._hits = hits
+        self.last_body: dict | None = None
 
     async def search(self, index: str, body: dict) -> dict:
+        self.last_body = body
         return {"hits": {"hits": self._hits}}
 
 
@@ -80,3 +82,17 @@ async def test_query_next_cursor_still_advances_when_a_row_is_skipped():
 
     assert len(events) == 1
     assert next_cursor is not None
+
+
+@pytest.mark.asyncio
+async def test_query_disables_exact_total_hit_tracking():
+    """Pagination here is search_after/next_cursor-based and the API
+    response never exposes a hit count - exact total tracking would force
+    OpenSearch to visit every matching document (worst case on broad
+    negation queries) just to produce a number nobody reads."""
+    client = _FakeOpenSearchClient([_hit("evt-good", _VALID_SOURCE)])
+    repository = OpenSearchSessionAuditRepository(client)
+
+    await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
+
+    assert client.last_body["track_total_hits"] is False
