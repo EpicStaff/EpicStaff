@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 import { DragHoverDirective, ResizableSectionDirective, ResizableSidebarDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SectionHeightService, SidebarWidthService } from '@shared/services';
 
 import { StorageItem } from '../../../../../files/models/storage.models';
@@ -360,4 +361,7 @@ export class ExplorerComponent {
         }
         return lastExpandedIdx;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -67,35 +67,55 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 
 ```python
 class ResourceType(models.TextChoices):
-    ORGANIZATIONS, FLOWS, AGENTS, TOOLS, KNOWLEDGE_SOURCES,
-    FILES, PROJECTS, LLM_CONFIGS, SECRETS, USERS, ROLES
+    ORGANIZATIONS, ROLES, MEMBERSHIPS, API_KEYS, FLOWS, AGENTS, TOOLS,
+    KNOWLEDGE_SOURCES, FILES, PROJECTS, LLM_CONFIGS, SECRETS, VOICE, SURFACES
 
 class Permission(IntFlag):
     CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
     EXPORT = 16          # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64; LIST = 128 # reserved — present in bitmasks, not yet in the catalog UI
+    USE = 64             # catalog action of `secrets` only; enforced by SecretReferenceGuard
+    LIST = 128           # reserved — not in the catalog, checked nowhere
 ```
 
-### 2.2 Built-in roles (seeded by migrations 0171 + 0183, idempotent)
+### 2.2 Built-in roles (seeded by a chain of idempotent data migrations)
 
 Superadmin role row has **zero** `RolePermission` rows — authority comes exclusively from
-`User.is_superadmin`. Current seeded bitmasks (`0183_seed_builtin_role_permissions.py`):
+`User.is_superadmin`. The seeds run 0171 → 0183 → 0205 → 0209 → 0210 → 0212 → 0236 → 0242,
+each overriding the last; `0242_reseed_builtin_role_permissions` is the authoritative end
+state. Current bitmasks:
 
 | resource_type | Org Admin | Member | Viewer |
 |---|---|---|---|
-| flows | 31 (CRUD+E) | 7 (CRU) | 66 (R+use) |
+| flows | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | agents | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
-| tools | 15 (CRUD) | 7 (CRU) | 2 (R) |
+| tools | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
+| surfaces | 15 (CRUD) | 7 (CRU) | 2 (R) |
 | knowledge_sources | 15 (CRUD) | 2 (R) | 2 (R) |
 | files | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
-| secrets | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
-| users | 15 (CRUD) | 0 | 0 |
+| voice | 15 (CRUD) | 2 (R) | 2 (R) |
+| secrets | 75 (CRD+use) | 0 | 0 |
+| memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
-| organizations | 0 | 0 | 0 |
+| organizations | 6 (R+U) | 0 | 0 |
+| api_keys | 10 (R+D) | 0 | 0 |
 
-If you change a seed, do it with a new idempotent data migration — never edit an applied one.
+Migration `0242` re-seeds all three roles so that every stored bit is one the
+code enforces **and** the catalog can grant. It removed three kinds of dead bit
+the earlier seeds had accumulated — `flows:USE` on Viewer (nothing enforces it;
+running a flow checks `FLOWS.READ`), `secrets:LIST` (`Permission.LIST` is
+checked nowhere), and `secrets:UPDATE` (`SecretViewSet` has no update route) —
+all behaviour-neutral, since none of them gated anything. This matters beyond
+tidiness: the escalation ceiling compares these masks when deciding whether the
+holder of one role may assign another, so a bit that grants nothing could still
+refuse a legitimate assignment. `use` is an action of `secrets` only, and among
+the built-ins only Org Admin holds it.
+
+If you change a seed, do it with a new idempotent data migration — never edit an
+applied one. `tests/conftest.py::seed_builtin_roles_and_permissions` replays the
+whole chain after `flush`; a new seed must be appended there too, and the
+re-seed must stay last.
 
 ---
 
@@ -129,8 +149,9 @@ Two authentication classes (`tables/services/rbac/authentication.py`), both glob
   `user`-type key resolves to its owner. `request.user` is that principal, `request.auth`
   is the `ApiKey` row. A user key inherits the owner's live RBAC permissions per the
   `X-Organization-Id` header the caller sends — identical to that owner authenticating with
-  a JWT. Key management endpoints (`/api/profile/api-keys/`, `/api/api-keys/`) are JWT-only
-  (`DenyApiKeyAuth`) — see [api_keys.md](api_keys.md).
+  a JWT. Key management endpoints (`/api/profile/api-keys/`,
+  `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
+  [api_keys.md](api_keys.md).
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `tables/services/rbac/ticket_service.py`): `POST /api/auth/sse-ticket/`
@@ -252,6 +273,34 @@ the single-use ticket first, then calls this.
   registry/catalog rows): safe actions need `IsAuthenticated`, write actions (plus any
   action named in `superadmin_write_actions`) need `IsSuperadmin`. Not org-scoped.
 
+`CrossOrgResourceService` (`services/rbac/cross_org_service.py`) is the base every cross-org
+admin surface (roles, memberships, organizations, API keys) extends for its precise per-org
+authorization. It splits the decision in two: **visibility decides the 404, the permission bit
+decides the 403.**
+
+`resolve_for_write(actor, org_id, action)` resolves the caller's permissions in one target org
+and raises the resource's own 404 unless the row is visible to them. A row is visible when the
+caller is a member of its org **and** holds either READ on the resource there **or** the
+`action` being attempted. So there are two 404 conditions — not a member, or a member who can
+neither read the resource nor perform this action on it — and only a visible row can go on to
+produce a 403 from `assert_can`. Returning 403 for an invisible row would confirm an id the
+read surface reports as missing. READ-**or**-action, rather than READ alone, is what keeps the
+deliberate write-without-read grant working: a role carrying `delete` but not `read` must be
+able to delete, not be told the row does not exist. `action` is a required argument precisely
+so every call site states which verb it authorizes.
+
+`authorize_any_org(actor, org_ids, action)` is the existential counterpart: it authorizes a row
+scoped through a *set* of orgs instead of a single column — an API key's scope is every
+organization its owner belongs to — and applies the same split over that set. The row is
+visible when **at least one** reachable org grants READ or `action`, and authorized when at
+least one grants `action`; sharing no org at all still 404s, exactly as `resolve_for_write`
+does for one.
+`delegated_scope_q`, an optional class attribute a subclass may declare, is an extra queryset
+restriction `apply_org_scope` applies only when a delegated (non-superadmin) caller is being
+org-scoped at all — never to a superadmin, who already bypasses the org filter entirely.
+`ApiKeyManagementService` sets it to exclude superadmin-owned keys from a delegated admin's
+list, since the superadmin's own request already reaches them without it.
+
 ### 5.5 Service-layer guards (defense in depth)
 
 Structural invariants are enforced inside services regardless of who the caller is, in
@@ -259,7 +308,19 @@ transactions with `SELECT FOR UPDATE`:
 
 - `assert_not_last_active_superadmin` / `assert_not_last_org_admin` /
   `assert_role_is_assignable` / `assert_batch_preserves_org_admin`
-  (`user_management_guards.py`)
+  (`user_management_guards.py`). `role_is_assignable` is the same rule as a
+  predicate, for the assignable-roles filter.
+- **the escalation ceiling** — `assert_within_ceiling`
+  (`services/rbac/permission_assert.py`) over
+  `EffectivePermissions.covers`: you cannot grant authority you do not hold.
+  One comparison, two call paths — authoring a custom role
+  (`RoleManagementService.create_role` / `update_role`, the bits written in) and
+  assigning any role (`MembershipManagementService.add_member` / `change_role`,
+  the bits it grants). It never inspects `is_built_in`, so built-in Org Admin
+  and an over-ceiling custom role are refused identically, and it compares only
+  the catalog's grantable action bits (`GRANTABLE_ACTION_BITS`) so ungranted
+  `use`/`list` seed data cannot block a legitimate grant. Superadmin bypasses
+  inside `covers`.
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
@@ -548,9 +609,13 @@ path — the default org is only for bootstrap and data migrations.
 | CLI superadmin creation | `management/commands/create_superadmin.py` |
 | Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
-| Org CRUD (superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
-| User & membership admin | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
-| Roles read + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Cross-org management base | `services/rbac/cross_org_service.py` (`CrossOrgResourceService`), `views/cross_org_admin.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs / API keys |
+| Org management (list/read/rename permission-aware; create/deactivate superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
+| Membership management (cross-org, MEMBERSHIPS-gated, assignment ceiling) + assignable-user lookup | `services/rbac/membership_management_service.py`, `views/membership_admin_views.py` |
+| User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
+| Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter + the org-scoped `assigned_count` | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Escalation ceiling (shared by authoring and assignment) | `services/rbac/permission_assert.py` (`assert_within_ceiling`), `services/rbac/effective_permissions.py` (`covers`, `bits_of`) |
+| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `services/rbac/api_key/management_service.py`, `views/api_key_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `services/rbac/permission_assert.py` |
 | Session/SSE authorization | `services/rbac/session_access.py`, `views/sse_views.py` |

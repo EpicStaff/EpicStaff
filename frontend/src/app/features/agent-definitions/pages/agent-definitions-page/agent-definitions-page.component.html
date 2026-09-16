@@ -13,6 +13,7 @@
         </div>
 
         <app-button
+            *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
             class="header__add-agent"
             type="primary"
             leftIcon="plus-fit"
@@ -38,9 +39,11 @@
         <div class="body__detail">
             @if (store.isStorageSelected()) {
                 <app-storage-preview
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
                     [item]="storageFacade.selectedFile()"
                     [selectedItems]="storageFacade.selectedItems()"
                     [showSidebar]="store.showSidebar()"
+                    [readOnly]="filesReadOnly()"
                     (toggleSidebar)="store.toggleSidebar()"
                     (contextAction)="onPreviewContextAction($event)"
                     (breadcrumbClick)="onPreviewBreadcrumb($event)"
@@ -121,7 +124,7 @@
                     (toggleSidebar)="store.toggleSidebar()"
                     (navAgent)="store.selectAgent($event)"
                 >
-                    @if (store.selectedAgent() || store.selectedSurface()) {
+                    @if ((store.selectedAgent() || store.selectedSurface()) && canOpenHeaderMenu()) {
                         <button
                             #headerMenuTrigger="cdkOverlayOrigin"
                             cdkOverlayOrigin
@@ -146,20 +149,24 @@
                             (detach)="closeHeaderMenu()"
                         >
                             <div class="detail-header__menu">
-                                <button
-                                    type="button"
-                                    class="detail-header__menu-item"
-                                    (click)="onHeaderDuplicate()"
-                                >
-                                    Duplicate
-                                </button>
-                                <button
-                                    type="button"
-                                    class="detail-header__menu-item detail-header__menu-item--danger"
-                                    (click)="onHeaderDelete()"
-                                >
-                                    Delete
-                                </button>
+                                @if (canDuplicateSelected()) {
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item"
+                                        (click)="onHeaderDuplicate()"
+                                    >
+                                        Duplicate
+                                    </button>
+                                }
+                                @if (canDeleteSelected()) {
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item detail-header__menu-item--danger"
+                                        (click)="onHeaderDelete()"
+                                    >
+                                        Delete
+                                    </button>
+                                }
                             </div>
                         </ng-template>
                     }
@@ -197,6 +204,7 @@
                             [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
                             [bootIsDoc]="store.isBootDoc(store.selectedAgent()!.id)"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [readOnly]="agentsReadOnly()"
                             (save)="onSaveAgent($event)"
                             (delete)="onDeleteAgent($event)"
                             (dirtyChange)="onDirtyChange($event)"
@@ -240,6 +248,7 @@
                             [saving]="store.saving()"
                             [surfaces]="store.surfaces()"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [readOnly]="agentsReadOnly()"
                             (createSurface)="
                                 store.createSurfaceForAgent(store.surfacesOnlyAgent()!.id, $event.body, $event.place)
                             "

@@ -354,8 +354,18 @@
     }
 }
 
+// Hardcoded separator spans are always ignored; the divider is rendered as a
+// pseudo-element on every tab that is preceded by another visible tab. Since
+// `*appHasPermission` removes hidden tabs from the DOM, `~` skips gaps
+// correctly regardless of which tabs are visible.
 .tabs__sep {
+    display: none;
+}
+
+.tabs__tab ~ .tabs__tab::before {
+    content: '/';
     color: var(--color-divider-subtle);
+    margin-right: 0.375rem;
     user-select: none;
 }
 .picker__toggle {

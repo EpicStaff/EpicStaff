@@ -139,15 +139,10 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         default_surfaces_data = attrs.get("default_surfaces")
 
         if default_surfaces_data is not None:
-            organization = self.context.get("organization")
-            agent_definition = self.instance
-
-            if organization is not None:
-                SurfaceValidator.validate_agent_default_surfaces(
-                    items=default_surfaces_data,
-                    agent_definition=agent_definition,
-                    organization=organization,
-                )
+            SurfaceValidator.validate_agent_default_surfaces(
+                items=default_surfaces_data,
+                agent_definition=self.instance,
+            )
 
         return attrs
 
