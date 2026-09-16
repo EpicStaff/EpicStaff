@@ -111,6 +111,22 @@ def test_validate_filter_node_allows_flattened_dotted_path():
     validate_filter_node({"field": "details.tool", "op": "equals", "value": "Web Search Tool"})
 
 
+def test_validate_filter_node_allows_flow_name_contains():
+    validate_filter_node({"field": "flow_name", "op": "contains", "value": "Onboarding"})
+
+
+def test_validate_filter_node_allows_flow_name_not_contains():
+    validate_filter_node({"field": "flow_name", "op": "not_contains", "value": "Onboarding"})
+
+
+def test_parse_flow_name_contains_query_language_syntax():
+    assert parse_query('flow_name : "Onboarding"') == {
+        "field": "flow_name",
+        "op": "contains",
+        "value": "Onboarding",
+    }
+
+
 def test_validate_filter_node_rejects_status_value_outside_whitelist():
     """SessionAuditEvent.status is Literal["completed", "failed"] - a
     filter/preset (or the index itself) using anything else must be

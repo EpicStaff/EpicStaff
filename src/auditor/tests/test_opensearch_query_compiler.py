@@ -33,6 +33,32 @@ def test_compile_contains_op_uses_wildcard_not_term():
     }
 
 
+def test_compile_flow_name_contains_uses_wildcard_not_term():
+    node = {"field": "flow_name", "op": "contains", "value": "Onboarding"}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {
+        "wildcard": {"flow_name": {"value": "*Onboarding*", "case_insensitive": True}}
+    }
+
+
+def test_compile_flow_name_not_contains_negates_wildcard():
+    node = {"field": "flow_name", "op": "not_contains", "value": "Onboarding"}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[-1]
+    assert compiled_leaf == {
+        "bool": {
+            "must_not": [
+                {
+                    "wildcard": {
+                        "flow_name": {"value": "*Onboarding*", "case_insensitive": True}
+                    }
+                }
+            ]
+        }
+    }
+
+
 def test_compile_error_contains_targets_error_raw_not_error():
     node = {"field": "error", "op": "contains", "value": "AuthenticationError"}
     query = compile_filters(node, org_id=1, retention_days=0)

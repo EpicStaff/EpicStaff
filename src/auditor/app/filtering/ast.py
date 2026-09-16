@@ -87,7 +87,7 @@ KNOWN_FIELDS: dict[str, FieldSpec] = {
     "status": FieldSpec(_SELECT_OPS, allowed_values=_STATUS_VALUES),
     "kind": FieldSpec(_SELECT_OPS),
     "name": FieldSpec(_TEXT_CONDITION_OPS),
-    "flow_name": FieldSpec(_SELECT_OPS),
+    "flow_name": FieldSpec(_SELECT_OPS | _TEXT_CONDITION_OPS),
     "node_type": FieldSpec(_SELECT_OPS),
     "run_type": FieldSpec(_SELECT_OPS),
     "event_time": FieldSpec(_RANGE_OPS),
