@@ -91,6 +91,9 @@
 }
 
 .audit-browser__tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     height: 30px;
     padding: 0 12px;
     border: 1px solid transparent;
@@ -112,6 +115,24 @@
         opacity: 0.45;
         cursor: default;
     }
+}
+
+.audit-browser__filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background-color: var(--accent-color);
+    color: var(--color-text-primary);
+    font-size: 11px;
+    line-height: 1;
+}
+
+.audit-browser__chips {
+    margin: 0 20px 8px;
 }
 
 .audit-browser__toolbar-spacer {

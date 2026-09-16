@@ -1,9 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
 
-export interface AuditEnumOption {
-    value: string;
-    label: string;
-}
+import { AuditEnumOption } from '../../models/audit-filter.models';
 
 @Component({
     selector: 'app-audit-checkbox-enum',

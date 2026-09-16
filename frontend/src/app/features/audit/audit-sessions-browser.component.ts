@@ -2,19 +2,21 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditSessionEvent } from './models/audit-session.models';
 import { AuditApiService } from './services/audit-api.service';
 import { buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
+import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 @Component({
     selector: 'app-audit-sessions-browser',
     standalone: true,
-    imports: [CommonModule, RouterLink, AuditFiltersPanelComponent],
+    imports: [CommonModule, RouterLink, AuditFiltersPanelComponent, AuditFilterChipsComponent],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +38,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
     public rows = computed(() => buildAuditRows(this.rawEvents()));
+    public appliedChips = computed(() => describeAuditFilter(this.appliedFilter()));
+    public activeFilterCount = computed(() => this.appliedChips().length);
     public canGoNewer = computed(() => this.cursorStack().length > 1);
     public canGoOlder = computed(() => this.nextCursor() !== null);
 
@@ -109,6 +113,14 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.appliedFilter.set(this.draftFilter());
         this.cursorStack.set([null]);
         this.isFiltersPanelOpen.set(false);
+        this.loadSessions();
+    }
+
+    public removeFilter(key: string): void {
+        const next = clearAuditFilterField(this.appliedFilter(), key);
+        this.appliedFilter.set(next);
+        this.draftFilter.set(next);
+        this.cursorStack.set([null]);
         this.loadSessions();
     }
 

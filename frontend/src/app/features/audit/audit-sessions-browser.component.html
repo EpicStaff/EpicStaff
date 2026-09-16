@@ -45,6 +45,9 @@
                     (click)="toggleFiltersPanel()"
                 >
                     Filters
+                    @if (activeFilterCount() > 0) {
+                        <span class="audit-browser__filter-badge">{{ activeFilterCount() }}</span>
+                    }
                 </button>
                 <button
                     class="audit-browser__tool-btn"
@@ -71,6 +74,15 @@
                     Export
                 </button>
             </div>
+
+            @if (appliedChips().length > 0) {
+                <app-audit-filter-chips
+                    class="audit-browser__chips"
+                    [chips]="appliedChips()"
+                    (removed)="removeFilter($event)"
+                    (cleared)="clearFilters()"
+                />
+            }
 
             @if (isPartial()) {
                 <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
