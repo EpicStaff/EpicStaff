@@ -93,13 +93,10 @@ class RedisPubSub:
                     status_data["total_token_usage"] = (
                         self._calculate_total_token_usage(data["session_id"])
                     )
-                    session.status = data["status"]
-                    session.status_data = status_data
-                    session.token_usage = status_data["total_token_usage"]
                     updated_rows = Session.objects.filter(pk=session.pk).update(
-                        status=session.status,
-                        status_data=session.status_data,
-                        token_usage=session.token_usage,
+                        status=data["status"],
+                        status_data=status_data,
+                        token_usage=status_data["total_token_usage"],
                     )
                     if updated_rows == 0:
                         logger.warning(
