@@ -20,8 +20,8 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: 'kind', op: 'in', value: state.kinds });
     }
 
-    if (state.flowNames.length > 0) {
-        leaves.push({ field: 'flow_name', op: 'in', value: state.flowNames });
+    if (state.flow.values.length > 0) {
+        leaves.push({ field: 'flow_name', op: 'in', value: state.flow.values });
     }
 
     if (state.statuses.length > 0) {

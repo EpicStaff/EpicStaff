@@ -23,24 +23,50 @@ export interface AuditFilterNot {
     child: AuditFilterNode;
 }
 
+export interface AuditValuesFilter {
+    op: string;
+    values: string[];
+}
+
+export interface AuditTextFilter {
+    op: string;
+    value: string;
+}
+
+export interface AuditJsonFilter {
+    key: string;
+    op: string;
+    value: string;
+}
+
 export interface AuditFilterState {
     kinds: AuditEventKind[];
-    flowNames: string[];
     statuses: AuditEventStatus[];
     dateFrom: string | null;
     dateTo: string | null;
     nodeTypes: AuditNodeType[];
     runTypes: AuditRunBucket[];
+    flow: AuditValuesFilter;
+    id: AuditValuesFilter;
+    error: AuditTextFilter;
+    input: AuditJsonFilter;
+    output: AuditJsonFilter;
+    details: AuditJsonFilter;
 }
 
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
 
 export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     kinds: [],
-    flowNames: [],
     statuses: [],
     dateFrom: null,
     dateTo: null,
     nodeTypes: [],
     runTypes: [],
+    flow: { op: 'in', values: [] },
+    id: { op: 'in', values: [] },
+    error: { op: 'is_not_empty', value: '' },
+    input: { key: '', op: 'contains', value: '' },
+    output: { key: '', op: 'contains', value: '' },
+    details: { key: '', op: 'contains', value: '' },
 };

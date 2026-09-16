@@ -30,3 +30,24 @@ export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [
     { value: 'WEBHOOK_TRIGGER', label: 'Webhook Trigger' },
     { value: 'TELEGRAM_TRIGGER', label: 'Telegram Trigger' },
 ];
+
+export const OPERATOR_LABELS: Record<string, string> = {
+    in: 'is any of',
+    not_in: 'is none of',
+    equals: 'is',
+    not_equal: 'is not',
+    contains: 'contains',
+    not_contains: 'does not contain',
+    starts_with: 'starts with',
+    ends_with: 'ends with',
+    is_empty: 'is empty',
+    is_not_empty: 'is not empty',
+    key_exists: 'has key',
+    key_not_exists: 'has no key',
+};
+
+export const FLOW_OPERATORS = ['in', 'not_in'];
+
+export const ID_OPERATORS = ['in', 'not_in', 'equals', 'not_equal'];
+
+export const ERROR_OPERATORS = ['contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];

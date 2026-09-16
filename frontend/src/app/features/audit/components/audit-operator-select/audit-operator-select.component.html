@@ -1,0 +1,13 @@
+<div class="operator-select">
+    <select
+        class="operator-select__control"
+        [value]="selectedOperator()"
+        (change)="onSelect($event)"
+    >
+        @for (operator of operators(); track operator) {
+            <option [value]="operator">
+                {{ labelFor(operator) }}
+            </option>
+        }
+    </select>
+</div>

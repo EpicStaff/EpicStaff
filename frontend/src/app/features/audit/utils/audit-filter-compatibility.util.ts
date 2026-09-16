@@ -12,7 +12,7 @@ interface AuditFilterFieldMeta {
 export const AUDIT_FILTER_FIELDS: Record<string, AuditFilterFieldMeta> = {
     flow: {
         kinds: ALL_KINDS,
-        isActive: (state) => state.flowNames.length > 0,
+        isActive: (state) => state.flow.values.length > 0,
     },
     status: {
         kinds: ['event'],
