@@ -200,6 +200,12 @@ class DocumentViewSet(
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     org_filter_path = _DOCUMENT_ORG_PATH
     queryset = DocumentMetadata.objects.select_related("source_collection")
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "preview": Permission.READ,
+        "download": Permission.READ,
+        "copy": Permission.CREATE,
+    }
 
     def get_serializer_class(self):
         if self.action == "list":
