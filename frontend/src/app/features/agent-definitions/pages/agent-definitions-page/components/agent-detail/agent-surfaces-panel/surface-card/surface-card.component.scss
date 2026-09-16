@@ -116,7 +116,7 @@
     padding: 0 0.625rem;
     background-color: var(--color-background-body);
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 8px;
+    border-radius: 4px;
     font-size: 0.875rem;
     font-family: inherit;
     color: var(--color-text-primary);
@@ -293,7 +293,7 @@
     padding: 8px 12px;
     background-color: var(--color-background-body);
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 8px;
+    border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
     font-family: inherit;
@@ -368,7 +368,7 @@
     padding: 0 0.75rem;
     background-color: var(--color-background-body);
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 8px;
+    border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
     cursor: pointer;
@@ -383,7 +383,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
     font-size: var(--text-body-size);
     font-weight: var(--text-body-weight);
 }

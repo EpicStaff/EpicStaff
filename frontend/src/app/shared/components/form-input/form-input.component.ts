@@ -181,7 +181,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     margin-top: 6px;
                     padding: 0.625rem;
                     background-color: rgba(104, 95, 255, 0.1);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     border-left: 3px solid #685fff;
                     font-size: 0.75rem;
                     color: #ffffffb3;

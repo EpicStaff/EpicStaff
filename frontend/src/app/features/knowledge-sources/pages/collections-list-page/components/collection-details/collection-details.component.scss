@@ -33,13 +33,13 @@
 
     &__header-label {
         font-size: 0.875rem;
-        color: var(--color-text-primary);
+        color: var(--color-text-secondary);
     }
 
     &__name-input {
         height: 2.5rem;
         padding: 0 1rem;
-        border-radius: 0.5rem;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
