@@ -9,6 +9,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Path gating lives in this job rather than in a workflow-level `paths:` filter.
+  # A workflow that `paths:` filters out never reports its checks at all, so a
+  # required check stays pending forever and the pull request can never merge.
+  # A job skipped by `if:` still reports a conclusion, so gating has to be here.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      fe: ${{ steps.filter.outputs.fe }}
+      fe_deps: ${{ steps.filter.outputs.fe_deps }}
+      code: ${{ steps.filter.outputs.code }}
+      cla: ${{ steps.filter.outputs.cla }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The three-dot diff below has to resolve the merge base, which is not
+          # reachable from a shallow clone.
+          fetch-depth: 0
+
+      - name: Work out what this pull request touches
+        id: filter
+        run: |
+          # Three dots, not two: diff from the merge base, so commits merged in
+          # from main do not count as changes made by this pull request.
+          git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
+            > changed-files.txt
+          cat changed-files.txt
+
+          # One list, several filters. Each filter is a single anchored regex so
+          # adding a path is a one-line edit.
+          filter() {   # $1 = output name, $2 = extended regex over the file list
+            if grep -qE "$2" changed-files.txt; then result=true; else result=false; fi
+            echo "$1=$result" >> "$GITHUB_OUTPUT"
+            echo "$1=$result"
+          }
+
+          # Every filter also matches the files of the check it guards, so a pull
+          # request that edits a check still runs that check on itself.
+          filter fe '^(frontend/|\.github/workflows/pr\.yml$|scripts/check-undeclared-imports\.mjs$|scripts/check-third-party-notices\.mjs$)'
+
+          filter fe_deps '^(frontend/package\.json$|frontend/package-lock\.json$|scripts/check-third-party-notices\.mjs$)'
+
+          # Wider than src/ and frontend/ on purpose: the compose matrix generator
+          # in compose-build.yml also runs scripts/envtool.py and
+          # .github/scripts/compose_matrix.py, so a change to either of those
+          # changes what actually gets built. (The env.yaml they read lives under
+          # src/, so it is already covered by the src/ prefix.)
+          filter code '^(src/|frontend/|scripts/envtool\.py$|\.github/scripts/compose_matrix\.py$|\.github/workflows/compose-build\.yml$|\.github/workflows/pr\.yml$)'
+
+          filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
+
+  # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
+  # toggle controls signature enforcement; this is repo hygiene. An edit to
+  # CLA.md that does not bump the version corrupts the signature audit trail
+  # either way: every stored signature records a sha256 of the document text,
+  # so changing the text invalidates them all, and each re-signature overwrites
+  # the contributor's old file in the SAME version folder -- destroying the
+  # record of what they originally agreed to. Turning signature checks off does
+  # not make that damage go away, it only hides it until they are turned back on.
+  check-cla-version:
+    needs: changes
+    if: needs.changes.outputs.cla == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # `git show BASE:CLA.md` and the three-dot diff both need the base
+          # commit, which is not reachable from a shallow clone.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # No pip install step: check_cla_version.py is standard library only.
+      - name: Verify CLA.md version was bumped
+        run: python .github/scripts/check_cla_version.py
+        env:
+          CLA_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CLA_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+  # Deliberately ungated: cheap, and a docs-only pull request is exactly where an
+  # unsigned contributor or a pasted CDN link turns up.
   check-cla:
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +130,13 @@ jobs:
       - name: Check for runtime CDN / external URL references
         run: node scripts/check-external-urls.mjs
 
+  # This is the repository's only required status check (ruleset "Main PR"). A job
+  # skipped by `if:` reports conclusion `skipped`, and required status checks treat
+  # `skipped` as passing -- a workflow-level `paths:` filter would instead leave the
+  # check pending and block the merge.
   frontend-checks:
+    needs: changes
+    if: needs.changes.outputs.fe == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -83,7 +175,10 @@ jobs:
       # Licence attribution has to follow the production dependency set. Compares the
       # lockfile hash stamped in the notices header, so it needs neither network nor
       # a license-checker run.
+      # Only the lockfile feeds that hash, so nothing but a dependency change can
+      # alter the outcome.
       - name: Check third-party notices are in sync
+        if: needs.changes.outputs.fe_deps == 'true'
         working-directory: .
         run: node scripts/check-third-party-notices.mjs
 
@@ -92,11 +187,20 @@ jobs:
 
       # Dependency drift is what produced the EST-3802 backlog: half of it was stale
       # lockfile entries rather than genuinely outdated direct dependencies.
+      # Gated on the manifests for the same reason: the audit reads the lockfile and
+      # nothing else in the tree can move its result.
       - name: Audit dependencies
+        if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
   build:
-    needs: [check-cla, check-external-urls, frontend-checks]
+    needs: [changes, check-cla, check-external-urls, frontend-checks]
+    # `!cancelled() && !failure()` is mandatory, not defensive. frontend-checks can
+    # now be skipped, and a skipped dependency skips its dependants by default;
+    # overriding the default job condition with an explicit `if:` is the only way to
+    # stop that propagation, and doing so means re-stating "do not run on failure or
+    # cancellation" by hand.
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.code == 'true' }}
     uses: ./.github/workflows/compose-build.yml
     with:
       compose-file: src/docker-compose.yaml

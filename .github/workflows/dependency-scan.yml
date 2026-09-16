@@ -18,8 +18,68 @@ permissions:
   contents: read
 
 jobs:
+  # Path gating lives in this job rather than in a workflow-level `paths:` filter.
+  # A workflow that `paths:` filters out never reports its checks at all, so a
+  # required check stays pending forever and the pull request can never merge.
+  # A job skipped by `if:` still reports a conclusion, so gating has to be here.
+  #
+  # Skipping per pull request is only safe because of the weekly cron above: that
+  # run is what catches a CVE published against a dependency nobody touched.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      py: ${{ steps.filter.outputs.py }}
+      fe: ${{ steps.filter.outputs.fe }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The three-dot diff below has to resolve the merge base, which is not
+          # reachable from a shallow clone.
+          fetch-depth: 0
+
+      - name: Work out what this pull request touches
+        id: filter
+        run: |
+          # schedule and workflow_dispatch have no pull request to diff against,
+          # and those are precisely the runs that must cover everything. Bail out
+          # before git diff is handed two empty SHAs.
+          if [ "${{ github.event_name }}" != 'pull_request' ]; then
+            { echo 'py=true'; echo 'fe=true'; } >> "$GITHUB_OUTPUT"
+            echo 'Not a pull request -- scanning everything.'
+            exit 0
+          fi
+
+          # Three dots, not two: diff from the merge base, so commits merged in
+          # from main do not count as changes made by this pull request.
+          git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
+            > changed-files.txt
+          cat changed-files.txt
+
+          # One list, several filters. Each filter is a single anchored regex so
+          # adding a path is a one-line edit.
+          filter() {   # $1 = output name, $2 = extended regex over the file list
+            if grep -qE "$2" changed-files.txt; then result=true; else result=false; fi
+            echo "$1=$result" >> "$GITHUB_OUTPUT"
+            echo "$1=$result"
+          }
+
+          # Every filter also matches the files of the check it guards, so a pull
+          # request that edits a check still runs that check on itself.
+          # The trivy fs scan of src/ reads uv.lock, pyproject.toml and
+          # requirements*.txt; check_dependency_floor.py globs src/**/uv.lock.
+          filter py '^(src/(.*/)?(uv\.lock|pyproject\.toml|requirements[^/]*\.txt)$|\.github/dependency-floor\.toml$|\.github/scripts/check_dependency_floor\.py$|\.github/workflows/dependency-scan\.yml$)'
+
+          # The frontend scan reads package-lock.json.
+          filter fe '^(frontend/package\.json$|frontend/package-lock\.json$|\.github/trivy-frontend-devdeps\.yaml$|\.github/workflows/dependency-scan\.yml$)'
+
   scan:
     name: Known-vulnerable dependencies
+    # A docs-only pull request skips the job outright, Drive upload included:
+    # filing an empty report for a README edit is noise in the security folder.
+    needs: changes
+    if: needs.changes.outputs.py == 'true' || needs.changes.outputs.fe == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,6 +92,7 @@ jobs:
 
       # TBD if blocking
       - name: Scan src/ (actionable)
+        if: needs.changes.outputs.py == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           # Pin the scanner explicitly. The action's own default lags, and
@@ -50,6 +111,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
       
       - name: Scan src/ (all known)
+        if: needs.changes.outputs.py == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           # Pin the scanner explicitly. The action's own default lags, and
@@ -68,6 +130,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
       - name: Scan frontend/ (actionable)
+        if: needs.changes.outputs.fe == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           # Pin the scanner explicitly. The action's own default lags, and
@@ -91,6 +154,7 @@ jobs:
       # exposure -- but a compromised build-time package still matters, and
       # trivy hides them by default.
       - name: Scan frontend/ (all known)
+        if: needs.changes.outputs.fe == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           # Pin the scanner explicitly. The action's own default lags, and
@@ -110,8 +174,10 @@ jobs:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
 
-      # Checks for partially landed fixes. Blocking.
+      # Checks for partially landed fixes. Blocking. Still blocking when it runs --
+      # the gate only decides whether there is anything for it to look at.
       - name: Check shared dependency floor
+        if: needs.changes.outputs.py == 'true'
         run: |
           pip install packaging
           python .github/scripts/check_dependency_floor.py
@@ -119,9 +185,13 @@ jobs:
       - name: Combine reports
         if: always()
         run: |
-          emit() {   # $1 = heading, $2 = report file
+          # $3 tells a scan that was never in scope apart from one that was meant to
+          # run and did not. Without it every gated-out scan reads as a failure.
+          emit() {   # $1 = heading, $2 = report file, $3 = was this scan in scope
             echo "---------------- $1 ----------------"
-            if [ ! -s "$2" ]; then
+            if [ "$3" != 'true' ]; then
+              echo "Skipped -- no dependency manifests changed in this pull request."
+            elif [ ! -s "$2" ]; then
               echo "NO REPORT PRODUCED -- that scan step did not complete."
             elif grep -q '^Total:' "$2"; then
               cat "$2"
@@ -144,8 +214,8 @@ jobs:
             echo "This is the section to work from."
             echo "================================================================"
             echo
-            emit "src/" trivy-src.txt
-            emit "frontend/" trivy-frontend.txt
+            emit "src/" trivy-src.txt '${{ needs.changes.outputs.py }}'
+            emit "frontend/" trivy-frontend.txt '${{ needs.changes.outputs.fe }}'
             echo "================================================================"
             echo "SECTION 2 - COMPLETE RECORD, FOR REFERENCE ONLY"
             echo
@@ -158,8 +228,8 @@ jobs:
             echo "may never reach the vulnerable path. Treat as inventory."
             echo "================================================================"
             echo
-            emit "src/ (all known)" trivy-src-all.txt
-            emit "frontend/ (all known)" trivy-frontend-all.txt
+            emit "src/ (all known)" trivy-src-all.txt '${{ needs.changes.outputs.py }}'
+            emit "frontend/ (all known)" trivy-frontend-all.txt '${{ needs.changes.outputs.fe }}'
           } > scan-report.txt
           echo "REPORT_NAME=$(date -u +%Y-%m-%dT%H%M%SZ)-${{ github.event_name }}-${{ github.run_id }}.txt" >> "$GITHUB_ENV"
 
