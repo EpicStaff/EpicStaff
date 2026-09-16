@@ -131,6 +131,56 @@ def test_graph_session_messages_only_active_org(member_client_a, org_a, org_b):
     assert len(_results(resp_b)) == 0
 
 
+@pytest.mark.django_db
+def test_bulk_delete_deleted_count_matches_rows_actually_removed(admin_client_a, org_a):
+    # Member role has flows CRU (no DELETE) -- bulk_delete requires DELETE,
+    # so use the Org Admin client here (see rbac_action_map on SessionViewSet).
+    s1 = _make_session(org_a, "flow 1")
+    s2 = _make_session(org_a, "flow 2")
+
+    resp = admin_client_a.post(
+        "/api/sessions/bulk_delete/", {"ids": [s1.id, s2.id]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert resp.data["deleted"] == 2
+    assert resp.data["ids"] == [s1.id, s2.id]
+    assert not Session.objects.filter(id__in=[s1.id, s2.id]).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_delete_does_not_count_rows_removed_concurrently(
+    admin_client_a, org_a, monkeypatch
+):
+    # Simulates a row being deleted by another process between the initial
+    # queryset fetch and this loop reaching it: Session.delete() then returns
+    # (0, {}) without raising. The reported "deleted" count must reflect that
+    # zero, not the loop iteration count.
+    s1 = _make_session(org_a, "flow 1")
+    s2 = _make_session(org_a, "flow 2")
+
+    original_delete = Session.delete
+    call_count = {"n": 0}
+
+    def fake_delete(self, *args, **kwargs):
+        call_count["n"] += 1
+        if self.id == s1.id:
+            # Pretend this row was already removed concurrently.
+            return (0, {})
+        return original_delete(self, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "delete", fake_delete)
+
+    resp = admin_client_a.post(
+        "/api/sessions/bulk_delete/", {"ids": [s1.id, s2.id]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert call_count["n"] == 2
+    assert resp.data["deleted"] == 1
+    assert resp.data["ids"] == [s1.id, s2.id]
+
+
 # ---- export endpoints require the EXPORT permission ----
 
 

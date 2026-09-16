@@ -378,9 +378,10 @@ class SessionViewSet(
             session_list = Session.objects.filter(
                 id__in=ids, graph__org_id=self.get_active_org_id()
             )
-            deleted_count = session_list.count()
+            deleted_count = 0
             for session in session_list:
-                session.delete()
+                deleted, _ = session.delete()
+                deleted_count += deleted
 
         return Response(
             {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
@@ -984,7 +985,9 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+                client.cancel(
+                    strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index"
+                )
         except ClientResourceNotFoundError:
             pass
         except ClientError as e:

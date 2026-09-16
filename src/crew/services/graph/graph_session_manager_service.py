@@ -341,15 +341,16 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         stop_session_message = StopSessionMessage.model_validate(json.loads(data))
         session_id = stop_session_message.session_id
-        await self.redis_service.aupdate_session_status(
-            session_id=session_id, status="stop"
-        )
 
         if session_id not in self.session_graph_pool:
             logger.warning(
                 f"Can not fetch task from session_graph_pool for session ID: {session_id}."
             )
             return
+
+        await self.redis_service.aupdate_session_status(
+            session_id=session_id, status="stop"
+        )
         self.session_graph_pool[session_id].stop_event.set()
         self.session_graph_pool.pop(session_id, None)
 
