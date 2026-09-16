@@ -87,7 +87,7 @@ class SessionTabularProjection(TabularProjection):
         }
 
     def expand(self, item: dict) -> list[dict]:
-        principal = item.get("session", {}).get("principal", {})
+        principal = (item.get("session", {}) or {}).get("principal", {}) or {}
         context = {
             "principal_kind": principal.get("kind"),
             "principal_email": principal.get("email"),

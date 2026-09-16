@@ -14,6 +14,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models.graph_models import Graph, GraphSessionMessage, ScheduleTriggerNode
 from tables.models.session_models import Session
+from tables.services.redis_pubsub import RedisPubSub
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -50,6 +51,19 @@ def _add_message(session_id: int) -> None:
         name="n1",
         execution_order=0,
         message_data={"message_type": "finish"},
+        uuid=uuid.uuid4(),
+    )
+
+
+def _add_subgraph_message(session_id: int, message_type: str, exec_id: str, **extra):
+    GraphSessionMessage.objects.create(
+        session_id=session_id,
+        created_at=timezone.now(),
+        message_data={
+            "message_type": message_type,
+            "subgraph_execution_id": exec_id,
+            **extra,
+        },
         uuid=uuid.uuid4(),
     )
 
@@ -141,3 +155,54 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
     assert rows[0]["principal_user_id"] == ""
     assert rows[0]["principal_email"] == ""
     assert rows[0]["principal_api_key_id"] == ""
+
+
+@pytest.mark.django_db
+def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
+    default_org, regular_user, monkeypatch
+):
+    # EST-4126 regression: subflow (subgraph) child sessions had no
+    # SessionPrincipal at all, so "principal" exported as null and the CSV
+    # export crashed with AttributeError on `None.get(...)`.
+    root_graph = Graph.objects.create(name="export-subflow-root", org=default_org)
+    child_graph = Graph.objects.create(name="export-subflow-child", org=default_org)
+    sm = _stub_publish(monkeypatch)
+    root_session_id = sm.run_session(
+        graph_id=root_graph.id,
+        variables={},
+        user=regular_user,
+        trigger=TriggerSpec.manual(),
+    )
+
+    _add_subgraph_message(
+        root_session_id,
+        "subgraph_start",
+        "exec-export-subflow",
+        subgraph_id=child_graph.id,
+        input={},
+        subgraph_execution_ids=[],
+    )
+    _add_subgraph_message(
+        root_session_id,
+        "subgraph_finish",
+        "exec-export-subflow",
+        output={"result": "ok"},
+    )
+
+    RedisPubSub()._create_subgraph_sessions(root_session_id)
+
+    child_session = Session.objects.get(parent_session_id=root_session_id)
+    _add_message(child_session.id)
+
+    exported = _export(child_session.id)
+    principal = exported["session"]["principal"]
+    assert principal is not None
+    assert principal["kind"] == "user"
+    assert principal["user"] == regular_user.id
+    assert principal["email"] == regular_user.email
+
+    rows = _export_csv_rows(child_session.id)
+    assert len(rows) == 1
+    assert rows[0]["principal_kind"] == "user"
+    assert rows[0]["principal_user_id"] == str(regular_user.id)
+    assert rows[0]["principal_email"] == regular_user.email
