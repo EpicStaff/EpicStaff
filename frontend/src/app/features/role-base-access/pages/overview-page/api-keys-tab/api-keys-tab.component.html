@@ -5,22 +5,35 @@
             [width]="'260px'"
             [(searchTerm)]="searchTerm"
         />
-        <span class="count-label"
-            >{{ keys().length }} of {{ totalApiKeysCount() }} {{ totalApiKeysCount() === 1 ? 'key' : 'keys' }}</span
-        >
+        <span class="count-label">{{ totalApiKeysCount() }} {{ totalApiKeysCount() === 1 ? 'key' : 'keys' }}</span>
     </div>
 
     <div class="toolbar-actions">
-        @if (canFilterByOrg) {
-            <app-select
-                class="org-filter"
-                variant="boxed"
-                placeholder="All Organizations"
+        @if (orgFilterItems().length) {
+            <app-multi-select
+                #orgMs
+                [hideTrigger]="true"
+                [items]="orgFilterItems()"
                 searchPlaceholder="Search organization"
-                [showSearch]="true"
-                [items]="orgsSelectItems()"
-                (changed)="onOrgFilterChange($event)"
-            />
+                (selectionChange)="onOrgFilterChange($event)"
+            >
+                <button
+                    type="button"
+                    class="org-trigger"
+                    [class.org-trigger--active]="orgFilterIds().length"
+                    [appMultiSelectTrigger]="orgMs"
+                >
+                    <span class="org-trigger__label">{{
+                        orgFilterIds().length
+                            ? orgFilterIds().length + ' organization' + (orgFilterIds().length === 1 ? '' : 's')
+                            : 'All Organizations'
+                    }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="1rem"
+                    />
+                </button>
+            </app-multi-select>
         }
 
         <button
@@ -72,6 +85,7 @@
     [columns]="columns()"
     [data]="tableData()"
     [selectable]="true"
+    [rowSelectable]="isRowSelectable"
     [hasExternalFilter]="!!searchTerm()"
     rowId="id"
     (filterChange)="onFilterChange($event)"
