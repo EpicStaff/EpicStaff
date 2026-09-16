@@ -306,9 +306,7 @@
                         (selectionChange)="onActiveToolsChange($event)"
                         (draftChange)="onActiveToolsDraftChange($event)"
                         (openedChange)="onToolsOpenedChange($event)"
-                        [searchPlaceholder]="
-                            toolSubtab() === 'custom' ? 'Search custom tools...' : 'Search MCP tools...'
-                        "
+                        [searchPlaceholder]="toolSearchPlaceholder()"
                     >
                         <button
                             appSelectDropdownTrigger
@@ -747,6 +745,7 @@
                             [collections]="selectedCollections()"
                             [knowledge]="knowledgeItems()"
                             [flat]="flat()"
+                            [llmConfigId]="llmConfigId()"
                             (knowledgeChange)="onKnowledgeConfigChange($event)"
                         />
                     }

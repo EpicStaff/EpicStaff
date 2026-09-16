@@ -157,6 +157,7 @@
                                     @if (isApplicable(resource, action)) {
                                         <app-checkbox
                                             [class.recommended]="isRecommended(resource.code, action.code)"
+                                            color="secondary"
                                             [checked]="isChecked(resource.code, action.code)"
                                             [disabled]="isCellDisabled(resource.code, action.code)"
                                             (checkedChange)="

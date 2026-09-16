@@ -44,7 +44,7 @@ _NOT_FOUND_404_RESPONSE = OpenApiResponse(
             value={
                 "status_code": 404,
                 "code": "api_key_not_found",
-                "message": "ApiKeyNotFoundError: API key not found.",
+                "message": "API key not found.",
             },
             response_only=True,
             status_codes=["404"],
@@ -98,7 +98,7 @@ PROFILE_API_KEYS_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid",
-                        "message": "FormValidationError: Validation failed",
+                        "message": "Validation failed",
                         "errors": [
                             {
                                 "field": "expires_in_days",

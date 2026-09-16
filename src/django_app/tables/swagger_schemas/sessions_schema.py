@@ -89,7 +89,7 @@ RUN_SESSION_POST = dict(
                     value={
                         "status_code": 403,
                         "code": "permission_denied",
-                        "message": "PermissionDenied: You do not have permission to perform this action.",
+                        "message": "You do not have permission to perform this action.",
                     },
                     response_only=True,
                     status_codes=["403"],

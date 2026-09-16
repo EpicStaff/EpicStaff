@@ -1,12 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, signal } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 type RadioOption<T = unknown> = {
     value: T;
     label?: string;
     name?: string;
+    icon?: string;
+    tooltip?: string;
 };
 
 @Component({
@@ -20,7 +23,7 @@ type RadioOption<T = unknown> = {
             multi: true,
         },
     ],
-    imports: [TooltipComponent],
+    imports: [TooltipComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RadioButtonComponent implements ControlValueAccessor {
