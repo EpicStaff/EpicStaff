@@ -34,10 +34,6 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
 
     constructor(private ngZone: NgZone) {}
 
-    // Monaco (with `editContext: true`, the Chromium/Edge default) routes keyboard input
-    // through a `.native-edit-context` div instead of a `<textarea>`, so the usual
-    // input/textarea/select/[contenteditable] check doesn't recognize it as editable text —
-    // without this, Ctrl+V/C/Z/Y/S typed inside a code editor got hijacked as canvas shortcuts.
     private isEditableTarget(el: HTMLElement): boolean {
         return (
             el.matches('input,textarea,select,[contenteditable="true"]') ||
