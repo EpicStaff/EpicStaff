@@ -7,13 +7,11 @@ logger = logging.getLogger(__name__)
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Q
-from django.db.models.functions import Cast
+from django.db.models import NOT_PROVIDED, Exists, OuterRef, Q
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
     DjangoFilterBackend,
     FilterSet,
-    CharFilter,
     NumberFilter,
 )
 from rest_framework import (
@@ -106,6 +104,9 @@ from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
 from tables.swagger_schemas.partial_import_schemas import (
     PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
 )
+from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
+    GRAPH_DELETE_BY_UUID_DELETE,
+)
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
     MCP_TOOL_BULK_EXPORT_POST,
@@ -178,7 +179,6 @@ from tables.filters import (
 )
 from tables.utils.helpers import natural_sort_key
 from tables.models.label_models import Label
-from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     WebhookTrigger,
@@ -204,7 +204,6 @@ from tables.views.mixins import (
 from tables.models.rbac_models import ApiKey
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permissions import (
-    IsSuperadmin,
     IsSystemApiKeyAuthenticated,
     DenyApiKeyAuth,
 )
@@ -226,8 +225,6 @@ from tables.serializers.model_serializers import (
     AudioTranscriptionNodeSerializer,
     ConditionalEdgeSerializer,
     GraphNoteSerializer,
-    ConditionGroupSerializer,
-    ConditionSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
     EndNodeSerializer,
@@ -242,7 +239,6 @@ from tables.serializers.model_serializers import (
     KnowledgeNodeWriteSerializer,
     LabelSerializer,
     McpToolSerializer,
-    MemorySerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
     PythonCodeToolConfigSerializer,
@@ -323,6 +319,10 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
     Prevents deletion of predefined objects.
     """
 
+    # No permission_classes / rbac_resource_type here on purpose: this is an
+    # abstract base. Every concrete subclass (LLMModelReadWriteViewSet,
+    # EmbeddingModelReadWriteViewSet) declares its own gate.
+
     def get_queryset(self):
         if self.action == "destroy":
             return self.queryset.filter(predefined=False)
@@ -394,6 +394,12 @@ class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
 
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
+    # No rbac_resource_type: Provider is a global catalog (no org column).
+    # SuperadminWriteMixin gates writes to superadmin (seeded via the
+    # upload_models command) and provides the permission classes:
+    # [IsAuthenticated()] for reads, [IsAuthenticated(), IsSuperadmin()]
+    # for writes. Reads are intentionally global-readable — the frontend
+    # lists providers here (LLMProvidersService.getProviders).
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     filter_backends = [DjangoFilterBackend]
@@ -686,6 +692,7 @@ class GraphViewSet(
         "inspect_import": Permission.CREATE,
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
+        "delete_by_uuid": Permission.DELETE,
     }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
@@ -759,6 +766,8 @@ class GraphViewSet(
                         "inline_surface__knowledge__naive_search_config",
                         "inline_surface__knowledge__graph_basic_search_config",
                         "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
                     ),
                 ),
                 Prefetch(
@@ -775,6 +784,8 @@ class GraphViewSet(
                         "inline_surface__knowledge__naive_search_config",
                         "inline_surface__knowledge__graph_basic_search_config",
                         "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
                     ),
                 ),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
@@ -795,6 +806,8 @@ class GraphViewSet(
                         "naive_search_config",
                         "graph_basic_search_config",
                         "graph_local_search_config",
+                        "graph_global_search_config",
+                        "graph_drift_search_config",
                     ),
                 ),
             )
@@ -954,6 +967,31 @@ class GraphViewSet(
         )
 
         return Response(GraphSerializer(refreshed).data, status=status.HTTP_200_OK)
+
+    @extend_schema(**GRAPH_DELETE_BY_UUID_DELETE)
+    @action(
+        detail=False,
+        methods=["delete"],
+        url_path=r"uuid/(?P<graph_uuid>[0-9a-fA-F-]{36})",
+    )
+    def delete_by_uuid(self, request, graph_uuid: str):
+        try:
+            parsed_uuid = uuid.UUID(graph_uuid)
+        except ValueError:
+            return Response(
+                {"message": "Invalid graph UUID format"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        graph = self.get_queryset().filter(uuid=parsed_uuid).first()
+        if graph is None:
+            return Response(
+                {"message": "Provided graph does not exist"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        self.perform_destroy(graph)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
@@ -1217,6 +1255,8 @@ class KnowledgeNodeViewSet(
         "naive_search_config",
         "graph_basic_search_config",
         "graph_local_search_config",
+        "graph_global_search_config",
+        "graph_drift_search_config",
     )
     serializer_class = KnowledgeNodeWriteSerializer
 
@@ -1265,6 +1305,8 @@ class TaskNodeViewSet(
         "inline_surface__knowledge__naive_search_config",
         "inline_surface__knowledge__graph_basic_search_config",
         "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = TaskNodeSerializer
 
@@ -1311,6 +1353,8 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__naive_search_config",
         "inline_surface__knowledge__graph_basic_search_config",
         "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = AgentNodeSerializer
 
@@ -1426,37 +1470,6 @@ class GraphSessionMessageReadOnlyViewSet(
         if not self.request.query_params.get("parent_subgraph_execution_id"):
             qs = qs.filter(parent_subgraph_execution_id__isnull=True)
         return qs
-
-
-class MemoryFilter(FilterSet):
-    run_id = NumberFilter(method="filter_run_id")
-    agent_id = CharFilter(field_name="payload__agent_id", lookup_expr="exact")
-    user_id = CharFilter(field_name="payload__user_id", lookup_expr="exact")
-    type = CharFilter(field_name="payload__type", lookup_expr="exact")
-
-    class Meta:
-        model = MemoryDatabase
-        fields = ["run_id", "agent_id", "user_id", "type"]
-
-    def filter_run_id(self, queryset, name, value):
-        return queryset.annotate(
-            run_id_int=Cast("payload__run_id", IntegerField())
-        ).filter(run_id_int=value)
-
-
-class MemoryViewSet(
-    mixins.RetrieveModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
-    # NOTE: this endpoint is scheduled for removal. Until then it is locked to
-    # superadmin
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    queryset = MemoryDatabase.objects.all()
-    serializer_class = MemorySerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = MemoryFilter
 
 
 class RealtimeModelViewSet(
@@ -1887,16 +1900,6 @@ class SubGraphNodeModelViewSet(
     org_filter_path = "graph__org_id"
     queryset = SubGraphNode.objects.all()
     serializer_class = SubGraphNodeSerializer
-
-
-class ConditionGroupModelViewSet(viewsets.ModelViewSet):
-    queryset = ConditionGroup.objects.all()
-    serializer_class = ConditionGroupSerializer
-
-
-class ConditionModelViewSet(viewsets.ModelViewSet):
-    queryset = Condition.objects.all()
-    serializer_class = ConditionSerializer
 
 
 class DecisionTableNodeModelViewSet(

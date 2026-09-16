@@ -2,7 +2,7 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { forkJoin, Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, switchMap } from 'rxjs/operators';
 
 import { withPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
@@ -26,29 +26,14 @@ export class McpToolsService {
         return `${this.configService.apiUrl}mcp-tools/`;
     }
 
-    getMcpTools(params?: {
-        name?: string;
-        tool_name?: string;
-        limit?: number;
-        offset?: number;
-    }): Observable<GetMcpToolRequest[]> {
-        let httpParams = new HttpParams();
-
-        if (params?.name) {
-            httpParams = httpParams.set('name', params.name);
-        }
-        if (params?.tool_name) {
-            httpParams = httpParams.set('tool_name', params.tool_name);
-        }
-        if (params?.limit) {
-            httpParams = httpParams.set('limit', params.limit.toString());
-        }
-        if (params?.offset) {
-            httpParams = httpParams.set('offset', params.offset.toString());
-        }
-
-        return this.http
-            .get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, {
+    getMcpTools(params?: { name?: string; tool_name?: string }): Observable<GetMcpToolRequest[]> {
+        // TODO: replace the auto-fetch-all behaviour with real pagination.
+        const LIMIT = 50;
+        const fetchSlice = (offset: number) => {
+            let httpParams = new HttpParams().set('limit', String(LIMIT)).set('offset', String(offset));
+            if (params?.name) httpParams = httpParams.set('name', params.name);
+            if (params?.tool_name) httpParams = httpParams.set('tool_name', params.tool_name);
+            return this.http.get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, {
                 params: httpParams,
                 context: withPermission<ApiGetRequest<GetMcpToolRequest>>(ResourceCode.Tools, ActionCode.Read, {
                     count: 0,
@@ -56,8 +41,21 @@ export class McpToolsService {
                     previous: null,
                     results: [],
                 }),
+            });
+        };
+
+        return fetchSlice(0).pipe(
+            switchMap((first) => {
+                if (first.results.length >= first.count) return of(first.results);
+                const remainingOffsets: number[] = [];
+                for (let offset = LIMIT; offset < first.count; offset += LIMIT) {
+                    remainingOffsets.push(offset);
+                }
+                if (remainingOffsets.length === 0) return of(first.results);
+                const rest$ = remainingOffsets.map((offset) => fetchSlice(offset).pipe(map((slice) => slice.results)));
+                return forkJoin(rest$).pipe(map((slices) => [first.results, ...slices].flat()));
             })
-            .pipe(map((response) => response.results));
+        );
     }
 
     getMcpToolById(id: number): Observable<GetMcpToolRequest> {
@@ -72,10 +70,14 @@ export class McpToolsService {
         });
     }
 
-    copyMcpTool(toolId: number, body: { name: string }): Observable<GetMcpToolRequest> {
-        return this.http.post<GetMcpToolRequest>(`${this.baseUrl}${toolId}/copy/`, body, {
-            headers: this.httpHeaders,
-        });
+    copyMcpTool(toolId: number): Observable<GetMcpToolRequest> {
+        return this.http.post<GetMcpToolRequest>(
+            `${this.baseUrl}${toolId}/copy/`,
+            {},
+            {
+                headers: this.httpHeaders,
+            }
+        );
     }
 
     exportMcpTool(toolId: number): Observable<Blob> {

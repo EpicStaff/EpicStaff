@@ -277,6 +277,16 @@
         [style.left.px]="contextMenuPosition().x"
         [style.top.px]="contextMenuPosition().y"
     >
+        @if (canGroupSelected()) {
+            <button
+                *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
+                class="storage-tree__context-menu-item"
+                (click)="onContextMenuAction('group-selected')"
+            >
+                Group
+            </button>
+            <div class="storage-tree__context-menu-divider"></div>
+        }
         <button
             *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
             class="storage-tree__context-menu-item"

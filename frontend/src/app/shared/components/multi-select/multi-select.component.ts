@@ -80,6 +80,7 @@ export class MultiSelectComponent implements OnInit {
     isOpen = signal(false);
     search = signal('');
     tempSelected = signal<unknown[]>([]);
+    projectedTriggerEl = signal<HTMLElement | null>(null);
 
     groupedFiltered = computed<GroupedItems[]>(() => {
         const search = this.search().toLowerCase();
@@ -152,7 +153,7 @@ export class MultiSelectComponent implements OnInit {
         return map;
     });
 
-    @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLElement>;
+    @ViewChild('triggerBtn') triggerBtn?: ElementRef<HTMLElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
 
     private overlayRef!: OverlayRef;
@@ -173,7 +174,12 @@ export class MultiSelectComponent implements OnInit {
 
     openDropdown(): void {
         if (this.disabled()) return;
-        this.openAt(this.triggerBtn.nativeElement);
+        const el = this.projectedTriggerEl() ?? this.triggerBtn?.nativeElement;
+        if (el) this.openAt(el);
+    }
+
+    registerTrigger(el: ElementRef<HTMLElement>): void {
+        this.projectedTriggerEl.set(el.nativeElement);
     }
 
     openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
