@@ -132,7 +132,7 @@
                 ></app-svg-icon>
                 <p>{{ previewError() }}</p>
                 <app-button
-                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
                     type="ghost"
                     (click)="onDownload()"
                     >Download file</app-button

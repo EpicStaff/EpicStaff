@@ -317,10 +317,11 @@ export class AgentSurfacesPanelComponent {
     }
 
     activeTabFor(surface: Surface): SurfaceTabId {
-        return this.activeTabBySurfaceId().get(surface.id) ?? 'tools';
+        return this.activeTabBySurfaceId().get(surface.id) ?? ResourceCode.Tools;
     }
 
-    onCardActiveTabChange(surface: Surface, tab: SurfaceTabId): void {
+    onCardActiveTabChange(surface: Surface, tab: SurfaceTabId | null): void {
+        if (!tab) return;
         this.activeTabBySurfaceId.update((map) => new Map(map).set(surface.id, tab));
     }
 
