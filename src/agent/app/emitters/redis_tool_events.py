@@ -179,25 +179,32 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         target: KnowledgeSearchTarget,
         query: str,
         result: list[FoundChunk] | str,
+        error: str | None = None,
     ) -> None:
         """Publish a live ``agent.knowledge_search`` envelope carrying the
-        structured knowledge response (crew parity with ``extracted_chunks``).
+        structured knowledge response (crew parity with ``extracted_chunks``),
+        whether the search succeeded or failed.
 
         Naive search yields chunks; graph search yields a synthesised
         ``answer`` string. Metadata is reconstructed from ``target``/``query``
-        since knowledge_new's REST response carries only ``result``."""
+        since knowledge_new's REST response carries only ``result``. On
+        failure ``result`` is an empty list and ``error`` carries the message;
+        the ``error`` key is otherwise omitted so the success payload stays
+        byte-for-byte unchanged."""
         chunks = result if isinstance(result, list) else []
-        await self._publish_live(
-            "agent.knowledge_search",
-            {
-                "collection_id": target.collection_id,
-                "rag_id": target.rag_id,
-                "rag_type": target.rag_type,
-                "retrieved_chunks": len(chunks),
-                "knowledge_query": query,
-                "rag_search_config": target.search_config.model_dump(),
-                "chunks": [chunk.model_dump() for chunk in chunks],
-                "answer": result if isinstance(result, str) else None,
-                "token_usage": {},
-            },
-        )
+        payload = {
+            "collection_id": target.collection_id,
+            "rag_id": target.rag_id,
+            "rag_type": target.rag_type,
+            "retrieved_chunks": len(chunks),
+            "knowledge_query": query,
+            "rag_search_config": target.search_config.model_dump(),
+            "chunks": [chunk.model_dump() for chunk in chunks],
+            "answer": result if isinstance(result, str) else None,
+            "token_usage": {},
+        }
+
+        if error is not None:
+            payload["error"] = error
+
+        await self._publish_live("agent.knowledge_search", payload)

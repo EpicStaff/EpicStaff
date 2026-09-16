@@ -10,6 +10,7 @@ import json
 
 import httpx
 import pytest
+import settings
 
 from shared.knowledge.client import KnowledgeClient
 from shared.knowledge.target import KnowledgeSearchTarget
@@ -19,7 +20,7 @@ from shared.models.knowledge import (
     NaiveRagSearchConfig,
 )
 
-BASE_URL = "http://knowledge_new:8100"
+BASE_URL = settings.KNOWLEDGE_BASE_URL
 
 
 def _naive_target() -> KnowledgeSearchTarget:

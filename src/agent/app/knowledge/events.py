@@ -26,4 +26,5 @@ class KnowledgeEventSink(Protocol):
         target: KnowledgeSearchTarget,
         query: str,
         result: list[FoundChunk] | str,
+        error: str | None = None,
     ) -> None: ...
