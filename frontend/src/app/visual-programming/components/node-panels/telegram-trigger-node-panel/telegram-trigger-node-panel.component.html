@@ -12,15 +12,17 @@
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
                     <div class="form-fields">
-                        <app-custom-input
-                            label="Trigger Name"
-                            tooltipText="Trigger name"
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [required]="true"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                        <div class="node-name-field">
+                            <app-custom-input
+                                label="Trigger Name"
+                                tooltipText="Trigger name"
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [required]="true"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
 
                         <div>
                             <app-select

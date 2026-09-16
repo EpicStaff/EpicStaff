@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
+import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -11,7 +12,7 @@ interface InputMapPair {
 }
 @Component({
     selector: 'app-audio-to-text-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, ValidationErrorsComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -20,14 +21,16 @@ interface InputMapPair {
                     class="form-container"
                 >
                     <!-- Node Name Field -->
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this Audio to Text node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <div class="node-name-field">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this Audio to Text node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
 
                     <!-- Input Map Key-Value Pairs -->
                     <div class="input-map">
@@ -67,6 +70,17 @@ interface InputMapPair {
 
             .form-container {
                 @include mixins.form-container;
+            }
+
+            // Isolated from the parent's gap so the input-to-error spacing is independent.
+            .node-name-field {
+                display: flex;
+                flex-direction: column;
+            }
+
+            // !important: same specificity as the component's own default margin.
+            ::ng-deep .node-name-field .validation-errors {
+                margin: 4px 0 0 !important;
             }
 
             .btn-primary {

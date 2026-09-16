@@ -22,6 +22,7 @@ import {
     ScheduleTriggerNodeData,
     WeekdayCode,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
+import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { DatePickerComponent } from '../../../../shared/components/date-picker/date-picker.component';
 import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
@@ -53,6 +54,7 @@ const MIN_INTERVAL_SECONDS = 60;
         TimePickerComponent,
         TimezoneSelectorComponent,
         ToggleSwitchComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: 'schedule-trigger-node-panel.component.html',
     styleUrls: ['schedule-trigger-node-panel.component.scss'],

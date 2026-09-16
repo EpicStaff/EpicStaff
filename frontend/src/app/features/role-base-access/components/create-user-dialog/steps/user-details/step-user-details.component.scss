@@ -41,23 +41,10 @@ app-password-strength:empty {
 }
 
 app-validation-errors {
-    margin-top: -12px; // row-gap (16px) minus the desired 4px gap above the error text
-}
-
-:host ::ng-deep app-validation-errors .validation-errors {
-    margin: 0;
-}
-
-:host ::ng-deep app-validation-errors .validation-errors__item {
-    border-left: 2px solid var(--red-500);
-    background-color: var(--red-alpha-8);
-    color: var(--red-500);
-    font-family: var(--font-family);
-    font-weight: var(--text-body-small-weight);
-    font-size: var(--text-body-small-size);
-    line-height: 100%;
-    letter-spacing: 0;
-    vertical-align: middle;
+    // row-gap (16px) + the shared component's own 0.5rem (8px) top/bottom margin = 24px by
+    // default on each side; pull up/in to land on the requested 4px above / 16px below.
+    margin-top: -20px;
+    margin-bottom: -8px;
 }
 
 .required {

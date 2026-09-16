@@ -504,16 +504,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.onTasksChange([...this.tasks(), newTask]);
     }
 
-    getTasksErrorMessage(): string {
-        const errors: ValidationErrors | null | undefined = this.form?.get('tasksValidity')?.errors;
-        if (!errors) return '';
-        if (errors['tasksRequired']) return 'Add at least one task.';
-        if (errors['taskNameRequired']) return 'Every task needs a name.';
-        if (errors['taskNameDuplicate']) return 'Task names must be unique.';
-        if (errors['taskInstructionsRequired']) return 'Every task needs instructions.';
-        return '';
-    }
-
     initializeForm(): FormGroup {
         const data = this.node().data;
 

@@ -17,15 +17,17 @@
                         class="form-fields"
                         [style.flex-basis.px]="leftColumnWidth.width()"
                     >
-                        <app-custom-input
-                            label="Node Name"
-                            [required]="true"
-                            tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                        <div class="node-name-field">
+                            <app-custom-input
+                                label="Node Name"
+                                [required]="true"
+                                tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
 
                         <div class="field">
                             <div class="field__label-row">
@@ -155,9 +157,7 @@
                                 Add Task
                             </button>
 
-                            @if (getTasksErrorMessage()) {
-                                <div class="task-error">{{ getTasksErrorMessage() }}</div>
-                            }
+                            <app-validation-errors [control]="form.get('tasksValidity')!" />
                         </div>
                     </div>
 
@@ -258,15 +258,17 @@
                 </div>
             } @else {
                 <div class="form-layout collapsed">
-                    <app-custom-input
-                        label="Node Name"
-                        [required]="true"
-                        tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <div class="node-name-field">
+                        <app-custom-input
+                            label="Node Name"
+                            [required]="true"
+                            tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
 
                     <div class="field">
                         <div class="field__label-row">
@@ -396,9 +398,7 @@
                             Add Task
                         </button>
 
-                        @if (getTasksErrorMessage()) {
-                            <div class="task-error">{{ getTasksErrorMessage() }}</div>
-                        }
+                        <app-validation-errors [control]="form.get('tasksValidity')!" />
                     </div>
                 </div>
             }
