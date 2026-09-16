@@ -19,9 +19,11 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { CollapseOnOverflowDirective, EnterBlurDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { computeUniqueName } from '@shared/utils';
 
+import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { AgentDefaultSurface, AgentSurfacePlace } from '../../../../../models/agent-definition.model';
 import {
     CreateSurfaceRequest,
@@ -29,6 +31,7 @@ import {
     Surface,
     SurfaceSaveError,
 } from '../../../../../models/surface.model';
+import { SurfaceTabId } from '../../../../../models/surface-card.model';
 import {
     categoryToPlace,
     placeToCategory,
@@ -51,6 +54,7 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
         SelectDropdownTriggerDirective,
         CollapseOnOverflowDirective,
         HelpTooltipComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-surfaces-panel.component.html',
     styleUrls: ['./agent-surfaces-panel.component.scss'],
@@ -58,9 +62,16 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
 })
 export class AgentSurfacesPanelComponent {
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly permissionService = inject(PermissionsService);
+
+    readonly canCreateSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
+    readonly canEditSurfaces = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
 
     surfaces = input<Surface[]>([]);
     agentId = input<number | null>(null);
+    /** The owning AgentDefinition's llm_config — forwarded to each surface card's
+     * RAG panel so suggested-params requests know which LLM's context window to use. */
+    llmConfigId = input<number | null>(null);
     defaultSurfaces = input<AgentDefaultSurface[]>([]);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
     saving = input<boolean>(false);
@@ -70,7 +81,7 @@ export class AgentSurfacesPanelComponent {
     surfaceCreateErrorTick = input<number>(0);
 
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
+    readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
@@ -86,6 +97,7 @@ export class AgentSurfacesPanelComponent {
     readonly categories = SURFACE_CATEGORIES;
     readonly searchQuery = signal('');
     readonly expandedSurfaceId = signal<number | null>(null);
+    private readonly activeTabBySurfaceId = signal<ReadonlyMap<number, SurfaceTabId>>(new Map());
     readonly dragging = signal<boolean>(false);
     readonly draftCategoryId = signal<SurfaceCategoryId | null>(null);
     readonly draftName = signal<string>('');
@@ -105,8 +117,10 @@ export class AgentSurfacesPanelComponent {
             if (!created) return;
             this.knownSurfaceIdsBeforeCreate.set(null);
             this.draftMaterializing = false;
+            const draftTab = this.draftSurfaceCard()?.activeTab();
             this.cancelDraft();
             this.expandedSurfaceId.set(created.id);
+            if (draftTab) this.onCardActiveTabChange(created, draftTab);
         });
 
         // Error: a create failed → keep the draft mounted and re-enable retry.
@@ -201,33 +215,90 @@ export class AgentSurfacesPanelComponent {
     }
 
     onViewSummary(category: SurfaceCategoryId): void {
-        const surfaceIds = (this.surfacesByCategory().get(category) ?? []).map((s) => s.id);
+        const own = (this.surfacesByCategory().get(category) ?? []).map((s) => s.id);
+        const everyPlace = (this.surfacesByCategory().get('every-place') ?? []).map((s) => s.id);
+        const surfaceIds = [...new Set([...everyPlace, ...own])];
         if (surfaceIds.length) this.viewSummary.emit({ place: category, surfaceIds });
+    }
+
+    private readonly summaryAvailableByCategory = computed<Map<SurfaceCategoryId, boolean>>(() => {
+        const rows = this.defaultSurfaces();
+        const hasEveryPlace = rows.some((ds) => ds.place === 'all');
+        const map = new Map<SurfaceCategoryId, boolean>();
+        for (const category of this.categories) {
+            if (category.id === 'every-place') {
+                map.set(category.id, false);
+                continue;
+            }
+            const targetPlace = categoryToPlace(category.id);
+            const own = new Set(rows.filter((ds) => ds.place === targetPlace).map((ds) => ds.surface));
+            map.set(category.id, hasEveryPlace || own.size >= 2);
+        }
+        return map;
+    });
+
+    canViewSummary(category: SurfaceCategoryId): boolean {
+        const canViewTools = this.permissionService.can(ResourceCode.Tools, ActionCode.Read);
+        const canViewFiles = this.permissionService.can(ResourceCode.Files, ActionCode.Read);
+        const canViewKnowledges = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read);
+        if (!canViewTools && !canViewFiles && !canViewKnowledges) return false;
+
+        return this.summaryAvailableByCategory().get(category) ?? false;
     }
 
     isShared(surface: Surface): boolean {
         return this.sharedSurfaceIds().has(surface.id);
     }
 
-    // Per-category "Add From Shared" list. Concrete blocks exclude a surface that already
-    // has that place or 'all'; Every-Place excludes anything assigned at all (so we never
-    // create an 'all'+concrete combination).
-    addableSharedFor(category: SurfaceCategoryId): SelectDropdownListItem<number>[] {
+    private readonly sharedItems = computed<SelectDropdownListItem<number>[]>(() => {
         const shared = this.sharedSurfaceIds();
-        const targetPlace = categoryToPlace(category);
         return this.surfaces()
-            .filter((s) => {
-                if (!shared.has(s.id)) return false;
-                const rows = this.placesForSurface(s.id);
-                if (category === 'every-place') return rows.length === 0;
-                return !rows.some((p) => p === targetPlace || p === 'all');
-            })
+            .filter((s) => shared.has(s.id))
             .map((s) => ({ name: s.name, value: s.id }));
+    });
+
+    private readonly attachedSharedByCategory = computed<Map<SurfaceCategoryId, number[]>>(() => {
+        const shared = this.sharedSurfaceIds();
+        const map = new Map<SurfaceCategoryId, number[]>();
+        for (const category of this.categories) {
+            const targetPlace = categoryToPlace(category.id);
+            map.set(
+                category.id,
+                this.defaultSurfaces()
+                    .filter((ds) => shared.has(ds.surface) && ds.place === targetPlace)
+                    .map((ds) => ds.surface)
+            );
+        }
+        return map;
+    });
+
+    private readonly tipResolvers = new Map<SurfaceCategoryId, (value: unknown) => string | null>();
+
+    sharedItemsFor(): SelectDropdownListItem<number>[] {
+        return this.sharedItems();
+    }
+
+    attachedSharedFor(category: SurfaceCategoryId): number[] {
+        return this.attachedSharedByCategory().get(category) ?? [];
+    }
+
+    sharedTipFor(category: SurfaceCategoryId): (value: unknown) => string | null {
+        const cached = this.tipResolvers.get(category);
+        if (cached) return cached;
+        const resolver = (value: unknown): string | null => {
+            if (typeof value !== 'number' || category === 'every-place') return null;
+            const places = this.placesForSurface(value);
+            if (!places.includes('all')) return null;
+            const label = this.categories.find((c) => c.id === category)?.label ?? '';
+            return `Place in Only ${label}`;
+        };
+        this.tipResolvers.set(category, resolver);
+        return resolver;
     }
 
     onAddFromShared(values: unknown[], category: SurfaceCategoryId): void {
-        const id = values[0] as number | undefined;
-        if (id != null) this.addFromShared.emit({ surfaceId: id, category });
+        const surfaceIds = values.filter((v): v is number => typeof v === 'number');
+        this.setSharedInCategory.emit({ surfaceIds, category });
     }
 
     onDragStarted(): void {
@@ -245,7 +316,18 @@ export class AgentSurfacesPanelComponent {
         this.expandedSurfaceId.set(expanded ? surface.id : null);
     }
 
+    activeTabFor(surface: Surface): SurfaceTabId {
+        return this.activeTabBySurfaceId().get(surface.id) ?? ResourceCode.Tools;
+    }
+
+    onCardActiveTabChange(surface: Surface, tab: SurfaceTabId | null): void {
+        if (!tab) return;
+        this.activeTabBySurfaceId.update((map) => new Map(map).set(surface.id, tab));
+    }
+
     private readonly draftSurfaceCard = viewChild('draftSurfaceCard', { read: SurfaceCardComponent });
+
+    readonly anyDragActive = computed<boolean>(() => this.dragging() || this.surfaceDrag.isDragging());
 
     isDrafting(categoryId: SurfaceCategoryId): boolean {
         return this.draftCategoryId() === categoryId;
@@ -299,4 +381,7 @@ export class AgentSurfacesPanelComponent {
     surfaceTrackBy(_index: number, surface: Surface): number {
         return surface.id;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

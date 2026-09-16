@@ -5,10 +5,11 @@
         <div class="no-agent-message">
             <h3>No Agents Available</h3>
             <p>
-                No agents have a realtime model configured. Open an agent on the Agents page and set its Realtime Config
-                in Additional Settings.
+                No agents have a realtime model configured, or required resource are forbidden for you. Open an agent on
+                the Agents page and set its Realtime Config in Additional Settings.
             </p>
             <a
+                *appHasPermission="[ResourceCode.Agents, ActionCode.Read]"
                 routerLink="/agents"
                 class="action-button"
                 >Go to Agents</a

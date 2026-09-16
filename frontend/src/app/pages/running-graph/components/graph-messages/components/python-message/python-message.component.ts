@@ -214,9 +214,12 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             .play-arrow {
+                width: 1.1rem;
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #ffcf3f;
@@ -242,7 +245,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             h3 {
                 color: var(--gray-100);
                 font-size: 1.1rem;
-                font-weight: 600;
+                font-weight: 500;
                 margin: 0;
             }
 

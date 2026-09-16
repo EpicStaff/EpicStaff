@@ -27,7 +27,7 @@
 
 .stat-value {
     font-size: 1.625rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--color-text-primary);
     line-height: 1.1;
 }
@@ -41,7 +41,7 @@
 
 .stat-delta {
     display: inline-flex;
-    color: #4caf82;
+    color: var(--green-400);
     font-weight: 500;
 }
 

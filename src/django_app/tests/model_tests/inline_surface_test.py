@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import pytest
 from django.db import IntegrityError
-from rest_framework.test import APIClient
 
 from agents.models import (
     InlineSurface,
@@ -52,13 +51,19 @@ from agents.services.surface_combine_service import SurfaceCombineService
 
 
 @pytest.fixture
-def org(db):
-    return Organization.objects.create(name="inline-surface-org")
+def org(default_org):
+    """Aliased to `default_org` (defined below) rather than a separate
+    Organization: the API tests further down mix these model-section
+    fixtures (`py_tool`, `mcp_tool`, `naive_collection`, ...) with the
+    API-section fixtures (`api_graph`, `api_storage_file`, ...), and both
+    must resolve to the same org as `client`'s active-org header for those
+    payloads to validate."""
+    return default_org
 
 
 @pytest.fixture
-def graph(db):
-    return Graph.objects.create(name="inline-surface-graph")
+def graph(db, org):
+    return Graph.objects.create(name="inline-surface-graph", org=org)
 
 
 @pytest.fixture
@@ -67,9 +72,10 @@ def task_node(db, graph):
 
 
 @pytest.fixture
-def py_tool(db):
+def py_tool(db, org):
     code = PythonCode.objects.create(code="def main(): pass")
     return PythonCodeTool.objects.create(
+        org=org,
         name="inline-surface-py-tool",
         description="test",
         python_code=code,
@@ -77,9 +83,9 @@ def py_tool(db):
 
 
 @pytest.fixture
-def mcp_tool(db):
+def mcp_tool(db, org):
     return McpTool.objects.create(
-        name="inline-mcp", transport="http://localhost/sse", tool_name="tool_a"
+        org=org, name="inline-mcp", transport="http://localhost/sse", tool_name="tool_a"
     )
 
 
@@ -89,8 +95,8 @@ def storage_file(db, org):
 
 
 @pytest.fixture
-def naive_collection(db):
-    coll = SourceCollection.objects.create(collection_name="inline-naive-coll")
+def naive_collection(db, org):
+    coll = SourceCollection.objects.create(collection_name="inline-naive-coll", org=org)
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.NAIVE,
         source_collection=coll,
@@ -99,8 +105,8 @@ def naive_collection(db):
 
 
 @pytest.fixture
-def graph_collection(db):
-    coll = SourceCollection.objects.create(collection_name="inline-graph-coll")
+def graph_collection(db, org):
+    coll = SourceCollection.objects.create(collection_name="inline-graph-coll", org=org)
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.GRAPH,
         source_collection=coll,
@@ -119,8 +125,13 @@ def inline_surface(db, task_node):
 
 
 @pytest.fixture
-def client():
-    return APIClient()
+def client(auth_client):
+    """`auth_client` (conftest) is authenticated as a member of `default_org`
+    and sends its id as the active-org header. `default_org` below overrides
+    the conftest fixture of the same name for this module, so `auth_client`'s
+    membership resolves against that same org, keeping it consistent with
+    `api_graph`/`api_storage_file`."""
+    return auth_client
 
 
 @pytest.fixture
@@ -137,7 +148,7 @@ def other_org(db):
 
 @pytest.fixture
 def api_graph(db, default_org):
-    return Graph.objects.create(name="inline-surface-api-graph")
+    return Graph.objects.create(name="inline-surface-api-graph", org=default_org)
 
 
 @pytest.fixture
@@ -335,11 +346,14 @@ def test_content_hash_unchanged_by_inline_surface_create_and_delete(task_node):
 
 @pytest.mark.django_db
 def test_post_with_full_inline_payload_returns_201_and_creates_rows(
-    client, api_graph, py_tool, mcp_tool, api_storage_file, naive_collection
+    client, org, api_graph, py_tool, mcp_tool, api_storage_file, naive_collection
 ):
     py_tool_b_code = PythonCode.objects.create(code="def main(): pass")
     py_tool_b = PythonCodeTool.objects.create(
-        name="inline-surface-py-tool-b", description="test", python_code=py_tool_b_code
+        org=org,
+        name="inline-surface-py-tool-b",
+        description="test",
+        python_code=py_tool_b_code,
     )
 
     response = client.post(

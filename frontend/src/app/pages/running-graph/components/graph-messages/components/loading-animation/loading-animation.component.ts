@@ -47,7 +47,7 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/
             }
 
             .processing-text {
-                font-size: 14px;
+                font-size: 0.875rem;
                 color: #666;
                 min-width: 100px;
                 text-align: center;

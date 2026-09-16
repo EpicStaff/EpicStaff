@@ -2,7 +2,6 @@ import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, OnChanges, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { HelpTooltipComponent, SelectComponent } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 
 import { CHUNK_STRATEGIES_SELECT_ITEMS } from '../../../constants/constants';
 import { ADDITIONAL_PARAMS_FORM_COMPONENT_MAP } from '../../../enums/additional-params-form.map';
@@ -13,7 +12,7 @@ import { TableDocument } from '../../naive-rag-configuration/configuration-table
     selector: 'app-document-config',
     templateUrl: './document-config.component.html',
     styleUrls: ['./document-config.component.scss'],
-    imports: [MATERIAL_FORMS, SelectComponent, ReactiveFormsModule, NgComponentOutlet, HelpTooltipComponent],
+    imports: [SelectComponent, ReactiveFormsModule, NgComponentOutlet, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DocumentConfigComponent implements OnChanges {
@@ -21,6 +20,12 @@ export class DocumentConfigComponent implements OnChanges {
     ragId = input.required<number>();
 
     selectedStrategy = signal<NaiveRagChunkStrategy | null>(null);
+
+    // Snapshot of the document at the moment the selected document ID changed.
+    // Polling updates the underlying signal every 5s with a fresh object reference,
+    // which would otherwise reset the form. We only re-snapshot when the doc ID changes.
+    private snapshotDoc = signal<TableDocument | null>(null);
+    private lastDocId: number | null = null;
 
     onSelectedStrategyChange(value: unknown): void {
         if (value == null) {
@@ -34,7 +39,8 @@ export class DocumentConfigComponent implements OnChanges {
     }
 
     private additionalFormParams = computed(() => {
-        const document = this.document();
+        const document = this.snapshotDoc();
+        if (!document) return;
         const additionalParams = document.additional_params;
 
         switch (this.selectedStrategy()) {
@@ -94,8 +100,14 @@ export class DocumentConfigComponent implements OnChanges {
     form: FormGroup = new FormGroup({});
 
     ngOnChanges() {
-        const strategy = this.document().chunk_strategy;
-        this.selectedStrategy.set(strategy);
+        const doc = this.document();
+        // Only re-snapshot / reset strategy when the selected document actually changed.
+        // Polling reassigns the doc reference every tick but we must not reset the form then.
+        if (doc.naive_rag_document_id === this.lastDocId) return;
+
+        this.lastDocId = doc.naive_rag_document_id;
+        this.snapshotDoc.set(doc);
+        this.selectedStrategy.set(doc.chunk_strategy);
     }
 
     protected readonly chunkStrategySelectItems = CHUNK_STRATEGIES_SELECT_ITEMS;

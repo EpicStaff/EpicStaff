@@ -1,9 +1,14 @@
+import sys
+
 import uvicorn
 from loguru import logger
 from core import config
 
 
 def main():
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
+
     if config.REALTIME_DEBUG_MODE:
         logger.info("RUNNING IN DEBUG MODE")
 

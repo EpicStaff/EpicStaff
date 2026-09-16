@@ -15,6 +15,7 @@ class TablesConfig(AppConfig):
         import tables.signals.node_signals
         import tables.signals.telegram_signals
         import tables.signals.python_code_tool_config_signals
+        import tables.signals.python_code_signals
         import tables.signals.naive_rag_signals
         import tables.signals.webhook_signals
         import tables.import_export.version_conversions.convertions
@@ -61,6 +62,20 @@ class TablesConfig(AppConfig):
 
         if "runserver" in sys.argv:
             logger.info(f"{settings.DEBUG=}")
+
+        # Elect a single owner across web-server workers to run the daily
+        # litellm model-cost refresh; skip during migrate/makemigrations/tests.
+        argv0 = sys.argv[0] if sys.argv else ""
+        is_web_server = (
+            "runserver" in sys.argv
+            or "gunicorn" in argv0
+            or "uvicorn" in argv0
+            or "daphne" in argv0
+        )
+        if is_web_server:
+            from tables.utils.litellm_model_info import start_litellm_refresh_if_owner
+
+            start_litellm_refresh_if_owner()
 
         redis_service = RedisService()
         converter_service = ConverterService()

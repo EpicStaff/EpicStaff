@@ -1,0 +1,158 @@
+// Typography: font family, Figma text styles, and utility classes.
+//
+// HOW TO USE
+//   Prefer a full text style (class or all three --text-* tokens together).
+//   For weight alone use 400 / 500 / 700 (regular / medium / bold).
+//   600 / semibold is NOT used in our design system.
+//
+//   In HTML:
+//     <h1 class="text-h1">Page title</h1>
+//
+//   In SCSS when a class isn't convenient:
+//     .foo {
+//       font-size: var(--text-body-size);
+//       font-weight: var(--text-body-weight);
+//       line-height: var(--text-body-line-height);
+//     }
+//
+//   Units: use the SIZE token only together with its WEIGHT token (a full text
+//   style, e.g. body-medium). For a size with no weight, write a plain rem value
+//   (never px — rem respects the user's browser font size; 1rem = 16px). A lone
+//   size token is avoided: the same px lives in several styles, so size+weight
+//   together is what identifies the style.
+//
+//   px → rem quick reference (rem = px / 16):
+//     8px  = 0.5rem      15px = 0.9375rem   22px = 1.375rem
+//     10px = 0.625rem    16px = 1rem        24px = 1.5rem
+//     11px = 0.6875rem   17px = 1.0625rem   26px = 1.625rem
+//     12px = 0.75rem     18px = 1.125rem    28px = 1.75rem
+//     13px = 0.8125rem   19px = 1.1875rem   30px = 1.875rem
+//     14px = 0.875rem    20px = 1.25rem     32px = 2rem
+//
+// Font family is set on body via --font-family; classes do not re-set it.
+
+:root {
+    --font-family: Inter, 'Helvetica Neue', sans-serif;
+
+    --text-h1-hero-size: 2rem; // 32px — Reseved for high-impact screens to highlight the core value or message
+    --text-h1-hero-weight: 700;
+    --text-h1-hero-line-height: 1;
+
+    --text-h1-size: 1.375rem; // 22px — Page titles, main headings
+    --text-h1-weight: 500;
+    --text-h1-line-height: 1;
+
+    --text-h2-size: 1.25rem; // 20px — Names of blocks
+    --text-h2-weight: 700;
+    --text-h2-line-height: 1;
+
+    --text-h3-size: 1.25rem; // 20px — Names of modal windows
+    --text-h3-weight: 500;
+    --text-h3-line-height: 1;
+
+    --text-h4-size: 1.125rem; // 18px — Card names
+    --text-h4-weight: 500;
+    --text-h4-line-height: 1.3;
+
+    --text-body-large-size: 0.875rem; // 14px — UPPERCASE Titles, headings
+    --text-body-large-weight: 700;
+    --text-body-large-line-height: 1.3;
+    --text-body-large-transform: uppercase;
+
+    --text-body-bold-size: 0.875rem; // 14px — Titles for some tables
+    --text-body-bold-weight: 700;
+    --text-body-bold-line-height: 1.3;
+
+    --text-body-medium-size: 0.875rem; // 14px — Small tabs
+    --text-body-medium-weight: 500;
+    --text-body-medium-line-height: 1.3;
+
+    --text-body-size: 0.875rem; // 14px — Default body text
+    --text-body-weight: 400;
+    --text-body-line-height: 1.3;
+
+    --text-body-small-large-size: 0.75rem; // 12px — Secondary information titles, captions
+    --text-body-small-large-weight: 500;
+    --text-body-small-large-line-height: 1.3;
+
+    --text-body-small-size: 0.75rem; // 12px — Secondary information, captions
+    --text-body-small-weight: 400;
+    --text-body-small-line-height: 1.3;
+
+    --text-caption-size: 0.625rem; // 10px — Labels, meta information
+    --text-caption-weight: 400;
+    --text-caption-line-height: 1.3;
+}
+
+.text-h1-hero {
+    font-size: var(--text-h1-hero-size);
+    font-weight: var(--text-h1-hero-weight);
+    line-height: var(--text-h1-hero-line-height);
+}
+
+.text-h1 {
+    font-size: var(--text-h1-size);
+    font-weight: var(--text-h1-weight);
+    line-height: var(--text-h1-line-height);
+}
+
+.text-h2 {
+    font-size: var(--text-h2-size);
+    font-weight: var(--text-h2-weight);
+    line-height: var(--text-h2-line-height);
+}
+
+.text-h3 {
+    font-size: var(--text-h3-size);
+    font-weight: var(--text-h3-weight);
+    line-height: var(--text-h3-line-height);
+}
+
+.text-h4 {
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
+    line-height: var(--text-h4-line-height);
+}
+
+.text-body-large {
+    font-size: var(--text-body-large-size);
+    font-weight: var(--text-body-large-weight);
+    line-height: var(--text-body-large-line-height);
+    text-transform: var(--text-body-large-transform);
+}
+
+.text-body-bold {
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
+    line-height: var(--text-body-bold-line-height);
+}
+
+.text-body-medium {
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+}
+
+.text-body {
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+}
+
+.text-body-small-large {
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
+}
+
+.text-body-small {
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}
+
+.text-caption {
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+}

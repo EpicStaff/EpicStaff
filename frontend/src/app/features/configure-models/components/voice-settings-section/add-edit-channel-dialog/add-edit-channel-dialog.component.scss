@@ -12,14 +12,14 @@
     &__header {
         padding: 1.25rem;
         border-bottom: 1px solid var(--color-divider-subtle);
-        font-size: 1.25rem;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         flex-shrink: 0;
     }
 
     &__error-message {
-        background-color: rgba(255, 77, 79, 0.1);
-        color: var(--color-error, #ff4d4f);
+        background-color: var(--red-450-alpha-10);
+        color: var(--color-error);
         padding: 0.75rem;
         border-radius: 4px;
 
@@ -61,8 +61,8 @@
     }
 
     &__section-label {
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: var(--color-text-secondary);
@@ -72,7 +72,7 @@
     &__field-error {
         margin: -0.5rem 0 0;
         font-size: 0.8rem;
-        color: var(--color-error, #ff4d4f);
+        color: var(--color-error);
     }
 
     &__actions {

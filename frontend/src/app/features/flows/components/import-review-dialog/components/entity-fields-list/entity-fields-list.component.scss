@@ -15,8 +15,8 @@
         border-top: 1px solid var(--transparent-white-8);
 
         .detail-key {
-            font-size: 0.75rem;
-            font-weight: 500;
+            font-size: var(--text-body-small-large-size);
+            font-weight: var(--text-body-small-large-weight);
             color: var(--color-text-secondary);
             white-space: nowrap;
         }

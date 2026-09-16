@@ -7,6 +7,11 @@ touches a secret**. Everything described here is actual runtime behavior.
 Related focused docs: [secrets_endpoints.md](secrets_endpoints.md),
 [sandbox_secrets.md](sandbox_secrets.md), [secret_usage.md](secret_usage.md).
 
+Who may **change** which secret a resource references is a separate, RBAC-side concern —
+`secrets:USE`, enforced by `SecretReferenceGuardMixin` and documented in
+[../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. Everything in
+*this* guide is about storing, resolving and delivering the value once a reference exists.
+
 ---
 
 ## 1. Mental model
@@ -78,8 +83,18 @@ Two reference styles, and the distinction matters throughout the codebase:
 | `EmbeddingConfig` | `api_key_secret` |
 | `RealtimeConfig` | `api_key_secret` |
 | `RealtimeTranscriptionConfig` | `api_key_secret` |
+| `OpenAIRealtimeConfig` | `api_key_secret`, `transcription_api_key_secret` |
+| `ElevenLabsRealtimeConfig` | `api_key_secret` |
+| `GeminiRealtimeConfig` | `api_key_secret` |
 | `McpTool` | `auth_secret` |
 | `TelegramTriggerNode` | `telegram_bot_api_key_secret` |
+| `TwilioChannel` | `auth_token_secret` |
+| `NgrokWebhookConfig` | `auth_token_secret` |
+| `WebhookTriggerAuth` | `secret` |
+
+> This table is illustrative. `USAGE_SOURCES` ([secret_usage.md](secret_usage.md) §1) is the
+> authoritative, test-pinned registry of every reference site — if the two disagree, that one
+> is right.
 
 **Declaration sites** — `PythonCode.secrets` is an M2M to `Secret`, and it **is the
 allow-list**: it says which secrets that code may read at runtime. Six places own a
@@ -106,17 +121,26 @@ allow-list**: it says which secrets that code may read at runtime. Six places ow
 > (`tests/graph_versioning_tests/test_secret_declarations.py`) will fail until you also teach
 > versioning about it.
 
-### 2.2 Not migrated: ngrok and Twilio
+### 2.2 Detail-row FK sites: ngrok, Twilio, webhook auth
 
-`NgrokWebhookConfig.auth_token` and `VoiceSettings.twilio_account_sid` /
-`twilio_auth_token` still store **plaintext** and are deliberately outside this system.
-Both are platform-wide rather than tenant data: `NgrokWebhookConfig` is a plain model with
-no org FK (globally unique `name` and `auth_token`) and `VoiceSettings` is a singleton
-(`pk=1`). `Secret` is org-scoped by definition, so there is no org to attach them to.
-Both are superadmin-only to read or write and neither reaches sandboxed user code.
+Most FK sites own an `org` column (`OrgScopedModel`), and flow nodes reach one through their
+mandatory `graph` FK (`graph__org_id`). Three are neither: they are **detail rows**, hanging
+off a parent by `OneToOneField`, and reach the org through that parent:
 
-The open gap is encryption at rest: unlike everything else here, these two are readable in
-a DB dump. Migrating them needs either a platform-level secret scope or an owning org.
+| Model | Org path | Parent |
+|---|---|---|
+| `TwilioChannel` | `channel__org_id` | `RealtimeChannel` (`OneToOneField`, also its PK) |
+| `NgrokWebhookConfig` | `trigger__org_id` | `WebhookTrigger` (`OneToOneField`) |
+| `WebhookTriggerAuth` | `trigger__org_id` | `WebhookTrigger` (`OneToOneField`) |
+
+The parent link being non-nullable is what makes this safe: no row exists without a parent,
+so none can slip past an org filter. The direction matters — scoping `RealtimeChannel`
+*through* `TwilioChannel` would be unsafe, because it would hide every channel that has no
+Twilio detail row.
+
+`TwilioChannel.account_sid` and the ngrok `domain` / `region` are plain columns by design:
+they are identifiers and configuration, not credentials. Every credential on these three
+models is a `Secret` FK.
 
 ---
 
@@ -330,9 +354,17 @@ Consequences worth knowing:
 4. If the value must reach another service, add the pydantic carrier pair
    (`<field>_secret_id` with `Field(exclude=True)`, plus the plaintext `<field>` slot) and
    let `resolve_payload` fill it. Do not decrypt at the call site.
-5. Register a usage source so deletion safety still tells the truth — see
-   [secret_usage.md](secret_usage.md) §"Adding a source".
-6. If the model is a graph child that versioning wipes and recreates, teach
+5. **Add the write field to the owning serializer's `secret_reference_fields`**, so changing
+   the reference requires `secrets:USE`. The serializer must carry
+   `SecretReferenceGuardMixin`, and if it defines its own `validate()` it **must** call
+   `super().validate(attrs)` — four serializers have silently bypassed the guard exactly that
+   way. `tests/services_tests/test_secret_reference_coverage.py` fails until the field is
+   registered or explicitly exempted with a written reason; see
+   [../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
+6. Register a usage source so deletion safety still tells the truth — see
+   [secret_usage.md](secret_usage.md) §7 "Adding a source". Note that source needs an
+   `rbac_resource_types` declaration too; it has no default.
+7. If the model is a graph child that versioning wipes and recreates, teach
    `GraphVersioningManager.collect_secret_declarations` / `restore_secret_declarations`
    about it, or a version restore will silently drop the reference.
 
@@ -379,8 +411,12 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | What actually gets injected | `tests/services_tests/test_declared_secret_injection.py`, `test_run_python_code_secrets.py`, `test_converter_emits_secret_ids.py` |
 | Quickstart reuse | `tests/api_tests/test_quickstart_secret_reuse.py` |
 | Telegram FK field | `tests/api_tests/test_telegram_trigger_secret_field.py` |
-| Usage sources and payload | `tests/services_tests/test_secret_usage_sources.py`, `test_secret_usage_service.py` |
-| Usage endpoints, query cost | `tests/api_tests/test_secret_usage_api.py` |
+| Usage sources and payload | `tests/services_tests/test_secret_usage_sources.py`, `test_secret_usage_service.py`, `test_secret_usage_source_coverage.py` |
+| Usage endpoints, query cost | `tests/api_tests/test_secret_usage_api.py`, `test_graph_list_cdt_secrets_query_count.py` |
+| Usage visibility per role (readable/hidden) | `tests/services_tests/test_secret_usage_permission_filtering.py`, `tests/api_tests/test_secret_usage_permission_visibility.py` |
+| `secrets:USE` guard: delta rule, fail-safe | `tests/services_tests/test_secret_reference_guard.py` |
+| `secrets:USE` coverage — every field gated, guard actually reached | `tests/services_tests/test_secret_reference_coverage.py` |
+| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py` |
 | Version round trip | `tests/graph_versioning_tests/test_secret_declarations.py`, `tests/api_tests/test_graph_version_secret_declarations.py` |
 | Sandbox delivery and scrubbing | `src/sandbox/tests/chain_tests/test_execute_code_handler_env.py`, `test_secret_scrubber.py` |
 

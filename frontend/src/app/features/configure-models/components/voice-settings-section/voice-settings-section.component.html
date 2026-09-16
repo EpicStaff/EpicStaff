@@ -32,9 +32,9 @@
                             <span class="channel-card__name">{{ channel.name }}</span>
                             <span
                                 class="channel-card__badge"
-                                [class.channel-card__badge--active]="channel.is_active"
-                                [class.channel-card__badge--inactive]="!channel.is_active"
-                                >{{ channel.is_active ? 'Active' : 'Inactive' }}</span
+                                [class.channel-card__badge--active]="channel.is_enabled"
+                                [class.channel-card__badge--inactive]="!channel.is_enabled"
+                                >{{ channel.is_enabled ? 'Enabled' : 'Disabled' }}</span
                             >
                         </div>
                         <div class="channel-card__actions">

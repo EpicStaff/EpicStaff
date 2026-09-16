@@ -2,7 +2,6 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    font-family: 'Inter', sans-serif;
 }
 
 .execution-section {
@@ -12,8 +11,8 @@
     }
 
     .section-title {
-        font-size: 14px;
-        font-weight: 700;
+        font-size: var(--text-body-bold-size);
+        font-weight: var(--text-body-bold-weight);
         letter-spacing: 0.04em;
         text-transform: uppercase;
         color: var(--color-text-primary, #d9d9de);

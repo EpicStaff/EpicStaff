@@ -142,7 +142,7 @@ podman run -d   --name sandbox   --network backend-network   -v sandbox_venvs:${
 ### Frontend
 
 ```bash
-podman run -d   --name frontend   --network frontend-network   -p 4200:80   -v ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro   frontend
+podman run -d   --name frontend   --network frontend-network   -p 4200:80   -e API_URL=http://localhost:8000/api/   -e REALTIME_API_URL=http://localhost:8050/realtime/   frontend
 ```
 ---
 

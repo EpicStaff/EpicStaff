@@ -4,6 +4,16 @@ import pytest
 
 from conftest import load_tool_main
 
+# natural_language_to_sql_tool/main.py imports sqlalchemy at module level. Per
+# tool_data.yaml's requirements.txt, sqlalchemy (and langchain/litellm) are
+# installed into this tool's own dedicated venv by the sandbox at execution
+# time, not into any service venv — skip cleanly instead of failing 11 times
+# when running these tests outside that venv.
+pytest.importorskip(
+    "sqlalchemy",
+    reason="installed by the sandbox into this tool's own venv, not a service venv",
+)
+
 
 def _make_tool(module, db_uri: str, read_only: bool):
     module.state = {

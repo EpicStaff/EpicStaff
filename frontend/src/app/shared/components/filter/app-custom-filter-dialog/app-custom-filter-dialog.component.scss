@@ -10,8 +10,8 @@
     padding: 1.25rem 1.5rem;
     color: var(--color-text-primary);
     box-shadow:
-        0 6px 10px rgba(0, 0, 0, 0.15),
-        0 2px 3px rgba(0, 0, 0, 0.3);
+        0 6px 10px var(--black-alpha-15),
+        0 2px 3px var(--black-alpha-30);
 }
 
 .dialog-header {
@@ -147,8 +147,8 @@
         border: 1px solid var(--color-input-border);
         border-radius: 6px;
         box-shadow:
-            0 6px 10px rgba(0, 0, 0, 0.15),
-            0 2px 3px rgba(0, 0, 0, 0.3);
+            0 6px 10px var(--black-alpha-15),
+            0 2px 3px var(--black-alpha-30);
         z-index: 10;
         padding: 0.25rem;
         max-height: 16rem;
@@ -223,7 +223,7 @@
 
         &.active {
             background: var(--accent-color);
-            color: #fff;
+            color: var(--white);
         }
     }
 }

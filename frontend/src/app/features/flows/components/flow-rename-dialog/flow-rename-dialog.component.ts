@@ -96,8 +96,8 @@ interface FlowRenameData {
                 margin-top: 0;
                 margin-bottom: 1.5rem;
                 color: var(--color-text-primary);
-                font-size: 1.25rem;
-                font-weight: 600;
+                font-size: var(--text-h3-size);
+                font-weight: var(--text-h3-weight);
             }
 
             .dialog-content {
@@ -142,7 +142,7 @@ interface FlowRenameData {
             .error-message-block {
                 padding: 0.5rem 0.75rem;
                 color: var(--color-error);
-                font-size: 12px;
+                font-size: 0.75rem;
                 margin-top: 4px;
             }
         `,

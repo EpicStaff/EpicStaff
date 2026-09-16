@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 /**
- * Generates THIRD-PARTY-NOTICES.md in the repository root.
+ * Regenerates the `frontend` region of THIRD-PARTY-NOTICES.md in the
+ * repository root.
  *
  * Scope: production npm dependencies of the EpicStaff frontend
  * (declared in frontend/package.json dependencies, resolved via
- * frontend/package-lock.json). Backend / Python deps and frontend
- * devDependencies are NOT included - they are not shipped to users.
+ * frontend/package-lock.json), plus the embedded-assets notices
+ * maintained by hand in frontend/scripts/embedded-assets-notices.md.
+ * Backend / Python deps and frontend devDependencies are NOT included
+ * - they are not shipped to users.
+ *
+ * This script only touches the text between the
+ *   <!-- BEGIN GENERATED: frontend -->
+ *   <!-- END GENERATED: frontend -->
+ * markers in THIRD-PARTY-NOTICES.md. Everything else in that file
+ * (static preamble, the backend region written by
+ * scripts/generate-python-notices.py, and the static tail) is left
+ * untouched.
  *
  * Usage (from frontend/ directory):
  *     node scripts/generate-third-party-notices.mjs
@@ -24,6 +35,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(FRONTEND_DIR, '..');
 const OUTPUT_FILE = path.join(REPO_ROOT, 'THIRD-PARTY-NOTICES.md');
+const SKELETON_FILE = path.join(REPO_ROOT, 'scripts', 'notices-skeleton.md');
+const EMBEDDED_ASSETS_FILE = path.join(__dirname, 'embedded-assets-notices.md');
+
+const REGION = 'frontend';
+const BEGIN_MARKER = `<!-- BEGIN GENERATED: ${REGION} -->`;
+const END_MARKER = `<!-- END GENERATED: ${REGION} -->`;
 
 process.stderr.write('Running license-checker --production --json ...\n');
 const isWin = process.platform === 'win32';
@@ -90,24 +107,16 @@ const lockHash = fs.existsSync(lockFilePath)
   ? createHash('sha256').update(fs.readFileSync(lockFilePath)).digest('hex').slice(0, 16)
   : 'no-lock';
 
-// Build markdown
+// Build markdown for the frontend region body
 const lines = [];
 lines.push('<!-- AUTO-GENERATED — do not edit by hand -->');
 lines.push(`<!-- generated: ${generatedAt} -->`);
 lines.push(`<!-- commit: ${gitSha} -->`);
 lines.push(`<!-- package-lock.json sha256: ${lockHash} -->`);
 lines.push('');
-lines.push('# Third-Party Notices');
+lines.push('## Frontend license summary');
 lines.push('');
-lines.push('This file lists third-party open-source software bundled into the EpicStaff frontend (Angular application). It covers **production** npm dependencies declared in `frontend/package.json` and resolved via `frontend/package-lock.json`.');
-lines.push('');
-lines.push('Backend / Python dependencies are out of scope of this file. Development-only npm dependencies (test runners, linters, build tooling) are likewise out of scope, since they are not shipped with the production bundle.');
-lines.push('');
-lines.push('The EpicStaff project itself is licensed under the terms found in [LICENSE](./LICENSE). Nothing in this notices file modifies or supersedes that license.');
-lines.push('');
-lines.push('---');
-lines.push('');
-lines.push('## License summary');
+lines.push('Production npm dependencies of the Angular frontend. Assets embedded in the prebuilt widget bundle are counted separately under "Embedded assets" below, and backend Python packages under "Backend (Python)".');
 lines.push('');
 lines.push('| License | Packages |');
 lines.push('|---|---|');
@@ -116,8 +125,6 @@ for (const [lic, cnt] of distEntries) {
   lines.push(`| ${lic} | ${cnt} |`);
 }
 lines.push(`| **Total** | **${entries.length}** |`);
-lines.push('');
-lines.push('---');
 lines.push('');
 lines.push('## Package index');
 lines.push('');
@@ -196,34 +203,54 @@ lines.push('### JSON-js cycle.js');
 lines.push('');
 lines.push('The cycle-removal helper in the same component follows [Douglas Crockford\'s cycle.js](https://github.com/douglascrockford/JSON-js/blob/master/cycle.js), which its author released into the public domain. No licence notice is required for it; it is recorded here for completeness.');
 lines.push('');
-lines.push('---');
-lines.push('');
-lines.push('## How to refresh this file');
-lines.push('');
-lines.push('Whenever frontend production dependencies change (additions, version bumps, removals in `frontend/package.json`), regenerate this notices file.');
-lines.push('');
-lines.push('From the repository root, in PowerShell:');
-lines.push('');
-lines.push('```powershell');
-lines.push('cd frontend');
-lines.push('npm install');
-lines.push('node scripts/generate-third-party-notices.mjs');
-lines.push('cd ..');
-lines.push('```');
-lines.push('');
-lines.push('The generator script lives at `frontend/scripts/generate-third-party-notices.mjs` and invokes `npx --yes license-checker --production --json` internally - no extra devDependency is needed. The output is written to `THIRD-PARTY-NOTICES.md` at the repository root, overwriting the previous version.');
-lines.push('');
-lines.push('### What the refresh covers');
-lines.push('');
-lines.push('- Walks every package reachable from `frontend/package.json` `dependencies` (not `devDependencies`) via `npm` resolution.');
-lines.push('- Reads each package\'s SPDX license identifier from its installed `package.json` and the verbatim text from its shipped LICENSE / COPYING / NOTICE file when present.');
-lines.push('- Sorts entries alphabetically and groups them by SPDX identifier in the summary table.');
-lines.push('');
-lines.push('### Manual overrides applied');
-lines.push('');
-lines.push('- The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the list — this notices file only covers third-party code.');
-lines.push('');
 
-const md = lines.join('\n');
-fs.writeFileSync(OUTPUT_FILE, md, 'utf8');
-process.stderr.write('Discovered ' + entries.length + ' third-party packages.\nWrote ' + OUTPUT_FILE + '\n');
+let body = lines.join('\n');
+
+// Inline the hand-maintained embedded-assets notices, if present.
+if (fs.existsSync(EMBEDDED_ASSETS_FILE)) {
+  const embedded = fs.readFileSync(EMBEDDED_ASSETS_FILE, 'utf8').trim();
+  body = body + '\n' + embedded;
+} else {
+  process.stderr.write(`Warning: ${EMBEDDED_ASSETS_FILE} not found; skipping embedded assets section.\n`);
+}
+
+// Splice the region body into THIRD-PARTY-NOTICES.md, touching nothing
+// outside the BEGIN/END GENERATED: frontend markers.
+let existingText;
+if (fs.existsSync(OUTPUT_FILE)) {
+  existingText = fs.readFileSync(OUTPUT_FILE, 'utf8');
+} else if (fs.existsSync(SKELETON_FILE)) {
+  existingText = fs.readFileSync(SKELETON_FILE, 'utf8');
+} else {
+  process.stderr.write(
+    `Error: neither ${OUTPUT_FILE} nor ${SKELETON_FILE} exists. Cannot determine document structure.\n`
+  );
+  process.exit(1);
+}
+existingText = existingText.replace(/\r\n/g, '\n');
+
+const docLines = existingText.split('\n');
+let beginIdx = -1;
+let endIdx = -1;
+let beginCount = 0;
+let endCount = 0;
+for (let i = 0; i < docLines.length; i++) {
+  if (docLines[i] === BEGIN_MARKER) { beginCount++; beginIdx = i; }
+  if (docLines[i] === END_MARKER) { endCount++; endIdx = i; }
+}
+if (beginCount !== 1 || endCount !== 1 || beginIdx === -1 || endIdx === -1 || endIdx < beginIdx) {
+  process.stderr.write(
+    `Error: could not find exactly one well-formed marker pair\n` +
+    `  ${BEGIN_MARKER}\n  ${END_MARKER}\n` +
+    `in ${OUTPUT_FILE}. Restore the marker pair from ${SKELETON_FILE} and try again.\n`
+  );
+  process.exit(1);
+}
+
+const before = docLines.slice(0, beginIdx + 1).join('\n');
+const after = docLines.slice(endIdx).join('\n');
+let finalMd = before + '\n' + body.trim() + '\n' + after;
+finalMd = finalMd.replace(/\s+$/, '') + '\n';
+
+fs.writeFileSync(OUTPUT_FILE, finalMd, 'utf8');
+process.stderr.write('Discovered ' + entries.length + ' third-party packages.\nUpdated frontend region of ' + OUTPUT_FILE + '\n');

@@ -65,8 +65,9 @@
 
             @if (!isCreating()) {
                 <div class="surface-card__actions">
-                    @if (readOnly()) {
+                    @if (sharedInAgent()) {
                         <button
+                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
                             type="button"
                             class="surface-card__action surface-card__action--accent"
                             matTooltip="Open in Shared Surfaces"
@@ -80,6 +81,7 @@
                             />
                         </button>
                         <button
+                            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                             type="button"
                             class="surface-card__action surface-card__action--accent"
                             matTooltip="Detach from this place"
@@ -96,6 +98,7 @@
 
                     @if (showDelete()) {
                         <button
+                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Delete]"
                             type="button"
                             class="surface-card__action surface-card__action--accent"
                             matTooltip="Delete surface"
@@ -137,6 +140,7 @@
                                 <div class="surface-card__menu">
                                     @if (showAgentSpecificMenu()) {
                                         <button
+                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
                                             type="button"
                                             class="surface-card__menu-item"
                                             (click)="onHeaderAction('duplicate', $event)"
@@ -144,6 +148,7 @@
                                             Duplicate
                                         </button>
                                         <button
+                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Update]"
                                             type="button"
                                             class="surface-card__menu-item"
                                             (click)="onHeaderAction('makeShared', $event)"
@@ -152,6 +157,7 @@
                                         </button>
                                     } @else if (showSharedInAgentMenu()) {
                                         <button
+                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
                                             type="button"
                                             class="surface-card__menu-item"
                                             (click)="onHeaderAction('makeCopy', $event)"
@@ -159,6 +165,7 @@
                                             Make Agent-Specific Copy
                                         </button>
                                         <div
+                                            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                             class="surface-card__places"
                                             [class.surface-card__places--busy]="placesBusy()"
                                             (click)="$event.stopPropagation()"
@@ -198,6 +205,7 @@
                                         </div>
                                     } @else if (showSharedSurfacesMenu()) {
                                         <button
+                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
                                             type="button"
                                             class="surface-card__menu-item"
                                             (click)="onHeaderAction('duplicate', $event)"
@@ -239,10 +247,11 @@
 
             <nav class="tabs">
                 <button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Read]"
                     type="button"
                     class="tabs__tab"
                     [class.tabs__tab--active]="activeTab() === 'tools'"
-                    (click)="selectTab('tools')"
+                    (click)="selectTab(ResourceCode.Tools)"
                 >
                     <app-svg-icon
                         icon="tools"
@@ -252,10 +261,11 @@
                 </button>
                 <span class="tabs__sep">/</span>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
                     type="button"
                     class="tabs__tab"
                     [class.tabs__tab--active]="activeTab() === 'files'"
-                    (click)="selectTab('files')"
+                    (click)="selectTab(ResourceCode.Files)"
                 >
                     <app-svg-icon
                         icon="files-tab"
@@ -265,10 +275,11 @@
                 </button>
                 <span class="tabs__sep">/</span>
                 <button
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Read]"
                     type="button"
                     class="tabs__tab"
-                    [class.tabs__tab--active]="activeTab() === 'collections'"
-                    (click)="selectTab('collections')"
+                    [class.tabs__tab--active]="activeTab() === 'knowledge_sources'"
+                    (click)="selectTab(ResourceCode.KnowledgeSources)"
                 >
                     <app-svg-icon
                         icon="knowledge-tab"
@@ -295,9 +306,7 @@
                         (selectionChange)="onActiveToolsChange($event)"
                         (draftChange)="onActiveToolsDraftChange($event)"
                         (openedChange)="onToolsOpenedChange($event)"
-                        [searchPlaceholder]="
-                            toolSubtab() === 'custom' ? 'Search custom tools...' : 'Search MCP tools...'
-                        "
+                        [searchPlaceholder]="toolSearchPlaceholder()"
                     >
                         <button
                             appSelectDropdownTrigger
@@ -625,7 +634,7 @@
                 </div>
             }
 
-            @if (activeTab() === 'collections') {
+            @if (activeTab() === ResourceCode.KnowledgeSources) {
                 @if (!readOnly()) {
                     <app-select-dropdown
                         mode="list"
@@ -735,6 +744,8 @@
                         <app-surface-knowledge-advanced
                             [collections]="selectedCollections()"
                             [knowledge]="knowledgeItems()"
+                            [flat]="flat()"
+                            [llmConfigId]="llmConfigId()"
                             (knowledgeChange)="onKnowledgeConfigChange($event)"
                         />
                     }

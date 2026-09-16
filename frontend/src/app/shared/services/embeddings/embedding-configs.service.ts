@@ -1,8 +1,15 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigRequest } from '@shared/models';
+import {
+    ActionCode,
+    CreateEmbeddingConfigRequest,
+    EmbeddingConfig,
+    GetEmbeddingConfigRequest,
+    ResourceCode,
+} from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 
@@ -27,7 +34,16 @@ export class EmbeddingConfigsService {
     // GET all embedding configs with limit=1000
     getEmbeddingConfigs(): Observable<EmbeddingConfig[]> {
         const url = `${this.apiUrl}?limit=1000`;
-        return this.http.get<ApiGetRequest<EmbeddingConfig>>(url).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<EmbeddingConfig>>(url, {
+                context: withPermission<ApiGetRequest<EmbeddingConfig>>(ResourceCode.LlmConfigs, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
     getEmbeddingConfigsByProviderId(providerId: number): Observable<EmbeddingConfig[]> {
         const url = `${this.apiUrl}?limit=1000&model_provider_id=${providerId}`;

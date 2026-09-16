@@ -14,8 +14,8 @@
 
         .dialog-title {
             margin: 0;
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: var(--text-h3-size);
+            font-weight: var(--text-h3-weight);
             color: var(--color-text-primary);
         }
 
@@ -32,7 +32,7 @@
             margin-left: 10px;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
+                background-color: var(--white-alpha-10);
                 color: var(--color-text-primary);
             }
         }
@@ -52,7 +52,7 @@
                 color: var(--color-text-secondary);
 
                 .required {
-                    color: var(--color-required-asterisk, var(--accent-color));
+                    color: var(--color-required-asterisk);
                     margin-left: 2px;
                 }
             }
@@ -79,7 +79,7 @@
             }
 
             .error-message {
-                font-size: 12px;
+                font-size: 0.75rem;
                 color: var(--color-error);
                 margin-top: 4px;
             }
@@ -116,6 +116,15 @@
                         &::placeholder {
                             color: var(--color-input-text-placeholder);
                         }
+
+                        &:-webkit-autofill,
+                        &:-webkit-autofill:hover,
+                        &:-webkit-autofill:focus {
+                            -webkit-text-fill-color: var(--color-text-primary);
+                            -webkit-box-shadow: 0 0 0 1000px var(--color-input-background) inset;
+                            box-shadow: 0 0 0 1000px var(--color-input-background) inset;
+                            transition: background-color 999999s ease-in-out 0s;
+                        }
                     }
                 }
             }
@@ -130,8 +139,8 @@
 }
 
 .dialog-error-message {
-    color: #ff4d4f;
-    font-size: 13px;
+    color: var(--red-450);
+    font-size: 0.8125rem;
     text-align: center;
     margin-top: 10px;
     margin-bottom: 10px;
@@ -141,9 +150,9 @@
     display: inline-block;
     width: 1em;
     height: 1em;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid var(--white-alpha-30);
     border-radius: 50%;
-    border-top-color: #fff;
+    border-top-color: var(--white);
     animation: spin 1s ease-in-out infinite;
     margin-right: 8px;
     vertical-align: middle;

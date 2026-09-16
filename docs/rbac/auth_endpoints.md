@@ -31,9 +31,9 @@ Base URL in examples: `http://localhost:8000`.
 | GET, POST | `/api/profile/api-keys/` | Bearer JWT only | List / create my own API keys — see [api_keys.md](api_keys.md) |
 | DELETE | `/api/profile/api-keys/{id}/` | Bearer JWT only | Hard-delete one of my own API keys |
 | POST | `/api/profile/api-keys/{id}/revoke/` | Bearer JWT only | Revoke one of my own API keys (kept for audit) |
-| GET | `/api/api-keys/` | Bearer JWT + SECRETS:READ | List API keys of active-org members |
-| DELETE | `/api/api-keys/{id}/` | Bearer JWT + SECRETS:DELETE | Hard-delete a member's API key |
-| POST | `/api/api-keys/{id}/revoke/` | Bearer JWT + SECRETS:UPDATE | Revoke a member's API key |
+| GET | `/api/admin/api-keys/` | Bearer JWT + api_keys:READ (in ≥1 org) | List API keys of members the caller administers |
+| DELETE | `/api/admin/api-keys/{id}/` | Bearer JWT + api_keys:DELETE (in ≥1 shared org) | Hard-delete a member's API key |
+| POST | `/api/admin/api-keys/{id}/revoke/` | Bearer JWT + api_keys:DELETE (in ≥1 shared org) | Revoke a member's API key |
 
 **Throttles.** Every anonymous credential-adjacent endpoint is rate limited; exceeding a bucket returns `429` with `Retry-After`.
 
@@ -137,7 +137,7 @@ create_superadmin` workflow).
 
 | Env var | Default | Notes |
 |---|---|---|
-| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local development (`.dev.env`) ships `open`. |
+| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
 | `LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
 | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
 | `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
@@ -554,9 +554,9 @@ the `SYSTEM` key has no owner and resolves to a superadmin-equivalent
 `SystemServicePrincipal`. Header formats: `X-Api-Key: <raw_key>` (preferred)
 or `Authorization: ApiKey <raw_key>`.
 
-Full model, self-service + management endpoints, TTL/cap rules, revoke vs.
-delete, org-scoped management, and error codes are documented in
-[api_keys.md](api_keys.md).
+Full model, self-service + cross-org admin management (gated on the
+`api_keys` resource), TTL/cap rules, revoke vs. delete, and error codes
+are documented in [api_keys.md](api_keys.md).
 
 ---
 

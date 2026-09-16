@@ -13,6 +13,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
     JsonEditorComponent,
@@ -80,6 +82,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ToggleSwitchComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -95,6 +98,9 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly outputSchemaExpanded = signal<boolean>(false);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
+
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('task-node', 406);
 
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
     public readonly instructionsView = signal<InstructionsView>('preview');
@@ -118,6 +124,12 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         const id = this.agentDefinitionId();
         if (id == null) return null;
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
+    });
+
+    public readonly selectedAgentLlmConfigId = computed<number | null>(() => {
+        const id = this.agentDefinitionId();
+        if (id == null) return null;
+        return this.agentDefinitions().find((agent) => agent.id === id)?.llm_config ?? null;
     });
 
     public readonly agentInvalid = computed<boolean>(() => {
@@ -242,6 +254,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     onAgentSelectionChange(values: unknown[]): void {
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
+
         const agentControl = this.form.get('agent_definition');
         agentControl?.setValue(id);
         agentControl?.markAsTouched();
@@ -274,7 +287,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     onCreateLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'create', inlineSurface: null })
+            .open({ mode: 'create', inlineSurface: null, llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
@@ -289,7 +302,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     onEditLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'edit', inlineSurface: this.inlineSurface() })
+            .open({ mode: 'edit', inlineSurface: this.inlineSurface(), llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {

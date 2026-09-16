@@ -15,8 +15,8 @@ import { takeUntil } from 'rxjs/operators';
 
 import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
+import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 
@@ -427,8 +427,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                                 overflow: hidden;
 
                                 .tool-name {
-                                    font-size: 0.875rem;
-                                    font-weight: 500;
+                                    font-size: var(--text-body-medium-size);
+                                    font-weight: var(--text-body-medium-weight);
                                     color: var(--color-text-primary);
                                     margin-bottom: 0.25rem;
                                 }
@@ -461,8 +461,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     button {
                         padding: 0.5rem 1rem;
                         border-radius: 6px;
-                        font-size: 0.875rem;
-                        font-weight: 500;
+                        font-size: var(--text-body-medium-size);
+                        font-weight: var(--text-body-medium-weight);
                         cursor: pointer;
                         transition: all 0.2s ease;
 
@@ -533,7 +533,7 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
     private readonly destroy$ = new Subject<void>();
 
     constructor(
-        private pythonCodeToolService: PythonCodeToolService,
+        private pythonCodeToolService: CustomToolsService,
         private mcpToolsService: McpToolsService,
         private cdr: ChangeDetectorRef
     ) {}

@@ -17,8 +17,8 @@
     flex-shrink: 0;
 
     .dialog-title {
-        font-size: 1.25rem;
-        font-weight: 500;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
         margin: 0;
     }
 
@@ -52,8 +52,8 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
     color: var(--color-text-primary);
     margin: 0 0 0.75rem;
 }
@@ -91,8 +91,8 @@
 
         .chip-count {
             color: var(--accent-color);
-            font-weight: 500;
-            font-size: 1.125rem;
+            font-weight: var(--text-h4-weight);
+            font-size: var(--text-h4-size);
             margin-right: 0.15rem;
         }
     }
@@ -117,8 +117,8 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
     color: var(--color-text-primary);
     margin: 0 0 0.5rem;
 
@@ -176,7 +176,7 @@
 
         &:hover {
             background: var(--accent-color);
-            color: #fff;
+            color: var(--white);
         }
     }
 }

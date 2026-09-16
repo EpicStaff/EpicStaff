@@ -1,9 +1,11 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { computeUniqueCopyName } from '@shared/utils';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { computeUniqueCopyName, computeUniqueName } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 import {
     AgentDefaultSurface,
@@ -48,17 +50,22 @@ const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
 const SURFACE_PATCH_DEBOUNCE_MS = 400;
 
 function loadVisibleSections(): Set<ExplorerSectionId> {
-    const all = EXPLORER_SECTIONS.map((s) => s.id);
+    const permissionService = inject(PermissionsService);
+
+    const permittedSections = EXPLORER_SECTIONS.filter((s) =>
+        permissionService.can(s.resourceCode, ActionCode.Read)
+    ).map((s) => s.id);
+
     try {
         const raw = localStorage.getItem(VISIBLE_SECTIONS_STORAGE_KEY);
-        if (!raw) return new Set(all);
+        if (!raw) return new Set(permittedSections);
         const parsed = JSON.parse(raw) as ExplorerSectionId[];
-        const valid = parsed.filter((id) => all.includes(id));
+        const valid = parsed.filter((id) => permittedSections.includes(id));
         const set = new Set(valid);
         set.add('agents');
         return set;
     } catch {
-        return new Set(all);
+        return new Set(permittedSections);
     }
 }
 
@@ -69,6 +76,7 @@ export class AgentsPageStore {
     private readonly toast: ToastService = inject(ToastService);
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissionService = inject(PermissionsService);
 
     private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
     private readonly surfacePatch$ = new Subject<number>();
@@ -126,6 +134,10 @@ export class AgentsPageStore {
         if (id === 'storage' && this.expandedSections().has('storage')) {
             this.storageActivated.set(true);
         }
+    }
+
+    activateStorage(): void {
+        this.storageActivated.set(true);
     }
 
     setVisibleSections(ids: Set<ExplorerSectionId>): void {
@@ -213,6 +225,11 @@ export class AgentsPageStore {
             instructions_format: isDoc ? 'markdown' : 'text',
         };
         this.updateAgent(agentId, { metadata });
+    }
+
+    createAndOpenBootDoc(agentId: number): void {
+        this.setBootDoc(agentId, true);
+        this.selectAgentDoc(agentId, 'boot');
     }
 
     /**
@@ -358,14 +375,17 @@ export class AgentsPageStore {
                         placeholder: true,
                     });
                 }
-                children.push({
-                    kind: 'group',
-                    id: `agent:${a.id}:surfaces`,
-                    label: 'Surfaces',
-                    icon: 'surfaces-tab',
-                    children: ownSurfaces,
-                    defaultExpanded: false,
-                });
+                // Add surface node if permitted
+                if (this.permissionService.can(ResourceCode.Surfaces, ActionCode.Read)) {
+                    children.push({
+                        kind: 'group',
+                        id: `agent:${a.id}:surfaces`,
+                        label: 'Surfaces',
+                        icon: 'surfaces-tab',
+                        children: ownSurfaces,
+                        defaultExpanded: false,
+                    });
+                }
 
                 return {
                     node: {
@@ -446,6 +466,48 @@ export class AgentsPageStore {
 
     attachSharedSurfaceToAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
         this.assignSurfaceToAgent(surfaceId, agentId, category ? categoryToPlace(category) : 'all');
+    }
+
+    setSharedSurfacesInCategory(surfaceIds: number[], agentId: number, category: SurfaceCategoryId): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent) return;
+
+        const place = categoryToPlace(category);
+        const shared = this.sharedSurfaceIdSet();
+        const wanted = new Set(surfaceIds);
+        const rows: AgentDefaultSurface[] = [];
+
+        for (const ds of agent.default_surfaces) {
+            if (!shared.has(ds.surface)) {
+                rows.push(ds);
+                continue;
+            }
+            if (ds.place === place) {
+                if (wanted.has(ds.surface)) rows.push(ds);
+                continue;
+            }
+            if (place !== 'all' && ds.place === 'all' && wanted.has(ds.surface)) continue;
+            rows.push(ds);
+        }
+
+        for (const surfaceId of wanted) {
+            if (!shared.has(surfaceId)) continue;
+            if (rows.some((ds) => ds.surface === surfaceId && ds.place === place)) continue;
+            if (place === 'all') {
+                const kept = rows.filter((ds) => ds.surface !== surfaceId);
+                rows.length = 0;
+                rows.push(...kept);
+            }
+            rows.push({ surface: surfaceId, place });
+        }
+
+        const key = (list: AgentDefaultSurface[]) =>
+            list
+                .map((ds) => `${ds.surface}:${ds.place}`)
+                .sort()
+                .join('|');
+        if (key(rows) === key(agent.default_surfaces)) return;
+        this.patchAgentDefaultSurfaces(agentId, rows);
     }
 
     dropSharedSurfaceOnAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
@@ -649,17 +711,27 @@ export class AgentsPageStore {
         });
     }
 
-    saveNewAgent(body: CreateAgentDefinitionRequest): void {
-        const trimmed = (body.name ?? '').trim();
+    saveNewAgent(body: CreateAgentDefinitionRequest, openBootDoc = false): void {
+        let trimmed = (body.name ?? '').trim();
         if (!trimmed) {
-            this.toast.error('Agent name is required');
-            return;
+            if (!openBootDoc) {
+                this.toast.error('Agent name is required');
+                return;
+            }
+            trimmed = computeUniqueName(
+                'Untitled Agent',
+                this.agents().map((a) => a.name)
+            );
         }
         this.saving.set(true);
         this.agentsApi.create({ ...body, name: trimmed, instructions: body.instructions ?? '' }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
+                if (openBootDoc) {
+                    this.selectAgentDoc(created.id, 'boot');
+                } else {
+                    this.selectAgent(created.id);
+                }
                 this.saving.set(false);
                 this.toast.success('Agent created');
             },

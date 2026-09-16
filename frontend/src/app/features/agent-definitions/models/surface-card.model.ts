@@ -1,12 +1,15 @@
+import { ResourceCode } from '@shared/models';
+
 import { PermTriState } from './surface.model';
 
-export type SurfaceTabId = 'tools' | 'files' | 'collections';
+export type SurfaceTabId = ResourceCode.Tools | ResourceCode.Files | ResourceCode.KnowledgeSources;
 
 export interface SurfaceToolOption {
     id: number;
     name: string;
     description: string;
     kind: 'python' | 'mcp';
+    built_in?: boolean;
 }
 
 export interface SurfaceCollectionOption {

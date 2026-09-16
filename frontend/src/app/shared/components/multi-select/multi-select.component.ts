@@ -73,18 +73,23 @@ export class MultiSelectComponent implements OnInit {
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
     saveLabel = input<string>('Save Selection');
+    readonlyView = input<boolean>(false);
+    /** When true (default), selected items float to the top of the list (within their group). */
+    sortSelectedToTop = input<boolean>(true);
 
     isOpen = signal(false);
     search = signal('');
     tempSelected = signal<unknown[]>([]);
+    projectedTriggerEl = signal<HTMLElement | null>(null);
 
     groupedFiltered = computed<GroupedItems[]>(() => {
         const search = this.search().toLowerCase();
         const selected = this.tempSelected();
 
-        const filteredItems = this.items()
-            .filter((i) => i.name.toLowerCase().includes(search))
-            .sort((a, b) => Number(selected.includes(b.value)) - Number(selected.includes(a.value)));
+        const filtered = this.items().filter((i) => i.name.toLowerCase().includes(search));
+        const filteredItems = this.sortSelectedToTop()
+            ? filtered.sort((a, b) => Number(selected.includes(b.value)) - Number(selected.includes(a.value)))
+            : filtered;
 
         // Grouping disabled
         if (!this.grouped()) {
@@ -148,7 +153,7 @@ export class MultiSelectComponent implements OnInit {
         return map;
     });
 
-    @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLElement>;
+    @ViewChild('triggerBtn') triggerBtn?: ElementRef<HTMLElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
 
     private overlayRef!: OverlayRef;
@@ -169,7 +174,12 @@ export class MultiSelectComponent implements OnInit {
 
     openDropdown(): void {
         if (this.disabled()) return;
-        this.openAt(this.triggerBtn.nativeElement);
+        const el = this.projectedTriggerEl() ?? this.triggerBtn?.nativeElement;
+        if (el) this.openAt(el);
+    }
+
+    registerTrigger(el: ElementRef<HTMLElement>): void {
+        this.projectedTriggerEl.set(el.nativeElement);
     }
 
     openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
@@ -229,6 +239,7 @@ export class MultiSelectComponent implements OnInit {
     }
 
     toggleValue(value: unknown) {
+        if (this.readonlyView()) return;
         const arr = [...this.tempSelected()];
         const i = arr.indexOf(value);
         if (i >= 0) arr.splice(i, 1);
