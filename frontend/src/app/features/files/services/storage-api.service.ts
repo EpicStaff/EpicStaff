@@ -212,6 +212,7 @@ export class StorageApiService {
         if (!ids.length) return of([]);
         return this.http.get<StorageFileRecord[]>(`${this.apiUrl}files/`, {
             params: { ids: ids.join(',') },
+            context: withPermission<StorageFileRecord[]>(ResourceCode.Files, ActionCode.Read, []),
         });
     }
 

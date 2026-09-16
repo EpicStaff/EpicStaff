@@ -1,6 +1,8 @@
+import { ResourceCode } from '@shared/models';
+
 import { PermTriState } from './surface.model';
 
-export type SurfaceTabId = 'tools' | 'files' | 'collections';
+export type SurfaceTabId = ResourceCode.Tools | ResourceCode.Files | ResourceCode.KnowledgeSources;
 
 export interface SurfaceToolOption {
     id: number;

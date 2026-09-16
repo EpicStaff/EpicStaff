@@ -4,7 +4,7 @@
         [width]="'240px'"
         [(searchTerm)]="searchTerm"
     />
-    <span class="count-label">{{ filteredUsers().length }} of {{ usersData().length }} users</span>
+    <span class="count-label">{{ usersData().length }} users</span>
     <div class="toolbar-actions">
         <app-button
             *appHasPermissionInAnyOrg="[ResourceCode.Memberships, ActionCode.Create]"
@@ -30,6 +30,7 @@
     [data]="filteredUsers()"
     [selectable]="false"
     rowId="id"
+    (filterChange)="onFilterChange($event)"
 >
     <!-- USER -->
     <ng-template

@@ -13,10 +13,13 @@ import {
     viewChild,
 } from '@angular/core';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
 import {
     UNSAVED_CHANGES_RESULT,
@@ -72,6 +75,7 @@ import {
         DetailHeaderComponent,
         AppSvgIconComponent,
         OverlayModule,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-definitions-page.component.html',
     styleUrls: ['./agent-definitions-page.component.scss'],
@@ -85,6 +89,43 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
+    private readonly permissions: PermissionsService = inject(PermissionsService);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+
+    /** Read-only mode when the active org can't mutate agents/surfaces. */
+    protected readonly agentsReadOnly = computed<boolean>(() => {
+        this.permissions.active();
+        return !this.permissions.canAny(ResourceCode.Agents, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+    });
+
+    /** Storage preview is read-only when Files write actions are denied. */
+    protected readonly filesReadOnly = computed<boolean>(() => {
+        this.permissions.active();
+        return !this.permissions.canAny(ResourceCode.Files, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+    });
+
+    /** Can the selected item (agent or surface) be duplicated in the active org? */
+    protected readonly canDuplicateSelected = computed<boolean>(() => {
+        this.permissions.active();
+        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Create);
+        if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Create);
+        return false;
+    });
+
+    /** Can the selected item (agent or surface) be deleted in the active org? */
+    protected readonly canDeleteSelected = computed<boolean>(() => {
+        this.permissions.active();
+        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Delete);
+        if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Delete);
+        return false;
+    });
+
+    /** Kebab is worth showing only if at least one action is permitted. */
+    protected readonly canOpenHeaderMenu = computed<boolean>(
+        () => this.canDuplicateSelected() || this.canDeleteSelected()
+    );
 
     private readonly explorer = viewChild(ExplorerComponent);
 

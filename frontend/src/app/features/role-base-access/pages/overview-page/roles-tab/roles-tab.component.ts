@@ -66,10 +66,14 @@ export class RolesTabComponent implements OnInit {
         this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
     );
 
-    /** Preselected org filter — follows the currently active org (empty when none is chosen). */
+    /** Preselected org filter — follows the currently active org, but only if the caller can
+     *  actually read roles there. Otherwise stays empty so the initial load falls back to
+     *  fetching all readable orgs (see `ngOnInit`). */
     private readonly activeOrgDefault = computed<number[] | undefined>(() => {
         const id = this.activeOrgService.activeOrgId();
-        return id !== null ? [id] : undefined;
+        if (id === null) return;
+        if (this.permissionsService.isSuperadmin) return [id];
+        return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
     });
 
     private readonly rowActions: AppTableRowAction[] = [
@@ -105,7 +109,7 @@ export class RolesTabComponent implements OnInit {
         {
             key: 'organization',
             label: 'ORGANIZATION',
-            width: 'minmax(140px, 1fr)',
+            width: 'minmax(175px, 1fr)',
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
