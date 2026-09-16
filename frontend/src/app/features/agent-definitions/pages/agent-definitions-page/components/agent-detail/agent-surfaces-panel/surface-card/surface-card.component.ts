@@ -65,6 +65,7 @@ import {
     SurfaceStorageItem,
 } from '../../../../../../models/surface.model';
 import {
+    getFirstAvailableSurfaceTab,
     nextPermState,
     SURFACE_FILE_PERM_COLUMNS,
     SurfaceCollectionOption,
@@ -178,6 +179,12 @@ export class SurfaceCardComponent {
     readonly canCreateSurface = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
     readonly canUpdateSurface = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
     readonly canUpdateAgent = computed(() => this.permissionService.can(ResourceCode.Agents, ActionCode.Update));
+
+    readonly canViewTools = computed(() => this.permissionService.can(ResourceCode.Tools, ActionCode.Read));
+    readonly canViewFiles = computed(() => this.permissionService.can(ResourceCode.Files, ActionCode.Read));
+    readonly canViewKnowledge = computed(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read)
+    );
 
     readonly showAgentSpecificMenu = computed(
         () => !this.isShared() && !this.readOnly() && (this.canCreateSurface() || this.canUpdateSurface())
@@ -670,16 +677,7 @@ export class SurfaceCardComponent {
     }
 
     private getFirstAvailableTab(): SurfaceTabId | null {
-        if (this.permissionService.can(ResourceCode.Tools, ActionCode.Read)) {
-            return ResourceCode.Tools;
-        }
-        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) {
-            return ResourceCode.Files;
-        }
-        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read)) {
-            return ResourceCode.KnowledgeSources;
-        }
-        return null;
+        return getFirstAvailableSurfaceTab((resource) => this.permissionService.can(resource, ActionCode.Read));
     }
 
     private catalogsRequested = false;
