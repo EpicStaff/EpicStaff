@@ -1,6 +1,6 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActionCode } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { computeUniqueCopyName, computeUniqueName } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
@@ -76,6 +76,7 @@ export class AgentsPageStore {
     private readonly toast: ToastService = inject(ToastService);
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissionService = inject(PermissionsService);
 
     private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
     private readonly surfacePatch$ = new Subject<number>();
@@ -374,14 +375,17 @@ export class AgentsPageStore {
                         placeholder: true,
                     });
                 }
-                children.push({
-                    kind: 'group',
-                    id: `agent:${a.id}:surfaces`,
-                    label: 'Surfaces',
-                    icon: 'surfaces-tab',
-                    children: ownSurfaces,
-                    defaultExpanded: false,
-                });
+                // Add surface node if permitted
+                if (this.permissionService.can(ResourceCode.Surfaces, ActionCode.Read)) {
+                    children.push({
+                        kind: 'group',
+                        id: `agent:${a.id}:surfaces`,
+                        label: 'Surfaces',
+                        icon: 'surfaces-tab',
+                        children: ownSurfaces,
+                        defaultExpanded: false,
+                    });
+                }
 
                 return {
                     node: {

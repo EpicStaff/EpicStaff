@@ -111,6 +111,7 @@
                     @if (!readonly()) {
                         <div class="resource-row bulk">
                             <app-checkbox
+                                color="secondary"
                                 [checked]="groupCheckboxChecked(group)"
                                 [indeterminate]="groupCheckboxIndeterminate(group)"
                                 (changed)="onGroupBulkToggle(group)"
@@ -122,6 +123,7 @@
                                 <div class="action-cell">
                                     @if (hasGroupApplicableAction(group, action.code)) {
                                         <app-checkbox
+                                            color="secondary"
                                             [checked]="groupActionCheckboxChecked(group, action.code)"
                                             [indeterminate]="groupActionCheckboxIndeterminate(group, action.code)"
                                             (changed)="onGroupActionToggleClick(group, action.code)"
@@ -142,6 +144,7 @@
                             <div class="row-select">
                                 @if (!readonly()) {
                                     <app-checkbox
+                                        color="secondary"
                                         [checked]="resourceCheckboxChecked(resource)"
                                         [indeterminate]="resourceCheckboxIndeterminate(resource)"
                                         (changed)="onResourceRowToggle(resource)"

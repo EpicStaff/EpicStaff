@@ -197,6 +197,7 @@
     }
 
     <section
+        *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
         id="agent-section-surfaces"
         class="section"
         [class.section--bare]="surfacesOnly()"
