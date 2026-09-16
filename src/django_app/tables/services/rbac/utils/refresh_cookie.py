@@ -14,7 +14,7 @@ def set_refresh_cookie(response: Response, refresh_token: str) -> Response:
         value=refresh_token,
         max_age=max_age,
         httponly=True,
-        secure=not settings.DEBUG,
+        secure=settings.REFRESH_COOKIE_SECURE,
         samesite="Lax",
         path=REFRESH_COOKIE_PATH,
     )
@@ -22,10 +22,14 @@ def set_refresh_cookie(response: Response, refresh_token: str) -> Response:
 
 
 def clear_refresh_cookie(response: Response) -> Response:
-    response.delete_cookie(
+    response.set_cookie(
         key=REFRESH_COOKIE_NAME,
-        path=REFRESH_COOKIE_PATH,
+        value="",
+        max_age=0,
+        httponly=True,
+        secure=settings.REFRESH_COOKIE_SECURE,
         samesite="Lax",
+        path=REFRESH_COOKIE_PATH,
     )
     return response
 
