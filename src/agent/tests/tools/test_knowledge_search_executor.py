@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.target import KnowledgeSearchTarget
 from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
     KnowledgeSearchExecutor,

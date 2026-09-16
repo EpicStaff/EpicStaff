@@ -2,8 +2,8 @@ from loguru import logger
 
 from domain.models.realtime_tool import RealtimeTool
 from domain.ports.i_chat_mode_controller import IChatModeController
-from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
+from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import (
     PythonCodeToolData,
     RealtimeAgentChatData,
@@ -20,14 +20,10 @@ from tool_executors import (
 class ToolManagerService(metaclass=SingletonMeta):
     def __init__(
         self,
-        redis_service: IRedisMessagingService,
         python_code_executor_service: IPythonCodeExecutorService,
-        knowledge_search_get_channel: str,
-        knowledge_search_response_channel: str,
+        knowledge_client: KnowledgeClient,
     ):
-        self.knowledge_search_get_channel = knowledge_search_get_channel
-        self.knowledge_search_response_channel = knowledge_search_response_channel
-        self.redis_service = redis_service
+        self.knowledge_client = knowledge_client
         self.python_code_executor_service = python_code_executor_service
         self.connection_tool_executors: dict[str, list[BaseToolExecutor]] = {}
 
@@ -62,9 +58,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 knowledge_collection_id=realtime_agent_chat_data.knowledge_collection_id,
                 rag_type_id=realtime_agent_chat_data.rag_type_id,
                 rag_search_config=rag_search_config,
-                redis_service=self.redis_service,
-                knowledge_search_get_channel=self.knowledge_search_get_channel,
-                knowledge_search_response_channel=self.knowledge_search_response_channel,
+                knowledge_client=self.knowledge_client,
                 rag_embedder_api_key=realtime_agent_chat_data.rag_embedder_api_key,
             )
             self.connection_tool_executors[connection_key].append(

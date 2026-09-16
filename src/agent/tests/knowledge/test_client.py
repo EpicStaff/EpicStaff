@@ -11,8 +11,8 @@ import json
 import httpx
 import pytest
 
-from app.knowledge.client import KnowledgeClient
-from app.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.client import KnowledgeClient
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagSearchConfig,
