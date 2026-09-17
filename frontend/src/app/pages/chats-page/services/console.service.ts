@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { DestroyRef, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, from, fromEvent, Observable, of, Subject } from 'rxjs';
@@ -142,6 +142,12 @@ export class ConsoleService implements OnDestroy {
                 catchError((error: Error) => {
                     this.connectionError$.next(error);
                     this.cleanupAfterFailedConnection();
+                    const rawMessage = (error as unknown as HttpErrorResponse)?.error?.error;
+                    const backendMessage = typeof rawMessage === 'string' ? rawMessage : undefined;
+                    const message = backendMessage?.includes('conflicting RAG configs')
+                        ? "Conflict: the agent's surfaces use the same collection with different RAG settings."
+                        : (backendMessage ?? 'Failed to start the realtime conversation');
+                    this.toastService.error(message);
                     return of<ConnectionResult>({ success: false, error });
                 })
             );
