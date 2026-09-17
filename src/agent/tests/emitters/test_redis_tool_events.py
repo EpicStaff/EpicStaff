@@ -14,11 +14,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
-from app.knowledge.target import KnowledgeSearchTarget
 from app.llm.client import LLMChunk
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
 from shared.models.knowledge import NaiveRagSearchConfig
 from shared.models.knowledge_new import FoundChunk
+from shared.knowledge.target import KnowledgeSearchTarget
 
 
 # ---------------------------------------------------------------------------

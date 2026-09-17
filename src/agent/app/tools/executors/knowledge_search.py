@@ -7,9 +7,9 @@ from loguru import logger
 from shared.models.agent_service import ToolResult
 from shared.models.knowledge_new import FoundChunk
 
-from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
-from app.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.client import KnowledgeClient
 import settings
 
 
