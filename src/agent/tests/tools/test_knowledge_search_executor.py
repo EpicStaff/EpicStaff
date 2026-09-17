@@ -16,6 +16,7 @@ from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
     KnowledgeSearchExecutor,
 )
+from settings import GRAPH_RAG_SEARCH_TIMEOUT, NAIVE_RAG_SEARCH_TIMEOUT
 from shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagLocalSearchParams,
@@ -360,7 +361,9 @@ async def test_sink_receives_target_query_result_on_success():
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(target, "test", chunks)
+    sink.on_knowledge_search.assert_awaited_once_with(
+        target, "test", chunks, error=None
+    )
 
 
 async def test_sink_receives_result_even_with_no_chunks():
@@ -372,18 +375,21 @@ async def test_sink_receives_result_even_with_no_chunks():
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(target, "test", [])
+    sink.on_knowledge_search.assert_awaited_once_with(target, "test", [], error=None)
 
 
-async def test_sink_not_called_when_client_raises():
+async def test_sink_notified_with_error_when_client_raises():
     client = _fake_client(raises=RuntimeError("connection refused"))
     sink = _fake_sink()
-    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+    target = _make_target()
+    executor = KnowledgeSearchExecutor(client, target, sink=sink)
 
     result = await executor({"query": "test"})
 
     assert result.is_error is True
-    sink.on_knowledge_search.assert_not_awaited()
+    sink.on_knowledge_search.assert_awaited_once_with(
+        target, "test", [], error="connection refused"
+    )
 
 
 async def test_sink_raising_does_not_fail_tool_result():
@@ -399,6 +405,18 @@ async def test_sink_raising_does_not_fail_tool_result():
     assert result.content == "No relevant results found."
 
 
+async def test_sink_raising_on_error_path_does_not_fail_tool_result():
+    client = _fake_client(raises=RuntimeError("connection refused"))
+    sink = _fake_sink()
+    sink.on_knowledge_search.side_effect = RuntimeError("sink exploded")
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+
+    result = await executor({"query": "test"})
+
+    assert result.is_error is True
+    assert "connection refused" in result.content
+
+
 async def test_sink_none_still_works():
     response = _make_response([])
     client = _fake_client(response)
@@ -407,6 +425,16 @@ async def test_sink_none_still_works():
     result = await executor({"query": "test"})
 
     assert result.is_error is False
+
+
+async def test_sink_none_still_works_when_client_raises():
+    client = _fake_client(raises=RuntimeError("connection refused"))
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=None)
+
+    result = await executor({"query": "test"})
+
+    assert result.is_error is True
+    assert "connection refused" in result.content
 
 
 async def test_graph_executor_sink_receives_dispatched_target():
@@ -420,4 +448,22 @@ async def test_graph_executor_sink_receives_dispatched_target():
 
     await executor({"query": "test", "search_method": "local"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(targets["local"], "test", [])
+    sink.on_knowledge_search.assert_awaited_once_with(
+        targets["local"], "test", [], error=None
+    )
+
+
+async def test_graph_executor_sink_notified_with_error_when_client_raises():
+    targets = _make_graph_targets()
+    client = _fake_client(raises=RuntimeError("graph down"))
+    sink = _fake_sink()
+    executor = GraphKnowledgeSearchExecutor(
+        client, targets, default_method="basic", sink=sink
+    )
+
+    result = await executor({"query": "test", "search_method": "local"})
+
+    assert result.is_error is True
+    sink.on_knowledge_search.assert_awaited_once_with(
+        targets["local"], "test", [], error="graph down"
+    )
