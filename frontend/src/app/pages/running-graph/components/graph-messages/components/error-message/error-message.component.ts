@@ -88,8 +88,10 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isDataExpanded"
                             >
-                                <div class="result-content">
-                                    <pre>{{ getFormattedErrorData() }}</pre>
+                                <div class="collapsible-inner">
+                                    <div class="result-content">
+                                        <pre>{{ getFormattedErrorData() }}</pre>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -105,7 +107,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, 0.5rem 1rem);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #ff6b6b;
             }
@@ -118,7 +120,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
 
@@ -128,8 +130,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #ff6b6b;
                 display: flex;
@@ -145,8 +147,9 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -160,13 +163,18 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
+                padding-left: 4.5rem;
+            }
+
+            .error-content > :first-child {
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -212,7 +220,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 background-color: transparent;
                 border: none;
                 color: #ff6b6b;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;

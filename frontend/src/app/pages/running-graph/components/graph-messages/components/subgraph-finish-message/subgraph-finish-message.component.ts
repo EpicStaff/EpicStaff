@@ -60,12 +60,14 @@ import {
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
                             >
-                                <div class="output-content">
-                                    <app-copy-button [text]="outputJson" />
-                                    <app-json-viewer
-                                        [json]="getOutput()"
-                                        [expanded]="false"
-                                    ></app-json-viewer>
+                                <div class="collapsible-inner">
+                                    <div class="output-content">
+                                        <app-copy-button [text]="outputJson" />
+                                        <app-json-viewer
+                                            [json]="getOutput()"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -88,12 +90,14 @@ import {
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isVariablesExpanded"
                             >
-                                <div class="variables-content">
-                                    <app-copy-button [text]="variablesJson" />
-                                    <app-json-viewer
-                                        [json]="getVariables()"
-                                        [expanded]="false"
-                                    ></app-json-viewer>
+                                <div class="collapsible-inner">
+                                    <div class="variables-content">
+                                        <app-copy-button [text]="variablesJson" />
+                                        <app-json-viewer
+                                            [json]="getVariables()"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -112,7 +116,7 @@ import {
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
+                padding: 0.5rem 1rem;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #00bfa5;
             }
@@ -126,7 +130,7 @@ import {
 
             .play-arrow {
                 width: 1.1rem;
-                margin-right: 16px;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -138,8 +142,8 @@ import {
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #00bfa5;
                 display: flex;
@@ -155,8 +159,9 @@ import {
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -175,13 +180,18 @@ import {
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
+                padding-left: 4.5rem;
+            }
+
+            .subgraph-finish-content > :first-child {
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -247,7 +257,7 @@ import {
                 font-weight: 500;
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
             }
 
             .item-name {
@@ -258,7 +268,7 @@ import {
 
             .item-type {
                 color: #00bfa5;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 background-color: rgba(0, 191, 165, 0.15);
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
@@ -278,7 +288,7 @@ import {
 
             .detail-label {
                 color: var(--gray-300);
-                font-size: 0.9rem;
+                font-size: 0.875rem;
                 font-weight: 500;
             }
 

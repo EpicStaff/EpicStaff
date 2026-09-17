@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { ValidationErrorsComponent } from '@shared/components';
 import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -53,6 +54,7 @@ const MIN_INTERVAL_SECONDS = 60;
         TimePickerComponent,
         TimezoneSelectorComponent,
         ToggleSwitchComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: 'schedule-trigger-node-panel.component.html',
     styleUrls: ['schedule-trigger-node-panel.component.scss'],
