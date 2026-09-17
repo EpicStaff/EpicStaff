@@ -83,7 +83,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
+                padding: 0.5rem 1rem;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #36cfc9; /* Teal accent */
             }
@@ -96,7 +96,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
 
@@ -106,8 +106,8 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #36cfc9;
                 display: flex;
@@ -123,17 +123,21 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
             .llm-content {
                 display: flex;
                 flex-direction: column;
-                padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .llm-content > :first-child {
+                margin-top: 1.25rem;
             }
 
             .llm-section {
@@ -141,7 +145,9 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
             }
 
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -187,7 +193,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                 background-color: transparent;
                 border: none;
                 color: #36cfc9;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;
