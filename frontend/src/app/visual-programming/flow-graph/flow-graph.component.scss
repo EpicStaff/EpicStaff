@@ -383,7 +383,16 @@
 .top-left-actions__column {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 6px;
+}
+
+.top-left-actions > .top-left-actions__column {
+    pointer-events: none;
+}
+
+.top-left-actions__column > * {
+    pointer-events: auto;
 }
 
 .shortcuts-wrapper {
