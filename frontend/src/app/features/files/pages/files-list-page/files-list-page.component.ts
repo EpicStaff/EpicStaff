@@ -79,6 +79,7 @@ export class FilesListPageComponent {
         if (url?.includes('/storage')) {
             return {
                 label: 'Add files',
+                resource: ResourceCode.Files,
                 action: () => this.onCreateFolderClick(),
             };
         }
@@ -86,6 +87,7 @@ export class FilesListPageComponent {
         if (url?.includes('/knowledge-sources')) {
             return {
                 label: 'Add collection',
+                resource: ResourceCode.KnowledgeSources,
                 action: () => this.onCreateCollectionClick(),
             };
         }
