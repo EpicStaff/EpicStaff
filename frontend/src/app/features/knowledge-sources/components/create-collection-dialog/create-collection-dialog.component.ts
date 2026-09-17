@@ -11,9 +11,11 @@ import {
     StepConfig,
     StepperComponent,
 } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, Observable, of } from 'rxjs';
-import { catchError, switchMap } from 'rxjs/operators';
+import { catchError, map, switchMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RAG_TYPE_CONFIG } from '../../constants/constants';
 import { getIndexingConfirmationData, IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
@@ -59,6 +61,7 @@ export class CreateCollectionDialogComponent {
     private toastService = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
     private ragDeleteRegistry = inject(RagDeleteRegistryService);
+    private permissionService = inject(PermissionsService);
 
     currentStepIndex = signal(0);
     selectedRagType = signal<RagType | null>(null);
@@ -95,6 +98,7 @@ export class CreateCollectionDialogComponent {
             canProceed: () =>
                 this.selectedDocuments().length > 0 &&
                 this.selectedDocuments().every((d) => d.isValidType && d.isValidSize),
+            hideProceed: () => false,
         },
         {
             id: CreateCollectionStep.SELECT_RAG,
@@ -102,6 +106,7 @@ export class CreateCollectionDialogComponent {
             proceedLabel: 'Next',
             onProceed: () => this.handleCreateRag(),
             canProceed: () => this.canProceedSelectRag(),
+            hideProceed: () => false,
         },
         {
             id: CreateCollectionStep.CONFIGURE,
@@ -109,10 +114,12 @@ export class CreateCollectionDialogComponent {
             proceedLabel: 'Save & Run Indexing',
             onProceed: () => this.handleIndexing(),
             canProceed: () => this.strategy()?.canIndex() ?? false,
+            hideProceed: () => !this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update),
         },
     ]);
 
     currentStep = computed(() => this.steps()[this.currentStepIndex()]);
+    nextHidden = computed(() => this.currentStep().hideProceed());
     nextDisabled = computed(() => !this.currentStep().canProceed());
     nextText = computed(() => this.currentStep().proceedLabel);
     stepLabels = computed(() => this.steps().map((s) => s.label));
@@ -170,6 +177,24 @@ export class CreateCollectionDialogComponent {
         // delete old rag before creating new
         if (existingRag) {
             const ragName = RAG_TYPE_CONFIG[type].name;
+            const canDeleteRag = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Delete);
+
+            if (!canDeleteRag) {
+                return this.confirmation
+                    .confirm({
+                        title: `Cannot replace ${ragName}`,
+                        message:
+                            `Creating a new <strong>${ragName}</strong> requires permanently ` +
+                            `deleting the existing one first, but you do not have permission to ` +
+                            `delete RAGs. Ask an organization admin to grant ` +
+                            `<strong>Delete</strong> permission on Knowledge Sources.`,
+                        type: 'warning',
+                        cancelText: 'Close',
+                        hideConfirm: true,
+                    })
+                    .pipe(map(() => false));
+            }
+
             return this.confirmation
                 .confirm({
                     title: `Replace ${ragName}`,

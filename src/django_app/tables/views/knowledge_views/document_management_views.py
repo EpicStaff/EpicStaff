@@ -203,7 +203,7 @@ class DocumentViewSet(
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
         "preview": Permission.READ,
-        "download": Permission.READ,
+        "download": Permission.EXPORT,
         "copy": Permission.CREATE,
     }
 
