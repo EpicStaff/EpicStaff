@@ -39,6 +39,14 @@ _WRITE_FORBIDDEN_403 = OpenApiResponse(
     )
 )
 
+_DELETE_FORBIDDEN_403 = OpenApiResponse(
+    description=(
+        "Everything _WRITE_FORBIDDEN_403 covers, plus cannot_delete_own_role "
+        "— a caller may not delete the role they themselves hold, because the "
+        "delete would reassign them to Viewer."
+    )
+)
+
 _NOT_FOUND_404 = OpenApiResponse(
     description=(
         "Role not found, or a custom role the caller cannot see — an org "
@@ -197,7 +205,8 @@ ROLES_DESTROY_DELETE = dict(
         "Deletes a custom role and reassigns its members to the built-in "
         "Viewer role (never evicts them). With ?dry_run=true nothing is "
         "deleted and the affected members are returned so the UI can warn "
-        "first. Built-in roles are immutable."
+        "first. Built-in roles are immutable, and a caller cannot delete the "
+        "role they themselves hold."
     ),
     parameters=[
         OpenApiParameter(
@@ -218,7 +227,7 @@ ROLES_DESTROY_DELETE = dict(
             resource_type_field_name=None,
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _WRITE_FORBIDDEN_403,
+        403: _DELETE_FORBIDDEN_403,
         404: _NOT_FOUND_404,
     },
     examples=[

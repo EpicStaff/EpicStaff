@@ -180,6 +180,8 @@ export class NodePanelShellComponent {
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private isAutosaving = false;
+    private lastHandledAutosaveTrigger = 0;
+    private autosavePending = false;
 
     constructor(
         private sidePanelService: SidePanelService,
@@ -187,14 +189,7 @@ export class NodePanelShellComponent {
     ) {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
-            if (trigger && this.panelInstance && !this.isAutosaving) {
-                this.isAutosaving = true;
-                this.performAutosave();
-                setTimeout(() => {
-                    this.sidePanelService.clearAutosaveTrigger();
-                    this.isAutosaving = false;
-                }, 100);
-            }
+            this.tryAutosave(trigger);
         });
 
         effect(() => {
@@ -304,6 +299,27 @@ export class NodePanelShellComponent {
             this.toastService.error("Changes weren't saved — this node has invalid fields.");
         }
         this.sidePanelService.clearSelection();
+    }
+
+    private tryAutosave(trigger: number): void {
+        if (trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
+            return;
+        }
+        if (this.isAutosaving) {
+            this.autosavePending = true;
+            return;
+        }
+
+        this.lastHandledAutosaveTrigger = trigger;
+        this.isAutosaving = true;
+        this.performAutosave();
+        setTimeout(() => {
+            this.isAutosaving = false;
+            if (this.autosavePending) {
+                this.autosavePending = false;
+                this.tryAutosave(this.sidePanelService.autosaveTrigger());
+            }
+        }, 100);
     }
 
     private performAutosave(): void {

@@ -78,9 +78,6 @@ Their access rules:
   stdout / `result_data`). The list endpoint `GET /api/python-code-result/` is removed (405).
 - **`/api/realtime-session-items/`** — superadmin only, read-only (items hold conversation payloads
   including base64 audio, keyed by an opaque connection key with no org column).
-- **`/api/ngrok-config/`** — superadmin only for read and write (holds the ngrok `auth_token`, a
-  platform secret).
-- **`/api/voice-settings/`** — superadmin only (holds the platform Twilio credentials).
 - **`POST /api/run-python-code/`** — requires `TOOLS` · `UPDATE`, and the `python_code_id` must be
   visible to the active org (referenced by an org-owned tool — built-in tools are global — or by a
   node/edge in one of the org's graphs). A code id outside the active org is rejected like a missing
@@ -97,9 +94,9 @@ Their access rules:
 Active org **A**; org **B** owns `LLMConfig id 42`.
 
 ```http
-POST /api/agents/
+POST /api/agent-definitions/
 X-Organization-Id: <A>
-{ "role": "r", "goal": "g", "backstory": "b", "llm_config": 42 }
+{ "name": "my-agent", "llm_config": 42 }
 
 HTTP 400 Bad Request
 { "llm_config": ["Invalid pk \"42\" - object does not exist."] }
