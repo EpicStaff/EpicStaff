@@ -3,7 +3,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent, LabelDropdownComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    LabelDropdownComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
+import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
@@ -17,7 +23,15 @@ export interface FlowDialogData {
 
 @Component({
     selector: 'app-create-flow-dialog',
-    imports: [ReactiveFormsModule, MatTooltipModule, ButtonComponent, AppSvgIconComponent, LabelDropdownComponent],
+    imports: [
+        ReactiveFormsModule,
+        MatTooltipModule,
+        ButtonComponent,
+        AppSvgIconComponent,
+        LabelDropdownComponent,
+        ValidationErrorsComponent,
+        ServerErrorsDirective,
+    ],
     templateUrl: './create-flow-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./create-flow-dialog.component.scss'],
@@ -30,7 +44,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
     originalFlow?: GraphDto;
     public selectedIcon: string | null = null;
     public isSubmitting = false;
-    public errorMessage: string | null = null;
+    public readonly nameErrorsRef = new ServerErrorsRef();
 
     private flowsStorageService = inject(FlowsStorageService);
 
@@ -92,7 +106,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
             return;
         }
 
-        this.errorMessage = null;
+        this.nameErrorsRef.clear();
 
         const trimmedName = (this.flowForm.value.name as string).trim();
         this.flowForm.get('name')?.setValue(trimmedName, { emitEvent: false });
@@ -102,7 +116,13 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
             .flows()
             .some((f) => f.name.toLowerCase() === trimmedName.toLowerCase() && f.id !== this.originalFlow?.id);
         if (isDuplicate) {
-            this.errorMessage = 'A flow with this name already exists. Please choose a different name.';
+            this.nameErrorsRef.setErrors([
+                {
+                    field: 'name',
+                    value: trimmedName,
+                    reason: 'A flow with this name already exists. Please choose a different name.',
+                },
+            ]);
             return;
         }
 
@@ -122,7 +142,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
                 .pipe(finalize(() => (this.isSubmitting = false)))
                 .subscribe({
                     next: (updatedFlow) => this.dialogRef.close(updatedFlow),
-                    error: (err: HttpErrorResponse) => (this.errorMessage = this.parseNameError(err, 'update')),
+                    error: (err: HttpErrorResponse) => this.setNameError(err, trimmedName, 'update'),
                 });
             return;
         }
@@ -157,9 +177,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
                 next: (newFlow: GraphDto) => {
                     this.dialogRef.close(newFlow);
                 },
-                error: (err: HttpErrorResponse) => {
-                    this.errorMessage = this.parseNameError(err, 'create');
-                },
+                error: (err: HttpErrorResponse) => this.setNameError(err, trimmedName, 'create'),
             });
     }
 
@@ -172,13 +190,13 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
         this.flowForm.get('flow_icon')?.setValue(icon || '');
     }
 
-    private parseNameError(err: HttpErrorResponse, action: 'create' | 'update'): string {
+    private setNameError(err: HttpErrorResponse, name: string, action: 'create' | 'update'): void {
         const nameError = err?.error?.name?.[0] as string | undefined;
-        if (nameError?.toLowerCase().includes('already exists')) {
-            return 'A flow with this name already exists. Please choose a different name.';
-        }
-        return action === 'create'
-            ? 'Failed to create flow. Please try again.'
-            : 'Failed to update flow. Please try again.';
+        const reason = nameError?.toLowerCase().includes('already exists')
+            ? 'A flow with this name already exists. Please choose a different name.'
+            : action === 'create'
+              ? 'Failed to create flow. Please try again.'
+              : 'Failed to update flow. Please try again.';
+        this.nameErrorsRef.setErrors([{ field: 'name', value: name, reason }]);
     }
 }

@@ -157,6 +157,8 @@ services:
       DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
       REALTIME_DB_USER: ${REALTIME_DB_USER:?}
       REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
+      KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
+      KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
     networks:
       - backend-network
     depends_on:
@@ -503,7 +505,7 @@ services:
       minio:
         condition: service_healthy
     environment:
-      <<: [*docker-env, *database-env, *minio-env]
+      <<: [*docker-env, *database-env, *minio-env, *communication-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}

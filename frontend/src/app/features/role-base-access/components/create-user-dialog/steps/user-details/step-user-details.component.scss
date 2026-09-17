@@ -3,55 +3,50 @@
 }
 
 .form {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    column-gap: 30px;
+    row-gap: 16px;
+    padding: 20px 40px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.primary,
+.secondary,
+.control {
+    display: contents;
+}
+
+.label {
+    grid-column: 1;
+    justify-self: end;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    white-space: nowrap;
+    gap: 8px;
+    color: var(--color-ks-text);
+}
 
-    .primary {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 12px 40px 8px 40px;
+app-custom-input,
+app-toggle-switch,
+app-validation-errors,
+app-password-strength {
+    grid-column: 2;
+}
 
-        .control {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding-top: 8px;
+app-validation-errors:empty,
+app-password-strength:empty {
+    display: none;
+}
 
-            .label {
-                width: 110px;
-                flex-shrink: 0;
-                display: flex;
-                justify-content: flex-end;
-                white-space: nowrap;
-                gap: 8px;
-            }
+app-validation-errors {
+    // row-gap (16px) + the shared component's own 0.5rem (8px) top/bottom margin = 24px by
+    // default on each side; pull up/in to land on the requested 4px above / 16px below.
+    margin-top: -20px;
+    margin-bottom: -8px;
+}
 
-            &.top {
-                align-items: flex-start;
-
-                .label {
-                    padding-top: 10px;
-                }
-            }
-        }
-
-        .required {
-            color: var(--accent-color);
-        }
-    }
-
-    .secondary {
-        display: flex;
-        gap: 16px;
-        padding: 8px 40px 20px 40px;
-        border-bottom: 1px solid var(--color-divider-subtle);
-
-        .label {
-            display: flex;
-            white-space: nowrap;
-            color: var(--text-secondary-60);
-            gap: 8px;
-        }
-    }
+.required {
+    color: var(--accent-color);
 }

@@ -1,0 +1,53 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+}
+
+.form-container {
+    @include mixins.form-container;
+}
+
+@include mixins.field-isolated-spacing;
+
+.field {
+    display: flex;
+    flex-direction: column;
+}
+
+.field label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--text-body-medium-size);
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: var(--text-body-medium-weight);
+    margin-bottom: 0.5rem;
+}
+
+.select-field {
+    flex: 1;
+    min-width: 0;
+}
+
+.selected-flow-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.selected-flow-row app-go-to-button {
+    flex: 0 0 auto;
+}
+
+app-go-to-button.is-disabled {
+    pointer-events: none;
+    opacity: 0.5;
+}

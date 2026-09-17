@@ -158,6 +158,34 @@ def test_delete_dry_run_then_real(
 
 
 @pytest.mark.django_db
+def test_delete_own_role_403(auth_client, django_user_model, acme):
+    """A caller holding the role cannot delete it — the delete would reassign
+    them to Viewer. The dry-run refuses identically, so the preview never
+    promises a delete the real call rejects."""
+    own = Role.objects.create(name="SelfHeld-api", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=own,
+        resource_type="roles",
+        permissions=int(
+            Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
+        ),
+    )
+    holder = django_user_model.objects.create_user(
+        email="selfheld-api@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=holder, org=acme, role=own)
+
+    for url in (
+        f"/api/admin/roles/{own.id}/",
+        f"/api/admin/roles/{own.id}/?dry_run=true",
+    ):
+        resp = auth_client(holder).delete(url)
+        assert resp.status_code == status.HTTP_403_FORBIDDEN, url
+        assert resp.json()["code"] == "cannot_delete_own_role", url
+    assert Role.objects.filter(pk=own.id).exists()
+
+
+@pytest.mark.django_db
 def test_retrieve_cross_org_role_404(auth_client, admin_acme, beta):
     other = Role.objects.create(name="Hidden-api", org=beta, is_built_in=False)
     resp = auth_client(admin_acme).get(f"/api/admin/roles/{other.id}/")
