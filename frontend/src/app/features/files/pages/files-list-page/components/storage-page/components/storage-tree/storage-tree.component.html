@@ -19,7 +19,7 @@
         <div class="storage-tree__toolbar">
             <span class="storage-tree__toolbar-label">Folders</span>
             <button
-                *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
+                *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                 class="storage-tree__toolbar-btn"
                 aria-label="Add folder"
                 matTooltip="Create folder"
@@ -32,6 +32,7 @@
                 ></app-svg-icon>
             </button>
             <button
+                *appHasPermission="[ResourceCode.Files, [ActionCode.Export, ActionCode.Delete]]"
                 class="storage-tree__toolbar-btn"
                 aria-label="More options"
                 matTooltip="More options"
@@ -140,7 +141,7 @@
                     [class.storage-tree__hover-actions--visible]="hoveredItem() === node"
                 >
                     <button
-                        *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
+                        *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                         class="storage-tree__hover-btn storage-tree__hover-btn--plus"
                         aria-label="Add folder"
                         matTooltip="Create folder"
@@ -287,13 +288,15 @@
             </button>
             <div class="storage-tree__context-menu-divider"></div>
         }
-        <button
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
-            class="storage-tree__context-menu-item"
-            (click)="onContextMenuAction('add-to-flow')"
-        >
-            Add to flow
-        </button>
+        <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Read]">
+            <button
+                *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                class="storage-tree__context-menu-item"
+                (click)="onContextMenuAction('add-to-flow')"
+            >
+                Add to flow
+            </button>
+        </ng-container>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
             class="storage-tree__context-menu-item"
