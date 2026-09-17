@@ -84,22 +84,10 @@ class KnowledgeSearchService:
     def __init__(
         self,
         redis_service: RedisService,
-        session_id: int | None = None,
-        node_name: str | None = None,
-        execution_order: int | None = None,
-        crew_id: int | None = None,
-        agent_id: int | None = None,
-        stream_writer: Optional["StreamWriter"] = None,
         rag_embedder_api_key: str | None = None,
         rag_llm_api_key: str | None = None,
     ):
         self.redis_service = redis_service
-        self.session_id = session_id
-        self.node_name = node_name
-        self.crew_id = crew_id
-        self.agent_id = agent_id
-        self.execution_order = execution_order
-        self.writer = stream_writer
         self.rag_embedder_api_key = rag_embedder_api_key
         self.rag_llm_api_key = rag_llm_api_key
 
@@ -114,6 +102,10 @@ class KnowledgeSearchService:
         timeout: Optional[int] = None,
         rag_embedder_api_key: str | None = None,
         rag_llm_api_key: str | None = None,
+        writer: Optional["StreamWriter"] = None,
+        session_id: int | None = None,
+        node_name: str | None = None,
+        execution_order: int | None = None,
     ) -> list[str]:
         """
         Search knowledge using specified RAG implementation.
@@ -125,6 +117,12 @@ class KnowledgeSearchService:
             rag_search_config: RAG-specific search parameters dict
             stop_event: Optional event to stop execution
             timeout: Timeout in seconds. If None, resolved automatically by rag_type.
+            writer: Stream writer to emit the `extracted_chunks` graph message to.
+                If None, no message is emitted.
+            session_id: Session the search was run for. Only used when `writer` is set.
+            node_name: Name of the calling node. Only used when `writer` is set.
+            execution_order: Execution order of the calling node. Only used when
+                `writer` is set.
 
         Returns:
             List of knowledge results (strings)
@@ -139,8 +137,14 @@ class KnowledgeSearchService:
 
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
-        resolved_embedder_key = rag_embedder_api_key if rag_embedder_api_key is not None else self.rag_embedder_api_key
-        resolved_llm_key = rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
+        resolved_embedder_key = (
+            rag_embedder_api_key
+            if rag_embedder_api_key is not None
+            else self.rag_embedder_api_key
+        )
+        resolved_llm_key = (
+            rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
+        )
 
         try:
             with KnowledgeClient() as client:
@@ -159,11 +163,22 @@ class KnowledgeSearchService:
             ) from e
 
         logger.info(
-            "Knowledge search completed rag_id=%s sender=%s query=%r", rag_id, sender, query
+            "Knowledge search completed rag_id=%s sender=%s query=%r",
+            rag_id,
+            sender,
+            query,
         )
 
-        if self.writer is not None:
-            self._add_knowledges_to_graph_message(request, result, knowledge_collection_id)
+        if writer is not None:
+            self._add_knowledges_to_graph_message(
+                request=request,
+                result=result,
+                collection_id=knowledge_collection_id,
+                writer=writer,
+                session_id=session_id,
+                node_name=node_name,
+                execution_order=execution_order,
+            )
 
         if isinstance(result, str):
             return [result]
@@ -190,8 +205,15 @@ class KnowledgeSearchService:
                 f"Expected format: 'rag_type:id' (e.g., 'naive:6')"
             ) from e
 
+    @staticmethod
     def _add_knowledges_to_graph_message(
-        self, request: SearchRequest, result: list[FoundChunk] | str, collection_id: int
+        request: SearchRequest,
+        result: list[FoundChunk] | str,
+        collection_id: int,
+        writer: "StreamWriter",
+        session_id: int | None,
+        node_name: str | None,
+        execution_order: int | None,
     ) -> None:
         if isinstance(result, str):
             chunks = [result]
@@ -200,8 +222,6 @@ class KnowledgeSearchService:
 
         knowledge_results_data = {
             "message_type": "extracted_chunks",
-            "crew_id": self.crew_id,
-            "agent_id": self.agent_id,
             "collection_id": collection_id,
             "retrieved_chunks": len(chunks),
             "knowledge_query": request.query,
@@ -210,9 +230,9 @@ class KnowledgeSearchService:
             "token_usage": {},  # not yet in new contract thats why empty
         }
         graph_message = GraphMessage(
-            session_id=self.session_id,
-            name=self.node_name,
-            execution_order=self.execution_order,
+            session_id=session_id,
+            name=node_name,
+            execution_order=execution_order,
             message_data=knowledge_results_data,
         )
-        self.writer(graph_message)
+        writer(graph_message)

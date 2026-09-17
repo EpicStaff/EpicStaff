@@ -25,6 +25,7 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
     SelectItem,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
@@ -44,7 +45,6 @@ import { SurfacesApiService } from '../../../../features/agent-definitions/servi
 import { AgentNodeTaskUi } from '../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
-import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { NodeType } from '../../../core/enums/node-type';
 import { AgentNodeModel } from '../../../core/models/node.model';
@@ -502,16 +502,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             contextRefs: [],
         };
         this.onTasksChange([...this.tasks(), newTask]);
-    }
-
-    getTasksErrorMessage(): string {
-        const errors: ValidationErrors | null | undefined = this.form?.get('tasksValidity')?.errors;
-        if (!errors) return '';
-        if (errors['tasksRequired']) return 'Add at least one task.';
-        if (errors['taskNameRequired']) return 'Every task needs a name.';
-        if (errors['taskNameDuplicate']) return 'Task names must be unique.';
-        if (errors['taskInstructionsRequired']) return 'Every task needs instructions.';
-        return '';
     }
 
     initializeForm(): FormGroup {

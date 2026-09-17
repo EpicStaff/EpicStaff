@@ -308,15 +308,8 @@ def test_realtime_session_items_allowed_for_superadmin(client_super):
     assert client_super.get("/api/realtime-session-items/").status_code == 200
 
 
-# NOTE (EST-3491): the four tests that used to live here
-# (`test_ngrok_config_read_denied_for_member`, `test_ngrok_config_read_allowed_for_superadmin`,
-# `test_webhook_trigger_ngrok_not_settable_by_member`, `test_webhook_trigger_ngrok_settable_by_superadmin`)
-# exercised a schema that no longer exists: `/api/ngrok-config/` was never a
-# live route (NgrokWebhookConfigViewSet has now been formally deleted), and
-# `WebhookTrigger.ngrok_webhook_config` was removed back in migration 0187
-# (`webhook_trigger_remove_old_fks`) in favor of the related
-# `NgrokWebhookConfig.trigger` OneToOne. Current coverage for ngrok-on-trigger
-# org isolation lives in webhook_trigger_api_test.py
+# NOTE: ngrok config is reachable only through the nested WebhookTrigger
+# payload, so its org-isolation coverage lives in webhook_trigger_api_test.py
 # (`TestWebhookTriggerOrgIsolation.test_non_superadmin_can_set_ngrok_config_on_own_org_trigger`
 # and `test_auth_token_absent_from_get_response`).
 
@@ -379,3 +372,42 @@ def test_run_python_code_allowed_for_member_own_org(client_member, org_a):
     assert resp.status_code == 200, resp.data
     assert resp.data["execution_id"] == "exec-123"
     run_code.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_run_python_code_of_builtin_tool_allowed(client_member):
+    # Built-in tools are global (org=None), so their code is visible to every
+    # org via the `pythoncodetool__built_in=True` branch of the filter.
+    code = PythonCode.objects.create(code="x", entrypoint="main")
+    PythonCodeTool.objects.create(
+        name="builtin-tool",
+        description="",
+        python_code=code,
+        built_in=True,
+        org=None,
+    )
+    with patch(
+        "tables.views.views.run_python_code_service.run_code",
+        return_value="exec-builtin",
+    ):
+        resp = client_member.post(
+            "/api/run-python-code/",
+            {"python_code_id": code.id, "variables": {}},
+            format="json",
+        )
+    assert resp.status_code == 200, resp.data
+
+
+@pytest.mark.django_db
+def test_run_python_code_unattached_rejected(client_member):
+    # A standalone PythonCode with no referencing tool/node/edge matches no
+    # branch of the filter, so it is visible to no org (accepted trade-off of
+    # PythonCode having no org column of its own).
+    orphan = PythonCode.objects.create(code="orphan", entrypoint="main")
+    resp = client_member.post(
+        "/api/run-python-code/",
+        {"python_code_id": orphan.id, "variables": {}},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "does not exist" in str(resp.data)

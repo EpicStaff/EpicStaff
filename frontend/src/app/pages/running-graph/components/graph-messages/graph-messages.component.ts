@@ -272,6 +272,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             const status = this.sseService.status();
             this.sessionStatusChanged.emit(status);
             this.checkIfFinish();
+            if (TERMINAL_STATUSES.has(status)) {
+                this.rebuildMessageState(this.messages);
+            }
             // Bugfix: when the run reaches a terminal status, reconcile the full message list
             // from the server so any messages the realtime SSE stream missed are backfilled (once).
             if (TERMINAL_STATUSES.has(status) && !this.hasReconciledTerminal) {
@@ -670,6 +673,10 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     // Check if we should show transition between sessions
     public shouldShowTransition(currentMessage: GraphMessage, index: number): boolean {
+        // Divider marks a live hand-off between nodes; once the run reaches a terminal
+        // status there is nothing to hand off, so it is not drawn on a finished session.
+        if (TERMINAL_STATUSES.has(this.sseService.status())) return false;
+
         // Don't show transition for the first message
         if (index === 0) return false;
 
