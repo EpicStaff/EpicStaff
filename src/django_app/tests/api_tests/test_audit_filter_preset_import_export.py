@@ -69,6 +69,12 @@ class TestAuditFilterPresetImport:
         url = reverse("auditfilterpreset-import-presets")
         return auth_client.post(url, {"file": file}, format="multipart")
 
+    def _entity_summary(self, data: dict) -> dict:
+        """The response is the raw `IDMapper.get_detailed_summary()` dict,
+        keyed by entity type - same shape GraphViewSet.partial_import
+        returns."""
+        return data[EntityType.AUDIT_FILTER_PRESET]
+
     def test_import_single_creates_preset(self, auth_client, regular_user):
         payload = _envelope(
             [{"id": 1, "name": "single preset", "filter_body": {"query": ""}}]
@@ -76,11 +82,11 @@ class TestAuditFilterPresetImport:
         response = self._import(auth_client, payload)
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["skipped_duplicate"] == []
-        assert data["failed"] == []
-        assert len(data["created"]) == 1
-        assert data["created"][0]["name"] == "single preset"
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["total"] == 1
+        assert entity_summary["reused"]["count"] == 0
+        assert entity_summary["created"]["count"] == 1
+        assert entity_summary["created"]["items"][0]["name"] == "single preset"
 
         created = AuditFilterPreset.objects.get(name="single preset")
         assert created.created_by_id == regular_user.id
@@ -99,10 +105,9 @@ class TestAuditFilterPresetImport:
         response = self._import(auth_client, payload)
 
         assert response.status_code == 200
-        data = response.json()
-        assert len(data["created"]) == 2
-        assert data["skipped_duplicate"] == []
-        assert data["failed"] == []
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 2
+        assert entity_summary["reused"]["count"] == 0
         assert (
             AuditFilterPreset.objects.filter(
                 name__in=["batch preset 1", "batch preset 2"]
@@ -117,9 +122,10 @@ class TestAuditFilterPresetImport:
         response = self._import(auth_client, payload)
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["created"] == []
-        assert data["skipped_duplicate"] == [preset.name]
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 0
+        assert entity_summary["reused"]["count"] == 1
+        assert entity_summary["reused"]["items"][0]["name"] == preset.name
         assert AuditFilterPreset.objects.filter(name=preset.name).count() == 1
         # existing row untouched - reused, not overwritten
         preset.refresh_from_db()

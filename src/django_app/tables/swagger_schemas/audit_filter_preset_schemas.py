@@ -1,13 +1,18 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
+from tables.import_export.enums import EntityType
 from tables.serializers.model_serializers.audit_filter_preset_serializers import (
     AuditFilterPresetCopySerializer,
 )
 from tables.serializers.serializers import BulkExportSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-_PRESET_EXAMPLE = {"id": 1, "name": "My Filter", "filter_body": {"query": 'status = "failed"'}}
+_PRESET_EXAMPLE = {
+    "id": 1,
+    "name": "My Filter",
+    "filter_body": {"query": 'status = "failed"'},
+}
 
 AUDIT_FILTER_PRESET_COPY = dict(
     summary="Copy a saved preset",
@@ -45,7 +50,9 @@ AUDIT_FILTER_PRESET_EXPORT_ONE = dict(
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="The preset, as a downloadable JSON file.",
-            examples=[OpenApiExample("Exported", value=_PRESET_EXAMPLE, response_only=True)],
+            examples=[
+                OpenApiExample("Exported", value=_PRESET_EXAMPLE, response_only=True)
+            ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
@@ -55,7 +62,7 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = dict(
     summary="Export a selection of the caller's own saved presets",
     description=(
         "Bulk counterpart to the single-preset export above - always "
-        "returns the `{\"presets\": [...]}` batch shape (even for one id), "
+        'returns the `{"presets": [...]}` batch shape (even for one id), '
         "matching what `import`'s batch mode accepts. `ids` is required "
         "and non-empty (same `BulkExportSerializer` GraphViewSet.bulk_export "
         "uses) - an id that isn't the caller's own, or doesn't exist, 400s "
@@ -67,7 +74,9 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = dict(
             response=OpenApiTypes.OBJECT,
             description="A `{presets: [...]}` batch, as a downloadable JSON file.",
             examples=[
-                OpenApiExample("Exported", value={"presets": [_PRESET_EXAMPLE]}, response_only=True),
+                OpenApiExample(
+                    "Exported", value={"presets": [_PRESET_EXAMPLE]}, response_only=True
+                ),
             ],
         ),
         400: OpenApiResponse(
@@ -84,7 +93,9 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = dict(
         401: UNAUTHORIZED_401_RESPONSE,
     },
     examples=[
-        OpenApiExample("Export a selection", value={"ids": [1, 2, 3]}, request_only=True),
+        OpenApiExample(
+            "Export a selection", value={"ids": [1, 2, 3]}, request_only=True
+        ),
     ],
 )
 
@@ -92,13 +103,14 @@ AUDIT_FILTER_PRESET_IMPORT = dict(
     summary="Import a preset file (upload) - single object or a batch",
     description=(
         "Upload the exact `.json` file the single or bulk export endpoint "
-        "produced - "
-        "either the single-object shape or a `{\"presets\": [...]}` batch. "
-        "`org`/`created_by` always come from the caller's own request, "
-        "regardless of anything the imported file itself claims. Each "
-        "item is processed independently: a name collision with an "
-        "existing preset lands it in `skipped_duplicate` rather than "
-        "failing the whole batch, and any other error lands it in `failed`."
+        'produced - either the single-object shape or a `{"presets": '
+        "[...]}` batch. `org`/`created_by` always come from the caller's "
+        "own request, regardless of anything the imported file itself "
+        "claims. A name collision with an existing preset is reused rather "
+        "than failing the whole batch - see `reused` below. Same raw "
+        "`IDMapper.get_detailed_summary()` shape `GraphViewSet.partial_import` "
+        "returns, keyed by entity type (`AuditFilterPreset`, since presets "
+        "are always a single-entity-type import)."
     ),
     request={
         "multipart/form-data": {
@@ -112,33 +124,34 @@ AUDIT_FILTER_PRESET_IMPORT = dict(
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
-            description="All items processed without error.",
+            description="Import summary, keyed by entity type.",
             examples=[
                 OpenApiExample(
                     "Imported",
                     value={
-                        "created": [_PRESET_EXAMPLE],
-                        "skipped_duplicate": [],
-                        "failed": [],
+                        EntityType.AUDIT_FILTER_PRESET: {
+                            "total": 1,
+                            "created": {"count": 1, "items": [_PRESET_EXAMPLE]},
+                            "reused": {"count": 0, "items": []},
+                        },
+                    },
+                    response_only=True,
+                ),
+                OpenApiExample(
+                    "Duplicate reused",
+                    value={
+                        EntityType.AUDIT_FILTER_PRESET: {
+                            "total": 1,
+                            "created": {"count": 0, "items": []},
+                            "reused": {"count": 1, "items": [_PRESET_EXAMPLE]},
+                        },
                     },
                     response_only=True,
                 ),
             ],
         ),
-        207: OpenApiResponse(
-            response=OpenApiTypes.OBJECT,
-            description="At least one item failed - `created`/`skipped_duplicate` still reflect whatever did succeed.",
-            examples=[
-                OpenApiExample(
-                    "Partial failure",
-                    value={
-                        "created": [],
-                        "skipped_duplicate": ["My Filter"],
-                        "failed": [],
-                    },
-                    response_only=True,
-                ),
-            ],
+        400: OpenApiResponse(
+            description="Invalid file, wrong main entity, or a validation error on an item (e.g. missing `name`)."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },

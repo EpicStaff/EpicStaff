@@ -2685,19 +2685,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             settings=ImportSettings(),
             org_id=self.get_active_org_id(),
         )
-        entity_summary = summary.get(
-            EntityType.AUDIT_FILTER_PRESET, {"created": {}, "reused": {}}
-        )
-        created_items = entity_summary.get("created", {}).get("items", [])
-        reused_items = entity_summary.get("reused", {}).get("items", [])
-        return Response(
-            {
-                "created": created_items,
-                "skipped_duplicate": [item["name"] for item in reused_items],
-                "failed": [],
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(summary, status=status.HTTP_200_OK)
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
