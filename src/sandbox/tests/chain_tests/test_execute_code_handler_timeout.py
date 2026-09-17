@@ -22,6 +22,11 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip(
+    "pwd",
+    reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
+)
+
 import settings
 import dynamic_venv_executor_chain as chain_mod
 from dynamic_venv_executor_chain import ExecuteCodeHandler

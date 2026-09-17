@@ -1,5 +1,8 @@
 <div class="dialog__form">
-    <div class="dialog__form-field">
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="dialog__form-field"
+    >
         <div class="dialog__form-label">
             <label for="collection-name">Collection Name</label>
             <app-help-tooltip
