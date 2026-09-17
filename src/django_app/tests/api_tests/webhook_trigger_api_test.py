@@ -5,8 +5,8 @@ import pytest
 from django.urls import reverse
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.models.rbac_models import Organization, OrganizationUser, Role, RolePermission
+from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -15,6 +15,7 @@ from tables.models.webhook_models import (
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.secrets import secret_service
+from tables.views.model_view_sets import WebhookTriggerViewSet
 from rest_framework.test import APIClient
 
 # `NgrokWebhookConfig.auth_token` is now a Secret reference
@@ -1988,4 +1989,114 @@ class TestWebhookTriggerAuthAPI:
 
         assert response.status_code == 201, response.json()
         assert response.json()["auth"]["kind"] == "webhook"
+
+
+@pytest.fixture
+def viewer_client(default_org, django_user_model):
+    role_viewer = Role.objects.get(
+        name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="webhook-rbac-viewer@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role_viewer)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.fixture
+def member_client(default_org, django_user_model):
+    role_member = Role.objects.get(
+        name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="webhook-rbac-member@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role_member)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.fixture
+def flows_only_client(default_org, django_user_model):
+    """A custom role holding full FLOWS access but no `webhooks` permission
+    row at all -- proves the view is not (still) reading the FLOWS bit."""
+    role = Role.objects.create(name="Flows Only", org=default_org, is_built_in=False)
+    RolePermission.objects.create(role=role, resource_type="flows", permissions=31)
+    user = django_user_model.objects.create_user(
+        email="webhook-rbac-flows-only@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerRbacResourceType:
+    """WebhookTriggerViewSet must be gated by the dedicated `webhooks` RBAC
+    resource -- not `llm_configs` (the pre-fix value) and not `flows` (an
+    alternative the ticket considered and rejected in favor of a dedicated
+    resource)."""
+
+    def test_resource_type_is_webhooks(self):
+        assert WebhookTriggerViewSet.rbac_resource_type == ResourceType.WEBHOOKS
+
+    def test_viewer_can_read_but_not_write(self, viewer_client, default_org):
+        trigger = WebhookTrigger.objects.create(
+            org=default_org, path="viewer-read-only", provider_type=None
+        )
+
+        list_resp = viewer_client.get(reverse("webhooktrigger-list"))
+        assert list_resp.status_code == 200
+
+        detail_resp = viewer_client.get(
+            reverse("webhooktrigger-detail", args=[trigger.id])
+        )
+        assert detail_resp.status_code == 200
+
+        create_resp = viewer_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "viewer-should-fail", "provider_type": None},
+            format="json",
+        )
+        assert create_resp.status_code == 403
+
+    def test_member_has_full_crud(self, member_client):
+        create_resp = member_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "member-can-create", "provider_type": None},
+            format="json",
+        )
+        assert create_resp.status_code == 201, create_resp.json()
+        trigger_id = create_resp.json()["id"]
+
+        update_resp = member_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"path": "member-can-update"},
+            format="json",
+        )
+        assert update_resp.status_code == 200, update_resp.json()
+
+        delete_resp = member_client.delete(
+            reverse("webhooktrigger-detail", args=[trigger_id])
+        )
+        assert delete_resp.status_code == 204
+
+    def test_flows_permission_alone_does_not_grant_webhook_access(
+        self, flows_only_client
+    ):
+        """A role with full FLOWS access but nothing on `webhooks` must be
+        denied -- the view is gated by webhooks, not flows."""
+        response = flows_only_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "flows-only-should-fail", "provider_type": None},
+            format="json",
+        )
+        assert response.status_code == 403
 
