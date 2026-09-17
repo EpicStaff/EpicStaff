@@ -68,7 +68,8 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 ```python
 class ResourceType(models.TextChoices):
     ORGANIZATIONS, ROLES, MEMBERSHIPS, API_KEYS, FLOWS, AGENTS, TOOLS,
-    KNOWLEDGE_SOURCES, FILES, PROJECTS, LLM_CONFIGS, SECRETS, VOICE, SURFACES
+    KNOWLEDGE_SOURCES, FILES, PROJECTS, LLM_CONFIGS, SECRETS, VOICE, SURFACES,
+    WEBHOOKS
 
 class Permission(IntFlag):
     CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
@@ -80,9 +81,10 @@ class Permission(IntFlag):
 ### 2.2 Built-in roles (seeded by a chain of idempotent data migrations)
 
 Superadmin role row has **zero** `RolePermission` rows — authority comes exclusively from
-`User.is_superadmin`. The seeds run 0171 → 0183 → 0205 → 0209 → 0210 → 0212 → 0236 → 0242,
-each overriding the last; `0242_reseed_builtin_role_permissions` is the authoritative end
-state. Current bitmasks:
+`User.is_superadmin`. The seeds run 0171 → 0183 → 0205 → 0209 → 0210 → 0212 → 0236 → 0242 →
+0246, each overriding the last; `0242_reseed_builtin_role_permissions` is the authoritative
+end state for the resources it covers, and `0246_seed_webhooks_resource_permissions` seeds
+the `webhooks` resource introduced afterward. Current bitmasks:
 
 | resource_type | Org Admin | Member | Viewer |
 |---|---|---|---|
@@ -95,6 +97,7 @@ state. Current bitmasks:
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
 | voice | 15 (CRUD) | 2 (R) | 2 (R) |
+| webhooks | 15 (CRUD) | 15 (CRUD) | 2 (R) |
 | secrets | 75 (CRD+use) | 0 | 0 |
 | memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |

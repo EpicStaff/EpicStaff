@@ -265,6 +265,11 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("voice", "read"), ("agents", "read")),
         "delete": (("voice", "read"),),
     },
+    ResourceType.WEBHOOKS.value: {
+        "create": (("webhooks", "read"),),
+        "update": (("webhooks", "read"),),
+        "delete": (("webhooks", "read"),),
+    },
 }
 
 
