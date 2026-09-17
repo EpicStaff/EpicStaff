@@ -4,14 +4,14 @@ import httpx
 from loguru import logger
 from pydantic import TypeAdapter
 
-from shared.models.knowledge import (
+from ..models.knowledge import (
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
-from shared.models.knowledge_new import FoundChunk, SearchConfig
+from ..models.knowledge_new import FoundChunk, SearchConfig
 
-from app.knowledge.target import KnowledgeSearchTarget
+from .target import KnowledgeSearchTarget
 
 _SEARCH_CONFIG = TypeAdapter(SearchConfig)
 _RESULT = TypeAdapter(list[FoundChunk] | str)
@@ -58,9 +58,9 @@ class KnowledgeClient:
     async def search(
         self, target: KnowledgeSearchTarget, query: str, *, timeout: float
     ) -> list[FoundChunk] | str:
-        assert (
-            self._client is not None
-        ), "KnowledgeClient.start() must be called before search()"
+        assert self._client is not None, (
+            "KnowledgeClient.start() must be called before search()"
+        )
 
         response = await self._client.post(
             f"rags/{target.rag_type}/{target.rag_id}/search/",

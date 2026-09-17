@@ -19,7 +19,6 @@ from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
 )
-from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django.conf import settings
 from src.shared.enums.knowledge_new import RAGStrategy
@@ -374,13 +373,10 @@ class SessionViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        with transaction.atomic():
-            session_list = Session.objects.filter(
-                id__in=ids, graph__org_id=self.get_active_org_id()
-            )
-            deleted_count = session_list.count()
-            for session in session_list:
-                session.delete()
+        _, per_model = Session.objects.filter(
+            id__in=ids, graph__org_id=self.get_active_org_id()
+        ).delete()
+        deleted_count = per_model.get("tables.Session", 0)
 
         return Response(
             {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
@@ -984,7 +980,9 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+                client.cancel(
+                    strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index"
+                )
         except ClientResourceNotFoundError:
             pass
         except ClientError as e:
