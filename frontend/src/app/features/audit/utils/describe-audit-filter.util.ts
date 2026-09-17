@@ -1,5 +1,11 @@
 import { AuditEnumOption, AuditFilterState } from '../models/audit-filter.models';
-import { KIND_OPTIONS, NODE_TYPE_OPTIONS, RUN_TYPE_OPTIONS, STATUS_OPTIONS } from '../models/audit-filter-options';
+import {
+    KIND_OPTIONS,
+    NODE_TYPE_OPTIONS,
+    OPERATOR_LABELS,
+    RUN_TYPE_OPTIONS,
+    STATUS_OPTIONS,
+} from '../models/audit-filter-options';
 
 export interface AuditFilterChip {
     key: string;
@@ -16,6 +22,14 @@ export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] 
 
     if (state.kinds.length > 0) {
         chips.push({ key: 'kind', label: 'Kind', value: labelsFor(state.kinds, KIND_OPTIONS) });
+    }
+
+    if (state.flow.values.length > 0) {
+        chips.push({
+            key: 'flow',
+            label: 'Flow',
+            value: `${OPERATOR_LABELS[state.flow.op]} ${state.flow.values.join(', ')}`,
+        });
     }
 
     if (state.statuses.length > 0) {
@@ -37,6 +51,8 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
     switch (key) {
         case 'kind':
             return { ...state, kinds: [] };
+        case 'flow':
+            return { ...state, flow: { op: 'in', values: [] } };
         case 'status':
             return { ...state, statuses: [] };
         case 'nodeType':

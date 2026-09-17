@@ -1,7 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 
+import { FlowsApiService } from '../flows/services/flows-api.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
@@ -23,6 +25,8 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 })
 export class AuditSessionsBrowserComponent implements OnInit {
     private auditApiService = inject(AuditApiService);
+    private flowApiService = inject(FlowsApiService);
+    private destroyRef = inject(DestroyRef);
     public readonly timeZoneLabel = buildTimeZoneLabel();
 
     public isLoading = signal<boolean>(false);
@@ -36,6 +40,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private nextCursor = signal<string | null>(null);
     protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    public flowNames = signal<string[]>([]);
 
     public rows = computed(() => buildAuditRows(this.rawEvents()));
     public appliedChips = computed(() => describeAuditFilter(this.appliedFilter()));
@@ -59,6 +64,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public ngOnInit(): void {
         this.loadSessions();
+        this.loadFlowNames();
     }
 
     public stepPageSize(delta: number): void {
@@ -157,6 +163,22 @@ export class AuditSessionsBrowserComponent implements OnInit {
                     this.isPartial.set(false);
                     this.loadError.set(true);
                     this.isLoading.set(false);
+                },
+            });
+    }
+
+    public loadFlowNames(): void {
+        this.flowApiService
+            .getGraphsLight()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (flows) => {
+                    const uniqueNames = new Set(flows.map((flow) => flow.name));
+                    const sortedNames = Array.from(uniqueNames).sort((a, b) => a.localeCompare(b));
+                    this.flowNames.set(sortedNames);
+                },
+                error: () => {
+                    this.flowNames.set([]);
                 },
             });
     }

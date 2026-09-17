@@ -1,4 +1,4 @@
-import { AuditEnumOption } from './audit-filter.models';
+import { AuditEnumOption, AuditFilterOp } from './audit-filter.models';
 
 export const KIND_OPTIONS: AuditEnumOption[] = [
     { value: 'session', label: 'Session' },
@@ -46,8 +46,15 @@ export const OPERATOR_LABELS: Record<string, string> = {
     key_not_exists: 'has no key',
 };
 
-export const FLOW_OPERATORS = ['in', 'not_in'];
+export const FLOW_OPERATORS: AuditFilterOp[] = ['in', 'not_in'];
 
-export const ID_OPERATORS = ['in', 'not_in', 'equals', 'not_equal'];
+export const ID_OPERATORS: AuditFilterOp[] = ['in', 'not_in', 'equals', 'not_equal'];
 
-export const ERROR_OPERATORS = ['contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+export const ERROR_OPERATORS: AuditFilterOp[] = [
+    'contains',
+    'not_contains',
+    'starts_with',
+    'ends_with',
+    'is_empty',
+    'is_not_empty',
+];

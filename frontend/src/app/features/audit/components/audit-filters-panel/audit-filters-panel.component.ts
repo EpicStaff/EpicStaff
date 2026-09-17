@@ -1,18 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
 
-import { AuditFilterState, EMPTY_AUDIT_FILTER } from '../../models/audit-filter.models';
+import { AuditFilterState, AuditValuesFilter, EMPTY_AUDIT_FILTER } from '../../models/audit-filter.models';
 import { KIND_OPTIONS, NODE_TYPE_OPTIONS, RUN_TYPE_OPTIONS, STATUS_OPTIONS } from '../../models/audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from '../../models/audit-session.models';
 import { allowedKinds, isFieldEnabled } from '../../utils/audit-filter-compatibility.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
+import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | 'presets';
 
 @Component({
     selector: 'app-audit-filters-panel',
     standalone: true,
-    imports: [AuditCheckboxEnumComponent, AuditFilterGroupComponent],
+    imports: [AuditCheckboxEnumComponent, AuditFilterGroupComponent, AuditFlowFilterComponent],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -21,6 +22,8 @@ export class AuditFiltersPanelComponent {
     public readonly closed = output<void>();
     public readonly applied = output<void>();
     public readonly cleared = output<void>();
+
+    public readonly flowNames = input<string[]>([]);
 
     public activeTab = signal<AuditFilterTab>('builder');
     public filter = model<AuditFilterState>(EMPTY_AUDIT_FILTER);
@@ -71,5 +74,9 @@ export class AuditFiltersPanelComponent {
 
     public setNodeTypes(values: string[]): void {
         this.filter.update((current) => ({ ...current, nodeTypes: values as AuditNodeType[] }));
+    }
+
+    public setFlow(flow: AuditValuesFilter): void {
+        this.filter.update((current) => ({ ...current, flow }));
     }
 }

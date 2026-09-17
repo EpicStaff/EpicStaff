@@ -1,0 +1,18 @@
+<app-audit-operator-select
+    [operators]="FLOW_OPERATORS"
+    [selectedOperator]="filter().op"
+    (selectedOperatorChange)="onOperatorChange($event)"
+/>
+
+<input
+    type="text"
+    placeholder="Search value"
+    [value]="searchText()"
+    (input)="onSearchChange($event)"
+/>
+
+<app-audit-checkbox-enum
+    [options]="visibleOptions()"
+    [value]="filter().values"
+    (valueChange)="onValuesChange($event)"
+/>

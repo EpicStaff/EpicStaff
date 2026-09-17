@@ -1,6 +1,22 @@
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from './audit-session.models';
 
-export type AuditFilterOp = 'equals' | 'not_equal' | 'in' | 'not_in' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte';
+export type AuditFilterOp =
+    | 'equals'
+    | 'not_equal'
+    | 'in'
+    | 'not_in'
+    | 'contains'
+    | 'gt'
+    | 'gte'
+    | 'lt'
+    | 'lte'
+    | 'starts_with'
+    | 'ends_with'
+    | 'not_contains'
+    | 'is_empty'
+    | 'is_not_empty'
+    | 'key_exists'
+    | 'key_not_exists';
 
 export interface AuditEnumOption {
     value: string;
@@ -24,18 +40,18 @@ export interface AuditFilterNot {
 }
 
 export interface AuditValuesFilter {
-    op: string;
+    op: AuditFilterOp;
     values: string[];
 }
 
 export interface AuditTextFilter {
-    op: string;
+    op: AuditFilterOp;
     value: string;
 }
 
 export interface AuditJsonFilter {
     key: string;
-    op: string;
+    op: AuditFilterOp;
     value: string;
 }
 

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
 
+import { AuditFilterOp } from '../../models/audit-filter.models';
 import { OPERATOR_LABELS } from '../../models/audit-filter-options';
 
 @Component({
@@ -11,14 +12,14 @@ import { OPERATOR_LABELS } from '../../models/audit-filter-options';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AuditOperatorSelectComponent {
-    public operators = input<string[]>([]);
-    public selectedOperator = model.required<string>();
+    public operators = input<AuditFilterOp[]>([]);
+    public selectedOperator = model.required<AuditFilterOp>();
 
     public labelFor(operator: string): string {
         return OPERATOR_LABELS[operator] ?? operator;
     }
 
     public onSelect(event: Event): void {
-        this.selectedOperator.set((event.target as HTMLSelectElement).value);
+        this.selectedOperator.set((event.target as HTMLSelectElement).value as AuditFilterOp);
     }
 }

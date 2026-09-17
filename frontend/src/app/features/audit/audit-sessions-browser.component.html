@@ -230,6 +230,7 @@
         @if (isFiltersPanelOpen()) {
             <aside class="audit-browser__panel">
                 <app-audit-filters-panel
+                    [flowNames]="flowNames()"
                     [(filter)]="draftFilter"
                     (closed)="closeFiltersPanel()"
                     (applied)="applyFilters()"

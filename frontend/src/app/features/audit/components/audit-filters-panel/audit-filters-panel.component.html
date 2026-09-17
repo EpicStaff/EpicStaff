@@ -51,6 +51,14 @@
                     />
                 </app-audit-filter-group>
 
+                <app-audit-filter-group label="Flow">
+                    <app-audit-flow-filter
+                        [flowNames]="flowNames()"
+                        [filter]="filter().flow"
+                        (filterChange)="setFlow($event)"
+                    />
+                </app-audit-filter-group>
+
                 <app-audit-filter-group
                     label="Status"
                     [disabled]="!isStatusEnabled()"

@@ -21,7 +21,7 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     }
 
     if (state.flow.values.length > 0) {
-        leaves.push({ field: 'flow_name', op: 'in', value: state.flow.values });
+        leaves.push({ field: 'flow_name', op: state.flow.op, value: state.flow.values });
     }
 
     if (state.statuses.length > 0) {
