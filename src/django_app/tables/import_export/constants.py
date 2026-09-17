@@ -29,6 +29,7 @@ DEPENDENCY_ORDER = (
     EntityType.MCP_TOOL,
     EntityType.SURFACE,
     EntityType.LABEL,
+    EntityType.AUDIT_FILTER_PRESET,
     EntityType.AGENT,
     EntityType.AGENT_DEFINITION,
     EntityType.CREW,

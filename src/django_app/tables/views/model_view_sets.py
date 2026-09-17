@@ -231,7 +231,6 @@ from tables.serializers.model_serializers import (
     AgentNodeTaskSerializer,
     AuditFilterPresetCopySerializer,
     AuditFilterPresetImportFileSerializer,
-    AuditFilterPresetImportSerializer,
     AuditFilterPresetSerializer,
     ClassificationDecisionTableNodeSerializer,
     AudioTranscriptionNodeSerializer,
@@ -2614,11 +2613,24 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "destroy": Permission.READ,
         "copy": Permission.READ,
         "export": Permission.READ,
-        "export_all": Permission.READ,
+        # NOTE: the DRF action name is the Python method name ("bulk_export"),
+        # not the url_path ("export") - HasOrgPermission looks this map up by
+        # view.action, so a key of "export_all" here never matched and every
+        # non-superadmin bulk-export request 403'd (masked in manual testing
+        # by the superadmin bypass in HasOrgPermission.has_permission).
+        "bulk_export": Permission.READ,
         "import_presets": Permission.READ,
     }
     queryset = AuditFilterPreset.objects.all()
     serializer_class = AuditFilterPresetSerializer
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.AUDIT_FILTER_PRESET,
+            export_prefix="audit_filter_preset",
+            filename_attr="name",
+        )
 
     def get_queryset(self):
         return super().get_queryset().filter(created_by=self.request.user)
@@ -2640,93 +2652,51 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
     @action(detail=True, methods=["get"])
     def export(self, request, pk=None):
-        preset = self.get_object()
-        strategy = entity_registry.get_strategy(EntityType.AUDIT_FILTER_PRESET)
-        payload = strategy.export_entity(preset)
-        filename = generate_file_name(preset.name, prefix="audit_filter_preset")
-        response = HttpResponse(
-            json.dumps(payload, indent=2), content_type="application/json"
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
         )
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
     @action(detail=False, methods=["post"], url_path="export")
-    def export_all(self, request):
+    def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
 
         presets = list(self.get_queryset().filter(id__in=ids))
         if len(presets) != len(ids):
-            # Same check GraphViewSet.bulk_export uses - an id that isn't
-            # the caller's own (or doesn't exist) 400s rather than being
-            # silently dropped from the export.
             return Response(
                 {"message": "Some entity IDs do not exist"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        strategy = entity_registry.get_strategy(EntityType.AUDIT_FILTER_PRESET)
-        payload = {"presets": [strategy.export_entity(p) for p in presets]}
-        filename = generate_file_name("selection", prefix="audit_filter_presets")
-        response = HttpResponse(
-            json.dumps(payload, indent=2), content_type="application/json"
+        return self.import_export_service.bulk_export(
+            ids, org_id=self.get_active_org_id()
         )
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
 
     @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
     @action(detail=False, methods=["post"], url_path="import")
     def import_presets(self, request):
-        """
-        Deliberately does not go through ExportService/ImportService (see
-        AuditFilterPresetStrategy's docstring): this is a single leaf
-        entity with no dependency graph, and those generic services have
-        no concept of owner-scoping (created_by), which this feature's
-        visibility model depends on. find_existing()/create_entity() are
-        called directly on the strategy instead - same per-entity contract,
-        no dependency-collection/topological-sort machinery that would
-        buy nothing here.
-        """
         file_serializer = AuditFilterPresetImportFileSerializer(data=request.data)
         file_serializer.is_valid(raise_exception=True)
-        try:
-            data = json.load(file_serializer.validated_data["file"])
-        except json.JSONDecodeError:
-            raise DRFValidationError({"file": "Invalid JSON file."})
-
-        serializer = AuditFilterPresetImportSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        org_id = self.get_active_org_id()
-        strategy = entity_registry.get_strategy(EntityType.AUDIT_FILTER_PRESET)
-        id_mapper = IDMapper()
-
-        created, skipped_duplicate, failed = [], [], []
-        for item in serializer.to_items():
-            try:
-                # Untrusted input: org/created_by always come from the
-                # request, never from anything the imported file claims.
-                existing = strategy.find_existing(
-                    item, id_mapper, org_id=org_id, created_by=request.user
-                )
-                if existing is not None:
-                    skipped_duplicate.append(item["name"])
-                    continue
-                preset = strategy.create_entity(
-                    item, id_mapper, org_id=org_id, created_by=request.user
-                )
-                created.append(AuditFilterPresetSerializer(preset).data)
-            except Exception as e:
-                failed.append({"name": item.get("name"), "error": str(e)})
-
+        summary = self.import_export_service.import_entity(
+            file_serializer.validated_data["file"],
+            user=request.user,
+            settings=ImportSettings(),
+            org_id=self.get_active_org_id(),
+        )
+        entity_summary = summary.get(
+            EntityType.AUDIT_FILTER_PRESET, {"created": {}, "reused": {}}
+        )
+        created_items = entity_summary.get("created", {}).get("items", [])
+        reused_items = entity_summary.get("reused", {}).get("items", [])
         return Response(
             {
-                "created": created,
-                "skipped_duplicate": skipped_duplicate,
-                "failed": failed,
+                "created": created_items,
+                "skipped_duplicate": [item["name"] for item in reused_items],
+                "failed": [],
             },
-            status=200 if not failed else 207,
+            status=status.HTTP_200_OK,
         )
 
 

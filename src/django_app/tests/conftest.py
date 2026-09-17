@@ -34,9 +34,12 @@ def seed_builtin_roles_and_permissions() -> None:
     a subset would leave tests on stale permissions -- e.g. skipping the
     voice seed would leave `voice` missing entirely, so every non-superadmin
     request to a VOICE-gated endpoint would 403 in tests even though the
-    migration seeds it correctly in production. Finally 0236 revokes
-    secrets:USE from Member/Viewer (192 -> 128); skipping it would leave
-    those roles at the pre-flip 192 for the rest of the test session.
+    migration seeds it correctly in production. 0209 seeds the `audit`
+    resource_type bitmasks - skipping it
+    leaves every AUDIT-gated endpoint (including AuditFilterPresetViewSet)
+    403ing in tests regardless of the RBAC logic under test. Finally 0236
+    revokes secrets:USE from Member/Viewer (192 -> 128); skipping it would
+    leave those roles at the pre-flip 192 for the rest of the test session.
     """
     roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
     roles_module.seed_builtin_roles(django_apps, None)
@@ -54,6 +57,10 @@ def seed_builtin_roles_and_permissions() -> None:
         "tables.migrations.0205_seed_surface_permissions"
     )
     surface_perms_module.seed(django_apps, None)
+    audit_perms_module = import_module(
+        "tables.migrations.0209_seed_audit_role_permissions"
+    )
+    audit_perms_module.seed_audit_permissions(django_apps, None)
     secrets_use_module = import_module("tables.migrations.0236_secrets_use_permission")
     secrets_use_module.revoke_builtin_use(django_apps, None)
 
