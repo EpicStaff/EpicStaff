@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
@@ -34,7 +33,6 @@ import { StorageApiService } from '../../services/storage-api.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
-        HasPermissionDirective,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],
@@ -77,17 +75,20 @@ export class FilesListPageComponent {
     activeTabBtn = computed(() => {
         const url = this.currentUrl();
         if (url?.includes('/storage')) {
+            const canCreateFiles = this.permissionService.can(ResourceCode.Files, ActionCode.Create);
             return {
                 label: 'Add files',
-                resource: ResourceCode.Files,
+                permitted: canCreateFiles,
                 action: () => this.onCreateFolderClick(),
             };
         }
 
         if (url?.includes('/knowledge-sources')) {
+            const canCreateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Create);
+            const canUpdateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update);
             return {
                 label: 'Add collection',
-                resource: ResourceCode.KnowledgeSources,
+                permitted: canCreateCollection && canUpdateCollection,
                 action: () => this.onCreateCollectionClick(),
             };
         }

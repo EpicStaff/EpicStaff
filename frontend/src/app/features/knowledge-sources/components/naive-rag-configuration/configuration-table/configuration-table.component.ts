@@ -1,4 +1,4 @@
-import { KeyValuePipe } from '@angular/common';
+import { KeyValuePipe, NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -46,6 +46,7 @@ import { DocumentStatusFilter, TableDocument } from './configuration-table.inter
         KeyValuePipe,
         MATERIAL_FORMS,
         HasPermissionDirective,
+        NgClass,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
