@@ -370,18 +370,29 @@
     align-items: flex-start;
     gap: 1rem;
     max-height: calc(100vh - 2rem);
+    pointer-events: none;
 }
 
 .top-left-actions > * {
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 3rem);
+    pointer-events: auto;
 }
 
 .top-left-actions__column {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 6px;
+}
+
+.top-left-actions > .top-left-actions__column {
+    pointer-events: none;
+}
+
+.top-left-actions__column > * {
+    pointer-events: auto;
 }
 
 .shortcuts-wrapper {
