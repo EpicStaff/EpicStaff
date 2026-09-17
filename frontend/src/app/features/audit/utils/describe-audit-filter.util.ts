@@ -1,5 +1,6 @@
-import { AuditEnumOption, AuditFilterState } from '../models/audit-filter.models';
+import { AuditEnumOption, AuditFilterState, AuditIdFilter, AuditIdMode } from '../models/audit-filter.models';
 import {
+    ID_MODE_OPTIONS,
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
     OPERATOR_LABELS,
@@ -17,6 +18,35 @@ function labelsFor(values: string[], options: AuditEnumOption[]): string {
     return values.map((value) => options.find((option) => option.value === value)?.label ?? value).join(', ');
 }
 
+function idModeLabel(mode: AuditIdMode): string {
+    return ID_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? mode;
+}
+
+function describeId(id: AuditIdFilter): string | null {
+    if (id.mode === 'range') {
+        if (id.from !== '' && id.to !== '') {
+            return `${id.from} — ${id.to}`;
+        }
+        if (id.from !== '') {
+            return `from ${id.from}`;
+        }
+        if (id.to !== '') {
+            return `until ${id.to}`;
+        }
+        return null;
+    }
+
+    if (id.mode === 'in') {
+        return id.values.length > 0 ? id.values.join(', ') : null;
+    }
+
+    if (id.value === '') {
+        return null;
+    }
+
+    return id.mode === 'equals' ? id.value : `${idModeLabel(id.mode)} ${id.value}`;
+}
+
 export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
 
@@ -30,6 +60,11 @@ export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] 
             label: 'Flow',
             value: `${OPERATOR_LABELS[state.flow.op]} ${state.flow.values.join(', ')}`,
         });
+    }
+
+    const idValue = describeId(state.id);
+    if (idValue !== null) {
+        chips.push({ key: 'id', label: 'ID', value: idValue });
     }
 
     if (state.statuses.length > 0) {
@@ -53,6 +88,8 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
             return { ...state, kinds: [] };
         case 'flow':
             return { ...state, flow: { op: 'in', values: [] } };
+        case 'id':
+            return { ...state, id: { mode: 'in', from: '', to: '', value: '', values: [] } };
         case 'status':
             return { ...state, statuses: [] };
         case 'nodeType':

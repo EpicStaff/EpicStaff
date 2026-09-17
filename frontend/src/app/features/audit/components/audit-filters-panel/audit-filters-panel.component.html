@@ -51,6 +51,13 @@
                     />
                 </app-audit-filter-group>
 
+                <app-audit-filter-group label="ID">
+                    <app-audit-id-filter
+                        [filter]="filter().id"
+                        (filterChange)="setId($event)"
+                    />
+                </app-audit-filter-group>
+
                 <app-audit-filter-group label="Flow">
                     <app-audit-flow-filter
                         [flowNames]="flowNames()"

@@ -24,6 +24,22 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: 'flow_name', op: state.flow.op, value: state.flow.values });
     }
 
+    const id = state.id;
+    if (id.mode === 'range') {
+        if (id.from !== '') {
+            leaves.push({ field: 'session_id', op: 'gte', value: Number(id.from) });
+        }
+        if (id.to !== '') {
+            leaves.push({ field: 'session_id', op: 'lte', value: Number(id.to) });
+        }
+    } else if (id.mode === 'in') {
+        if (id.values.length > 0) {
+            leaves.push({ field: 'session_id', op: 'in', value: id.values.map(Number) });
+        }
+    } else if (id.value !== '') {
+        leaves.push({ field: 'session_id', op: id.mode, value: Number(id.value) });
+    }
+
     if (state.statuses.length > 0) {
         leaves.push({ field: 'status', op: 'in', value: state.statuses });
     }

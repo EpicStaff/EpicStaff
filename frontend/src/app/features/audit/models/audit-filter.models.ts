@@ -55,6 +55,16 @@ export interface AuditJsonFilter {
     value: string;
 }
 
+export type AuditIdMode = 'range' | 'gt' | 'lt' | 'equals' | 'in';
+
+export interface AuditIdFilter {
+    mode: AuditIdMode;
+    from: string;
+    to: string;
+    value: string;
+    values: string[];
+}
+
 export interface AuditFilterState {
     kinds: AuditEventKind[];
     statuses: AuditEventStatus[];
@@ -63,7 +73,7 @@ export interface AuditFilterState {
     nodeTypes: AuditNodeType[];
     runTypes: AuditRunBucket[];
     flow: AuditValuesFilter;
-    id: AuditValuesFilter;
+    id: AuditIdFilter;
     error: AuditTextFilter;
     input: AuditJsonFilter;
     output: AuditJsonFilter;
@@ -80,7 +90,7 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     nodeTypes: [],
     runTypes: [],
     flow: { op: 'in', values: [] },
-    id: { op: 'in', values: [] },
+    id: { mode: 'in', from: '', to: '', value: '', values: [] },
     error: { op: 'is_not_empty', value: '' },
     input: { key: '', op: 'contains', value: '' },
     output: { key: '', op: 'contains', value: '' },

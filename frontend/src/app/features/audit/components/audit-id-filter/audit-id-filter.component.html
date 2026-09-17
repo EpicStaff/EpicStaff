@@ -1,0 +1,45 @@
+<select
+    class="id-filter__mode"
+    [value]="filter().mode"
+    (change)="setMode($event)"
+>
+    @for (option of modeOptions; track option.value) {
+        <option [value]="option.value">{{ option.label }}</option>
+    }
+</select>
+
+@switch (filter().mode) {
+    @case ('range') {
+        <div class="id-filter__range">
+            <input
+                type="text"
+                placeholder="Enter a value..."
+                [value]="filter().from"
+                (change)="setFrom($event)"
+            />
+            <span class="id-filter__dash">—</span>
+            <input
+                type="text"
+                placeholder="Enter a value..."
+                [value]="filter().to"
+                (change)="setTo($event)"
+            />
+        </div>
+    }
+    @case ('in') {
+        <input
+            type="text"
+            placeholder="1002, 1041"
+            [value]="filter().values.join(', ')"
+            (change)="setValues($event)"
+        />
+    }
+    @default {
+        <input
+            type="text"
+            placeholder="Enter a value..."
+            [value]="filter().value"
+            (change)="setValue($event)"
+        />
+    }
+}

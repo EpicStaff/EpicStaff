@@ -82,7 +82,7 @@ class FieldSpec(NamedTuple):
 KNOWN_FIELDS: dict[str, FieldSpec] = {
     # main fields
     "id": FieldSpec(_RANGE_OPS | _SELECT_OPS),
-    "session_id": FieldSpec(_SELECT_OPS),
+    "session_id": FieldSpec(_SELECT_OPS | _RANGE_OPS),
     "session_message_id": FieldSpec(_SELECT_OPS),
     "status": FieldSpec(_SELECT_OPS, allowed_values=_STATUS_VALUES),
     "kind": FieldSpec(_SELECT_OPS),

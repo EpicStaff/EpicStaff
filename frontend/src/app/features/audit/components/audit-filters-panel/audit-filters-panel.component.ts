@@ -1,19 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
 
-import { AuditFilterState, AuditValuesFilter, EMPTY_AUDIT_FILTER } from '../../models/audit-filter.models';
+import {
+    AuditFilterState,
+    AuditIdFilter,
+    AuditValuesFilter,
+    EMPTY_AUDIT_FILTER,
+} from '../../models/audit-filter.models';
 import { KIND_OPTIONS, NODE_TYPE_OPTIONS, RUN_TYPE_OPTIONS, STATUS_OPTIONS } from '../../models/audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from '../../models/audit-session.models';
 import { allowedKinds, isFieldEnabled } from '../../utils/audit-filter-compatibility.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
+import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | 'presets';
 
 @Component({
     selector: 'app-audit-filters-panel',
     standalone: true,
-    imports: [AuditCheckboxEnumComponent, AuditFilterGroupComponent, AuditFlowFilterComponent],
+    imports: [AuditCheckboxEnumComponent, AuditFilterGroupComponent, AuditFlowFilterComponent, AuditIdFilterComponent],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -78,5 +84,9 @@ export class AuditFiltersPanelComponent {
 
     public setFlow(flow: AuditValuesFilter): void {
         this.filter.update((current) => ({ ...current, flow }));
+    }
+
+    public setId(id: AuditIdFilter): void {
+        this.filter.update((current) => ({ ...current, id }));
     }
 }

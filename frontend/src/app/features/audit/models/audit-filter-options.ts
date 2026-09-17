@@ -48,7 +48,13 @@ export const OPERATOR_LABELS: Record<string, string> = {
 
 export const FLOW_OPERATORS: AuditFilterOp[] = ['in', 'not_in'];
 
-export const ID_OPERATORS: AuditFilterOp[] = ['in', 'not_in', 'equals', 'not_equal'];
+export const ID_MODE_OPTIONS: AuditEnumOption[] = [
+    { value: 'range', label: 'range' },
+    { value: 'gt', label: 'more than' },
+    { value: 'lt', label: 'less than' },
+    { value: 'equals', label: 'exact ID' },
+    { value: 'in', label: 'specific' },
+];
 
 export const ERROR_OPERATORS: AuditFilterOp[] = [
     'contains',
