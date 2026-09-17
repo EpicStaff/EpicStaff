@@ -13,15 +13,17 @@
             />
         </div>
 
-        <input
-            type="text"
-            id="collection-name"
-            class="dialog__form-input"
-            [formControl]="collectionName"
-            placeholder="Enter collection name"
-            [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
-        />
-        <app-validation-errors [control]="collectionName" />
+        <div class="dialog__form-input-wrap">
+            <input
+                type="text"
+                id="collection-name"
+                class="dialog__form-input"
+                [formControl]="collectionName"
+                placeholder="Enter collection name"
+                [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
+            />
+            <app-validation-errors [control]="collectionName" />
+        </div>
     </div>
 
     <div class="dialog__form-field">
@@ -35,17 +37,19 @@
             />
         </div>
 
-        <textarea
-            #descriptionTa
-            id="collection-description"
-            class="dialog__form-input dialog__form-textarea"
-            [formControl]="description"
-            placeholder="Describe what's inside and which questions this collection can answer..."
-            rows="1"
-            (input)="autoGrow(descriptionTa)"
-            [class.dialog__input--invalid]="description.invalid && description.touched"
-        ></textarea>
-        <app-validation-errors [control]="description" />
+        <div class="dialog__form-input-wrap">
+            <textarea
+                #descriptionTa
+                id="collection-description"
+                class="dialog__form-input dialog__form-textarea"
+                [formControl]="description"
+                placeholder="Describe what's inside and which questions this collection can answer..."
+                rows="1"
+                (input)="autoGrow(descriptionTa)"
+                [class.dialog__input--invalid]="description.invalid && description.touched"
+            ></textarea>
+            <app-validation-errors [control]="description" />
+        </div>
     </div>
 
     <div class="dialog__content">

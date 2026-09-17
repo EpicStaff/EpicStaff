@@ -9,9 +9,9 @@ from shared.models.knowledge import GraphRagSearchConfig
 from shared.models.tools import McpToolData, PythonCodeToolData
 
 from app.exceptions import AgentServiceError, DuplicateToolNameError
-from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
-from app.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.client import KnowledgeClient
 from app.sandbox.client import SandboxClient
 from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,

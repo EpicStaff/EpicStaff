@@ -15,7 +15,7 @@ from typing import Protocol
 
 from shared.models.knowledge_new import FoundChunk
 
-from app.knowledge.target import KnowledgeSearchTarget
+from shared.knowledge.target import KnowledgeSearchTarget
 
 
 class KnowledgeEventSink(Protocol):
