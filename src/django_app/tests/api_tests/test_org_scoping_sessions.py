@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
@@ -149,36 +150,56 @@ def test_bulk_delete_deleted_count_matches_rows_actually_removed(admin_client_a,
 
 
 @pytest.mark.django_db
-def test_bulk_delete_does_not_count_rows_removed_concurrently(
-    admin_client_a, org_a, monkeypatch
+def test_bulk_delete_count_reflects_rows_actually_removed_not_requested_ids(
+    admin_client_a, org_a
 ):
-    # Simulates a row being deleted by another process between the initial
-    # queryset fetch and this loop reaching it: Session.delete() then returns
-    # (0, {}) without raising. The reported "deleted" count must reflect that
-    # zero, not the loop iteration count.
+    # s1 is deleted out-of-band before the bulk_delete call, so only s2 is
+    # actually removed by it; "deleted" must reflect that, not len(ids).
     s1 = _make_session(org_a, "flow 1")
     s2 = _make_session(org_a, "flow 2")
 
-    original_delete = Session.delete
-    call_count = {"n": 0}
-
-    def fake_delete(self, *args, **kwargs):
-        call_count["n"] += 1
-        if self.id == s1.id:
-            # Pretend this row was already removed concurrently.
-            return (0, {})
-        return original_delete(self, *args, **kwargs)
-
-    monkeypatch.setattr(Session, "delete", fake_delete)
+    Session.objects.filter(id=s1.id).delete()
 
     resp = admin_client_a.post(
         "/api/sessions/bulk_delete/", {"ids": [s1.id, s2.id]}, format="json"
     )
 
     assert resp.status_code == 200, resp.data
-    assert call_count["n"] == 2
     assert resp.data["deleted"] == 1
     assert resp.data["ids"] == [s1.id, s2.id]
+    assert not Session.objects.filter(id=s2.id).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_delete_excludes_other_org_sessions(admin_client_a, org_a, org_b):
+    s_a = _make_session(org_a, "flow a")
+    s_b = _make_session(org_b, "flow b")
+
+    resp = admin_client_a.post(
+        "/api/sessions/bulk_delete/", {"ids": [s_a.id, s_b.id]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert resp.data["deleted"] == 1
+    assert not Session.objects.filter(id=s_a.id).exists()
+    assert Session.objects.filter(id=s_b.id).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_delete_fires_pre_delete_signal_per_session(admin_client_a, org_a):
+    s1 = _make_session(org_a, "flow 1")
+    s2 = _make_session(org_a, "flow 2")
+
+    with patch(
+        "tables.signals.session_signals.SessionManagerService.stop_session"
+    ) as mock_stop_session:
+        resp = admin_client_a.post(
+            "/api/sessions/bulk_delete/", {"ids": [s1.id, s2.id]}, format="json"
+        )
+
+    assert resp.status_code == 200, resp.data
+    assert resp.data["deleted"] == 2
+    assert mock_stop_session.call_count == 2
 
 
 # ---- export endpoints require the EXPORT permission ----
