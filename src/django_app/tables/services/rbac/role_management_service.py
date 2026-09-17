@@ -27,6 +27,7 @@ from tables.services.rbac.rbac_exceptions import (
     OrgMembershipRequiredError,
     RoleNameConflictError,
     RoleNotFoundError,
+    SelfRoleDeletionError,
 )
 
 
@@ -134,6 +135,7 @@ class RoleManagementService(CrossOrgResourceService):
         self.assert_mutable(role)
         effective = self.resolve_for_write(actor, role.org_id, action=Permission.DELETE)
         self.assert_can(effective=effective, action=Permission.DELETE)
+        self._assert_not_own_role(actor=actor, role=role)
         memberships = OrganizationUser.objects.filter(role_id=role.id).select_related(
             "user"
         )
@@ -162,6 +164,7 @@ class RoleManagementService(CrossOrgResourceService):
                 actor, role.org_id, action=Permission.DELETE
             )
             self.assert_can(effective=effective, action=Permission.DELETE)
+            self._assert_not_own_role(actor=actor, role=role)
             viewer_role = Role.objects.get(
                 name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
             )
@@ -474,6 +477,17 @@ class RoleManagementService(CrossOrgResourceService):
         assert_within_ceiling(
             effective, {e["resource_type"]: e["bitmask"] for e in permissions}
         )
+
+    @staticmethod
+    def _assert_not_own_role(actor, role) -> None:
+        """Refuse deleting a role the caller holds. The delete reassigns every
+        holder to Viewer, so it would demote the caller mid-request. No
+        superadmin branch is needed: a superadmin holds no membership rows, so
+        this never matches for them."""
+        if OrganizationUser.objects.filter(
+            user_id=getattr(actor, "id", None), role_id=role.id
+        ).exists():
+            raise SelfRoleDeletionError()
 
     @staticmethod
     def _assert_name_available(org_id, name, exclude_role_id) -> None:
