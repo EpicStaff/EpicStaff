@@ -4,7 +4,7 @@
             <!-- HEADER ROW -->
             <div
                 class="table__row table__header"
-                [class]="!canUpdateKnowledges() && 'table__row--readonly'"
+                [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
                 [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
             >
                 <!-- 1. Checkbox -->
@@ -45,7 +45,7 @@
                 <!-- 4. Chunk Size -->
                 <div
                     class="table__col"
-                    [class]="canUpdateKnowledges() && 'table__col--center'"
+                    [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
                 >
                     CHUNK SIZE
                 </div>
@@ -53,7 +53,7 @@
                 <!-- 5. Overlap -->
                 <div
                     class="table__col"
-                    [class]="canUpdateKnowledges() && 'table__col--center'"
+                    [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
                 >
                     OVERLAP
                 </div>
@@ -175,7 +175,7 @@
                     }
                     <li
                         class="table__row"
-                        [class]="!canUpdateKnowledges() && 'table__row--readonly'"
+                        [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
                     >
                         <!-- checkbox -->
                         <div
@@ -234,7 +234,7 @@
                             <!-- chunk size -->
                             <div
                                 class="table__col"
-                                [class]="canUpdateKnowledges() && 'table__col--center'"
+                                [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
                             >
                                 Unavailable
                             </div>
@@ -242,7 +242,7 @@
                             <!-- overlap -->
                             <div
                                 class="table__col"
-                                [class]="canUpdateKnowledges() && 'table__col--center'"
+                                [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
                             >
                                 Unavailable
                             </div>
