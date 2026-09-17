@@ -144,6 +144,14 @@ RESOURCE_TYPE_METADATA = [
         "description": "Voice model configurations and settings",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.WEBHOOKS.value,
+        "label": "Webhooks",
+        "group": "config",
+        "description": "Webhook trigger ingress routes and their auth configuration",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
 ]
 
 
