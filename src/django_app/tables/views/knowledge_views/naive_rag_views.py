@@ -613,7 +613,7 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
             extra=validated["additional_params"],
         )
         try:
-            with KnowledgeClient() as client:
+            with KnowledgeClient(timeout=120) as client:
                 client.prechunk(
                     strategy=RAGStrategy.NAIVE,
                     rag_id=naive_rag_id,

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from domain.models import ChunkingConfig, SearchConfig
+from pydantic import SecretStr
 
 __all__ = [
     "Command",
@@ -21,8 +22,8 @@ class Command:
 class RunIndex(Command):
     rag_id: int
     document_ids: frozenset[int]
-    embedding_api_key: str
-    llm_api_key: str | None = field(default=None)
+    embedding_api_key: SecretStr
+    llm_api_key: SecretStr | None = field(default=None)
 
 
 @dataclass(frozen=True)
@@ -30,8 +31,8 @@ class RunSearch(Command):
     rag_id: int
     query: str
     search_config: SearchConfig
-    embedding_api_key: str
-    llm_api_key: str | None = field(default=None)
+    embedding_api_key: SecretStr
+    llm_api_key: SecretStr | None = field(default=None)
 
 
 @dataclass(frozen=True)

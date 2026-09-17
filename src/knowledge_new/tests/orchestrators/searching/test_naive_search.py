@@ -8,6 +8,7 @@ from domain.models import (
     FoundChunk,
     NaiveSearchConfig,
 )
+from pydantic import SecretStr
 
 
 class FakeNaiveRagRepo:
@@ -82,8 +83,8 @@ def _make_command(
         rag_id=rag_id,
         query=query,
         search_config=search_config,
-        embedding_api_key=embedding_api_key,
-        llm_api_key=llm_api_key,
+        embedding_api_key=SecretStr(embedding_api_key),
+        llm_api_key=SecretStr(llm_api_key) if llm_api_key is not None else None,
     )
 
 

@@ -1,4 +1,5 @@
-import asyncio
+import multiprocessing
+
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
@@ -29,7 +30,13 @@ def on_shutdown(fn: Callable):
 
 @on_startup
 def init_process_pool():
-    process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
+    process_pool = ProcessPoolExecutor(
+        max_workers=settings.MAX_PROCESS_WORKERS,
+        # "spawn" mode spawns a new interpreter per worker instead of forking.
+        # Forking copies threads' locks in a locked state but without threads which set them
+        # and locks are unlock never.
+        mp_context=multiprocessing.get_context("spawn")
+    )
     set_process_pool(process_pool)
 
 

@@ -11,6 +11,7 @@ from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import Rag
 from graphrag_input import TextDocument
+from pydantic import SecretStr
 
 
 def _result(workflow: str, error: BaseException | None = None) -> types.SimpleNamespace:
@@ -61,8 +62,8 @@ def _make_request(document_ids: frozenset[int], rag_id: int = 1) -> RunIndex:
     return RunIndex(
         rag_id=rag_id,
         document_ids=document_ids,
-        embedding_api_key="sk-test",
-        llm_api_key="sk-llm",
+        embedding_api_key=SecretStr("sk-test"),
+        llm_api_key=SecretStr("sk-llm"),
     )
 
 

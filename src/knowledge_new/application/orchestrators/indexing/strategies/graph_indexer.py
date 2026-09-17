@@ -35,7 +35,10 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
                 is_update_run = True
 
         config = await self._get_config_under_uow(
-            rag.id, target_slot, command.embedding_api_key, command.llm_api_key
+            rag.id,
+            target_slot,
+            command.embedding_api_key.get_secret_value(),
+            command.llm_api_key.get_secret_value(),
         )
 
         rag.mark_as_processing(command.document_ids)
