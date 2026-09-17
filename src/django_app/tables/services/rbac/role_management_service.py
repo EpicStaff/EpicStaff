@@ -6,7 +6,7 @@ in place via `assert_mutable`.
 from collections import defaultdict
 from typing import Optional
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count
 from rest_framework.exceptions import PermissionDenied
 
@@ -75,9 +75,12 @@ class RoleManagementService(CrossOrgResourceService):
             # IntegrityError (500).
             if not Organization.objects.filter(pk=org_id).exists():
                 raise OrganizationNotFoundError()
-            role = Role.objects.create(
-                name=name, description=description, org_id=org_id, is_built_in=False
-            )
+            try:
+                role = Role.objects.create(
+                    name=name, description=description, org_id=org_id, is_built_in=False
+                )
+            except IntegrityError as exc:
+                raise RoleNameConflictError() from exc
             self._write_permission_rows(role=role, permissions=permissions)
         return self._build_role_response(role_id=role.id)
 
@@ -108,7 +111,10 @@ class RoleManagementService(CrossOrgResourceService):
                 role.name = changes["name"]
             if "description" in changes:
                 role.description = changes["description"]
-            role.save(update_fields=["name", "description", "updated_at"])
+            try:
+                role.save(update_fields=["name", "description", "updated_at"])
+            except IntegrityError as exc:
+                raise RoleNameConflictError() from exc
             if "permissions" in changes:
                 role.permissions_set.all().delete()
                 self._write_permission_rows(
