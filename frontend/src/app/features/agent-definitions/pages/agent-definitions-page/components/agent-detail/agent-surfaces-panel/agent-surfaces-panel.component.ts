@@ -31,7 +31,7 @@ import {
     Surface,
     SurfaceSaveError,
 } from '../../../../../models/surface.model';
-import { SurfaceTabId } from '../../../../../models/surface-card.model';
+import { getFirstAvailableSurfaceTab, SurfaceTabId } from '../../../../../models/surface-card.model';
 import {
     categoryToPlace,
     placeToCategory,
@@ -316,8 +316,10 @@ export class AgentSurfacesPanelComponent {
         this.expandedSurfaceId.set(expanded ? surface.id : null);
     }
 
-    activeTabFor(surface: Surface): SurfaceTabId {
-        return this.activeTabBySurfaceId().get(surface.id) ?? ResourceCode.Tools;
+    activeTabFor(surface: Surface): SurfaceTabId | null {
+        const stored = this.activeTabBySurfaceId().get(surface.id);
+        if (stored) return stored;
+        return getFirstAvailableSurfaceTab((resource) => this.permissionService.can(resource, ActionCode.Read));
     }
 
     onCardActiveTabChange(surface: Surface, tab: SurfaceTabId | null): void {

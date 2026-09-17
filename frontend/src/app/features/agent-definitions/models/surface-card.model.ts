@@ -4,6 +4,13 @@ import { PermTriState } from './surface.model';
 
 export type SurfaceTabId = ResourceCode.Tools | ResourceCode.Files | ResourceCode.KnowledgeSources;
 
+export function getFirstAvailableSurfaceTab(canRead: (resource: ResourceCode) => boolean): SurfaceTabId | null {
+    if (canRead(ResourceCode.Tools)) return ResourceCode.Tools;
+    if (canRead(ResourceCode.Files)) return ResourceCode.Files;
+    if (canRead(ResourceCode.KnowledgeSources)) return ResourceCode.KnowledgeSources;
+    return null;
+}
+
 export interface SurfaceToolOption {
     id: number;
     name: string;
