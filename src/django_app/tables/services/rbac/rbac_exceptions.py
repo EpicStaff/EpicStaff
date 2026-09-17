@@ -368,6 +368,17 @@ class SelfMembershipModificationError(CustomAPIExeption):
     default_code = "cannot_modify_self_membership"
 
 
+class SelfRoleDeletionError(CustomAPIExeption):
+    """Raised when a caller deletes the role they themselves hold. The delete
+    reassigns every holder to Viewer, so it would silently demote the caller
+    and can leave an organization with nobody able to manage roles. Another
+    admin or a superadmin does it instead."""
+
+    status_code = 403
+    default_detail = "You cannot delete the role you currently hold."
+    default_code = "cannot_delete_own_role"
+
+
 class SuperadminNotAssignableError(CustomAPIExeption):
     """Raised when a membership write targets a superadmin. A superadmin holds
     every permission in every organization, so a membership row grants nothing

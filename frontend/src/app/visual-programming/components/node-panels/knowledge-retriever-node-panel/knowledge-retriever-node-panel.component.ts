@@ -11,6 +11,7 @@ import {
     SelectItem,
     TemplateTextareaComponent,
     TooltipComponent,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
 import { Subject } from 'rxjs';
@@ -48,6 +49,7 @@ interface RagChoice {
         CopyButtonComponent,
         ColumnResizeDividerComponent,
         RagTabComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],

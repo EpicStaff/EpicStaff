@@ -24,6 +24,7 @@ import {
     SelectDropdownTriggerDirective,
     SelectItem,
     TooltipComponent,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
@@ -41,7 +42,6 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
-import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { TaskNodeModel } from '../../../core/models/node.model';
