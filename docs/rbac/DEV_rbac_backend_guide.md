@@ -321,6 +321,7 @@ transactions with `SELECT FOR UPDATE`:
   the catalog's grantable action bits (`GRANTABLE_ACTION_BITS`) so ungranted
   `use`/`list` seed data cannot block a legitimate grant. Superadmin bypasses
   inside `covers`.
+- last-active-superadmin guard (`user_management_service.py`)
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
