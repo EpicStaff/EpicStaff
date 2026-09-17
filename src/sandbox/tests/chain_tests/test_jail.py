@@ -1,11 +1,17 @@
 """Unit coverage for build_jail(): a pure allowlist builder, no chain, no Redis."""
 
 import dataclasses
+import os
 from pathlib import Path
 
 import pytest
 
 from jail import Jail, build_jail
+
+_posix_only = pytest.mark.skipif(
+    os.name != "posix",
+    reason="POSIX-only: build_jail's absolute-path semantics (leading '/') only hold on POSIX; Path resolves them differently on Windows",
+)
 
 
 def _jail() -> Jail:
@@ -17,12 +23,14 @@ def _jail() -> Jail:
 
 
 class TestBuildJail:
+    @_posix_only
     def test_every_returned_path_is_absolute(self):
         jail = _jail()
 
         for path in (*jail.read_write, *jail.read_only, *jail.read_exec):
             assert Path(path).is_absolute(), path
 
+    @_posix_only
     def test_exec_dir_and_its_subdirs_are_read_write(self):
         jail = _jail()
 
@@ -30,11 +38,13 @@ class TestBuildJail:
         assert "/app/src/sandbox/executions/exec-1/home" in jail.read_write
         assert "/app/src/sandbox/executions/exec-1/tmp" in jail.read_write
 
+    @_posix_only
     def test_savefiles_root_is_read_write(self):
         jail = _jail()
 
         assert "/app/src/sandbox/savefiles" in jail.read_write
 
+    @_posix_only
     def test_venv_path_is_read_exec_and_not_read_write(self):
         jail = _jail()
 

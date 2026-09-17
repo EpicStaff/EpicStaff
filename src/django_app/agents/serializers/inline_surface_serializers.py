@@ -190,17 +190,10 @@ class InlineSurfaceWriteSerializer(serializers.Serializer):
     knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
-        organization = self.context.get("organization")
-
         try:
             SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
             SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
-
-            if organization is not None:
-                SurfaceValidator.validate_storage_items(
-                    attrs.get("storage_items", []), organization
-                )
-
+            SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
             SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
         except SurfaceValidationError as exc:
             raise SurfaceValidationError(detail={"inline_surface": exc.detail})
@@ -376,17 +369,10 @@ class AgentInlineSurfaceWriteSerializer(serializers.Serializer):
     knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
-        organization = self.context.get("organization")
-
         try:
             SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
             SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
-
-            if organization is not None:
-                SurfaceValidator.validate_storage_items(
-                    attrs.get("storage_items", []), organization
-                )
-
+            SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
             SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
         except SurfaceValidationError as exc:
             raise SurfaceValidationError(detail={"inline_surface": exc.detail})

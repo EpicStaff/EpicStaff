@@ -60,8 +60,7 @@ def test_list_returns_all_orgs_active_first_then_alpha(
 
     response = _auth(api_client, superadmin_jwt).get("/api/admin/organizations/")
     assert response.status_code == 200
-    body = response.json()
-    names = [o["name"] for o in body]
+    names = [o["name"] for o in response.json()["results"]]
     # Active first, alphabetical within each section.
     assert "Alpha" in names and "Beta" in names and "ZetaInactive" in names
     assert names.index("Alpha") < names.index("Beta")
@@ -77,9 +76,9 @@ def test_list_filter_is_active_true(api_client, superadmin_jwt, org_factory):
         "/api/admin/organizations/?is_active=true"
     )
     assert response.status_code == 200
-    body = response.json()
-    assert all(o["is_active"] is True for o in body)
-    assert "Inactive1" not in [o["name"] for o in body]
+    results = response.json()["results"]
+    assert all(o["is_active"] is True for o in results)
+    assert "Inactive1" not in [o["name"] for o in results]
 
 
 @pytest.mark.django_db
@@ -91,8 +90,7 @@ def test_list_filter_is_active_false(api_client, superadmin_jwt, org_factory):
         "/api/admin/organizations/?is_active=false"
     )
     assert response.status_code == 200
-    body = response.json()
-    names = [o["name"] for o in body]
+    names = [o["name"] for o in response.json()["results"]]
     assert "Inactive1" in names
     assert "Active1" not in names
 
@@ -103,17 +101,21 @@ def test_list_member_count_matches_actual_rows(api_client, superadmin_jwt, org_f
     org_factory("Three", member_count=3)
 
     response = _auth(api_client, superadmin_jwt).get("/api/admin/organizations/")
-    body = {o["name"]: o for o in response.json()}
+    body = {o["name"]: o for o in response.json()["results"]}
     assert body["Empty"]["member_count"] == 0
     assert body["Three"]["member_count"] == 3
 
 
 @pytest.mark.django_db
-def test_list_rejects_non_superadmin(api_client, jwt_tokens, org_factory):
+def test_list_non_superadmin_sees_only_own_orgs(api_client, jwt_tokens, org_factory):
+    # regular_user is Org Admin of the default org (ORGANIZATIONS.READ there),
+    # but not a member of Foo — the permission-aware list returns only their org.
     org_factory("Foo")
     response = _auth(api_client, jwt_tokens["access"]).get("/api/admin/organizations/")
-    assert response.status_code == 403
-    assert response.json().get("code") == "permission_denied"
+    assert response.status_code == 200
+    names = [o["name"] for o in response.json()["results"]]
+    assert "Foo" not in names
+    assert "Default Organization" in names
 
 
 @pytest.mark.django_db
