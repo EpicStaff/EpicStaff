@@ -69,15 +69,11 @@
     @include mixins.resize-divider-bleed;
 }
 
-// Isolated from the parent's gap so the input-to-error spacing is independent.
-.node-name-field {
-    display: flex;
-    flex-direction: column;
-}
+@include mixins.field-isolated-spacing;
 
-// !important: same specificity as the component's own default margin.
-::ng-deep .node-name-field .validation-errors {
-    margin: 4px 0 0 !important;
+// Agent field: offset .field's gap (0.5rem) to a 4px input-to-error spacing.
+::ng-deep .field .validation-errors {
+    margin: -4px 0 0 !important;
 }
 
 .field {
@@ -288,6 +284,21 @@
 
 .editor-block__textarea {
     width: 100%;
+}
+
+// Instructions (compact left-column view): offset editor-block's gap (0.5rem).
+::ng-deep .editor-block .validation-errors {
+    margin: -4px 0 0 !important;
+}
+
+// Instructions (expanded right pane).
+::ng-deep .main-editor-pane__validation .validation-errors {
+    margin: 4px 0 0 !important;
+}
+
+// Instructions (collapsed layout): offset form-layout.collapsed's gap (1rem).
+::ng-deep .instructions-collapsed-validation .validation-errors {
+    margin: -12px 0 0 !important;
 }
 
 ::ng-deep .editor-block__textarea .vht-field {

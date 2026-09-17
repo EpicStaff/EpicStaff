@@ -17,7 +17,7 @@
                         class="form-fields"
                         [style.flex-basis.px]="leftColumnWidth.width()"
                     >
-                        <div class="node-name-field">
+                        <div class="field-isolated">
                             <app-custom-input
                                 label="Node Name"
                                 [required]="true"
@@ -304,7 +304,7 @@
                 </div>
             } @else {
                 <div class="form-layout collapsed">
-                    <div class="node-name-field">
+                    <div class="field-isolated">
                         <app-custom-input
                             label="Node Name"
                             [required]="true"
@@ -434,7 +434,10 @@
                         [invalid]="instructionsInvalid()"
                         [variables]="inputMapKeys()"
                     ></app-variable-highlight-textarea>
-                    <app-validation-errors [control]="form.get('instructions')!" />
+                    <app-validation-errors
+                        class="instructions-collapsed-validation"
+                        [control]="form.get('instructions')!"
+                    />
 
                     <div class="output-schema-section">
                         <button

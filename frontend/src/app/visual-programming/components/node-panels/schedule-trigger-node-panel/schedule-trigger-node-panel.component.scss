@@ -60,16 +60,7 @@
     }
 }
 
-// Isolated from the parent's gap so the input-to-error spacing is independent.
-.node-name-field {
-    display: flex;
-    flex-direction: column;
-}
-
-// !important: same specificity as the component's own default margin.
-::ng-deep .node-name-field .validation-errors {
-    margin: 4px 0 0 !important;
-}
+@include mixins.field-isolated-spacing;
 
 .repeat-fields {
     display: flex;

@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { ValidationErrorsComponent } from '@shared/components';
 import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -22,7 +23,6 @@ import {
     ScheduleTriggerNodeData,
     WeekdayCode,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { DatePickerComponent } from '../../../../shared/components/date-picker/date-picker.component';
 import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';

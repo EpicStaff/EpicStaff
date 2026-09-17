@@ -70,15 +70,11 @@
     @include mixins.resize-divider-bleed($v-gap: 1.25rem);
 }
 
-// Isolated from the parent's gap so the input-to-error spacing is independent.
-.node-name-field {
-    display: flex;
-    flex-direction: column;
-}
+@include mixins.field-isolated-spacing;
 
-// !important: same specificity as the component's own default margin.
-::ng-deep .node-name-field .validation-errors {
-    margin: 4px 0 0 !important;
+// Agent and Task fields: offset .field's gap (0.75rem) to 4px spacing.
+::ng-deep .field .validation-errors {
+    margin: -8px 0 0 !important;
 }
 
 .field {
