@@ -439,7 +439,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['sessionId'] && !changes['sessionId'].firstChange) {
             this.destroy$.next();
-            this.sseService.stopStream();
+            this.sseService.reset();
             if (this.finishTimer !== null) {
                 clearTimeout(this.finishTimer);
                 this.finishTimer = null;
@@ -934,7 +934,11 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         // (getMessageKey) — many stream events (task_start/tool_call/tool_result/task_finish)
         // share the same coarse node_stream identity key, so using it here would collapse
         // all but the first event of a node.
+        // Never merge a message that belongs to another session. Guarded on
+        // `session != null` so a payload without the field still merges normally.
+        const currentSessionId = this.sessionId != null ? +this.sessionId : null;
         const toAdd = incoming.filter((m) => {
+            if (currentSessionId !== null && m.session != null && +m.session !== currentSessionId) return false;
             const key = this.getDedupKey(m);
             if (this.seenKeys.has(key)) return false;
             this.seenKeys.add(key);
