@@ -401,6 +401,7 @@
     --crimson-600-alpha-20: rgba(220, 53, 69, 0.2);
     --red-alpha-6: rgba(245, 66, 66, 0.06);
     --red-alpha-8: rgba(245, 66, 66, 0.08);
+    --red-alpha-8-flat: #f5424214; // validation-errors error item background (exact 8-digit-hex alpha, distinct from the rounded 0.08 rgba)
     --red-alpha-10: rgba(245, 66, 66, 0.1);
     --red-alpha-12: rgba(245, 66, 66, 0.12);
     --red-alpha-15: rgba(245, 66, 66, 0.15);

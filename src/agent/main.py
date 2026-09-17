@@ -9,7 +9,6 @@ from loguru import logger
 from app.data_loader import DataLoader
 from app.enums import RunType
 from app.factory import RunnerFactory
-from app.knowledge.client import KnowledgeClient
 from app.llm.config import configure_litellm
 from app.llm.litellm_client import LiteLLMClient
 from app.loop.agent_loop import DefaultAgentLoop
@@ -23,6 +22,7 @@ from app.runners.single_task import SingleTaskRunner
 from app.sandbox.client import SandboxClient
 import settings
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
+from shared.knowledge.client import KnowledgeClient
 
 
 async def main() -> None:

@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from shared.models.knowledge import RagSearchConfig
+from ..models.knowledge import RagSearchConfig
 
 
 class KnowledgeSearchTarget(BaseModel):

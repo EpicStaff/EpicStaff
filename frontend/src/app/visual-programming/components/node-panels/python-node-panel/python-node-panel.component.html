@@ -1,0 +1,122 @@
+<div class="panel-container">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            <div
+                class="form-layout"
+                [class.expanded]="isExpanded()"
+                [class.collapsed]="!isExpanded()"
+                [class.form-collapsed]="isFormCollapsed()"
+            >
+                <!-- Form Fields (stable single instance) -->
+                <div
+                    #formColumn
+                    class="form-fields"
+                    [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
+                >
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
+
+                    <div class="input-map">
+                        <app-input-map
+                            [activeColor]="activeColor"
+                            [showTestMode]="true"
+                            [testMode]="isOpenTestMode()"
+                            [pythonNodeId]="node().backendId"
+                            [graphId]="graphId()"
+                            [nodeName]="node().node_name"
+                            [testRunning]="testRunning()"
+                            [testInputDirty]="testInputDirty()"
+                            (testModeChange)="isOpenTestMode.set($event)"
+                            (runTest)="onRunTest($event)"
+                        ></app-input-map>
+                    </div>
+
+                    <app-node-secrets-field
+                        [activeColor]="activeColor"
+                        [value]="selectedSecretIds()"
+                        [readonly]="!canEditSecrets()"
+                        [names]="secretNames()"
+                        [tooltipText]="secretsTooltip()"
+                        (valueChange)="onSecretsChange($event)"
+                    />
+
+                    <app-custom-input
+                        label="Output Variable Path"
+                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                        formControlName="output_variable_path"
+                        placeholder="Enter output variable path (leave empty for null)"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <app-custom-input
+                        label="Libraries"
+                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                        formControlName="libraries"
+                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <app-node-storage-section
+                        [useStorage]="useStorage()"
+                        (onToggleChange)="onStorageToggle($event)"
+                        (onInsertCode)="insertStorageCode($event)"
+                        (onRemoveCode)="removeStorageCode($event)"
+                    ></app-node-storage-section>
+                </div>
+
+                @if (isExpanded()) {
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and code editor columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
+                }
+
+                <div
+                    #editorColumn
+                    class="code-editor-wrapper"
+                >
+                    <div class="code-editor-column">
+                        <app-code-editor
+                            class="code-editor-section"
+                            [pythonCode]="pythonCode"
+                            [secretNames]="secretNames()"
+                            [inputMapKeys]="inputMapKeys()"
+                            (pythonCodeChange)="onPythonCodeChange($event)"
+                            (errorChange)="onCodeErrorChange($event)"
+                        ></app-code-editor>
+
+                        @if (isOpenTestMode()) {
+                            <app-python-terminal
+                                [logs]="terminalLogs()"
+                                [terminalHeight]="terminalHeight()"
+                                [status]="terminalStatus()"
+                                (heightChange)="onTerminalHeightChange($event)"
+                                (clearLogs)="onClearLogs()"
+                            />
+                        }
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>

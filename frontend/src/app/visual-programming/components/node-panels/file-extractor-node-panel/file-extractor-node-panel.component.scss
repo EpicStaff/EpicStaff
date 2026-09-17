@@ -1,0 +1,30 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+}
+
+.section-header {
+    @include mixins.section-header;
+}
+
+.form-container {
+    @include mixins.form-container;
+}
+
+@include mixins.field-isolated-spacing;
+
+.btn-primary {
+    @include mixins.primary-button;
+}
+
+.btn-secondary {
+    @include mixins.secondary-button;
+}

@@ -519,6 +519,16 @@ reject with `403 built_in_role_immutable`. A custom role the caller
 cannot see answers `404 role_not_found` — see "Visibility vs.
 permission" below. **Header:** none.
 
+A caller **cannot delete a role they themselves hold** → `403
+cannot_delete_own_role`. The delete reassigns every holder to Viewer, so
+it would demote the caller mid-request and can leave an organization with
+nobody able to manage roles. The same refusal applies to `?dry_run=true`,
+so the preview never promises a delete the real call would reject. Another
+admin, or a superadmin, deletes the role instead — and note the holder
+cannot re-role themselves out of it either (`cannot_modify_self_membership`).
+Disable the Delete action on a role the current user holds rather than
+relying on the error.
+
 **`?dry_run=true`** — preview only, no mutation:
 
 ```json
@@ -539,7 +549,7 @@ permission" below. **Header:** none.
 ```
 
 **Errors:** `403 built_in_role_immutable`, `403 permission_denied`,
-`404 role_not_found`.
+`403 cannot_delete_own_role`, `404 role_not_found`.
 
 ---
 
@@ -748,6 +758,21 @@ The **ceiling rule**, raised in the two places authority is handed out:
 
 Superadmin bypasses both. See "The ceiling rule" below.
 
+### `403 cannot_delete_own_role`
+
+```json
+{
+  "status_code": 403,
+  "code": "cannot_delete_own_role",
+  "message": "You cannot delete the role you currently hold."
+}
+```
+
+Raised by `DELETE /api/admin/roles/{id}/` — with or without
+`?dry_run=true` — when the caller holds the role being deleted. Deleting a
+role reassigns its holders to Viewer, so this would demote the caller.
+Superadmins never hit it: they hold no membership rows.
+
 ### `400 role_name_conflict`
 
 ```json
@@ -880,17 +905,16 @@ Two patterns beyond plain org ownership:
   `realtime-models`, `realtime-transcription-models` via `is_custom`) and **python-code tools**
   (`python-code-tool` via `built_in`) show *built-ins to every org* + *that org's custom rows*.
   Creating one through the API always makes it the org's custom row (never a global built-in).
-- **Global registry, superadmin-only writes.** `providers`, `ngrok-config`, the `default-*` config
-  singletons, and `voice-settings`/Twilio are readable by any member but writable only by a
-  superadmin (`voice-settings`/Twilio are superadmin for **read too** — they hold the platform
-  Twilio secret). Cross-org file `move`/`copy` is likewise superadmin-only.
+- **Global registry, superadmin-only writes.** `providers` and the `default-*` config singletons
+  are readable by any member but writable only by a superadmin. Cross-org file `move`/`copy` is
+  likewise superadmin-only.
 
 | Resource type | Endpoints (examples) | Member | Org Admin |
 |---|---|---|---|
 | FLOWS | graphs, nodes, sessions, **labels**, **webhook-triggers** | C R U | C R U D E |
-| AGENTS | agents, realtime-agents, **realtime-agent-chats** | C R U | C R U D E |
+| AGENTS | agent-definitions, realtime-agent-definitions | C R U | C R U D E |
 | PROJECTS | crews, tasks | C R U | C R U D E |
-| TOOLS | python-code-tool(-configs/-fields), mcp-tools, python-code | C R U | C R U D |
+| TOOLS | python-code-tool(-configs), mcp-tools | C R U | C R U D |
 | KNOWLEDGE_SOURCES | source-collections, documents, naive-rag, graph-rag, indexing | **R** | C R U D |
 | LLM_CONFIGS | llm/embedding/realtime configs **and custom models** | **R** | C R U D |
 | FILES | storage | C R U E | C R U D E |
