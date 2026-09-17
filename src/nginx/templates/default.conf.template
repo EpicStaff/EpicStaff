@@ -19,6 +19,8 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
 }
 
+underscores_in_headers on;
+
 server {
     include /etc/nginx/conf.d/ssl-${NGINX_SSL_MODE}.snippet;
 

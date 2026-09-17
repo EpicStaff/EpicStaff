@@ -14,12 +14,12 @@ from __future__ import annotations
 from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
-from app.knowledge.target import KnowledgeSearchTarget
 from app.llm.client import LLMChunk
 from app.usage import TokenUsageAccumulator
 from shared.models.agent_service import LoopResult, ToolResult
 from shared.models.knowledge_new import FoundChunk
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
+from shared.knowledge.target import KnowledgeSearchTarget
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
 LIVE_CONTENT_MAX_CHARS = 2000
