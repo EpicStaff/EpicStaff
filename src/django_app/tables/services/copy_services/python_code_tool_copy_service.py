@@ -4,6 +4,7 @@ from django.db.models import Q
 from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
+from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import (
     acquire_copy_name_lock,
@@ -41,7 +42,7 @@ class PythonCodeToolCopyService(BaseCopyService):
 
             new_tool = PythonCodeTool.objects.create(
                 name=new_name,
-                description=tool.description,
+                description=sanitize_description(tool.description),
                 variables=tool.variables,
                 python_code=new_code,
                 org_id=target_org_id,
