@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { FileSizePipe } from '../../../../../shared/pipes/file-size.pipe';
 import { GraphRagDocument } from '../../../models/graph-rag-document.model';
@@ -15,7 +17,14 @@ interface GraphRagDocumentWithDisabled extends GraphRagDocument {
     selector: 'app-graph-rag-files-list',
     templateUrl: './files-list.component.html',
     styleUrls: ['./files-list.component.scss'],
-    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent, MatTooltipModule],
+    imports: [
+        ButtonComponent,
+        FileSizePipe,
+        AppSvgIconComponent,
+        CheckboxComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagFilesListComponent {
@@ -51,4 +60,7 @@ export class GraphRagFilesListComponent {
         if (item.disabled) return;
         this.pendingDelete.emit(item.graph_rag_document_id);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
