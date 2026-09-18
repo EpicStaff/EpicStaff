@@ -1,10 +1,14 @@
 <select
     class="id-filter__mode"
-    [value]="filter().mode"
     (change)="setMode($event)"
 >
     @for (option of modeOptions; track option.value) {
-        <option [value]="option.value">{{ option.label }}</option>
+        <option
+            [value]="option.value"
+            [selected]="option.value === filter().mode"
+        >
+            {{ option.label }}
+        </option>
     }
 </select>
 

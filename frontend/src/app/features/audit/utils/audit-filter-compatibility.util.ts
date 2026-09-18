@@ -1,4 +1,4 @@
-import { AuditFilterState } from '../models/audit-filter.models';
+import { AuditCondition, AuditFilterState, isUsableCondition } from '../models/audit-filter.models';
 import { AuditEventKind } from '../models/audit-session.models';
 
 const ALL_KINDS: AuditEventKind[] = ['session', 'node', 'event'];
@@ -30,6 +30,22 @@ export const AUDIT_FILTER_FIELDS: Record<string, AuditFilterFieldMeta> = {
         kinds: ['session', 'event'],
         isActive: (state) => state.runTypes.length > 0,
     },
+    error: {
+        kinds: ['event'],
+        isActive: (state) => hasUsableCondition(state.error),
+    },
+    input: {
+        kinds: ['event'],
+        isActive: (state) => hasUsableCondition(state.input),
+    },
+    output: {
+        kinds: ['event'],
+        isActive: (state) => hasUsableCondition(state.output),
+    },
+    details: {
+        kinds: ['event'],
+        isActive: (state) => hasUsableCondition(state.details),
+    },
 };
 
 // shows whick kinds can still be chosen
@@ -43,6 +59,10 @@ export function allowedKinds(state: AuditFilterState): AuditEventKind[] {
     }
 
     return allowed;
+}
+
+function hasUsableCondition(conditions: AuditCondition[]): boolean {
+    return conditions.some(isUsableCondition);
 }
 
 //shows can filter be used with chosen kinds or not

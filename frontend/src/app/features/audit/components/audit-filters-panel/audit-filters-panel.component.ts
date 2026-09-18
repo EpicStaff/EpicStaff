@@ -1,15 +1,24 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
 
 import {
+    AuditCondition,
     AuditFilterState,
     AuditIdFilter,
     AuditValuesFilter,
     EMPTY_AUDIT_FILTER,
 } from '../../models/audit-filter.models';
-import { KIND_OPTIONS, NODE_TYPE_OPTIONS, RUN_TYPE_OPTIONS, STATUS_OPTIONS } from '../../models/audit-filter-options';
+import {
+    ERROR_OPERATORS,
+    JSON_OPERATORS,
+    KIND_OPTIONS,
+    NODE_TYPE_OPTIONS,
+    RUN_TYPE_OPTIONS,
+    STATUS_OPTIONS,
+} from '../../models/audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from '../../models/audit-session.models';
 import { allowedKinds, isFieldEnabled } from '../../utils/audit-filter-compatibility.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
+import { AuditConditionFilterComponent } from '../audit-condition-filter/audit-condition-filter.component';
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
@@ -19,7 +28,13 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
 @Component({
     selector: 'app-audit-filters-panel',
     standalone: true,
-    imports: [AuditCheckboxEnumComponent, AuditFilterGroupComponent, AuditFlowFilterComponent, AuditIdFilterComponent],
+    imports: [
+        AuditCheckboxEnumComponent,
+        AuditFilterGroupComponent,
+        AuditFlowFilterComponent,
+        AuditIdFilterComponent,
+        AuditConditionFilterComponent,
+    ],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,6 +53,8 @@ export class AuditFiltersPanelComponent {
     public readonly statusOptions = STATUS_OPTIONS;
     public readonly runTypeOptions = RUN_TYPE_OPTIONS;
     public readonly nodeTypeOptions = NODE_TYPE_OPTIONS;
+    public readonly errorOperators = ERROR_OPERATORS;
+    public readonly jsonOperators = JSON_OPERATORS;
 
     public setActiveTab(tab: AuditFilterTab): void {
         this.activeTab.set(tab);
@@ -53,6 +70,10 @@ export class AuditFiltersPanelComponent {
     public isStatusEnabled = computed(() => isFieldEnabled('status', this.filter()));
     public isNodeTypeEnabled = computed(() => isFieldEnabled('nodeType', this.filter()));
     public isRunTypeEnabled = computed(() => isFieldEnabled('run', this.filter()));
+    public isErrorEnabled = computed(() => isFieldEnabled('error', this.filter()));
+    public isInputEnabled = computed(() => isFieldEnabled('input', this.filter()));
+    public isOutputEnabled = computed(() => isFieldEnabled('output', this.filter()));
+    public isDetailsEnabled = computed(() => isFieldEnabled('details', this.filter()));
 
     public disabledStatuses = computed(() =>
         this.isStatusEnabled() ? [] : this.statusOptions.map((option) => option.value)
@@ -88,5 +109,21 @@ export class AuditFiltersPanelComponent {
 
     public setId(id: AuditIdFilter): void {
         this.filter.update((current) => ({ ...current, id }));
+    }
+
+    public setError(error: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, error }));
+    }
+
+    public setInput(input: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, input }));
+    }
+
+    public setOutput(output: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, output }));
+    }
+
+    public setDetails(details: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, details }));
     }
 }

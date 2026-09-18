@@ -44,6 +44,7 @@ export const OPERATOR_LABELS: Record<string, string> = {
     is_not_empty: 'is not empty',
     key_exists: 'has key',
     key_not_exists: 'has no key',
+    key_not_equals: 'does not equal',
 };
 
 export const FLOW_OPERATORS: AuditFilterOp[] = ['in', 'not_in'];
@@ -63,4 +64,24 @@ export const ERROR_OPERATORS: AuditFilterOp[] = [
     'ends_with',
     'is_empty',
     'is_not_empty',
+];
+
+export const JOIN_OPTIONS: AuditEnumOption[] = [
+    { value: 'and', label: 'AND' },
+    { value: 'or', label: 'OR' },
+];
+
+export const JSON_OPERATORS: AuditFilterOp[] = [
+    'equals',
+    'key_not_equals',
+    'contains',
+    'not_contains',
+    'starts_with',
+    'ends_with',
+    'key_exists',
+    'key_not_exists',
+    'gt',
+    'gte',
+    'lt',
+    'lte',
 ];

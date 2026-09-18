@@ -1,0 +1,42 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+app-audit-condition-row {
+    padding: 8px;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+}
+
+.conditions-filter__add {
+    width: 100%;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 6px;
+    background-color: transparent;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        background-color: var(--color-input-background-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
+}
+
+.conditions-filter__add--group {
+    border-style: dashed;
+    color: var(--color-text-secondary);
+}

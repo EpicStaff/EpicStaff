@@ -1,3 +1,5 @@
+import { generateUuid } from '@shared/utils';
+
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from './audit-session.models';
 
 export type AuditFilterOp =
@@ -16,7 +18,8 @@ export type AuditFilterOp =
     | 'is_empty'
     | 'is_not_empty'
     | 'key_exists'
-    | 'key_not_exists';
+    | 'key_not_exists'
+    | 'key_not_equals';
 
 export interface AuditEnumOption {
     value: string;
@@ -44,12 +47,11 @@ export interface AuditValuesFilter {
     values: string[];
 }
 
-export interface AuditTextFilter {
-    op: AuditFilterOp;
-    value: string;
-}
+export type AuditConditionJoin = 'and' | 'or';
 
-export interface AuditJsonFilter {
+export interface AuditCondition {
+    id: string;
+    join: AuditConditionJoin;
     key: string;
     op: AuditFilterOp;
     value: string;
@@ -74,10 +76,10 @@ export interface AuditFilterState {
     runTypes: AuditRunBucket[];
     flow: AuditValuesFilter;
     id: AuditIdFilter;
-    error: AuditTextFilter;
-    input: AuditJsonFilter;
-    output: AuditJsonFilter;
-    details: AuditJsonFilter;
+    error: AuditCondition[];
+    input: AuditCondition[];
+    output: AuditCondition[];
+    details: AuditCondition[];
 }
 
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
@@ -91,8 +93,18 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     runTypes: [],
     flow: { op: 'in', values: [] },
     id: { mode: 'in', from: '', to: '', value: '', values: [] },
-    error: { op: 'is_not_empty', value: '' },
-    input: { key: '', op: 'contains', value: '' },
-    output: { key: '', op: 'contains', value: '' },
-    details: { key: '', op: 'contains', value: '' },
+    error: [createAuditCondition()],
+    input: [createAuditCondition()],
+    output: [createAuditCondition()],
+    details: [createAuditCondition()],
 };
+
+export function createAuditCondition(): AuditCondition {
+    return { id: generateUuid(), join: 'and', key: '', op: 'contains', value: '' };
+}
+
+export const VALUE_FREE_OPS: AuditFilterOp[] = ['is_empty', 'is_not_empty', 'key_exists', 'key_not_exists'];
+
+export function isUsableCondition(condition: AuditCondition): boolean {
+    return VALUE_FREE_OPS.includes(condition.op) || condition.value !== '';
+}

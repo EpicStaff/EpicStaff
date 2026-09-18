@@ -110,6 +110,59 @@
                         (valueChange)="setRunTypes($event)"
                     />
                 </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Input"
+                    [disabled]="!isInputEnabled()"
+                    [class.is-disabled]="!isInputEnabled()"
+                    [hint]="isInputEnabled() ? '' : 'Only events carry input'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().input"
+                        (conditionsChange)="setInput($event)"
+                        [operators]="jsonOperators"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Output"
+                    [disabled]="!isOutputEnabled()"
+                    [class.is-disabled]="!isOutputEnabled()"
+                    [hint]="isOutputEnabled() ? '' : 'Only events carry output'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().output"
+                        (conditionsChange)="setOutput($event)"
+                        [operators]="jsonOperators"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Error"
+                    [disabled]="!isErrorEnabled()"
+                    [class.is-disabled]="!isErrorEnabled()"
+                    [hint]="isErrorEnabled() ? '' : 'Only events carry an error'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().error"
+                        (conditionsChange)="setError($event)"
+                        [operators]="errorOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Details"
+                    [disabled]="!isDetailsEnabled()"
+                    [class.is-disabled]="!isDetailsEnabled()"
+                    [hint]="isDetailsEnabled() ? '' : 'Only events carry details'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().details"
+                        (conditionsChange)="setDetails($event)"
+                        [operators]="jsonOperators"
+                    />
+                </app-audit-filter-group>
             </div>
         }
     </div>

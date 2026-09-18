@@ -1,4 +1,10 @@
-import { AuditFilterNode, AuditFilterState } from '../models/audit-filter.models';
+import {
+    AuditCondition,
+    AuditFilterNode,
+    AuditFilterState,
+    isUsableCondition,
+    VALUE_FREE_OPS,
+} from '../models/audit-filter.models';
 import { AuditMatchScope, AuditRunBucket, AuditRunType } from '../models/audit-session.models';
 
 const MATCH_SCOPE: AuditMatchScope = { children: true };
@@ -11,6 +17,27 @@ const RUN_TYPES_BY_BUCKET: Record<AuditRunBucket, AuditRunType[]> = {
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
     matchScope: AuditMatchScope;
+}
+
+// format and prepare condition payload for request (for error, input, output, details filters)
+function compileConditions(root: string, conditions: AuditCondition[]): AuditFilterNode | null {
+    const usable = conditions.filter(isUsableCondition);
+
+    if (usable.length === 0) {
+        return null;
+    }
+
+    const nodes: AuditFilterNode[] = usable.map((condition) => ({
+        field: condition.key === '' ? root : `${root}.${condition.key}`,
+        op: condition.op,
+        value: VALUE_FREE_OPS.includes(condition.op) ? null : condition.value,
+    }));
+
+    let combined = nodes[0];
+    for (let index = 1; index < nodes.length; index++) {
+        combined = { op: usable[index].join, children: [combined, nodes[index]] };
+    }
+    return combined;
 }
 
 export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
@@ -59,6 +86,26 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     if (state.runTypes.length > 0) {
         const runTypes = state.runTypes.flatMap((bucket) => RUN_TYPES_BY_BUCKET[bucket]);
         leaves.push({ field: 'run_type', op: 'in', value: runTypes });
+    }
+
+    const errorNode = compileConditions('error', state.error);
+    if (errorNode !== null) {
+        leaves.push(errorNode);
+    }
+
+    const inputNode = compileConditions('input', state.input);
+    if (inputNode !== null) {
+        leaves.push(inputNode);
+    }
+
+    const outputNode = compileConditions('output', state.output);
+    if (outputNode !== null) {
+        leaves.push(outputNode);
+    }
+
+    const detailsNode = compileConditions('details', state.details);
+    if (detailsNode !== null) {
+        leaves.push(detailsNode);
     }
 
     if (leaves.length === 0) {
