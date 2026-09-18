@@ -139,7 +139,9 @@ export class SecretsSectionComponent implements OnInit {
             headerBadgeCount: this.usedByFilter() !== null ? this.secrets().length : 0,
         },
         { key: 'updated', label: 'UPDATED', width: '128px' },
-        ...(this.canDeleteSecrets() ? [{ key: 'actions', label: 'ACTIONS', width: '96px' }] : []),
+        ...(this.canDeleteSecrets()
+            ? [{ key: 'actions', label: 'ACTIONS', width: '96px', align: 'end' as const }]
+            : []),
     ]);
 
     ngOnInit(): void {
