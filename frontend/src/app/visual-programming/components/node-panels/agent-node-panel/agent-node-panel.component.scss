@@ -217,7 +217,11 @@
 
 .task-error {
     font-size: 0.75rem;
-    color: var(--red-400);
+    color: var(--color-ks-status-failed);
+    background-color: var(--color-ks-transparent-red);
+    border-left: 3px solid var(--color-ks-status-failed);
+    border-radius: 5px;
+    padding: 0.25rem 0.5rem;
 }
 
 .icon-button {
