@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -43,10 +43,7 @@ class AuditTokenView(APIView):
             actions.append("export")
 
         if not actions:
-            return Response(
-                {"detail": "You do not have AUDIT permissions in this organization."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("You do not have permission to perform this action.")
 
         # Restrictionless pass superadmin user
         if effective.is_superadmin:
