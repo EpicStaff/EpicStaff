@@ -4,43 +4,27 @@ map $http_upgrade $connection_upgrade {
 }
 
 upstream backend_server {
-    server django_app:8000;
+    server ${DJANGO_HOST}:${DJANGO_PORT};
 }
 
 upstream frontend_server {
-    server frontend:${FRONTEND_INTERNAL_PORT};
+    server ${FRONTEND_HOST}:${FRONTEND_PORT};
 }
 
 upstream realtime_server {
-    server realtime:8050;
+    server ${REALTIME_HOST}:${REALTIME_PORT};
 }
 
 upstream webhook_server {
-    server webhook:${WEBHOOK_PORT};
+    server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
 }
 
+underscores_in_headers on;
+
 server {
-    listen 80;
+    include /etc/nginx/conf.d/ssl-${NGINX_SSL_MODE}.snippet;
+
     client_max_body_size 50M;
-
-    underscores_in_headers on;
-
-    ${NGINX_SSL_ENABLE} listen 443 ssl;
-
-    server_name ${NGINX_DOMAIN_NAME};
-
-    ${NGINX_SSL_ENABLE} ssl_certificate /etc/nginx/certs/fullchain.pem;
-    ${NGINX_SSL_ENABLE} ssl_certificate_key /etc/nginx/certs/privkey.pem;
-
-    ${NGINX_SSL_ENABLE} ssl_protocols TLSv1.2 TLSv1.3;
-    ${NGINX_SSL_ENABLE} ssl_ciphers HIGH:!aNULL:!MD5;
-
-    # Force TLS when SSL_ENABLE is on. This block serves both :80 and :443, so
-    # the redirect is scoped by $scheme instead of a second server block -- a
-    # second block on :80 would collide with the listen directive above.
-    # If a load balancer terminates TLS in front of nginx, leave SSL_ENABLE off
-    # here: $scheme would always be http and this would redirect in a loop.
-    ${NGINX_SSL_ENABLE} if ($scheme = http) { return 301 https://$host$request_uri; }
 
     # ---- Security response headers --------------------------------------
     # WARNING: nginx inherits add_header into a location only if that location
@@ -62,10 +46,7 @@ server {
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
     # Content-Security-Policy once the console is clean.
-    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self'" always;
-
-    ${NGINX_SSL_ENABLE} add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    # ---------------------------------------------------------------------
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'" always;
 
     location / {
         proxy_pass http://frontend_server;
@@ -103,6 +84,7 @@ server {
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 86400;
     }
 
@@ -168,10 +150,12 @@ server {
     location /static/ {
         proxy_pass http://backend_server/static/;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /media/ {
         proxy_pass http://backend_server/media/;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }

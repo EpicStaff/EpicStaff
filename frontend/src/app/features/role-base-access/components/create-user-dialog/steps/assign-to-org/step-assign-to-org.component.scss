@@ -38,6 +38,20 @@ app-select.row-unselected {
     opacity: 0.35;
 }
 
+.disabled-note {
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--transparent-white-16);
+    color: var(--text-secondary-60);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.assign-table--disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 .org-cell {
     display: flex;
     align-items: center;

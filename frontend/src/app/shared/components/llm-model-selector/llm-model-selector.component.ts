@@ -19,6 +19,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import {
     DropdownManagerService,
     FullLLMConfig,
@@ -38,7 +40,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
-    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent, HasPermissionDirective],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -124,6 +126,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                             (click)="$event.stopPropagation()"
                         />
                         <button
+                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                             class="create-btn"
                             (click)="onCreateLlm()"
                         >
@@ -536,4 +539,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     setDisabledState(isDisabled: boolean): void {
         void isDisabled;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

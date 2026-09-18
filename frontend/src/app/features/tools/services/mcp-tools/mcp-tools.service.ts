@@ -1,8 +1,10 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { forkJoin, Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 
+import { withPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
@@ -31,7 +33,15 @@ export class McpToolsService {
             let httpParams = new HttpParams().set('limit', String(LIMIT)).set('offset', String(offset));
             if (params?.name) httpParams = httpParams.set('name', params.name);
             if (params?.tool_name) httpParams = httpParams.set('tool_name', params.tool_name);
-            return this.http.get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, { params: httpParams });
+            return this.http.get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, {
+                params: httpParams,
+                context: withPermission<ApiGetRequest<GetMcpToolRequest>>(ResourceCode.Tools, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            });
         };
 
         return fetchSlice(0).pipe(

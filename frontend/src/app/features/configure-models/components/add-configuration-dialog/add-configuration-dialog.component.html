@@ -69,7 +69,6 @@
                         formControlName="custom_name"
                         label="Configuration Name"
                         placeholder="Enter a custom name"
-                        tooltipText="A friendly name to identify this configuration across the app"
                         [required]="true"
                         autocomplete="off"
                     />
@@ -108,7 +107,7 @@
                         [max]="1"
                         [step]="0.1"
                         label="Top P"
-                        tooltipText="Nucleus sampling threshold."
+                        tooltipText="Nucleus sampling: only tokens whose cumulative probability reaches Top P are considered."
                     />
                     <app-validation-errors [control]="llmForm.get('top_p')!" />
                 </div>
@@ -218,7 +217,6 @@
                         formControlName="custom_name"
                         [required]="true"
                         placeholder="e.g. My OpenAI Config"
-                        tooltipText="A descriptive name for this configuration"
                     />
                     <app-validation-errors [control]="openaiForm.get('custom_name')!" />
                 </div>
@@ -245,7 +243,6 @@
                         formControlName="model_name"
                         [required]="true"
                         placeholder="gpt-realtime-1.5"
-                        tooltipText="The realtime model to use"
                     />
                     <app-validation-errors [control]="openaiForm.get('model_name')!" />
                 </div>
@@ -301,7 +298,6 @@
                         formControlName="custom_name"
                         [required]="true"
                         placeholder="e.g. My Elevenlabs Config"
-                        tooltipText="A descriptive name for this configuration"
                     />
                     <app-validation-errors [control]="elevenLabsForm.get('custom_name')!" />
                 </div>
@@ -328,7 +324,6 @@
                         formControlName="model_name"
                         [required]="true"
                         placeholder="eleven_turbo_v2_5"
-                        tooltipText="The ElevenLabs model to use"
                     />
                     <app-validation-errors [control]="elevenLabsForm.get('model_name')!" />
                 </div>
@@ -359,7 +354,6 @@
                         formControlName="custom_name"
                         [required]="true"
                         placeholder="e.g. My Gemini Config"
-                        tooltipText="A descriptive name for this configuration"
                     />
                     <app-validation-errors [control]="geminiForm.get('custom_name')!" />
                 </div>
@@ -386,7 +380,6 @@
                         formControlName="model_name"
                         [required]="true"
                         placeholder="gemini-3.1-flash-live-preview"
-                        tooltipText="The Gemini live model to use"
                     />
                     <app-validation-errors [control]="geminiForm.get('model_name')!" />
                 </div>

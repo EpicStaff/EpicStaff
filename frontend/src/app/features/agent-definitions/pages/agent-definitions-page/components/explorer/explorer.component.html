@@ -65,6 +65,7 @@
                         (dragHover)="onSectionDragHover('agents')"
                         [expanded]="store.isSectionExpanded('agents')"
                         [showAdd]="true"
+                        [resource]="ResourceCode.Agents"
                         (toggleSection)="store.toggleSection('agents')"
                         (add)="onAdd('agents')"
                     />
@@ -111,6 +112,7 @@
                         (dragHover)="onSectionDragHover('surfaces')"
                         [expanded]="store.isSectionExpanded('surfaces')"
                         [showAdd]="true"
+                        [resource]="ResourceCode.Surfaces"
                         (toggleSection)="store.toggleSection('surfaces')"
                         (add)="onAdd('surfaces')"
                     />
@@ -155,7 +157,9 @@
                         icon="folder-storage"
                         [expanded]="store.isSectionExpanded('storage')"
                         [showAdd]="true"
+                        [resource]="ResourceCode.Files"
                         [showMenu]="true"
+                        [menuActions]="[ActionCode.Export, ActionCode.Delete]"
                         (toggleSection)="store.toggleSection('storage')"
                         (add)="onAdd('storage')"
                         (menu)="onStorageMenu($event)"

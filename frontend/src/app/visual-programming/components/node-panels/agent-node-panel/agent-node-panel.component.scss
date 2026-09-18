@@ -70,6 +70,13 @@
     @include mixins.resize-divider-bleed($v-gap: 1.25rem);
 }
 
+@include mixins.field-isolated-spacing;
+
+// Agent and Task fields: offset .field's gap (0.75rem) to 4px spacing.
+::ng-deep .field .validation-errors {
+    margin: -8px 0 0 !important;
+}
+
 .field {
     display: flex;
     flex-direction: column;
@@ -210,7 +217,11 @@
 
 .task-error {
     font-size: 0.75rem;
-    color: var(--red-400);
+    color: var(--color-ks-status-failed);
+    background-color: var(--color-ks-transparent-red);
+    border-left: 3px solid var(--color-ks-status-failed);
+    border-radius: 5px;
+    padding: 0.25rem 0.5rem;
 }
 
 .icon-button {

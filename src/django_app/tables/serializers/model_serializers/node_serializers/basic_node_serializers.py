@@ -155,9 +155,8 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
 
 
 class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
-    """Adds the nested read-back of node-bound search configs (mirror of
-    AgentReadSerializer.search_configs). Used for list/retrieve and inside
-    GraphSerializer.knowledge_node_list."""
+    """Adds the nested read-back of node-bound search configs, used for
+    list/retrieve and inside GraphSerializer.knowledge_node_list."""
 
     search_configs = serializers.SerializerMethodField()
 
@@ -167,8 +166,7 @@ class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
 
 class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
     """Accepts a partial nested `search_configs` block and merges it into the
-    node-bound config rows (mirror of AgentWriteSerializer). Only provided
-    fields are touched — the FE may send just what changed."""
+    node-bound config rows, touching only the fields provided."""
 
     search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
 
@@ -248,10 +246,6 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return validate_output_schema(value)
 
     def validate(self, attrs):
-        organization = self.context.get("organization")
-        if organization is None:
-            return attrs
-
         if "surface_list" in attrs:
             surfaces = attrs["surface_list"]
         elif "agent_definition" in attrs and self.instance is not None:
@@ -270,7 +264,6 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=surfaces,
             agent_definition=agent_definition,
-            organization=organization,
         )
 
         return attrs
@@ -370,10 +363,6 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         if "tasks" in attrs:
             self._validate_tasks(attrs["tasks"])
 
-        organization = self.context.get("organization")
-        if organization is None:
-            return attrs
-
         if "surface_list" in attrs:
             surfaces = attrs["surface_list"]
         elif "agent_definition" in attrs and self.instance is not None:
@@ -392,7 +381,6 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         SurfaceValidator.validate_agent_node_surfaces(
             surfaces=surfaces,
             agent_definition=agent_definition,
-            organization=organization,
         )
 
         return attrs

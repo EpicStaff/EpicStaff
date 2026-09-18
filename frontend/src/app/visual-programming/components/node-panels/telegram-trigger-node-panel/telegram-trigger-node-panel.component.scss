@@ -74,6 +74,8 @@
     row-gap: 1rem;
 }
 
+@include mixins.field-isolated-spacing;
+
 .code-editor-section {
     font-size: 0.875rem;
     color: var(--white-alpha-70);
