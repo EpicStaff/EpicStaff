@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 
 from tables.models.secret_models import Secret
@@ -75,12 +76,11 @@ class WebhookTriggerNestedSerializer(
     @transaction.atomic
     def create(self, validated_data):
         # A true create — always inserts a new row. `validate()` already
-        # rejects an exact (path, provider_type) duplicate before we get
-        # here, so two different providers sharing the same `path` legally
-        # create two separate WebhookTrigger rows (unique_together allows
-        # it). No existing-row lookup/merge/config-deletion here — that
-        # get-or-create behavior used to hijack another provider's row on a
-        # path collision.
+        # rejects any `path` duplicate before we get here (path is globally
+        # unique regardless of provider_type), so this always creates a
+        # brand-new WebhookTrigger row. No existing-row lookup/merge/
+        # config-deletion here — that get-or-create behavior used to
+        # hijack another provider's row on a path collision.
         request = self.context.get("request")
         org_id = resolve_active_org_id(request) if request is not None else None
         if org_id is None:
@@ -263,6 +263,8 @@ class WebhookTriggerNestedSerializer(
         return existing.secret if existing is not None else None
 
     def validate(self, data):
+        from tables.services.webhook_trigger_service import validate_path_uniqueness
+
         data = super().validate(data)
 
         provider_type = data.get("provider_type")
@@ -270,18 +272,14 @@ class WebhookTriggerNestedSerializer(
         localhost = data.get("localhost_config")
 
         path = data.get("path", self.instance.path if self.instance else None)
-        lookup_provider_type = data.get(
-            "provider_type",
-            self.instance.provider_type if self.instance else None,
-        )
-        queryset = WebhookTrigger.objects.filter(
-            path=path, provider_type=lookup_provider_type
-        )
-        if self.instance:
-            queryset = queryset.exclude(id=self.instance.id)
-        if queryset.exists():
+        try:
+            validate_path_uniqueness(
+                path=path,
+                exclude_pk=self.instance.pk if self.instance else None,
+            )
+        except DjangoValidationError as e:
             raise serializers.ValidationError(
-                "A WebhookTrigger with this path and provider type already exists."
+                e.messages[0] if e.messages else str(e)
             )
 
         if ngrok and localhost:

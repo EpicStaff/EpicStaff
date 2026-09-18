@@ -3,6 +3,7 @@ import time
 from loguru import logger
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from tables.models.graph_models import WebhookTriggerNode
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
@@ -33,6 +34,14 @@ USER_SETTABLE_AUTH_KINDS = (
 )
 
 AUTH_SECRET_MIN_LENGTH = 32
+
+
+def validate_path_uniqueness(path: str, exclude_pk: int | None = None) -> None:
+    qs = WebhookTrigger.objects.filter(path=path)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        raise ValidationError("A WebhookTrigger with this path already exists.")
 
 
 class WebhookTriggerService(metaclass=SingletonMeta):
@@ -166,7 +175,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                 )
             except SecretResolutionError as e:
                 logger.error(f"Error converting Localhost webhook config: {e}")
-            
+
         data = WebhookConfigData(
             ngrok_configs=ngrok_configs,
             localhost_configs=localhost_configs,
@@ -181,7 +190,9 @@ class WebhookTriggerService(metaclass=SingletonMeta):
     def _get_tunnel_url(self, config: "TunnelConfig") -> str | None:
         """Read the tunnel URL written by the webhook service directly from Redis."""
         unique_id = config.get_redis_key()
-        url = self.redis_service.redis_client.hget(settings.TUNNEL_URLS_HASH_KEY, unique_id)
+        url = self.redis_service.redis_client.hget(
+            settings.TUNNEL_URLS_HASH_KEY, unique_id
+        )
         if isinstance(url, bytes):
             url = url.decode("utf-8")
         return url
