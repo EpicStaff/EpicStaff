@@ -184,7 +184,7 @@ export class UsersTabComponent implements OnInit {
         },
         { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
         { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center', actions: this.rowActions() },
+        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'end', actions: this.rowActions() },
     ]);
 
     ngOnInit(): void {

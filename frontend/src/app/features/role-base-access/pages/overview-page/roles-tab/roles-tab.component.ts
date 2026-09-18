@@ -116,7 +116,7 @@ export class RolesTabComponent implements OnInit {
             defaultValues: this.activeOrgDefault(),
         },
         { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)', align: 'center' },
-        { key: 'actions', label: 'ACTIONS', width: '160px', align: 'center', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '160px', align: 'end', actions: this.rowActions },
     ]);
 
     /** Combined rows: built-in roles first (org label = "All"), then custom roles. */
