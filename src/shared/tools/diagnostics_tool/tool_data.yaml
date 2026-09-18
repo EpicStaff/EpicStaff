@@ -1,0 +1,7 @@
+tool-data:
+  name: "Diagnostics Tool"
+  description: "Runs per-language linter adapters (ruff for Python; eslint/tsc for JS/TS when available) over a file or directory and returns diagnostics as 'severity file:line message' lines. Not a full LSP client — this starts with per-language adapters."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

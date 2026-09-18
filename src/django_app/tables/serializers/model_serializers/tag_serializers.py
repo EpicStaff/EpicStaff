@@ -1,8 +1,6 @@
 from rest_framework import serializers
 
 from tables.models.tag_models import (
-    AgentTag,
-    CrewTag,
     EmbeddingConfigTag,
     EmbeddingModelTag,
     GraphTag,
@@ -37,18 +35,6 @@ class EmbeddingConfigTagSerializer(serializers.ModelSerializer):
         model = EmbeddingConfigTag
         fields = ("id", "name", "predefined")
         read_only_fields = ("predefined",)
-
-
-class CrewTagSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CrewTag
-        fields = "__all__"
-
-
-class AgentTagSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AgentTag
-        fields = "__all__"
 
 
 class GraphTagSerializer(serializers.ModelSerializer):

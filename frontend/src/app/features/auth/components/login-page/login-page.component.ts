@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -23,7 +22,6 @@ import { ToastService } from '../../../../services/notifications';
 @Component({
     selector: 'app-login-page',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         CustomInputComponent,
         ValidationErrorsComponent,
@@ -86,7 +84,7 @@ export class LoginPageComponent implements OnInit {
             )
             .subscribe({
                 next: () => {
-                    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || '/projects';
+                    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || '/';
                     void this.router.navigateByUrl(returnUrl);
                 },
                 error: (err: HttpErrorResponse) => {

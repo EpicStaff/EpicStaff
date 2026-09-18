@@ -1,5 +1,4 @@
 import { Overlay } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -37,8 +36,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
 @Component({
     selector: 'app-column-header-menu',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div

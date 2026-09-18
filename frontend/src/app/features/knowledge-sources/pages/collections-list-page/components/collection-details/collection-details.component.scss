@@ -23,15 +23,17 @@
     }
 
     &__header-name {
-        width: calc(60% - 2.5rem);
+        width: calc(60% - 2rem);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        overflow: auto;
+        scrollbar-gutter: stable;
     }
 
     &__header-label {
-        font-size: 14px;
-        color: var(--color-ks-text);
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
     }
 
     &__name-input {
@@ -52,6 +54,14 @@
         &::placeholder {
             color: var(--color-input-text-placeholder);
         }
+    }
+
+    &__name-readonly {
+        height: 2.5rem;
+        display: flex;
+        align-items: center;
+        color: var(--color-text-primary);
+        font-size: 1.25rem;
     }
 
     &__action {
@@ -95,7 +105,7 @@
         flex: 1;
         min-height: 0;
         overflow: hidden;
-        margin: 1.5rem 3rem;
+        margin: 1.5rem 2.5rem 1.5rem 3rem;
         row-gap: 1.875rem;
     }
 
@@ -115,15 +125,22 @@
         overflow: hidden;
     }
 
+    &__files-wrap {
+        flex: 1;
+        min-height: 0;
+    }
+
     &__section-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        overflow: auto;
+        scrollbar-gutter: stable;
     }
 
     &__section-title {
         font-size: 0.75rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__section-actions {
@@ -148,8 +165,8 @@
     }
 
     &__empty-text {
-        font-size: 16px;
-        color: rgba(255, 255, 255, 0.8);
+        font-size: 1rem;
+        color: var(--white-alpha-80);
         margin-bottom: 20px;
     }
 
@@ -159,7 +176,7 @@
         align-items: center;
         justify-content: center;
         margin-bottom: 1rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
 
         svg {
             width: 48px;

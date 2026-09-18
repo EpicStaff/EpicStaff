@@ -1,3 +1,5 @@
+import { DeclaredSecretRef } from '../../../../../features/tools/models/python-code.model';
+
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;
@@ -23,7 +25,7 @@ export interface ClassificationConditionGroupBackend {
     group_name: string;
     order: number;
     expression: string | null;
-    prompt_id: string | null;
+    prompt: number | null;
     manipulation: string | null;
     continue_flag: boolean;
     route_code: string | null;
@@ -38,7 +40,10 @@ export interface CreateClassificationConditionGroupRequest {
     group_name: string;
     order: number;
     expression: string | null;
-    prompt_id: string | null;
+    // Preferred link: the prompt's per-node key (works for a prompt created in the
+    // same save). `prompt` (numeric id) is kept for back-compat; backend prefers key.
+    prompt_key?: string | null;
+    prompt: number | null;
     manipulation: string | null;
     continue_flag: boolean;
     route_code: string | null;
@@ -55,6 +60,8 @@ export interface CDTPythonCodeBlock {
     entrypoint: string;
     global_kwargs: Record<string, unknown>;
     content_hash?: string;
+    secret_ids?: number[];
+    secrets?: DeclaredSecretRef[];
 }
 
 export interface GetClassificationDecisionTableNodeRequest {

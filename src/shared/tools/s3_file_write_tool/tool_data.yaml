@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Write Tool"
+  description: "Overwrite an S3-stored file with new content, creating it if it doesn't exist (bash `>` redirect semantics - no confirmation, no merge). Params: file_path, content (both required). Unlike s3_file_create_tool, which refuses to touch a file that already exists unless fail_if_exists=false, this tool always overwrites unconditionally. Use s3_file_edit_tool instead if you only want to change part of an existing file."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

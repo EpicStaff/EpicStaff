@@ -1,16 +1,19 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 
-import { CONFIGURE_MODELS_TABS } from '../../constants/configure-models-tabs.constant';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
+import { ConfigureModelsTab } from '../../interfaces/configure-models-tab.interface';
 import { DefaultLlmsSectionComponent } from '../default-llms-section/default-llms-section.component';
 import { LlmLibrarySectionComponent } from '../llm-library-section/llm-library-section.component';
-import { AppNgrokSectionComponent } from '../ngrok-config-section/ngrok-config-section.component';
 import { QuickstartSectionComponent } from '../quickstart-section/quickstart-section.component';
+import { SecretsSectionComponent } from '../secrets-section/secrets-section.component';
 import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-settings-section.component';
+import { WebhookTriggersSectionComponent } from '../webhook-triggers-section/webhook-triggers-section.component';
 
 @Component({
     selector: 'app-configure-models-dialog',
@@ -19,8 +22,9 @@ import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-s
         DefaultLlmsSectionComponent,
         QuickstartSectionComponent,
         LlmLibrarySectionComponent,
-        AppNgrokSectionComponent,
+        WebhookTriggersSectionComponent,
         VoiceSettingsSectionComponent,
+        SecretsSectionComponent,
         AppSvgIconComponent,
         MatTooltipModule,
     ],
@@ -28,13 +32,63 @@ import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-s
     styleUrls: ['./configure-models-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ConfigureModelsDialogComponent {
+export class ConfigureModelsDialogComponent implements OnInit {
     private readonly dialogRef: DialogRef<void> = inject(DialogRef<void>);
+    private readonly permissionService = inject(PermissionsService);
 
     public readonly tabIds = ConfigureModelsTabId;
-    public readonly tabs = CONFIGURE_MODELS_TABS;
+    public readonly tabs: ConfigureModelsTab[] = [
+        {
+            id: ConfigureModelsTabId.QUICKSTART,
+            label: 'Quickstart',
+            iconClass: 'ti ti-bolt',
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create),
+        },
+        {
+            id: ConfigureModelsTabId.DEFAULT_LLMS,
+            label: 'Default LLMs',
+            iconClass: 'ti ti-robot',
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+        },
+        {
+            id: ConfigureModelsTabId.LLM_LIBRARY,
+            label: 'LLM Library',
+            iconClass: 'ti ti-books',
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+        },
+        {
+            id: ConfigureModelsTabId.WEBHOOK_TRIGGERS,
+            label: 'Webhook Triggers',
+            iconClass: 'ti ti-webhook',
+            isPermitted: () => this.permissionService.isSuperadmin,
+        },
+        {
+            id: ConfigureModelsTabId.VOICE_SETTINGS,
+            label: 'Voice / Twilio',
+            iconClass: 'ti ti-phone',
+            isPermitted: () => this.permissionService.isSuperadmin,
+        },
+        {
+            id: ConfigureModelsTabId.SECRETS,
+            label: 'Secrets',
+            svgIcon: 'secrets',
+            isPermitted: () =>
+                this.permissionService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
+        },
+    ];
 
-    public readonly activeTabId = signal<ConfigureModelsTabId>(ConfigureModelsTabId.QUICKSTART);
+    public readonly activeTabId = signal<ConfigureModelsTabId>(ConfigureModelsTabId.DEFAULT_LLMS);
+
+    ngOnInit() {
+        if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create)) {
+            this.activeTabId.set(ConfigureModelsTabId.QUICKSTART);
+        } else if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
+            this.activeTabId.set(ConfigureModelsTabId.DEFAULT_LLMS);
+        } else {
+            const firstPermittedTab = this.tabs.find((tab) => tab.isPermitted());
+            if (firstPermittedTab) this.activeTabId.set(firstPermittedTab.id);
+        }
+    }
 
     public selectTab(tabId: ConfigureModelsTabId): void {
         this.activeTabId.set(tabId);

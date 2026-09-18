@@ -1,0 +1,17 @@
+{
+  "title": "DiagnosticsToolArgs",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "File or directory to check, relative to the sandbox root. Defaults to the sandbox root."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["auto", "python", "javascript", "typescript"],
+      "description": "Language adapter to use. 'auto' detects from the target's file extensions (Python takes priority when a directory has files of several languages).",
+      "default": "auto"
+    }
+  },
+  "required": []
+}

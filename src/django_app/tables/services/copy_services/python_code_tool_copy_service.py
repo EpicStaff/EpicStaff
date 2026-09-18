@@ -1,26 +1,54 @@
-from tables.import_export.utils import ensure_unique_identifier
+from django.db import transaction
+from django.db.models import Q
+
+from tables.import_export.utils import clean_base_name, ensure_unique_identifier
+from tables.models import Label
 from tables.models.python_models import PythonCodeTool
+from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.services.copy_services.base_copy_service import BaseCopyService
-from tables.services.copy_services.helpers import copy_python_code
+from tables.services.copy_services.helpers import (
+    acquire_copy_name_lock,
+    copy_python_code,
+)
 
 
 class PythonCodeToolCopyService(BaseCopyService):
-    def copy(self, tool: PythonCodeTool, name: str | None = None) -> PythonCodeTool:
-        if tool.built_in:
-            raise ValueError("Cannot copy a built-in tool.")
+    def copy(
+        self,
+        tool: PythonCodeTool,
+        name: str | None = None,
+        org_id: int | None = None,
+    ) -> PythonCodeTool:
+        target_org_id = org_id if org_id is not None else tool.org_id
+        base_name = name if name else tool.name
 
-        new_code = copy_python_code(tool.python_code)
+        with transaction.atomic():
+            clean_base = clean_base_name(base_name)
+            acquire_copy_name_lock(target_org_id, clean_base)
 
-        existing_names = PythonCodeTool.objects.values_list("name", flat=True)
-        new_name = ensure_unique_identifier(
-            base_name=name if name else tool.name,
-            existing_names=existing_names,
+            new_code = copy_python_code(tool.python_code)
+
+            existing_names = (
+                PythonCodeTool.objects.filter(
+                    Q(org_id=target_org_id) | Q(built_in=True)
+                )
+                .filter(name__istartswith=clean_base)
+                .values_list("name", flat=True)
+            )
+            new_name = ensure_unique_identifier(
+                base_name=base_name,
+                existing_names=existing_names,
+            )
+
+            new_tool = PythonCodeTool.objects.create(
+                name=new_name,
+                description=sanitize_description(tool.description),
+                variables=tool.variables,
+                python_code=new_code,
+                org_id=target_org_id,
+            )
+
+        new_tool.labels.set(
+            tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id)
         )
-
-        return PythonCodeTool.objects.create(
-            name=new_name,
-            description=tool.description,
-            variables=tool.variables,
-            python_code=new_code,
-            favorite=tool.favorite,
-        )
+        return new_tool

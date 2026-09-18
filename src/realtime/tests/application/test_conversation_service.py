@@ -15,6 +15,7 @@ from infrastructure.providers.factory import RealtimeAgentClientFactory
 def _make_chat_data(rt_provider: str = "openai") -> RealtimeAgentChatData:
     return RealtimeAgentChatData(
         connection_key="test_key",
+        org_id=1,
         rt_api_key="api_key",
         rt_model_name="gpt-4o",
         rt_provider=rt_provider,

@@ -9,46 +9,21 @@ from helpers.logger import logger
 
 
 class RedisService:
-    def __init__(self, session_start_channel="sessions:start"):
+    def __init__(self, host: str, port: int, user: str = "", password: str = ""):
         self.aioredis_client = None
-        self.session_start_channel = session_start_channel
         self._retry = Retry(backoff=ExponentialBackoff(cap=3), retries=10)
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
 
     async def init_redis(self):
-        host = os.environ.get("REDIS_HOST", "localhost")
-        port = os.environ.get("REDIS_PORT", 6379)
-        password = os.environ.get("REDIS_PASSWORD")
         self.aioredis_client = await aioredis.from_url(
-            f"redis://{host}:{port}",
+            f"redis://{self.host}:{self.port}",
             retry=self._retry,
-            password=password,
+            username=self.user,
+            password=self.password,
         )
-        self.pubsub = self.aioredis_client.pubsub()
-        await self.pubsub.subscribe(self.session_start_channel)
-
-    async def listen_redis(self):
-        logger.info("Starting Redis listener...")
-
-        async for message in self.pubsub.listen():
-            if message["type"] == "message":
-                pass
-                # channel = message["channel"].decode("utf-8")
-                # data = message["data"].decode("utf-8")
-
-    async def _publish(self, channel: str, message):
-        full_channel = f"sessions:{channel}"
-
-        try:
-            await self.aioredis_client.publish(
-                full_channel,
-                json.dumps(message),
-            )
-            logger.info(f"Message successfully published on channel '{full_channel}'")
-        except Exception as e:
-            logger.error(
-                f"Error occurred while publishing message on channel '{full_channel}': {str(e)}"
-            )
-            raise
 
     async def async_subscribe(self, channel: str) -> PubSub:
         pubsub = self.aioredis_client.pubsub()

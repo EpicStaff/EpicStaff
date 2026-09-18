@@ -1,0 +1,7 @@
+tool-data:
+  name: "Read File Tool"
+  description: "Reads a file's content. Supports plain text (with offset/limit and cat -n style line numbers), PDF (page ranges via 'pages'), and Jupyter notebooks (.ipynb). Path is relative to the sandbox root."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

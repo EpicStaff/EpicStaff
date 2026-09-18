@@ -1,66 +1,63 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, EventEmitter, inject, Input, Output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
+import { RealtimeAgentDefinition } from '../../../../../features/agent-definitions/models/realtime-agent-definition.model';
+import { ChatAgent, chatAgentTitle, sameChatAgent } from '../../../models/chat-agent.model';
 import { ChatsService } from '../../../services/chats.service';
 import { ConsoleService } from '../../../services/console.service';
-import { RealtimeSettingsDialogComponent } from './realtime-settings-dialog/realtime-settings-dialog.component';
+import {
+    AgentDefinitionRealtimeSettingsDialogComponent,
+    AgentDefinitionRealtimeSettingsDialogData,
+} from './agent-definition-realtime-settings-dialog/agent-definition-realtime-settings-dialog.component';
 
 @Component({
     selector: 'app-chats-sidebar-item',
-    standalone: true,
-    imports: [CommonModule, MatTooltipModule],
+    imports: [MatTooltipModule],
     templateUrl: './chats-sidebar-item.component.html',
     styleUrls: ['./chats-sidebar-item.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChatsSidebarItemComponent {
-    @Input() agent!: FullAgent;
+    @Input({ required: true }) chatAgent!: ChatAgent;
+    @Output() agentUpdated = new EventEmitter<ChatAgent>();
 
-    public isSelected = computed(() => this.chatsService.selectedAgentId$() === this.agent.id);
+    private readonly chatsService = inject(ChatsService);
+    private readonly consoleService = inject(ConsoleService);
+    private readonly dialog = inject(Dialog);
 
-    constructor(
-        private chatsService: ChatsService,
-        private consoleService: ConsoleService,
-        private dialog: Dialog
-    ) {}
+    public readonly isSelected = computed(() => sameChatAgent(this.chatsService.selectedChatAgent$(), this.chatAgent));
 
-    public onSelect() {
-        this.chatsService.setSelectedAgent(this.agent);
+    get title(): string {
+        return chatAgentTitle(this.chatAgent);
+    }
+
+    public onSelect(): void {
+        this.chatsService.setSelectedChatAgent(this.chatAgent);
         if (this.consoleService.isConversationConnected()) {
             this.consoleService.disconnectConversation();
         }
     }
 
-    public openSettings(event: Event) {
-        event.stopPropagation(); // Prevent triggering onSelect
-
-        const dialogRef = this.dialog.open<FullAgent>(RealtimeSettingsDialogComponent, {
-            data: {
-                agent: this.agent,
-            },
+    public openSettings(event: Event): void {
+        event.stopPropagation();
+        const { agent, realtime } = this.chatAgent;
+        const data: AgentDefinitionRealtimeSettingsDialogData = {
+            definitionId: agent.id,
+            definitionName: agent.name,
+            realtime,
+        };
+        const dialogRef = this.dialog.open<RealtimeAgentDefinition>(AgentDefinitionRealtimeSettingsDialogComponent, {
+            data,
             width: '100%',
             maxWidth: '550px',
             height: '100%',
             maxHeight: '90vh',
         });
 
-        dialogRef.closed.subscribe((updatedAgent) => {
-            if (updatedAgent) {
-                // Update the local agent reference with the new data
-                this.agent = {
-                    ...updatedAgent,
-                    tools: this.agent.tools,
-                    python_code_tools: this.agent.python_code_tools,
-                };
-
-                // If this is the currently selected agent, update it in the service too
-                if (this.isSelected()) {
-                    this.chatsService.setSelectedAgent(updatedAgent);
-                }
-            }
+        dialogRef.closed.subscribe((updated) => {
+            if (!updated) return;
+            this.agentUpdated.emit({ agent: this.chatAgent.agent, realtime: updated });
         });
     }
 }

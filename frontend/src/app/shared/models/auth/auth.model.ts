@@ -10,14 +10,12 @@ export interface FirstSetupRequest {
 
 export interface FirstSetupResponse {
     access: string;
-    refresh: string;
     organization: SetupOrganizationResponse;
     user: SetupUserResponse;
 }
 
-export interface TokenPair {
+export interface AccessToken {
     access: string;
-    refresh: string;
 }
 
 export interface SetupOrganizationResponse {

@@ -3,6 +3,7 @@ Tests for SourceCollection CRUD operations
 """
 
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -31,6 +32,7 @@ class TestCollectionList:
         assert len(data) == 2
         assert all("collection_id" in item for item in data)
         assert all("collection_name" in item for item in data)
+        assert all("description" in item for item in data)
         assert all("document_count" in item for item in data)
 
 
@@ -67,6 +69,37 @@ class TestCollectionCreate:
         assert response.status_code == status.HTTP_201_CREATED
         response_data = response.json()
         assert "Untitled Collection" in response_data["collection_name"]
+
+    def test_create_collection_with_description(self, auth_client):
+        """Test creating a collection with a description."""
+        url = reverse("sourcecollection-list")
+        data = {
+            "collection_name": "Documented Collection",
+            "description": "Contains onboarding docs for new hires.",
+        }
+
+        response = auth_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        response_data = response.json()
+        assert response_data["description"] == "Contains onboarding docs for new hires."
+
+        collection = SourceCollection.objects.get(
+            collection_id=response_data["collection_id"]
+        )
+        assert collection.description == "Contains onboarding docs for new hires."
+
+    def test_create_collection_with_too_long_description_rejected(self, auth_client):
+        """Test creating a collection with a description over 2000 chars fails."""
+        url = reverse("sourcecollection-list")
+        data = {
+            "collection_name": "Overlong Description Collection",
+            "description": "x" * 2001,
+        }
+
+        response = auth_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_duplicate_collection_name(self, auth_client, source_collection):
         """Test that duplicate collection names are handled correctly.
@@ -114,6 +147,7 @@ class TestCollectionRetrieve:
         data = response.json()
         assert data["collection_id"] == source_collection.collection_id
         assert data["collection_name"] == source_collection.collection_name
+        assert data["description"] == source_collection.description
         assert "document_count" in data
 
     def test_retrieve_nonexistent_collection(self, auth_client):
@@ -142,6 +176,31 @@ class TestCollectionUpdate:
         # Verify in database
         source_collection.refresh_from_db()
         assert source_collection.collection_name == "Updated Name"
+
+    def test_update_collection_description(self, auth_client, source_collection):
+        """Test updating a collection's description."""
+        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
+        data = {"description": "Updated description."}
+
+        response = auth_client.patch(url, data, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+        response_data = response.json()
+        assert response_data["description"] == "Updated description."
+
+        source_collection.refresh_from_db()
+        assert source_collection.description == "Updated description."
+
+    def test_update_collection_with_too_long_description_rejected(
+        self, auth_client, source_collection
+    ):
+        """Test updating with a description over 2000 chars fails validation."""
+        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
+        data = {"description": "x" * 2001}
+
+        response = auth_client.patch(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_update_collection_with_empty_name(self, auth_client, source_collection):
         """Test updating with empty name fails validation."""
@@ -289,6 +348,18 @@ class TestCollectionCopy:
         ).count()
         assert original_count == copied_count
 
+    def test_copy_collection_carries_description(self, auth_client, source_collection):
+        """Test copying a collection carries the source description to the copy."""
+        source_collection.description = "Source description."
+        source_collection.save()
+
+        url = reverse("sourcecollection-copy", args=[source_collection.collection_id])
+        response = auth_client.post(url, {}, format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        response_data = response.json()
+        assert response_data["collection"]["description"] == "Source description."
+
     def test_copy_collection_without_name(self, auth_client, source_collection):
         """Test copying without providing a new name."""
         url = reverse("sourcecollection-copy", args=[source_collection.collection_id])
@@ -309,3 +380,160 @@ class TestCollectionCopy:
         response = auth_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+class TestCollectionSoftDelete:
+    """Tests for the SOFT_DELETE env-flag behavior on SourceCollection deletion."""
+
+    def _create_collection(self, auth_client, name):
+        url = reverse("sourcecollection-list")
+        response = auth_client.post(url, {"collection_name": name}, format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.content
+        return response.json()
+
+    def test_delete_collection_default_soft_deletes(self, auth_client):
+        """SOFT_DELETE=True (default): DELETE hides the collection from `objects`
+        but keeps it in `all_objects` with `is_soft_deleted=True` and
+        `soft_deleted_at` set."""
+        collection = self._create_collection(auth_client, "Soft Delete Me")
+        collection_id = collection["collection_id"]
+
+        detail_url = reverse("sourcecollection-detail", args=[collection_id])
+        delete_response = auth_client.delete(detail_url)
+        assert (
+            delete_response.status_code == status.HTTP_200_OK
+        ), delete_response.content
+
+        get_response = auth_client.get(detail_url)
+        assert get_response.status_code == status.HTTP_404_NOT_FOUND
+
+        assert not SourceCollection.objects.filter(collection_id=collection_id).exists()
+        assert SourceCollection.all_objects.filter(collection_id=collection_id).exists()
+        deleted = SourceCollection.all_objects.get(collection_id=collection_id)
+        assert deleted.is_soft_deleted is True
+        assert deleted.soft_deleted_at is not None
+
+    @override_settings(SOFT_DELETE=False)
+    def test_delete_collection_hard_deletes_when_soft_delete_disabled(
+        self, auth_client
+    ):
+        """SOFT_DELETE=False: DELETE removes the row entirely, even from
+        `all_objects`."""
+        collection = self._create_collection(auth_client, "Hard Delete Me")
+        collection_id = collection["collection_id"]
+
+        detail_url = reverse("sourcecollection-detail", args=[collection_id])
+        delete_response = auth_client.delete(detail_url)
+        assert (
+            delete_response.status_code == status.HTTP_200_OK
+        ), delete_response.content
+
+        assert not SourceCollection.all_objects.filter(
+            collection_id=collection_id
+        ).exists()
+
+    def test_create_collection_with_name_of_soft_deleted_collection_keeps_name(
+        self, auth_client
+    ):
+        """The (org, collection_name) unique constraint only applies to active
+        rows — soft-deleting a collection must free its name for reuse without
+        triggering the model's auto-rename-on-collision logic."""
+        first = self._create_collection(auth_client, "Reusable Name")
+        detail_url = reverse("sourcecollection-detail", args=[first["collection_id"]])
+        delete_response = auth_client.delete(detail_url)
+        assert delete_response.status_code == status.HTTP_200_OK
+
+        second = self._create_collection(auth_client, "Reusable Name")
+
+        # The dedup logic in SourceCollection.save() only checks `objects`
+        # (active rows), so the soft-deleted collection's name doesn't collide.
+        assert second["collection_name"] == "Reusable Name"
+
+    def test_delete_collection_with_soft_delete_leaves_documents_intact(
+        self, auth_client
+    ):
+        """When SOFT_DELETE=True, deleting a collection must not clean up its
+        DocumentContent/DocumentMetadata rows — content stays intact."""
+        from tables.models import DocumentContent, DocumentMetadata
+
+        collection = self._create_collection(auth_client, "Collection With Docs")
+        collection_id = collection["collection_id"]
+        source_collection = SourceCollection.objects.get(collection_id=collection_id)
+
+        content = DocumentContent.objects.create(content=b"keep me")
+        document = DocumentMetadata.objects.create(
+            source_collection=source_collection,
+            document_content=content,
+            file_name="keep_me.txt",
+            file_type="txt",
+            file_size=8,
+        )
+
+        detail_url = reverse("sourcecollection-detail", args=[collection_id])
+        delete_response = auth_client.delete(detail_url)
+        assert (
+            delete_response.status_code == status.HTTP_200_OK
+        ), delete_response.content
+
+        assert DocumentContent.objects.filter(id=content.id).exists()
+        assert DocumentMetadata.objects.filter(
+            document_id=document.document_id
+        ).exists()
+
+
+@pytest.mark.django_db
+class TestCollectionBulkDeleteSoftDelete:
+    """Tests for the SOFT_DELETE env-flag behavior on bulk collection deletion."""
+
+    def _create_collection(self, auth_client, name):
+        url = reverse("sourcecollection-list")
+        response = auth_client.post(url, {"collection_name": name}, format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.content
+        return response.json()
+
+    def test_bulk_delete_soft_deletes_collections_and_leaves_documents_intact(
+        self, auth_client
+    ):
+        """SOFT_DELETE=True (default): bulk-delete soft-deletes every collection
+        via a per-instance `.delete()` loop (so `DeleteService` runs for each
+        one) and leaves associated documents untouched."""
+        from tables.models import DocumentContent, DocumentMetadata
+
+        first = self._create_collection(auth_client, "Bulk Soft 1")
+        second = self._create_collection(auth_client, "Bulk Soft 2")
+
+        first_collection = SourceCollection.objects.get(
+            collection_id=first["collection_id"]
+        )
+        content = DocumentContent.objects.create(content=b"bulk keep me")
+        document = DocumentMetadata.objects.create(
+            source_collection=first_collection,
+            document_content=content,
+            file_name="bulk_keep_me.txt",
+            file_type="txt",
+            file_size=12,
+        )
+
+        url = reverse("sourcecollection-bulk-delete")
+        response = auth_client.post(
+            url,
+            {"collection_ids": [first["collection_id"], second["collection_id"]]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert response.json()["deleted_count"] == 2
+
+        for collection_id in (first["collection_id"], second["collection_id"]):
+            assert not SourceCollection.objects.filter(
+                collection_id=collection_id
+            ).exists()
+            deleted = SourceCollection.all_objects.get(collection_id=collection_id)
+            assert deleted.is_soft_deleted is True
+            assert deleted.soft_deleted_at is not None
+
+        assert DocumentContent.objects.filter(id=content.id).exists()
+        assert DocumentMetadata.objects.filter(
+            document_id=document.document_id
+        ).exists()

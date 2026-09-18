@@ -1,32 +1,36 @@
-import { NgIf, NgStyle, NgTemplateOutlet } from '@angular/common';
+import { NgStyle, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     computed,
     EventEmitter,
+    inject,
     Input,
+    input,
     Output,
     signal,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
+import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
+import { LlmConfigStorageService } from '../../../shared/services/llms/llm-config-storage.service';
 import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { NodeType } from '../../core/enums/node-type';
 import {
     AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
     DecisionTableNodeModel,
     EdgeNodeModel,
     EndNodeModel,
     GraphNoteModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -36,9 +40,9 @@ import {
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
+import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
-import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
 
@@ -46,10 +50,8 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
     selector: 'app-flow-base-node',
     templateUrl: './flow-base-node.component.html',
     styleUrls: ['./flow-base-node.component.scss'],
-    standalone: true,
     imports: [
         FFlowModule,
-        NgIf,
         NgStyle,
         NgTemplateOutlet,
         ClickOrDragDirective,
@@ -68,6 +70,9 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
     },
 })
 export class FlowBaseNodeComponent {
+    private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
+    private readonly llmConfigStorage = inject(LlmConfigStorageService);
+
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
         width: number;
@@ -78,8 +83,8 @@ export class FlowBaseNodeComponent {
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     @Input() showVariables: boolean = false;
+    multiSelectActive = input<boolean>(false);
 
-    @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
     @Output() portMouseenter = new EventEmitter<void>();
     @Output() portMouseleave = new EventEmitter<void>();
 
@@ -138,8 +143,6 @@ export class FlowBaseNodeComponent {
                 return 'type-agent';
             case NodeType.TASK:
                 return 'type-task';
-            case NodeType.PROJECT:
-                return 'type-project';
             case NodeType.TOOL:
                 return 'type-tool';
             case NodeType.LLM:
@@ -161,7 +164,6 @@ export class FlowBaseNodeComponent {
         }
     }
 
-    // Getters for specific node types
     public get agentNode() {
         return this.node.type === NodeType.AGENT ? (this.node as AgentNodeModel) : null;
     }
@@ -186,9 +188,13 @@ export class FlowBaseNodeComponent {
         return this.node.type === NodeType.EDGE ? (this.node as EdgeNodeModel) : null;
     }
 
-    public get tableNode() {
-        return this.node.type === NodeType.TABLE || this.node.type === NodeType.CLASSIFICATION_TABLE
-            ? (this.node as any)
+    public get decisionTableNode(): DecisionTableNodeModel | null {
+        return this.node.type === NodeType.TABLE ? (this.node as DecisionTableNodeModel) : null;
+    }
+
+    public get classificationTableNode(): ClassificationDecisionTableNodeModel | null {
+        return this.node.type === NodeType.CLASSIFICATION_TABLE
+            ? (this.node as ClassificationDecisionTableNodeModel)
             : null;
     }
 
@@ -204,8 +210,47 @@ export class FlowBaseNodeComponent {
     public get isBlockedSubgraph(): boolean {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
     }
-    public onExpandProjectClick(): void {
-        this.projectExpandToggled.emit(this.node as ProjectNodeModel);
+
+    private get assignedAgentDefinitionId(): number | null {
+        return this.agentNode?.data.agent_definition ?? this.taskNode?.data.agent_definition ?? null;
+    }
+
+    public get hasMissingAgentLlm(): boolean {
+        const agentId = this.assignedAgentDefinitionId;
+        if (agentId == null) return false;
+        const agent = this.agentDefinitionsApi.definitions().find((a) => a.id === agentId);
+        if (!agent) return false;
+        if (agent.llm_config == null) return true;
+        if (!this.llmConfigStorage.isConfigsLoaded()) return false;
+        const availableIds = new Set(this.llmConfigStorage.configs().map((c) => c.id));
+        return !availableIds.has(agent.llm_config);
+    }
+
+    public get agentLlmWarningTooltip(): string {
+        const agentId = this.assignedAgentDefinitionId;
+        if (agentId == null) return '';
+        const agent = this.agentDefinitionsApi.definitions().find((a) => a.id === agentId);
+        if (!agent) return '';
+        if (agent.llm_config == null) return 'The assigned agent has no LLM model configured.';
+        if (!this.llmConfigStorage.isConfigsLoaded()) return '';
+        const availableIds = new Set(this.llmConfigStorage.configs().map((c) => c.id));
+        if (!availableIds.has(agent.llm_config)) {
+            return "The assigned agent's LLM model was deleted. Reassign a model to the agent.";
+        }
+        return '';
+    }
+
+    public get hasMissingAgent(): boolean {
+        // Only agent/task nodes carry an agent assignment.
+        if (this.agentNode === null && this.taskNode === null) return false;
+        if (this.node.backendId == null) return false;
+        return this.assignedAgentDefinitionId == null;
+    }
+
+    public get missingAgentTooltip(): string {
+        return this.hasMissingAgent
+            ? 'This node has no agent assigned (the agent may have been deleted). Assign an agent to this node.'
+            : '';
     }
 
     public getNodeTitle(): string {

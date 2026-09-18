@@ -9,7 +9,7 @@ from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.realtime_models import RealtimeAgent
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgent
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeModel,
@@ -17,35 +17,27 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.crew_models import (
-    AgentConfiguredTools,
-    AgentPythonCodeTools,
     DefaultAgentConfig,
-    DefaultCrewConfig,
 )
-from tables.services.config_service import YamlConfigService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 from tables.models import (
     LLMConfig,
     EmbeddingConfig,
     EmbeddingModel,
     LLMModel,
     Provider,
-    Crew,
     Agent,
-    Task,
-    Tool,
-    ToolConfig,
-    ToolConfigField,
     Session,
     Graph,
-    CrewNode,
-    Edge,
     StartNode,
     PythonCodeTool,
     PythonCode,
-    RealtimeAgent,
+    Organization,
+    Secret,
 )
+from tables.services.secrets import secret_encryption
 
 from tests.helpers import data_to_json_file
 
@@ -84,12 +76,13 @@ def gpt_35_llm(openai_provider: Provider) -> LLMModel:
 
 
 @pytest.fixture
-def llm_config(gpt_4o_llm) -> LLMConfig:
+def llm_config(gpt_4o_llm, default_org) -> LLMConfig:
     llm_config = LLMConfig(
         custom_name="MyGPT-4o",
         model=gpt_4o_llm,
         temperature=0.5,
         is_visible=True,
+        org=default_org,
     )
     llm_config.save()
     return llm_config
@@ -105,47 +98,23 @@ def default_agent_config(llm_config) -> DefaultAgentConfig:
 
 
 @pytest.fixture
-def default_crew_config(llm_config) -> DefaultCrewConfig:
-    default_crew_config = DefaultCrewConfig(
-        process="sequential",
-        memory=False,
-        embedding_config=None,
-        manager_llm_config=llm_config,
-    )
-    default_crew_config.save()
-    return default_crew_config
-
-
-@pytest.fixture
-def new_llm_config(gpt_4o_llm):
+def new_llm_config(gpt_4o_llm, default_org):
     llm_config = LLMConfig(
-        model=gpt_4o_llm, temperature=0.9, num_ctx=1024, is_visible=True
+        model=gpt_4o_llm,
+        temperature=0.9,
+        num_ctx=1024,
+        is_visible=True,
+        org=default_org,
     )
     llm_config.save()
     return llm_config
 
 
 @pytest.fixture
-def wikipedia_tool() -> Tool:
-    wikipedia = Tool(
-        name="Wikipedia",
-        name_alias="wikipedia",
-        description="Tool to search in wikipedia",
-    )
-    wikipedia.save()
-    return wikipedia
-
-
-@pytest.fixture
-def wikipedia_tool_config(wikipedia_tool) -> ToolConfig:
-    return ToolConfig.objects.create(
-        name="wikipedia config", tool=wikipedia_tool, configuration={}
-    )
-
-
-@pytest.fixture
 def wikipedia_agent(
-    gpt_4o_llm: LLMModel, llm_config: LLMConfig, wikipedia_tool_config: ToolConfig
+    gpt_4o_llm: LLMModel,
+    llm_config: LLMConfig,
+    default_org: Organization,
 ) -> Agent:
     agent = Agent(
         role="Wikipedia searcher",
@@ -156,12 +125,9 @@ def wikipedia_agent(
         max_iter=25,
         llm_config=llm_config,
         fcm_llm_config=llm_config,
+        org=default_org,
     )
     agent.save()
-
-    AgentConfiguredTools.objects.create(
-        agent_id=agent.id, toolconfig_id=wikipedia_tool_config.id
-    )
 
     return agent
 
@@ -176,66 +142,25 @@ def embedding_model(openai_provider: Provider) -> EmbeddingModel:
 
 
 @pytest.fixture
-def embedding_config(embedding_model: EmbeddingModel) -> EmbeddingConfig:
+def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingConfig:
     embedding_config = EmbeddingConfig(
+        custom_name="MyEmbedder",
         model=embedding_model,
         task_type="retrieval_document",
+        org=default_org,
     )
     embedding_config.save()
     return embedding_config
 
 
 @pytest.fixture
-def test_task(wikipedia_agent) -> Task:
-    task = Task(
-        name="test task",
-        agent=wikipedia_agent,
-        instructions="some instructions",
-        expected_output="some output",
-        order=1,
-    )
-    task.save()
-    return task
+def graph(default_org: Organization) -> Graph:
+    return Graph.objects.create(name="test", org=default_org)
 
 
 @pytest.fixture
-def crew(
-    wikipedia_agent: Agent,
-    embedding_config: EmbeddingConfig,
-    llm_config: LLMConfig,
-    test_task: Task,
-) -> Crew:
-    crew = Crew(
-        name="Test Crew",
-        description="crew for tests",
-        process="sequential",
-        memory=True,
-        embedding_config=embedding_config,
-        manager_llm_config=llm_config,
-        memory_llm_config=llm_config,
-    )
-
-    crew.save()
-    crew.agents.set([wikipedia_agent])
-    test_task.crew = crew
-    test_task.save()
-    crew.save()
-
-    return crew
-
-
-@pytest.fixture
-def graph() -> Graph:
-    return Graph.objects.create(name="test")
-
-
-@pytest.fixture
-def session_data(crew: Crew, graph: Graph) -> dict:
-    crew_node = CrewNode.objects.create(node_name="crew_node_1", crew=crew, graph=graph)
-    start_node = StartNode.objects.create(graph=graph, variables={})
-    Edge.objects.create(
-        graph=graph, start_node_id=start_node.id, end_node_id=crew_node.id
-    )
+def session_data(graph: Graph) -> dict:
+    StartNode.objects.create(graph=graph, variables={})
     return {
         "graph_id": graph.pk,
         "variables": {
@@ -249,7 +174,7 @@ def session_data(crew: Crew, graph: Graph) -> dict:
 @pytest.fixture
 def session(session_data) -> tuple[Session | dict]:
     session_manager = SessionManagerService()
-    return session_manager.create_session(**session_data)
+    return session_manager.create_session(**session_data, trigger=TriggerSpec.manual())
 
 
 @pytest.fixture
@@ -286,126 +211,11 @@ def mock_redis_service_async():
 
 
 @pytest.fixture
-def yaml_config_service_patched_config_path(
-    tmp_path: Path,
-) -> Generator[MagicMock, None, None]:
-    tmp_path.mkdir(exist_ok=True)
-    config_path: Path = tmp_path / "config.yaml"
-    with patch.object(YamlConfigService, "_CONFIG_PATH", config_path):
-        yield config_path
-
-    shutil.rmtree(tmp_path)
-
-
-@pytest.fixture
 def session_factory(db):
     def create_session(**kwargs):
         return Session.objects.create(**kwargs)
 
     return create_session
-
-
-@pytest.fixture
-def test_tool():
-    return Tool.objects.create(
-        name="Test Tool",
-        name_alias="test_tool",
-        description="test tool description",
-    )
-
-
-@pytest.fixture
-def test_tool_with_fields(test_tool):
-    field1 = ToolConfigField(
-        tool=test_tool,
-        name="llm_config",
-        description="tool llm",
-        data_type=ToolConfigField.FieldType.LLM_CONFIG,
-        required=True,
-    )
-
-    field2 = ToolConfigField(
-        tool=test_tool,
-        name="embedding_config",
-        description="tool embedder",
-        data_type=ToolConfigField.FieldType.EMBEDDING_CONFIG,
-        required=False,
-    )
-
-    field3 = ToolConfigField(
-        tool=test_tool,
-        name="url",
-        description="custom url field",
-        data_type=ToolConfigField.FieldType.STRING,
-        required=True,
-    )
-
-    field1.save()
-    field2.save()
-    field3.save()
-
-    return test_tool
-
-
-@pytest.fixture
-def test_tool_github_search():
-    return Tool.objects.create(
-        id=13,
-        name="Test GitHub Search Tool",
-        name_alias="test_github_search",
-        description="test Tool for searching GitHub repositories",
-    )
-
-
-@pytest.fixture
-def test_tool_github_search_with_fields(test_tool_github_search):
-    llm_config = ToolConfigField(
-        tool=test_tool_github_search,
-        name="llm_config",
-        description="TEST Field for LLM Configuration",
-        data_type=ToolConfigField.FieldType.LLM_CONFIG,
-        required=True,
-    )
-
-    embedding_config = ToolConfigField(
-        tool=test_tool_github_search,
-        name="embedding_config",
-        description="TEST Field for Embedding Configuration",
-        data_type=ToolConfigField.FieldType.EMBEDDING_CONFIG,
-        required=True,
-    )
-
-    github_repo = ToolConfigField(
-        tool=test_tool_github_search,
-        name="github_repo",
-        description="TEST The URL of the GitHub repository",
-        data_type=ToolConfigField.FieldType.STRING,
-        required=True,
-    )
-
-    gh_token = ToolConfigField(
-        tool=test_tool_github_search,
-        name="gh_token",
-        description="TEST Your GitHub Personal Access Token",
-        data_type=ToolConfigField.FieldType.STRING,
-        required=True,
-    )
-
-    content_types = ToolConfigField(
-        tool=test_tool_github_search,
-        name="content_types",
-        description="TEST Specifies the types of content to include in your search.",
-        data_type=ToolConfigField.FieldType.ANY,
-        required=True,
-    )
-
-    llm_config.save()
-    embedding_config.save()
-    github_repo.save()
-    gh_token.save()
-    content_types.save()
-
-    return test_tool_github_search
 
 
 @pytest.fixture
@@ -416,11 +226,23 @@ def openai_realtime_model(openai_provider):
     return realtime_model
 
 
+def _make_secret(org, name, text):
+    secret = Secret(org=org, name=name)
+    secret_encryption.encrypt(text=text).write_to(secret)
+    secret.save()
+    return secret
+
+
 @pytest.fixture
-def openai_realtime_model_config(openai_realtime_model):
+def openai_realtime_model_config(openai_realtime_model, default_org):
     # Create and return the `RealtimeModelConfig` instance
     config = RealtimeConfig.objects.create(
-        custom_name="test", api_key="test", realtime_model=openai_realtime_model
+        custom_name="test",
+        api_key_secret=_make_secret(
+            default_org, "openai-realtime-model-config-key", "test"
+        ),
+        realtime_model=openai_realtime_model,
+        org=default_org,
     )
     return config
 
@@ -433,71 +255,49 @@ def realtime_transcription_model(openai_provider):
 
 
 @pytest.fixture
-def realtime_transcription_config(realtime_transcription_model):
+def realtime_transcription_config(realtime_transcription_model, default_org):
     return RealtimeTranscriptionConfig.objects.create(
         custom_name="test_realtime_transcription_config",
         realtime_transcription_model=realtime_transcription_model,
-        api_key="mock key",
+        api_key_secret=_make_secret(
+            default_org, "realtime-transcription-config-key", "mock key"
+        ),
+        org=default_org,
+    )
+
+
+@pytest.fixture
+def openai_realtime_provider_config(default_org):
+    api_key_secret = Secret(org=default_org, name="test-openai-realtime-api-key")
+    secret_encryption.encrypt(text="test").write_to(api_key_secret)
+    api_key_secret.save()
+
+    transcription_api_key_secret = Secret(
+        org=default_org, name="test-openai-realtime-transcription-api-key"
+    )
+    secret_encryption.encrypt(text="test").write_to(transcription_api_key_secret)
+    transcription_api_key_secret.save()
+
+    return OpenAIRealtimeConfig.objects.create(
+        custom_name="test_openai_realtime_config",
+        api_key_secret=api_key_secret,
+        model_name="gpt-realtime-1.5",
+        transcription_model_name="whisper-1",
+        transcription_api_key_secret=transcription_api_key_secret,
+        org=default_org,
     )
 
 
 @pytest.fixture
 def wikipedia_agent_with_configured_realtime(
-    wikipedia_agent, openai_realtime_model_config, realtime_transcription_config
+    wikipedia_agent, openai_realtime_provider_config
 ):
     RealtimeAgent.objects.create(
         agent=wikipedia_agent,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_realtime_provider_config,
     )
 
     return wikipedia_agent
-
-
-@pytest.fixture
-def seeded_db(wikipedia_tool):
-    tool1 = ToolConfig.objects.create(name="tool1", tool=wikipedia_tool)
-
-    code = PythonCode.objects.create(code="def main(arg1, arg2): return None")
-    custom_tool = PythonCodeTool.objects.create(
-        name="custom_tool1",
-        description="description",
-        python_code=code,
-        variables=[
-            {"name": "arg1", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
-            {"name": "arg2", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
-        ],
-    )
-
-    agent1 = Agent.objects.create(role="agent1", goal="goal1", backstory="backstory")
-    agent2 = Agent.objects.create(role="agent2", goal="goal2", backstory="backstory")
-    agent3 = Agent.objects.create(role="agent3", goal="agent3", backstory="backstory")
-    agent4 = Agent.objects.create(role="agent4", goal="agent4", backstory="backstory")
-
-    agents = [agent1, agent2, agent3, agent4]
-    for agent in agents:
-        RealtimeAgent.objects.create(agent=agent)
-    AgentConfiguredTools.objects.create(agent=agent1, toolconfig=tool1)
-    AgentPythonCodeTools.objects.create(agent=agent2, pythoncodetool=custom_tool)
-    AgentConfiguredTools.objects.create(agent=agent3, toolconfig=tool1)
-    AgentPythonCodeTools.objects.create(agent=agent3, pythoncodetool=custom_tool)
-    AgentPythonCodeTools.objects.create(agent=agent4, pythoncodetool=custom_tool)
-
-    crew1 = Crew.objects.create(name="crew1")
-    crew1.agents.set((agent1, agent2))
-    crew2 = Crew.objects.create(name="crew2")
-    crew2.agents.set((agent1, agent2, agent3, agent4))
-
-    graph = Graph.objects.create(name="graph1")
-
-    CrewNode.objects.create(crew=crew1, graph=graph, node_name="crew_node1")
-    CrewNode.objects.create(crew=crew2, graph=graph, node_name="crew_node2")
-
-    return {
-        "agents": agents,
-        "crews": [crew1, crew2],
-        "graph": graph,
-    }
 
 
 @pytest.fixture
@@ -514,7 +314,14 @@ def python_tool_data():
         "name": "python tool1",
         "description": "Get user name from id",
         "variables": [
-            {"name": "user_id", "type": "integer", "description": "id of user", "input_type": "agent_input", "required": True, "default_value": None},
+            {
+                "name": "user_id",
+                "type": "integer",
+                "description": "id of user",
+                "input_type": "agent_input",
+                "required": True,
+                "default_value": None,
+            },
         ],
     }
 
@@ -532,7 +339,6 @@ def llm_config_data(embedding_model, gpt_4o_llm):
         "presence_penalty": None,
         "frequency_penalty": None,
         "logit_bias": None,
-        "response_format": None,
         "seed": None,
         "logprobs": None,
         "top_logprobs": None,
@@ -633,47 +439,6 @@ def agents_data():
 
 
 @pytest.fixture
-def crew_data():
-    return [
-        {
-            "id": 337,
-            "agents": [694],
-            "tasks": [
-                {
-                    "id": 413,
-                    "tools": {"python_tools": [], "configured_tools": []},
-                    "context_tasks": [],
-                    "name": "Rate work done",
-                    "instructions": "Ask user about ...",
-                    "expected_output": "If user satisfied tell ...",
-                    "order": 1,
-                    "human_input": True,
-                    "async_execution": False,
-                    "config": None,
-                    "output_model": None,
-                    "agent": 694,
-                }
-            ],
-            "entity_type": "Project",
-            "memory_llm_config": None,
-            "manager_llm_config": None,
-            "planning_llm_config": None,
-            "metadata": {"icon": "ui/star"},
-            "description": "Rate user experience about work done",
-            "name": "Enjoying work (4)",
-            "process": "sequential",
-            "memory": False,
-            "config": None,
-            "max_rpm": 15,
-            "cache": True,
-            "full_output": True,
-            "planning": False,
-            "default_temperature": 0.0,
-        }
-    ]
-
-
-@pytest.fixture
 def python_code() -> PythonCode:
     return PythonCode.objects.create(
         code="def main(): return 42",
@@ -690,17 +455,17 @@ def python_code_tool(python_code) -> PythonCodeTool:
         description="Test PythonCodeTool",
         variables=[],
         python_code=python_code,
-        favorite=False,
         built_in=False,
     )
 
 
 @pytest.fixture
-def python_code_tool_config(python_code_tool) -> PythonCodeToolConfig:
+def python_code_tool_config(python_code_tool, default_org) -> PythonCodeToolConfig:
     return PythonCodeToolConfig.objects.create(
         name="config1",
         tool=python_code_tool,
         configuration={"arg1": "value1", "arg2": 10},
+        org=default_org,
     )
 
 

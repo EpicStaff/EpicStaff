@@ -1,0 +1,72 @@
+<div class="summary-section">
+    <div class="summary-block">
+        <h3 class="summary-title">
+            Import Summary
+            <span class="summary-count">
+                {{ totalCount() }}
+            </span>
+        </h3>
+    </div>
+
+    @if (!isSingleGroup()) {
+        <div class="summary-slider">
+            <button
+                type="button"
+                class="slider-nav-btn slider-nav-btn--left"
+                (click)="scrollSummary(-1)"
+                [class.hidden]="!canScrollLeft()"
+                aria-label="Scroll left"
+                matTooltip="Scroll left"
+                matTooltipPosition="above"
+            >
+                <app-svg-icon
+                    icon="carousel-chevron"
+                    size="16px"
+                    class="scroll-btn-icon"
+                ></app-svg-icon>
+            </button>
+
+            <div
+                class="summary-list"
+                #summaryList
+                (scroll)="onSummaryScroll()"
+            >
+                @for (entityType of entityTypes(); track entityType) {
+                    @if (getEntityTypeCount(entityType) > 0) {
+                        <div
+                            class="summary-item"
+                            (click)="tabClick.emit(entityType)"
+                        >
+                            <app-entity-icon
+                                [entityType]="entityType"
+                                [color]="getIconColorForEntityType(entityType)"
+                            ></app-entity-icon>
+                            <p class="summary-label">
+                                <span class="summary-count">
+                                    {{ getEntityTypeCount(entityType) }}
+                                </span>
+                                {{ getEntityTypeLabel(entityType) }}
+                            </p>
+                        </div>
+                    }
+                }
+            </div>
+
+            <button
+                type="button"
+                class="slider-nav-btn slider-nav-btn--right"
+                (click)="scrollSummary(1)"
+                [class.hidden]="!canScrollRight()"
+                aria-label="Scroll right"
+                matTooltip="Scroll right"
+                matTooltipPosition="above"
+            >
+                <app-svg-icon
+                    icon="carousel-chevron"
+                    size="16px"
+                    class="scroll-btn-icon"
+                ></app-svg-icon>
+            </button>
+        </div>
+    }
+</div>

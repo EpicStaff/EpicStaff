@@ -1,0 +1,194 @@
+<div class="explorer">
+    <header class="explorer__header">
+        <button
+            type="button"
+            class="explorer__title-btn"
+            (click)="toggleFilter()"
+        >
+            <span class="explorer__title">Branches</span>
+            <span class="explorer__count">({{ store.visibleSectionsCount() }})</span>
+            <app-svg-icon
+                class="explorer__title-chevron"
+                [class.explorer__title-chevron--collapsed]="!filterOpen()"
+                icon="chevron-up-filled"
+                size="10px"
+            />
+        </button>
+        <button
+            type="button"
+            class="explorer__close"
+            aria-label="Close branches"
+            (click)="onClose()"
+        >
+            <app-svg-icon
+                icon="x-thin"
+                size="12px"
+            />
+        </button>
+    </header>
+
+    @if (filterOpen()) {
+        <div
+            class="explorer__filter-overlay"
+            (click)="onFilterCancel()"
+        ></div>
+        <div class="explorer__filter">
+            <app-branches-filter
+                [selected]="store.visibleSections()"
+                (save)="onFilterSave($event)"
+                (cancel)="onFilterCancel()"
+            />
+        </div>
+    }
+
+    <div class="explorer__search">
+        <app-tree-search
+            [value]="store.search()"
+            (valueChange)="onSearchChange($event)"
+        />
+    </div>
+
+    <div class="explorer__sections">
+        @if (store.loading()) {
+            <div class="explorer__state">Loading…</div>
+        } @else {
+            @if (store.isSectionVisible('agents')) {
+                <section
+                    class="explorer__section"
+                    data-section-id="agents"
+                    [class.explorer__section--fill]="shouldFillBody('agents')"
+                >
+                    <app-section-header
+                        label="Agents"
+                        icon="agents-tab"
+                        appDragHover
+                        (dragHover)="onSectionDragHover('agents')"
+                        [expanded]="store.isSectionExpanded('agents')"
+                        [showAdd]="true"
+                        [resource]="ResourceCode.Agents"
+                        (toggleSection)="store.toggleSection('agents')"
+                        (add)="onAdd('agents')"
+                    />
+                    <div
+                        #agentsBody
+                        class="explorer__section-body"
+                        [class.explorer__section-body--fill]="shouldFillBody('agents')"
+                        [class.explorer__section-body--resized]="sectionHeight('agents') != null"
+                        [style.height.px]="sectionHeight('agents')"
+                        [hidden]="!store.isSectionExpanded('agents')"
+                    >
+                        <app-agents-section
+                            (selectNode)="onSelect($event)"
+                            (menuAction)="onTreeMenuAction($event)"
+                            (menuOpen)="onTreeMenuOpen($event)"
+                            (attachSurface)="onAttachSharedSurface($event)"
+                        />
+                    </div>
+                    @if (!shouldFillBody('agents')) {
+                        <div
+                            class="explorer__section-resize-handle"
+                            [appResizableSection]="sectionHeightKey('agents')"
+                            [sectionTarget]="agentsBody"
+                            [sectionMinHeight]="sectionMinHeight"
+                            [sectionMaxHeightFn]="sectionMaxHeightFn('agents', agentsBody)"
+                            sectionAriaLabel="Resize Agents section"
+                            (dragStart)="ensureExpanded('agents')"
+                        ></div>
+                    }
+                </section>
+            }
+            @if (store.isSectionVisible('surfaces')) {
+                <section
+                    class="explorer__section"
+                    data-section-id="surfaces"
+                    [class.explorer__section--fill]="shouldFillBody('surfaces')"
+                    [class.explorer__section--bottom]="isBottomSection('surfaces')"
+                    [class.explorer__section--bottom-anchor]="isBottomAnchor('surfaces')"
+                >
+                    <app-section-header
+                        label="Shared Surfaces"
+                        icon="surfaces-tab"
+                        appDragHover
+                        (dragHover)="onSectionDragHover('surfaces')"
+                        [expanded]="store.isSectionExpanded('surfaces')"
+                        [showAdd]="true"
+                        [resource]="ResourceCode.Surfaces"
+                        (toggleSection)="store.toggleSection('surfaces')"
+                        (add)="onAdd('surfaces')"
+                    />
+                    <div
+                        #surfacesBody
+                        class="explorer__section-body"
+                        [class.explorer__section-body--fill]="shouldFillBody('surfaces')"
+                        [class.explorer__section-body--resized]="sectionHeight('surfaces') != null"
+                        [style.height.px]="sectionHeight('surfaces')"
+                        [hidden]="!store.isSectionExpanded('surfaces')"
+                    >
+                        <app-surfaces-section
+                            (selectNode)="onSelect($event)"
+                            (menuAction)="onTreeMenuAction($event)"
+                            (menuOpen)="onTreeMenuOpen($event)"
+                            (attachSurface)="onAttachSharedSurface($event)"
+                        />
+                    </div>
+                    @if (!shouldFillBody('surfaces')) {
+                        <div
+                            class="explorer__section-resize-handle"
+                            [appResizableSection]="sectionHeightKey('surfaces')"
+                            [sectionTarget]="surfacesBody"
+                            [sectionMinHeight]="sectionMinHeight"
+                            [sectionMaxHeightFn]="sectionMaxHeightFn('surfaces', surfacesBody)"
+                            sectionAriaLabel="Resize Shared Surfaces section"
+                            (dragStart)="ensureExpanded('surfaces')"
+                        ></div>
+                    }
+                </section>
+            }
+            @if (store.isSectionVisible('storage')) {
+                <section
+                    class="explorer__section"
+                    data-section-id="storage"
+                    [class.explorer__section--fill]="shouldFillBody('storage')"
+                    [class.explorer__section--bottom]="isBottomSection('storage')"
+                    [class.explorer__section--bottom-anchor]="isBottomAnchor('storage')"
+                >
+                    <app-section-header
+                        label="Storage"
+                        icon="folder-storage"
+                        [expanded]="store.isSectionExpanded('storage')"
+                        [showAdd]="true"
+                        [resource]="ResourceCode.Files"
+                        [showMenu]="true"
+                        [menuActions]="[ActionCode.Export, ActionCode.Delete]"
+                        (toggleSection)="store.toggleSection('storage')"
+                        (add)="onAdd('storage')"
+                        (menu)="onStorageMenu($event)"
+                    />
+                    @if (store.storageActivated()) {
+                        <div
+                            class="explorer__section-body"
+                            [class.explorer__section-body--fill]="shouldFillBody('storage')"
+                            [hidden]="!store.isSectionExpanded('storage')"
+                        >
+                            <app-storage-section (selectItem)="onStorageSelect($event)" />
+                        </div>
+                    }
+                </section>
+            }
+        }
+    </div>
+
+    <app-explorer-context-menu
+        [open]="menuOpen()"
+        [position]="menuPosition()"
+        [items]="menuItems()"
+        (action)="onMenuItemAction($event)"
+        (close)="closeMenu()"
+    />
+</div>
+
+<div
+    class="resizable-sidebar-handle"
+    [appResizableSidebar]="sidebarStorageKey"
+    [sidebarTarget]="hostElement"
+></div>

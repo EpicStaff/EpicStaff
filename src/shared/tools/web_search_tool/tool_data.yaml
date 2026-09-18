@@ -1,0 +1,7 @@
+tool-data:
+  name: "Web Search Tool"
+  description: "Searches the web via the Serper API. Requires the 'api_key' configuration field (Serper API key) to be set when configuring this tool for an agent."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

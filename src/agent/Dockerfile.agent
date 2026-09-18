@@ -1,0 +1,63 @@
+# --- Stage 1: Builder ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
+
+# Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
+# sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
+# never executes arbitrary Python code. A service that gains a dependency with
+# no Linux wheel (psycopg2 is the audited exception elsewhere in this repo, via
+# UV_NO_BINARY_PACKAGE) will fail the build rather than silently regain source
+# execution.
+#
+# UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
+# interpreter instead of using the digest-pinned base image above, silently
+# defeating that pin.
+RUN pip install --no-cache-dir uv==0.11.21
+
+ENV UV_NO_BUILD=1 \
+    UV_PROJECT_ENVIRONMENT=/app/src/agent/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv_cache \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/src
+
+# Copy only dependency descriptors first (better layer caching)
+COPY ./agent/pyproject.toml ./agent/uv.lock ./agent/
+
+WORKDIR /app/src/agent
+
+# Install dependencies into /app/src/agent/.venv.
+# --all-groups is required: transitive-pins (and any other non-dev group) is
+# not installed by default. --no-group dev deliberately excludes dev from this
+# image.
+RUN uv sync --frozen --no-install-project --all-groups --no-group dev
+
+# Copy application source
+COPY ./agent /app/src/agent
+COPY ./shared /app/src/shared
+
+# --- Stage 2: Runtime ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+
+# Copy built app from builder
+COPY --from=builder /app /app
+
+# Create non-root user for runtime
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
+ && chown -R app:app /app
+
+# Add virtualenv to PATH
+ENV PATH="/app/src/agent/.venv/bin:$PATH" \
+    PYTHONPATH=/app/src \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/app/src/agent/.venv
+
+WORKDIR /app/src/agent
+
+USER app
+
+CMD ["python3", "/app/src/agent/main.py"]

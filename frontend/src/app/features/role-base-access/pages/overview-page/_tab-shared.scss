@@ -18,7 +18,7 @@
     .count-label {
         flex: 1;
         text-align: center;
-        font-size: 14px;
+        font-size: 0.875rem;
         color: var(--text-secondary-60);
         white-space: nowrap;
     }
@@ -42,9 +42,52 @@
         cursor: pointer;
         transition: all 0.3s ease;
 
-        &:hover {
+        &:hover:not(:disabled):not(.open) {
             color: var(--accent-color);
             border-color: var(--accent-color);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        &.active {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        &.open {
+            background: var(--purple-primary);
+            border-color: var(--purple-primary);
+            color: var(--white);
+        }
+    }
+
+    .settings-dropdown {
+        background: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px var(--black-alpha-24);
+        overflow: hidden;
+        min-width: 120px;
+    }
+
+    .settings-dropdown-item {
+        width: 100%;
+        padding: 10px 16px;
+        background: transparent;
+        font-size: 0.875rem;
+        color: var(--text);
+        cursor: pointer;
+        transition: background 0.15s ease;
+
+        &:not(:last-child) {
+            border-bottom: 1px solid var(--color-input-border);
+        }
+
+        &:hover {
+            background: var(--transparent-white-8);
         }
     }
 
@@ -64,7 +107,7 @@
     }
 
     .user-name {
-        font-size: 14px;
+        font-size: 0.875rem;
         color: var(--text);
         white-space: nowrap;
         overflow: hidden;
@@ -87,7 +130,7 @@
         align-items: center;
         padding: 2px 6px;
         border-radius: 4px;
-        font-size: 12px;
+        font-size: 0.75rem;
         color: var(--text-secondary-60);
         background: var(--transparent-white-8);
         white-space: nowrap;
@@ -101,63 +144,12 @@
         line-height: 100%;
 
         .date {
-            font-size: 14px;
+            font-size: 0.875rem;
             color: var(--text);
         }
 
         .relative {
-            font-size: 12px;
-            color: var(--text-secondary-60);
-        }
-    }
-
-    .cell-text {
-        font-size: 14px;
-        color: var(--text-secondary-60);
-    }
-
-    .empty-value {
-        color: var(--text-secondary-60);
-    }
-
-    .actions-cell {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        justify-content: flex-end;
-    }
-
-    .action-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        border: 1px solid var(--color-divider-subtle);
-        background: transparent;
-        border-radius: 4px;
-        color: var(--text-secondary-60);
-        cursor: pointer;
-        transition:
-            background-color 0.15s ease,
-            color 0.15s ease;
-
-        &:hover {
-            background: var(--transparent-white-8);
-            color: var(--text);
-        }
-
-        &.danger {
-            background: var(--color-status-error-subtle, rgba(239, 68, 68, 0.15));
-            color: var(--color-status-error, #ef4444);
-
-            &:hover {
-                background: var(--color-status-error-hover, rgba(239, 68, 68, 0.25));
-                color: var(--color-status-error, #ef4444);
-            }
-        }
-
-        &--muted {
+            font-size: 0.75rem;
             color: var(--text-secondary-60);
         }
     }

@@ -172,18 +172,6 @@ class LastSuperadminError(CustomAPIExeption):
     default_code = "last_superadmin"
 
 
-class LastOrgAdminError(CustomAPIExeption):
-    """Raised by UserManagementService.remove_membership /change_role when
-    the operation would leave the organization with zero Org Admins."""
-
-    status_code = 400
-    default_detail = (
-        "Cannot remove or demote the last Org Admin of this organization. "
-        "Promote another member to Org Admin first."
-    )
-    default_code = "last_org_admin"
-
-
 class InvalidRoleAssignmentError(CustomAPIExeption):
     """Raised by UserManagementGuards.assert_role_is_assignable when the
     target role cannot be assigned via membership — either because it is
@@ -202,18 +190,6 @@ class RoleNotFoundError(CustomAPIExeption):
     status_code = 404
     default_detail = "Role not found."
     default_code = "role_not_found"
-
-
-class CannotSelfAssignError(CustomAPIExeption):
-    """Raised by UserManagementService.assign_users when a non-superadmin
-    caller includes their own user_id in the batch. Superadmins bypass
-    this rule. Caller-relationship UX safety, not a system-integrity
-    invariant — the single-row PATCH endpoint exists for deliberate
-    self-modification."""
-
-    status_code = 400
-    default_detail = "You cannot include yourself in the assignment batch."
-    default_code = "cannot_self_assign"
 
 
 class InvalidPasswordChangeTicketError(CustomAPIExeption):
@@ -239,7 +215,7 @@ class InvalidAvatarError(CustomAPIExeption):
 
 class AvatarTooLargeError(CustomAPIExeption):
     """Raised by UserAvatarStorageService when an avatar upload exceeds
-    settings.AVATAR_MAX_BYTES. The default_detail is overridden at
+    settings.AVATAR_MAX_SIZE. The default_detail is overridden at
     raise-site with the actual maximum so the FE can render it without
     hardcoding the number."""
 
@@ -256,6 +232,14 @@ class BuiltInRoleImmutableError(CustomAPIExeption):
     status_code = 403
     default_detail = "Built-in roles cannot be edited or deleted."
     default_code = "built_in_role_immutable"
+
+
+class BuiltInModelImmutableError(CustomAPIExeption):
+    """Raised when a write targets a shared built-in provider model row (org IS NULL)."""
+
+    status_code = 403
+    default_detail = "Built-in models cannot be edited or deleted."
+    default_code = "built_in_model_immutable"
 
 
 class OrgContextRequiredError(CustomAPIExeption):
@@ -302,3 +286,119 @@ class OrganizationContextAmbiguous(CustomAPIExeption):
         "Multiple organization memberships; please specify X-Organization-Id header."
     )
     default_code = "organization_context_ambiguous"
+
+
+class ApiKeyNotFoundError(CustomAPIExeption):
+    """Raised when an API key id does not exist in the caller's scope
+    (own keys for self-service, active-org members' keys for management).
+    404 in both cases — no cross-user/cross-org enumeration."""
+
+    status_code = 404
+    default_detail = "API key not found."
+    default_code = "api_key_not_found"
+
+
+class ApiKeyLimitExceededError(CustomAPIExeption):
+    """Raised by ApiKeyService.create_key when the caller already has the
+    maximum number of active (non-revoked, non-expired) keys."""
+
+    status_code = 400
+    default_detail = (
+        "Maximum number of active API keys reached (5). "
+        "Revoke or delete an existing key first."
+    )
+    default_code = "api_key_limit_exceeded"
+
+
+class FirstSetupDisabledError(CustomAPIExeption):
+    """Raised by FirstSetupView when settings.FIRST_SETUP_MODE is not
+    `open`. The HTTP endpoint is anonymous, so on an internet-exposed
+    deployment it would otherwise be claimable by whoever reaches it
+    first; the superadmin comes from `manage.py create_superadmin`
+    instead."""
+
+    status_code = 403
+    default_detail = (
+        "HTTP first-setup is disabled on this deployment. Create the first "
+        "superadmin with `python manage.py create_superadmin`."
+    )
+    default_code = "first_setup_disabled"
+
+
+class PermissionEscalationError(CustomAPIExeption):
+    """Raised by RoleManagementService when a create/update would grant a
+    permission bit the caller does not itself hold in that org (ceiling /
+    no-escalation rule). Superadmin bypasses the rule."""
+
+    status_code = 403
+    default_detail = (
+        "You cannot grant permissions you do not have in this organization."
+    )
+    default_code = "permission_escalation_denied"
+
+
+class RoleNameConflictError(CustomAPIExeption):
+    """Raised by RoleManagementService when a role name already exists in
+    the target org (case-insensitive). The caller renames — names are
+    never silently overwritten."""
+
+    status_code = 400
+    default_detail = "A role with this name already exists in this organization."
+    default_code = "role_name_conflict"
+
+
+class MembershipNotFoundError(CustomAPIExeption):
+    """Raised by MembershipManagementService when a membership id does not
+    exist, or exists in an org the caller cannot access. Cross-org rows are
+    indistinguishable from missing ones (404 — no existence leak)."""
+
+    status_code = 404
+    default_detail = "Membership not found."
+    default_code = "membership_not_found"
+
+
+class SelfMembershipModificationError(CustomAPIExeption):
+    """Raised when a non-superadmin attempts to change or remove their own
+    membership (role up/down, or removal). Self-service membership changes are
+    not allowed — another admin or a superadmin manages you. Superadmin
+    bypasses."""
+
+    status_code = 403
+    default_detail = "You cannot modify your own membership."
+    default_code = "cannot_modify_self_membership"
+
+
+class SelfRoleDeletionError(CustomAPIExeption):
+    """Raised when a caller deletes the role they themselves hold. The delete
+    reassigns every holder to Viewer, so it would silently demote the caller
+    and can leave an organization with nobody able to manage roles. Another
+    admin or a superadmin does it instead."""
+
+    status_code = 403
+    default_detail = "You cannot delete the role you currently hold."
+    default_code = "cannot_delete_own_role"
+
+
+class SuperadminNotAssignableError(CustomAPIExeption):
+    """Raised when a membership write targets a superadmin. A superadmin holds
+    every permission in every organization, so a membership row grants nothing
+    and a role on it means nothing. Covers both adding one as a member and
+    changing the role on a membership they already hold."""
+
+    status_code = 400
+    default_detail = (
+        "Superadmins have access to every organization and cannot be added "
+        "as members or given an organization role."
+    )
+    default_code = "superadmin_not_assignable"
+
+
+class InactiveUserError(CustomAPIExeption):
+    """Raised when a membership write targets a deactivated account. The
+    account cannot sign in, so a membership would be inert."""
+
+    status_code = 400
+    default_detail = (
+        "This account is deactivated and cannot be added to an organization."
+    )
+    default_code = "user_not_active"

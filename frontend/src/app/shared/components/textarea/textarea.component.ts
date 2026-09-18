@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, ElementRef, forwardRef, input, signal, ViewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    forwardRef,
+    input,
+    signal,
+    ViewChild,
+} from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -27,6 +36,9 @@ export class TextareaComponent implements ControlValueAccessor {
     invalid = input<boolean>(false);
     disabled = input<boolean>(false);
 
+    private controlDisabled = signal(false);
+    isDisabled = computed(() => this.disabled() || this.controlDisabled());
+
     value = signal<string>('');
 
     @ViewChild('textareaRef') private textareaRef!: ElementRef<HTMLTextAreaElement>;
@@ -52,10 +64,11 @@ export class TextareaComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        void isDisabled;
+        this.controlDisabled.set(isDisabled);
     }
 
     handleInput(event: Event): void {
+        if (this.isDisabled()) return;
         const val = (event.target as HTMLTextAreaElement).value;
         this.value.set(val);
         this.onChange(val);
@@ -66,7 +79,7 @@ export class TextareaComponent implements ControlValueAccessor {
     }
 
     onResizeStart(event: PointerEvent): void {
-        if (this.disabled()) return;
+        if (this.isDisabled()) return;
         event.preventDefault();
         this.resizing = true;
         this.dragStartY = event.clientY;

@@ -1,7 +1,8 @@
-import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { HttpClient, HttpContext } from '@angular/common/http';
+import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
+    AccessToken,
     ConfirmResetPasswordRequest,
     ConfirmResetPasswordResponse,
     FirstSetupRequest,
@@ -9,11 +10,11 @@ import {
     FirstSetupStatus,
     ResetPasswordRequest,
     ResetPasswordResponse,
-    TokenPair,
 } from '@shared/models';
 import { AppStorageService } from '@shared/services';
 import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
+import { SKIP_FORBIDDEN_RELOAD } from '../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../config';
 import { ProfileService } from './profile.service';
 
@@ -34,10 +35,15 @@ export class AuthService {
     private readonly appStorage = inject(AppStorageService);
 
     private readonly accessKey = 'auth.access';
-    private readonly refreshKey = 'auth.refresh';
 
     private refreshInProgress$: Observable<string | null> | null = null;
     private statusCache$: Observable<FirstSetupStatus> | null = null;
+
+    // ID of the organization created during initial superadmin setup
+    defaultOrgId = signal<number | null>(null);
+
+    private readonly accessTokenSignal = signal<string | null>(this.getCookie(this.accessKey));
+    public readonly accessToken = this.accessTokenSignal.asReadonly();
 
     private get baseUrl(): string {
         return `${this.configService.apiUrl}auth/`;
@@ -57,33 +63,36 @@ export class AuthService {
     }
 
     runSetup(payload: FirstSetupRequest): Observable<FirstSetupResponse> {
-        return this.http.post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload).pipe(
-            tap(() => {
-                this.statusCache$ = null;
-            })
-        );
+        return this.http
+            .post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload, { withCredentials: true })
+            .pipe(
+                tap((resp) => {
+                    this.defaultOrgId.set(resp.organization.id);
+                    this.statusCache$ = null;
+                })
+            );
     }
 
     login(email: string, password: string, rememberMe: boolean = false): Observable<boolean> {
-        return this.http.post<TokenPair>(`${this.baseUrl}login/`, { email, password }).pipe(
-            tap((tokens) => this.storeTokens(tokens, rememberMe)),
-            map(() => true)
-        );
+        this.deleteLegacyRefreshCookie();
+        return this.http
+            .post<AccessToken>(`${this.baseUrl}login/`, { email, password }, { withCredentials: true })
+            .pipe(
+                tap((tokens) => this.storeAccessToken(tokens.access, rememberMe)),
+                map(() => true)
+            );
     }
 
     logout(): Observable<void> {
-        const refreshToken = this.getRefreshToken();
         this.currentUserService.clearCurrentUser();
         this.appStorage.clearAll();
 
-        if (!refreshToken) {
-            this.removeTokensAndNavToLogin();
-            return of();
-        }
-
-        return this.http.post<void>(`${this.baseUrl}logout/`, { refresh: refreshToken }).pipe(
-            tap(() => this.removeTokensAndNavToLogin()),
-            catchError((err) => throwError(() => err))
+        return this.http.post<void>(`${this.baseUrl}logout/`, {}, { withCredentials: true }).pipe(
+            tap(() => this.removeTokenAndNavToLogin()),
+            catchError(() => {
+                this.removeTokenAndNavToLogin();
+                return of(undefined);
+            })
         );
     }
 
@@ -104,34 +113,34 @@ export class AuthService {
             return this.refreshInProgress$;
         }
 
-        const refresh = this.getRefreshToken();
-        if (!refresh) return of(null);
+        this.deleteLegacyRefreshCookie();
+        const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
 
-        this.refreshInProgress$ = this.http.post<TokenPair>(`${this.baseUrl}refresh/`, { refresh }).pipe(
-            tap((resp) => {
-                this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));
-                if (resp.refresh) {
-                    this.setCookie(this.refreshKey, resp.refresh, this.getTokenExpiry(resp.refresh));
-                }
-            }),
-            map((resp) => resp.access),
-            catchError((err) => {
-                this.removeTokensAndNavToLogin();
-                return throwError(() => err);
-            }),
-            finalize(() => {
-                this.refreshInProgress$ = null;
-            }),
-            shareReplay(1)
-        );
+        this.refreshInProgress$ = this.http
+            .post<AccessToken>(`${this.baseUrl}refresh/`, {}, { context, withCredentials: true })
+            .pipe(
+                tap((resp) => {
+                    this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));
+                    this.accessTokenSignal.set(resp.access);
+                }),
+                map((resp) => resp.access),
+                catchError((err) => {
+                    this.removeTokenAndNavToLogin();
+                    return throwError(() => err);
+                }),
+                finalize(() => {
+                    this.refreshInProgress$ = null;
+                }),
+                shareReplay(1)
+            );
 
         return this.refreshInProgress$;
     }
 
-    removeTokensAndNavToLogin(): void {
+    removeTokenAndNavToLogin(): void {
         this.deleteCookie(this.accessKey);
-        this.deleteCookie(this.refreshKey);
-
+        this.deleteLegacyRefreshCookie();
+        this.accessTokenSignal.set(null);
         void this.router.navigate(['/login']);
     }
 
@@ -148,15 +157,10 @@ export class AuthService {
         return this.getCookie(this.accessKey);
     }
 
-    getRefreshToken(): string | null {
-        return this.getCookie(this.refreshKey);
-    }
-
-    storeTokens(tokens: TokenPair, persist: boolean = true): void {
-        const accessExpiry = persist ? this.getTokenExpiry(tokens.access) : undefined;
-        const refreshExpiry = persist ? this.getTokenExpiry(tokens.refresh) : undefined;
-        this.setCookie(this.accessKey, tokens.access, accessExpiry);
-        this.setCookie(this.refreshKey, tokens.refresh, refreshExpiry);
+    storeAccessToken(accessToken: string, persist: boolean = true): void {
+        const accessExpiry = persist ? this.getTokenExpiry(accessToken) : undefined;
+        this.setCookie(this.accessKey, accessToken, accessExpiry);
+        this.accessTokenSignal.set(accessToken);
     }
 
     private setCookie(name: string, value: string, expires?: Date): void {
@@ -171,6 +175,25 @@ export class AuthService {
 
     private deleteCookie(name: string): void {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
+    }
+
+    /**
+     * Removes the legacy non-httpOnly `auth.refresh` cookie that older frontend versions wrote.
+     * The httpOnly cookie set by the backend is not accessible from JS and stays untouched.
+     */
+    private deleteLegacyRefreshCookie(): void {
+        const name = 'auth.refresh';
+        const paths = ['/', location.pathname];
+        const host = location.hostname;
+        const domains = ['', host, `.${host}`];
+        const expired = 'Thu, 01 Jan 1970 00:00:00 UTC';
+        for (const p of paths) {
+            for (const d of domains) {
+                const pathAttr = `; path=${p}`;
+                const domainAttr = d ? `; domain=${d}` : '';
+                document.cookie = `${name}=; expires=${expired}${pathAttr}${domainAttr}; SameSite=Lax`;
+            }
+        }
     }
 
     private getTokenExpiry(token: string): Date | undefined {

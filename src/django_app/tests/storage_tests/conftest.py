@@ -10,20 +10,14 @@ from rest_framework.test import APIClient
 from tables.models import Organization, OrganizationUser
 from tables.models.rbac_models import Role
 from tables.services.storage_service.base import AbstractStorageBackend
-from tables.services.storage_service.local_backend import LocalStorageBackend
 from tables.services.storage_service.manager import StorageManager
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 
 @pytest.fixture
-def tmp_path(tmp_path_factory):
-    """Override parent conftest's static tmp_path with pytest's real temp dir."""
-    return tmp_path_factory.mktemp("storage")
-
-
-@pytest.fixture
-def local_backend(tmp_path):
-    """LocalStorageBackend rooted at a real temp dir, no org prefix."""
-    return LocalStorageBackend(root=str(tmp_path), organization_prefix="")
+def fake_backend():
+    """InMemoryStorageBackend standing in for S3StorageBackend, no org prefix."""
+    return InMemoryStorageBackend(organization_prefix="")
 
 
 @pytest.fixture

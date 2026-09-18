@@ -1,0 +1,30 @@
+{
+  "title": "NotificationToolArgs",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "The notification text to send. Capped at 200 characters -- longer input is truncated and the tool's result notes the truncation."
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["email", "webhook"],
+      "description": "Delivery channel: 'email' (sent via the EpicStaff API's configured mail transport) or 'webhook' (a direct HTTP POST to 'target')."
+    },
+    "target": {
+      "type": "string",
+      "description": "Destination for the notification: an email address when channel='email', or an http(s) URL when channel='webhook'."
+    },
+    "api_key": {
+      "type": "string",
+      "description": "EpicStaff API key used to authenticate the email-notification call (sent as the X-Api-Key header). Only required for channel='email'. Set this in the tool configuration, not by the agent.",
+      "input_type": "user_input"
+    },
+    "api_base_url": {
+      "type": "string",
+      "description": "Base URL of the EpicStaff Django REST API, e.g. http://django_app:8000/api. Optional -- if unset, falls back to the DJANGO_API_URL environment variable, then to http://django_app:8000/api. Only used for channel='email'.",
+      "input_type": "user_input"
+    }
+  },
+  "required": ["message", "channel", "target"]
+}

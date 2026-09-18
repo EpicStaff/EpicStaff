@@ -1,5 +1,15 @@
-import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, forwardRef, Input, Output } from '@angular/core';
+import {
+    AfterViewInit,
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    EventEmitter,
+    forwardRef,
+    Input,
+    Output,
+    signal,
+    ViewChild,
+} from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -7,8 +17,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
-    standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
+    imports: [FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -30,19 +39,21 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             }
             <div class="input-wrapper">
                 <input
+                    #inputEl
                     [type]="effectiveType"
                     [id]="id"
                     [name]="name"
                     [attr.autocomplete]="effectiveAutocomplete"
+                    [attr.spellcheck]="spellcheck"
                     [placeholder]="placeholder"
                     [(ngModel)]="value"
-                    (blur)="onTouched(); blur.emit()"
+                    (focus)="focused.set(true)"
+                    (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
                     class="text-input"
                     [class.has-toggle]="hasToggle"
                     [class.masked]="isMasked"
                     [class.error]="errorMessage"
-                    [disabled]="disabled"
-                    [autofocus]="autofocus"
+                    [disabled]="isDisabled"
                     [style.--active-color]="activeColor"
                 />
                 @if (hasToggle) {
@@ -61,6 +72,11 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             @if (errorMessage) {
                 <div class="error-message">
                     {{ errorMessage }}
+                </div>
+            }
+            @if (isSecret && focused() && cautionMessage) {
+                <div class="caution-message">
+                    {{ cautionMessage }}
                 </div>
             }
         </div>
@@ -87,7 +103,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     display: block;
                     font-size: 0.875rem;
                     line-height: 130%;
-                    color: var(--color-ks-text);
+                    color: var(--color-text-secondary);
                     margin: 0;
                 }
 
@@ -105,10 +121,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         display: none;
                     }
                     background-color: var(--color-input-background);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border: 1px solid var(--color-input-border);
                     border-radius: 6px;
                     color: var(--color-text-primary);
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
@@ -150,19 +166,30 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                     }
                 }
 
                 .error-message {
                     color: #ef4444;
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     margin-top: 4px;
                     line-height: 1.4;
+                }
+
+                .caution-message {
+                    margin-top: 6px;
+                    padding: 0.625rem;
+                    background-color: rgba(104, 95, 255, 0.1);
+                    border-radius: 6px;
+                    border-left: 3px solid #685fff;
+                    font-size: 0.75rem;
+                    color: #ffffffb3;
                 }
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -171,21 +198,27 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
         },
     ],
 })
-export class CustomInputComponent implements ControlValueAccessor {
+export class CustomInputComponent implements ControlValueAccessor, AfterViewInit {
+    @ViewChild('inputEl') inputEl!: ElementRef<HTMLInputElement>;
+
     @Input() label: string = '';
     @Input() placeholder: string = '';
-    @Input() type: string = 'text';
+    @Input() type: 'text' | 'secret' | 'password' = 'text';
     @Input() id: string = '';
     @Input() name: string = '';
     @Input() autocomplete: string | null = null;
+    @Input() spellcheck: boolean = false;
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
     @Input() icon: string = 'help';
     @Input() required: boolean = false;
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
+    @Input() cautionMessage: string = '';
 
     @Output() blur = new EventEmitter<void>();
+
+    focused = signal<boolean>(false);
 
     passwordVisible: boolean = false;
 
@@ -196,6 +229,7 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     private _value: string = '';
     private _disabled: boolean = false;
+    private _controlDisabled: boolean = false;
 
     onChange: (value: string) => void = () => {};
     onTouched: () => void = () => {};
@@ -218,6 +252,10 @@ export class CustomInputComponent implements ControlValueAccessor {
         this._disabled = val;
     }
 
+    get isDisabled(): boolean {
+        return this._disabled || this._controlDisabled;
+    }
+
     get isSecret(): boolean {
         return this.type === 'secret';
     }
@@ -227,23 +265,19 @@ export class CustomInputComponent implements ControlValueAccessor {
     }
 
     get effectiveType(): string {
-        if (this.isSecret) {
-            if (this.passwordVisible) return 'text';
-            return this.supportsTextSecurity ? 'text' : 'password';
-        }
         return this.isPassword && this.passwordVisible ? 'text' : this.type;
     }
 
     get isMasked(): boolean {
-        return this.isSecret && !this.passwordVisible && this.supportsTextSecurity;
+        return this.isPassword && !this.passwordVisible && this.supportsTextSecurity;
     }
 
     get hasToggle(): boolean {
-        return this.isSecret || this.isPassword;
+        return this.isPassword;
     }
 
     get effectiveAutocomplete(): string | null {
-        return this.isSecret ? 'off' : this.autocomplete;
+        return this.autocomplete;
     }
 
     get isClassIcon(): boolean {
@@ -256,6 +290,17 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     writeValue(value: string): void {
         this._value = value || '';
+        if (this.isSecret) {
+            queueMicrotask(() => this.scrollToEndIfSecret());
+        }
+    }
+
+    scrollToEndIfSecret(): void {
+        if (!this.isSecret) return;
+        const el = this.inputEl?.nativeElement;
+        if (el) {
+            el.scrollLeft = el.scrollWidth;
+        }
     }
 
     registerOnChange(fn: (value: string) => void): void {
@@ -267,6 +312,15 @@ export class CustomInputComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this._disabled = isDisabled;
+        this._controlDisabled = isDisabled;
+    }
+
+    ngAfterViewInit(): void {
+        if (this.autofocus) {
+            queueMicrotask(() => this.inputEl?.nativeElement.focus());
+        }
+        if (this.isSecret) {
+            queueMicrotask(() => this.scrollToEndIfSecret());
+        }
     }
 }

@@ -1,19 +1,19 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
-import { MarkdownModule } from 'ngx-markdown';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { FinishMessageData, GraphMessage } from '../../../../models/graph-session-message.model';
+import {
+    FinishMessageData,
+    FinishStopReason,
+    GraphMessage,
+    MessageType,
+} from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-finish-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
+    imports: [CommonModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="finish-container">
             <!-- Finish Message Header with Toggle -->
@@ -34,50 +34,58 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                     />
                 </div>
                 <h3>
-                    <span
-                        class="project-name"
-                        *ngIf="project && project.name"
-                        >{{ project.name }}</span
-                    >
-                    <span *ngIf="!project || !project.name">Default Project</span>
+                    @if (nodeName) {
+                        <span class="node-name">{{ nodeName }}</span>
+                    } @else {
+                        <span>Flow</span>
+                    }
                     finished
                 </h3>
+                @if (getStopReason(); as stopReason) {
+                    <span
+                        class="stop-reason-badge"
+                        [ngClass]="'stop-reason-badge--' + getStopReason()"
+                    >
+                        {{ getStopReasonLabel(stopReason) }}
+                    </span>
+                }
             </div>
 
             <!-- Collapsible Finish Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="finish-content">
                     <!-- Variables Section -->
-                    <div
-                        class="variables-container"
-                        *ngIf="hasVariables()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('variables')"
-                        >
-                            <app-svg-icon
-                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Variables
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="variables-content">
-                                <app-copy-button [text]="variablesJson" />
-                                <ngx-json-viewer
-                                    [json]="getVariables()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasVariables()) {
+                        <div class="variables-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('variables')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Variables
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isVariablesExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="variables-content">
+                                        <app-copy-button [text]="variablesJson" />
+                                        <app-json-viewer
+                                            [json]="getVariables()"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Final Output Section -->
                     <div class="output-container">
@@ -94,28 +102,51 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
                         <!-- Always use JSON viewer for output -->
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isOutputExpanded"
                         >
-                            <div class="output-content">
-                                <app-copy-button [text]="outputJson" />
-                                <ngx-json-viewer
-                                    [json]="getOutput()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                            <div class="collapsible-inner">
+                                <div class="output-content">
+                                    <app-copy-button [text]="outputJson" />
+                                    <app-json-viewer
+                                        [json]="getOutput()"
+                                        [expanded]="false"
+                                    ></app-json-viewer>
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Schema-validated output (schema_satisfied): parsed JSON view of output.message -->
+                    @if (getSchemaOutput(); as schemaOutput) {
+                        <div class="schema-output-container">
+                            <div class="section-heading">
+                                <app-svg-icon
+                                    icon="caret-down-filled"
+                                    size="1rem"
+                                />
+                                Schema-Validated Output
+                            </div>
+                            <div class="output-content">
+                                <app-copy-button [text]="schemaOutputJson" />
+                                <app-json-viewer
+                                    [json]="schemaOutput"
+                                    [expanded]="true"
+                                ></app-json-viewer>
+                            </div>
+                        </div>
+                    }
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: `
         .finish-container {
             position: relative;
             background-color: var(--color-nodes-background);
             border-radius: 8px;
-            padding: var(--message-padding, 1.25rem);
+            padding: var(--message-padding, 0.5rem 1rem);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-left: 4px solid #5672cd;
 
@@ -126,9 +157,12 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                 user-select: none;
 
                 .play-arrow {
-                    margin-right: 16px;
+                    width: 1.1rem;
+                    margin-right: 8px;
                     display: flex;
                     align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
 
                     app-svg-icon {
                         color: #5672cd;
@@ -136,8 +170,8 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                 }
 
                 .icon-container {
-                    width: 36px;
-                    height: 36px;
+                    width: 28px;
+                    height: 28px;
                     border-radius: 50%;
                     background-color: #5672cd;
                     display: flex;
@@ -153,18 +187,40 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
                 h3 {
                     color: var(--gray-100);
-                    font-size: 1.1rem;
-                    font-weight: 600;
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    line-height: var(--text-body-medium-line-height);
                     margin: 0;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     max-width: 100%;
 
-                    .project-name {
+                    .node-name {
                         color: #5672cd;
                         font-weight: 400;
                         margin-right: 5px;
+                    }
+                }
+
+                .stop-reason-badge {
+                    margin-left: 12px;
+                    padding: 0.15rem 0.6rem;
+                    border-radius: 999px;
+                    font-size: var(--text-body-small-large-size);
+                    font-weight: var(--text-body-small-large-weight);
+                    white-space: nowrap;
+                    flex-shrink: 0;
+
+                    &.stop-reason-badge--completed,
+                    &.stop-reason-badge--schema_satisfied {
+                        color: #30a46c;
+                        background-color: rgba(48, 164, 108, 0.15);
+                    }
+
+                    &.stop-reason-badge--max_iter_reached {
+                        color: #fbbf24;
+                        background-color: rgba(251, 191, 36, 0.15);
                     }
                 }
             }
@@ -173,14 +229,19 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                 display: flex;
                 flex-direction: column;
                 gap: 0.5rem;
-                padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .finish-content > :first-child {
+                margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 1rem;
                 cursor: pointer;
@@ -199,10 +260,6 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-
-                &.ng-animating {
-                    overflow: hidden;
-                }
             }
 
             .variables-content,
@@ -225,7 +282,8 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 })
 export class FinishMessageComponent implements OnInit {
     @Input() message!: GraphMessage;
-    @Input() project: GetProjectRequest | null = null;
+    /** Name of the graph node this finish message came from; null for a whole-flow finish. */
+    @Input() nodeName: string | null = null;
 
     isMessageExpanded = false;
     isOutputExpanded = true;
@@ -241,6 +299,10 @@ export class FinishMessageComponent implements OnInit {
         return JSON.stringify(this.getOutput(), null, 2);
     }
 
+    get schemaOutputJson(): string {
+        return JSON.stringify(this.getSchemaOutput(), null, 2);
+    }
+
     toggleMessage(): void {
         this.isMessageExpanded = !this.isMessageExpanded;
     }
@@ -254,7 +316,7 @@ export class FinishMessageComponent implements OnInit {
     }
 
     getFinishData(): FinishMessageData | null {
-        if (this.message.message_data && this.message.message_data.message_type === 'finish') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.FINISH) {
             return this.message.message_data as FinishMessageData;
         }
         return null;
@@ -267,6 +329,44 @@ export class FinishMessageComponent implements OnInit {
             return {}; // Return empty object if no output
         }
         return finishData.output;
+    }
+
+    // TaskNode / AgentNode finish payloads report a `stop_reason`; other node types don't
+    // set it, so this stays null and the template renders exactly as before (no regression).
+    getStopReason(): FinishStopReason | null {
+        return this.getFinishData()?.output?.stop_reason ?? null;
+    }
+
+    getStopReasonLabel(stopReason: FinishStopReason): string {
+        switch (stopReason) {
+            case 'schema_satisfied':
+                return 'Output matches schema';
+            case 'max_iter_reached':
+                return 'Max iterations reached';
+            case 'completed':
+            default:
+                return 'Completed';
+        }
+    }
+
+    // When stop_reason is 'schema_satisfied', output.message is a JSON string (the task had
+    // an output schema) — parse it for a formatted JSON view. Returns null when not applicable
+    // or when the message isn't valid JSON (falls back to the generic Final Output section).
+    getSchemaOutput(): Record<string, unknown> | unknown[] | null {
+        if (this.getStopReason() !== 'schema_satisfied') return null;
+
+        const message = this.getFinishData()?.output?.message;
+        if (typeof message !== 'string') return null;
+
+        try {
+            const parsed: unknown = JSON.parse(message);
+            if (parsed !== null && typeof parsed === 'object') {
+                return parsed as Record<string, unknown> | unknown[];
+            }
+            return null;
+        } catch {
+            return null;
+        }
     }
 
     // Variables handling

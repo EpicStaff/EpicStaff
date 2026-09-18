@@ -6,6 +6,8 @@ from tables.models.graph_models import (
     DecisionTableNode,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
+from tables.services.rag_assignment_service import SearchConfigService
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 
 
 """
@@ -309,11 +311,157 @@ class ClassificationDecisionTableNodeSaveable:
             "id",
             "classification_decision_table_node",
             "next_node_temp_id",
+            # Prompt reference forms — resolved to the `prompt` FK below (by
+            # prompt_key, or numeric pk fallback); never written as columns.
+            "prompt",
+            "prompt_key",
         }
     )
 
     def save(self):
         s = self._serializer
+        validated = dict(s.validated_data)
+        _clean_for_write(validated)
+
+        node = (
+            s.create(validated)
+            if s.instance is None
+            else s.update(s.instance, validated)
+        )
+        # NOTE: s.update() now upserts prompt_configs by prompt_key (stable IDs).
+
+        if self._deferred is not None:
+            self._deferred.set_node_id(node.id)
+
+        created_groups = []
+
+        if self._condition_groups_data is not None:
+            # Build prompt map keyed by old prompt ID → new prompt instance,
+            # using prompt_key as the stable bridge.
+            # After s.update() the prompts are upserted, so their IDs are stable
+            # across saves. We still need to map the frontend's integer prompt PK
+            # to the current DB instance in case this is a newly-created node.
+            node_prompts = list(node.prompt_configs.all())
+            prompt_by_id = {p.id: p for p in node_prompts}
+            # prompt_key is the preferred bridge: it links a group to a prompt
+            # created in this same payload (which has no stable pk yet on create).
+            prompt_by_key = {p.prompt_key: p for p in node_prompts}
+
+            incoming_route_codes = {
+                gd["route_code"]
+                for gd in self._condition_groups_data
+                if gd.get("route_code")
+            }
+
+            if self._instance is not None:
+                incoming_names = {
+                    gd["group_name"]
+                    for gd in self._condition_groups_data
+                    if not gd.get("route_code") and gd.get("group_name")
+                }
+                # Delete groups that are no longer in the payload.
+                node.condition_groups.exclude(route_code__isnull=True).exclude(
+                    route_code__in=incoming_route_codes
+                ).delete()
+                node.condition_groups.filter(route_code__isnull=True).exclude(
+                    group_name__in=incoming_names
+                ).delete()
+
+            excluded = self._GROUP_EXCLUDED_FIELDS
+            # ordered_groups preserves input order for deferred ref resolution.
+            ordered_groups: list = [None] * len(self._condition_groups_data)
+            to_bulk_create: list[tuple[int, ClassificationConditionGroup]] = []
+            to_bulk_update: list[ClassificationConditionGroup] = []
+
+            existing_by_rc = {}
+            existing_by_name = {}
+            if self._instance is not None:
+                for g in node.condition_groups.all():
+                    if g.route_code:
+                        existing_by_rc[g.route_code] = g
+                    else:
+                        existing_by_name[g.group_name] = g
+
+            for idx, group_data in enumerate(self._condition_groups_data):
+                gd = {k: v for k, v in group_data.items() if k not in excluded}
+
+                # Resolve the prompt FK node-locally: prefer prompt_key (works for
+                # a prompt created in this same payload), fall back to numeric pk.
+                key = group_data.get("prompt_key")
+                old_prompt_id = group_data.get("prompt")
+                if key:
+                    gd["prompt"] = prompt_by_key.get(key)
+                elif old_prompt_id is not None:
+                    gd["prompt"] = prompt_by_id.get(old_prompt_id)
+
+                rc = gd.get("route_code")
+                existing = (
+                    existing_by_rc.get(rc)
+                    if rc
+                    else existing_by_name.get(gd.get("group_name"))
+                )
+
+                if existing is not None:
+                    for attr, val in gd.items():
+                        setattr(existing, attr, val)
+                    to_bulk_update.append(existing)
+                    ordered_groups[idx] = existing
+                else:
+                    obj = ClassificationConditionGroup(
+                        classification_decision_table_node=node, **gd
+                    )
+                    to_bulk_create.append((idx, obj))
+                    ordered_groups[idx] = obj  # will have .id after bulk_create
+
+            if to_bulk_update:
+                ClassificationConditionGroup.objects.bulk_update(
+                    to_bulk_update,
+                    [
+                        "group_name",
+                        "order",
+                        "expression",
+                        "prompt",
+                        "manipulation",
+                        "continue_flag",
+                        "next_node_id",
+                        "dock_visible",
+                        "field_expressions",
+                        "field_manipulations",
+                        "section",
+                    ],
+                )
+
+            if to_bulk_create:
+                new_objs = ClassificationConditionGroup.objects.bulk_create(
+                    [obj for _, obj in to_bulk_create]
+                )
+                for (idx, _), new_obj in zip(to_bulk_create, new_objs):
+                    ordered_groups[idx] = new_obj
+
+            created_groups = ordered_groups
+
+        if self._deferred is not None:
+            self._deferred.set_group_ids(created_groups)
+
+        return node
+
+
+class KnowledgeNodeSaveable:
+    """Wraps a validated KnowledgeNodeBulkSerializer plus the node's already
+    validated nested search_configs (validated by the factory via
+    NestedSearchConfigSerializer). Config rows are reverse OneToOne relations, not
+    node fields, so they are written through the shared SearchConfigService — the
+    same non-destructive merge path the CRUD serializer uses.
+    """
+
+    def __init__(self, serializer, search_configs, instance=None):
+        self._serializer = serializer
+        self._search_configs = search_configs
+        self._instance = instance
+
+    def save(self):
+        s = self._serializer
+        KnowledgeNodeValidator().validate_serializer(s)
         validated = dict(s.validated_data)
         _clean_for_write(validated)
         node = (
@@ -322,34 +470,8 @@ class ClassificationDecisionTableNodeSaveable:
             else s.update(s.instance, validated)
         )
 
-        if self._instance is not None and self._condition_groups_data is not None:
-            ClassificationConditionGroup.objects.filter(
-                classification_decision_table_node=node
-            ).delete()
-
-        if self._deferred is not None:
-            self._deferred.set_node_id(node.id)
-
-        created_groups = []
-
-        if self._condition_groups_data:
-            excluded = self._GROUP_EXCLUDED_FIELDS
-            groups_to_create = []
-
-            for group_data in self._condition_groups_data:
-                gd = {k: v for k, v in group_data.items() if k not in excluded}
-                groups_to_create.append(
-                    ClassificationConditionGroup(
-                        classification_decision_table_node=node, **gd
-                    )
-                )
-
-            created_groups = ClassificationConditionGroup.objects.bulk_create(
-                groups_to_create
-            )
-
-        if self._deferred is not None:
-            self._deferred.set_group_ids(created_groups)
+        if self._search_configs:
+            SearchConfigService.apply_node_search_configs(node, self._search_configs)
 
         return node
 

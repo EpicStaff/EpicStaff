@@ -4,7 +4,6 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
 
 @Component({
-    standalone: true,
     selector: 'app-flow-node-variables-overlay',
     template: `
         @if (showInputsOverlay) {

@@ -7,11 +7,15 @@
     />
 }
 
-<label class="switch">
+<label
+    class="switch"
+    [class.switch--disabled]="isDisabled()"
+>
     <input
         type="checkbox"
         [attr.aria-label]="ariaLabel() || label() || 'Toggle'"
         [checked]="checked"
+        [disabled]="isDisabled()"
         (click)="$event.preventDefault(); onToggle()"
     />
     <span class="slider"></span>

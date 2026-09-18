@@ -1,77 +1,27 @@
 from rest_framework import serializers
-from django.db.models import Model
-from django.db import transaction
 
+from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
-from tables.models.python_models import PythonCode
-from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from tables.services.copy_services.helpers import (
+    apply_python_code_fields,
+    create_python_code,
+)
 
 
-class NestedAgentExportMixin:
+def assert_node_ref_in_graph(node_id, graph, field: str) -> None:
+    """A node id referenced from within a graph (edge endpoints, decision-table
+    next/error/condition next nodes) must belong to that SAME graph — which also
+    guarantees the same organization. A cross-graph, cross-org, or non-existent
+    id is rejected identically ("Invalid pk … does not exist"), so existence
+    never leaks. ``graph`` may be a Graph instance or None (skips when unknown).
     """
-    A mixin that defines methods for exporting `Agent` fields data when
-    agent is being used as part of another entity in serializer.
-
-    Feilds that can be defined in a child class:
-        `tools`: dictionary where `key` is tools name and `value` is list of tool IDs
-        `llm_config`: integer field
-        `fcm_llm_config`: integer field
-        `realtime_agent`: integer field
-
-    Methods:
-        `get_tools`: returns lists of IDs for each tool type that agent has in database
-        `get_llm_config`: returns an ID of agent's LLMConfig
-        `get_fcm_llm_config`: returns an ID of agent's FCM LLMConfig
-        `get_realtime_agent`: returns an ID of realtime agent that is related to agent
-    """
-
-    def get_tools(self, agent):
-        return {
-            "python_tools": list(
-                PythonCodeTool.objects.filter(
-                    agentpythoncodetools__agent_id=agent.pk
-                ).values_list("id", flat=True)
-            ),
-            "configured_tools": list(
-                ToolConfig.objects.filter(
-                    agentconfiguredtools__agent_id=agent.pk
-                ).values_list("id", flat=True)
-            ),
-            "mcp_tools": list(
-                McpTool.objects.filter(agentmcptools__agent_id=agent.pk).values_list(
-                    "id", flat=True
-                )
-            ),
-        }
-
-    def get_llm_config(self, agent: Agent):
-        if agent.llm_config:
-            return agent.llm_config.id
-
-    def get_fcm_llm_config(self, agent: Agent):
-        if agent.fcm_llm_config:
-            return agent.fcm_llm_config.id
-
-    def get_realtime_agent(self, agent: Agent):
-        if agent.realtime_agent:
-            return agent.realtime_agent.pk
-
-
-class NestedCrewExportMixin:
-    """
-    A mixin that defines methods for exporting `Crew` fields data when
-    crew is being used as part of another entity in serializer.
-
-    Feilds that can be defined in a child class:
-        `agents`: a list of integers
-
-    Methods:
-        `get_ageants`: returns a list of agent IDs for this crew
-    """
-
-    def get_agents(self, crew):
-        agents = list(crew.agents.all().values_list("id", flat=True))
-        return agents
+    if node_id is None or graph is None:
+        return
+    node = BaseGlobalNode.find_globally(node_id)
+    if node is None or getattr(node, "graph_id", None) != getattr(graph, "id", None):
+        raise serializers.ValidationError(
+            {field: f'Invalid pk "{node_id}" - object does not exist.'}
+        )
 
 
 class TagHandlingMixin:
@@ -153,7 +103,7 @@ class TagHandlingMixin:
 class NestedPythonCodeMixin:
     def _create_with_python_code(self, model_class, validated_data):
         python_code_data = validated_data.pop("python_code")
-        python_code = PythonCode.objects.create(**python_code_data)
+        python_code = create_python_code(python_code_data=python_code_data)
         return model_class.objects.create(python_code=python_code, **validated_data)
 
     def _update_python_code(self, instance, validated_data):
@@ -163,9 +113,9 @@ class NestedPythonCodeMixin:
             expected_hash = python_code_data.pop("content_hash", None)
             if expected_hash is not None:
                 python_code._expected_hash = expected_hash
-            for attr, value in python_code_data.items():
-                setattr(python_code, attr, value)
-            python_code.save()
+            apply_python_code_fields(
+                python_code=python_code, python_code_data=python_code_data
+            )
 
     def create(self, validated_data):
         return self._create_with_python_code(self.Meta.model, validated_data)
@@ -183,74 +133,23 @@ class NestedPythonCodeMixin:
         return self.update(instance, validated_data)
 
 
-class ToolsConnectionMixin:
-    def _resolve_tool_ids(self, tool_ids: list[str]) -> dict[str, list[str]]:
-        """
-        Resolve tool ids from 'prefix:id' format to map {prefix: [id1, id2, ...]}
-        """
-        result: dict[str, list[str]] = {}
-        for tool_id in tool_ids:
-            try:
-                prefix, pk = tool_id.split(":")
-                result.setdefault(prefix, []).append(pk)
-            except Exception as e:
-                raise serializers.ValidationError({"tool_ids": str(e)})
-        return result
-
-    def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
-        """
-        Return mapping for tool synchronization.
-
-        Key:
-            Tool model class (e.g. ToolConfig)
-
-        Value:
-            tuple:
-                - through model class (e.g. TaskConfiguredTools)
-                - tool prefix used in tool_ids (e.g. "configured-tool")
-                - FK field name in through model (e.g. "tool_id")
-        """
-        raise NotImplementedError
-
-    def _sync_tools(self, instance: Model, fk_to_instance: str, tool_ids: list[str]):
-        """
-        Synchronize tools for an instance.
-
-        Deletes existing tool relations and creates new ones
-        based on the provided tool IDs.
-
-        Args:
-            instance (Model): Instance to link tools with.
-            fk_to_instance (str): FK field name in through model pointing to instance (e.g. "task_id").
-            tool_ids (list[str]): List of tool ids in format "prefix:id".
-        """
-        tools_dict = self._resolve_tool_ids(tool_ids)
-        tools_map = self._get_tools_models_map()
-
-        with transaction.atomic():
-            for tool_model, (through_model, prefix, fk_field) in tools_map.items():
-                through_model.objects.filter(**{fk_to_instance: instance.pk}).delete()
-
-                ids = tools_dict.get(prefix)
-                if not ids:
-                    continue
-
-                db_ids = tool_model.objects.filter(id__in=ids).values_list(
-                    "id", flat=True
-                )
-
-                through_model.objects.bulk_create(
-                    [
-                        through_model(**{fk_to_instance: instance.pk, fk_field: pk})
-                        for pk in db_ids
-                    ]
-                )
-
-
 class WebhookCreationMixin:
     def _get_or_create_webhook_trigger(self, data):
         path = data.get("path")
         ngrok_conf = data.get("ngrok_webhook_config")
+
+        # ngrok_webhook_config is global platform infrastructure managed by
+        # superadmins. Non-superadmins may not assign it via a webhook-trigger
+        # node — drop it so a caller can't bind an arbitrary config by id.
+        #
+        # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
+        # this is a superadmin gate rather than org scoping. To make webhook
+        # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
+        # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
+        request = self.context.get("request")
+        is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
+        if not is_superadmin:
+            ngrok_conf = None
 
         return WebhookTrigger.objects.get_or_create(
             path=path, ngrok_webhook_config=ngrok_conf

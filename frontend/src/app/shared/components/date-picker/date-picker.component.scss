@@ -31,7 +31,7 @@
         }
 
         &--error {
-            border-color: #ef4444;
+            border-color: var(--crimson-500);
         }
 
         &--disabled {
@@ -41,7 +41,7 @@
     }
 
     &__icon {
-        font-size: 15px;
+        font-size: 0.9375rem;
         color: var(--color-input-text-placeholder);
         flex-shrink: 0;
         pointer-events: none;
@@ -82,9 +82,9 @@
     &__dropdown {
         border-radius: 10px;
         border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
+        background-color: var(--graphite-900);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 10px var(--black-alpha-15);
         overflow: hidden;
     }
 
@@ -103,36 +103,27 @@
     }
 
     &__month-year {
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--color-text-primary);
-    }
-
-    &__nav {
-        display: flex;
-        align-items: center;
-        gap: 4px;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        color: var(--active-color, var(--accent-color, #685fff));
     }
 
     &__nav-btn {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: 36px;
+        height: 36px;
         border-radius: 4px;
         border: none;
-        background: #2b2d30;
+        background: transparent;
         color: var(--color-text-primary);
         cursor: pointer;
-        transition:
-            background 0.15s ease,
-            color 0.15s ease;
+        transition: color 0.15s ease;
         padding: 0;
 
         &:hover {
-            background: var(--active-color, var(--accent-color, #685fff));
-            color: #fff;
+            color: var(--active-color, var(--accent-color, #685fff));
         }
     }
 
@@ -142,9 +133,13 @@
     }
 
     &__weekday {
+        font-weight: var(--text-body-small-weight);
+        font-size: var(--text-body-small-size);
+        line-height: var(--text-body-small-line-height);
+        letter-spacing: 0;
         text-align: center;
-        font-size: 0.6875rem;
-        font-weight: 500;
+        text-transform: uppercase;
+        vertical-align: middle;
         color: var(--color-input-text-placeholder);
         padding: 2px 0 6px;
     }
@@ -165,7 +160,7 @@
         max-width: 30px;
         border-radius: 50%;
         font-size: 0.8125rem;
-        font-weight: 300;
+        font-weight: 400;
         cursor: pointer;
         transition:
             background 0.15s ease,
@@ -198,8 +193,8 @@
     }
 
     &__error {
-        color: #ef4444;
-        font-size: 12px;
+        color: var(--crimson-500);
+        font-size: 0.75rem;
         margin-top: 4px;
         line-height: 1.4;
     }

@@ -21,6 +21,7 @@ _FIELD_TYPE_TO_VAR_TYPE = migration._FIELD_TYPE_TO_VAR_TYPE
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_tool(args_schema=None, config_fields=None):
     """Return a mock PythonCodeTool with the pre-migration shape."""
     tool = MagicMock()
@@ -75,6 +76,7 @@ def _run_migration(tools, config_fields_by_tool=None):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_empty_args_schema_and_no_fields():
     """Tool with no args_schema and no config fields → variables stays empty."""
     tool = _make_tool(args_schema=None)
@@ -85,13 +87,19 @@ def test_empty_args_schema_and_no_fields():
 
 def test_args_schema_properties_become_agent_input():
     """args_schema properties → agent_input variables."""
-    tool = _make_tool(args_schema={
-        "properties": {
-            "query": {"type": "string", "description": "Search query"},
-            "limit": {"type": "integer", "description": "Max results", "default": 10},
-        },
-        "required": ["query"],
-    })
+    tool = _make_tool(
+        args_schema={
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        }
+    )
     _run_migration([tool])
 
     by_name = {v["name"]: v for v in tool.variables}
@@ -135,10 +143,12 @@ def test_config_fields_become_user_input():
 
 def test_args_schema_and_config_fields_merged():
     """Tool with both args_schema and config fields → merged list, agent_input first."""
-    tool = _make_tool(args_schema={
-        "properties": {"query": {"type": "string", "description": "Query"}},
-        "required": ["query"],
-    })
+    tool = _make_tool(
+        args_schema={
+            "properties": {"query": {"type": "string", "description": "Query"}},
+            "required": ["query"],
+        }
+    )
     fields = [_make_config_field("api_key", "string", required=True)]
     _run_migration([tool], {tool: fields})
 
@@ -166,27 +176,29 @@ def test_field_type_mapping():
         tool = _make_tool(args_schema=None)
         fields = [_make_config_field("x", data_type)]
         _run_migration([tool], {tool: fields})
-        assert tool.variables[0]["type"] == expected_var_type, (
-            f"data_type={data_type!r} should map to {expected_var_type!r}"
-        )
+        assert (
+            tool.variables[0]["type"] == expected_var_type
+        ), f"data_type={data_type!r} should map to {expected_var_type!r}"
 
 
 def test_nested_object_properties_preserved():
     """args_schema with nested object properties → properties + required_properties kept."""
-    tool = _make_tool(args_schema={
-        "properties": {
-            "person": {
-                "type": "object",
-                "description": "Person",
-                "properties": {
-                    "first_name": {"type": "string"},
-                    "last_name": {"type": "string"},
-                },
-                "required": ["first_name", "last_name"],
-            }
-        },
-        "required": [],
-    })
+    tool = _make_tool(
+        args_schema={
+            "properties": {
+                "person": {
+                    "type": "object",
+                    "description": "Person",
+                    "properties": {
+                        "first_name": {"type": "string"},
+                        "last_name": {"type": "string"},
+                    },
+                    "required": ["first_name", "last_name"],
+                }
+            },
+            "required": [],
+        }
+    )
     _run_migration([tool])
 
     var = tool.variables[0]
@@ -201,16 +213,18 @@ def test_nested_object_properties_preserved():
 
 def test_array_items_preserved():
     """args_schema with array type → items schema kept."""
-    tool = _make_tool(args_schema={
-        "properties": {
-            "tags": {
-                "type": "array",
-                "description": "Tags",
-                "items": {"type": "string"},
-            }
-        },
-        "required": ["tags"],
-    })
+    tool = _make_tool(
+        args_schema={
+            "properties": {
+                "tags": {
+                    "type": "array",
+                    "description": "Tags",
+                    "items": {"type": "string"},
+                }
+            },
+            "required": ["tags"],
+        }
+    )
     _run_migration([tool])
 
     var = tool.variables[0]
@@ -222,10 +236,12 @@ def test_array_items_preserved():
 
 def test_multiple_tools_processed_independently():
     """Each tool gets its own variables; no cross-contamination."""
-    tool_a = _make_tool(args_schema={
-        "properties": {"x": {"type": "string", "description": ""}},
-        "required": ["x"],
-    })
+    tool_a = _make_tool(
+        args_schema={
+            "properties": {"x": {"type": "string", "description": ""}},
+            "required": ["x"],
+        }
+    )
     tool_b = _make_tool(args_schema=None)
     fields_b = [_make_config_field("secret", "string", required=True)]
 

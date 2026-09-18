@@ -1,0 +1,52 @@
+:host {
+    display: inline-flex;
+}
+
+.btn-round {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--br-size, 40px);
+    height: var(--br-size, 40px);
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    cursor: pointer;
+    color: var(--br-icon-color);
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+
+    &:disabled {
+        cursor: default;
+    }
+
+    &--primary {
+        background-color: var(--br-color);
+        border-color: var(--br-color);
+
+        &:hover:not(:disabled) {
+            box-shadow: 0 4px 20px var(--br-hover);
+        }
+
+        &:disabled {
+            background-color: var(--br-disabled);
+            border-color: var(--br-disabled);
+        }
+    }
+
+    &--secondary {
+        background-color: transparent;
+        border-color: var(--br-color);
+
+        &:hover:not(:disabled) {
+            background-color: var(--br-hover);
+        }
+
+        &:disabled {
+            border-color: var(--br-disabled);
+            color: var(--br-disabled);
+        }
+    }
+}

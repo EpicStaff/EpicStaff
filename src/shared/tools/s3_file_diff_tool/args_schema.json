@@ -1,0 +1,15 @@
+{
+  "title": "S3FileDiffArgs",
+  "type": "object",
+  "properties": {
+    "file_path_a": {
+      "type": "string",
+      "description": "S3 path of the first file to compare (the 'from' side of the diff)."
+    },
+    "file_path_b": {
+      "type": "string",
+      "description": "S3 path of the second file to compare (the 'to' side of the diff)."
+    }
+  },
+  "required": ["file_path_a", "file_path_b"]
+}

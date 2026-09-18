@@ -3,7 +3,6 @@ import { Params } from '@angular/router';
 import {
     CustomFilterCondition,
     CustomFilterScope,
-    EMPTY_FLOWS_FILTER,
     FILTER_OPERATOR_ORDER,
     FilterOperator,
     FlowsFilterState,
@@ -85,14 +84,4 @@ export function serializeFilterToParams(state: FlowsFilterState): Params {
         cf: state.customFilter ? serializeCustomFilter(state.customFilter) : null,
     };
     return params;
-}
-
-export function isEmptyFilter(state: FlowsFilterState): boolean {
-    return (
-        state.searchTerm === EMPTY_FLOWS_FILTER.searchTerm &&
-        state.sortOrder === EMPTY_FLOWS_FILTER.sortOrder &&
-        state.includedFlowIds === null &&
-        state.includedLabelIds === null &&
-        state.customFilter === null
-    );
 }

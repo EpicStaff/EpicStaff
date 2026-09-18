@@ -4,7 +4,10 @@ from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 INIT_REALTIME_POST = dict(
     summary="Initialize a realtime agent session",
-    description="Realtime agent created successfully",
+    description=(
+        "Initializes a realtime agent session for a `RealtimeAgentDefinition` "
+        "(pass `agent_definition_id`)."
+    ),
     responses={
         201: OpenApiResponse(
             response=OpenApiTypes.STR,

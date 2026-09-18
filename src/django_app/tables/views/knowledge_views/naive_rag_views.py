@@ -1,6 +1,4 @@
-import asyncio
-import uuid
-
+from django.db.models import Count
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,25 +6,38 @@ from drf_spectacular.utils import (
     extend_schema,
     OpenApiResponse,
     OpenApiParameter,
-    inline_serializer,
 )
 from drf_spectacular.types import OpenApiTypes
-from rest_framework import serializers as drf_serializers
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
-from asgiref.sync import async_to_sync
 from loguru import logger
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework.views import APIView
+from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models.knowledge_new import ChunkingConfig
+from tables.clients import KnowledgeClient
+from tables.clients.errors import ClientError, ClientResourceNotFoundError
 
+from rest_framework.permissions import IsAuthenticated
+
+from tables.models import SourceCollection
+from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
-    NaiveRagPreviewChunk,
 )
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.views.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.permission_assert import assert_org_permission
+
 from tables.serializers.naive_rag_serializers import (
     NaiveRagSerializer,
     NaiveRagCreateUpdateSerializer,
@@ -38,15 +49,13 @@ from tables.serializers.naive_rag_serializers import (
     DocumentConfigBulkDeleteSerializer,
     NaiveRagChunkSerializer,
     NaiveRagPreviewChunkSerializer,
-    ChunkingResponseSerializer,
-    ChunkPreviewResponseSerializer,
     ChunkSearchResponseSerializer,
     ChunkSearchRequestSerializer,
     PreviewChunksByIdsRequestSerializer,
     PreviewChunksByIdsResponseSerializer,
+    ChunkingConfigSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
-from tables.services.redis_service import RedisService
 
 from tables.exceptions import (
     RagException,
@@ -57,11 +66,11 @@ from tables.exceptions import (
     CollectionNotFoundException,
     InvalidFieldType,
 )
-from tables.constants.knowledge_constants import CHUNKING_TIMEOUT
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_GET,
     NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET,
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
+    NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE,
     NAIVE_RAG_DOCUMENT_CONFIG_GET,
     NAIVE_RAG_DOCUMENT_CONFIG_PUT,
     NAIVE_RAG_DOCUMENT_CONFIG_DELETE,
@@ -74,11 +83,14 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_COLLECTIONS_POST,
 )
 
+# ORM path from a NaiveRag (or its children) up to the owning collection's org.
+_NAIVE_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+_DOC_CONFIG_ORG_PATH = "naive_rag__base_rag_type__source_collection__org_id"
+_CHUNK_ORG_PATH = (
+    "naive_rag_document_config__naive_rag__base_rag_type__source_collection__org_id"
+)
 
-redis_service = RedisService()
-
-
-class NaiveRagViewSet(viewsets.GenericViewSet):
+class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     """
     ViewSet for NaiveRag operations.
 
@@ -88,6 +100,15 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
     - DELETE /naive-rag/{id}/ - Delete NaiveRag
     - GET /naive-rag/{id}/ - Get NaiveRag details with configs
     """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "create_or_update": Permission.CREATE,
+        "get_by_collection": Permission.READ,
+        "initialize_configs": Permission.CREATE,
+    }
 
     queryset = NaiveRag.objects.all()
     serializer_class = NaiveRagSerializer
@@ -116,10 +137,15 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
         except (ValueError, TypeError):
             raise InvalidFieldType("collection_id", collection_id)
 
+        # The collection must live in the active org (404 otherwise).
+        self.get_in_active_org_or_404(SourceCollection, collection_id)
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         embedder_id = serializer.validated_data["embedder_id"]
+        # An embedder from another org may not be referenced (404 like a missing pk).
+        self.get_in_active_org_or_404(EmbeddingConfig, embedder_id)
 
         try:
             naive_rag = NaiveRagService.create_or_update_naive_rag(
@@ -160,6 +186,8 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
         except (ValueError, TypeError):
             raise InvalidFieldType("collection_id", collection_id)
 
+        self.get_in_active_org_or_404(SourceCollection, collection_id)
+
         try:
             naive_rag = NaiveRagService.get_or_none_naive_rag_by_collection(
                 collection_id
@@ -182,6 +210,7 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
 
     @extend_schema(**NAIVE_RAG_GET)
     def retrieve(self, request, pk=None):
+        self.get_in_active_org_or_404(NaiveRag, int(pk), _NAIVE_RAG_ORG_PATH)
         try:
             naive_rag = NaiveRagService.get_naive_rag(int(pk))
 
@@ -198,6 +227,7 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
 
     @extend_schema(**NAIVE_RAG_DELETE)
     def destroy(self, request, pk=None):
+        self.get_in_active_org_or_404(NaiveRag, int(pk), _NAIVE_RAG_ORG_PATH)
         try:
             result = NaiveRagService.delete_naive_rag(int(pk))
 
@@ -216,6 +246,7 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST)
     def initialize_configs(self, request, naive_rag_id=None):
+        self.get_in_active_org_or_404(NaiveRag, int(naive_rag_id), _NAIVE_RAG_ORG_PATH)
         try:
             naive_rag = NaiveRagService.get_naive_rag(int(naive_rag_id))
 
@@ -265,6 +296,7 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
 
 
 class NaiveRagDocumentConfigViewSet(
+    OrgScopedServiceViewSetMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
@@ -285,6 +317,15 @@ class NaiveRagDocumentConfigViewSet(
     - POST /api/naive-rag/{naive_rag_id}/document-configs/bulk-delete/ - Bulk delete configs
     """
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "list_configs": Permission.READ,
+        "bulk_update": Permission.UPDATE,
+        "bulk_delete": Permission.DELETE,
+    }
+
     queryset = NaiveRagDocumentConfig.objects.select_related("document")
 
     def get_serializer_class(self):
@@ -298,10 +339,14 @@ class NaiveRagDocumentConfigViewSet(
 
     def get_queryset(self):
         """
-        Filter queryset by naive_rag_id from URL.
-        This ensures all operations are scoped to the specific NaiveRag.
+        Filter to the active org and the naive_rag_id from the URL, so
+        retrieve()/get_object() is scoped to the caller's org.
         """
-        queryset = super().get_queryset()
+        queryset = (
+            super()
+            .get_queryset()
+            .filter(**{_DOC_CONFIG_ORG_PATH: self.get_active_org_id()})
+        )
         naive_rag_id = self.kwargs.get("naive_rag_id")
 
         if naive_rag_id is not None:
@@ -309,6 +354,9 @@ class NaiveRagDocumentConfigViewSet(
             queryset = queryset.filter(naive_rag_id=naive_rag_id)
 
         return queryset
+
+    def _assert_naive_rag_in_active_org(self, naive_rag_id):
+        self.get_in_active_org_or_404(NaiveRag, int(naive_rag_id), _NAIVE_RAG_ORG_PATH)
 
     def initial(self, request, *args, **kwargs):
         """
@@ -331,44 +379,43 @@ class NaiveRagDocumentConfigViewSet(
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT)
     @action(detail=False, methods=["put"], url_path="bulk-update")
     def bulk_update(self, request, naive_rag_id=None):
-        serializer = self.get_serializer(data=request.data)
+        self._assert_naive_rag_in_active_org(naive_rag_id)
+        serializer = self.get_serializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
-
-        config_ids = serializer.validated_data.pop("config_ids")
 
         try:
             result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
                 naive_rag_id=int(naive_rag_id),
-                config_ids=config_ids,
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             # Use the new serializer that includes errors field
             response_serializer = DocumentConfigWithErrorsSerializer(
                 result["configs"],
                 many=True,
-                context={"config_errors": result["config_errors"]},
+                context={"config_errors": result["errors"]},
             )
 
             # Build status message
-            if result["failed_count"] == 0:
-                message = f"Successfully updated {result['updated_count']} config(s)"
+            if result["failed"] == 0:
+                message = f"Successfully updated {result['updated']} config(s)"
                 response_status = status.HTTP_200_OK
-            elif result["updated_count"] == 0:
-                message = f"Failed to update {result['failed_count']} config(s)"
+            elif result["updated"] == 0:
+                message = f"Failed to update {result['failed']} config(s)"
                 response_status = status.HTTP_207_MULTI_STATUS
             else:
                 message = (
-                    f"Successfully updated {result['updated_count']} config(s), "
-                    f"Failed to update {result['failed_count']} config(s)"
+                    f"Successfully updated {result['updated']} config(s), "
+                    f"Failed to update {result['failed']} config(s)"
                 )
                 response_status = status.HTTP_207_MULTI_STATUS
 
             return Response(
                 {
                     "message": message,
-                    "updated_count": result["updated_count"],
-                    "failed_count": result["failed_count"],
+                    "updated_count": result["updated"],
+                    "unupdated_count": result["unupdated"],
+                    "failed_count": result["failed"],
                     "configs": response_serializer.data,
                 },
                 status=response_status,
@@ -389,6 +436,7 @@ class NaiveRagDocumentConfigViewSet(
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request, naive_rag_id=None):
+        self._assert_naive_rag_in_active_org(naive_rag_id)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -422,6 +470,7 @@ class NaiveRagDocumentConfigViewSet(
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_GET)
     @action(detail=False, methods=["get"])
     def list_configs(self, request, naive_rag_id=None):
+        self._assert_naive_rag_in_active_org(naive_rag_id)
         try:
             configs = NaiveRagService.get_document_configs_for_naive_rag(
                 int(naive_rag_id)
@@ -468,6 +517,7 @@ class NaiveRagDocumentConfigViewSet(
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_PUT)
     def update(self, request, pk=None, naive_rag_id=None):
+        self._assert_naive_rag_in_active_org(naive_rag_id)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -475,7 +525,7 @@ class NaiveRagDocumentConfigViewSet(
             config = NaiveRagService.update_document_config(
                 config_id=int(pk),
                 naive_rag_id=naive_rag_id,
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             response_serializer = DocumentConfigSerializer(config)
@@ -502,6 +552,7 @@ class NaiveRagDocumentConfigViewSet(
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_DELETE)
     def destroy(self, request, pk=None, naive_rag_id=None):
+        self._assert_naive_rag_in_active_org(naive_rag_id)
         try:
             result = NaiveRagService.delete_document_config(
                 config_id=int(pk), naive_rag_id=int(naive_rag_id)
@@ -526,106 +577,84 @@ class NaiveRagDocumentConfigViewSet(
             )
 
 
-class NaiveRagChunkViewSet(ReadOnlyModelViewSet):
+class NaiveRagChunkViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    org_filter_path = _CHUNK_ORG_PATH
     queryset = NaiveRagChunk.objects.all()
     serializer_class = NaiveRagChunkSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["naive_rag_document_config"]
 
 
-class ProcessNaiveRagDocumentChunkingView(APIView):
+class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        # Validate document config exists and belongs to naive_rag
+        config = self.get_in_active_org_or_404(
+            NaiveRagDocumentConfig,
+            document_config_id,
+            _DOC_CONFIG_ORG_PATH,
+            naive_rag_id=naive_rag_id,
+        )
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
+        serializer = ChunkingConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        validated = serializer.validated_data
+        chunking_config = ChunkingConfig(
+            chunk_strategy=validated["chunk_strategy"],
+            chunk_size=validated["chunk_size"],
+            chunk_overlap=validated["chunk_overlap"],
+            extra=validated["additional_params"],
+        )
         try:
-            config = NaiveRagDocumentConfig.objects.select_related(
-                "naive_rag", "document"
-            ).get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
-        except NaiveRagDocumentConfig.DoesNotExist:
-            return Response(
-                {
-                    "error": f"DocumentConfig {document_config_id} not found "
-                    f"for NaiveRag {naive_rag_id}"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            with KnowledgeClient(timeout=300) as client:
+                client.prechunk(
+                    strategy=RAGStrategy.NAIVE,
+                    rag_id=naive_rag_id,
+                    document_id=document_config_id,
+                    chunking_config=chunking_config,
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
 
-        chunking_job_id = str(uuid.uuid4())
-
-        config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.CHUNKING
-        config.save(update_fields=["status"])
-
-        logger.info(
-            f"Starting chunking job {chunking_job_id} for config {document_config_id}"
+        return Response(
+            {
+                "naive_rag_id": naive_rag_id,
+                "document_config_id": document_config_id,
+                "status": "completed",
+                "chunk_count": config.preview_chunks.count(),
+            },
+            status=status.HTTP_200_OK,
         )
 
+
+class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
+    @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE)
+    def delete(self, request, naive_rag_id: int, document_config_id: int):
+        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
         try:
-            # Publish and wait for response
-            response = async_to_sync(redis_service.publish_and_wait_for_chunking)(
-                rag_type="naive",
-                document_config_id=document_config_id,
-                chunking_job_id=chunking_job_id,
-                timeout=CHUNKING_TIMEOUT,
-            )
-
-            config.refresh_from_db()
-
-            return Response(
-                {
-                    "chunking_job_id": chunking_job_id,
-                    "naive_rag_id": naive_rag_id,
-                    "document_config_id": document_config_id,
-                    "status": response.status,
-                    "chunk_count": response.chunk_count,
-                    "message": response.message,
-                    "elapsed_time": response.elapsed_time,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Chunking timeout for job {chunking_job_id}, config {document_config_id}"
-            )
-            # Return partial success - chunking may still complete in background
-            return Response(
-                {
-                    "chunking_job_id": chunking_job_id,
-                    "naive_rag_id": naive_rag_id,
-                    "document_config_id": document_config_id,
-                    "status": "timeout",
-                    "chunk_count": None,
-                    "message": "Chunking is taking longer than expected. "
-                    "Check status later or retry.",
-                    "elapsed_time": None,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-
-        except Exception as e:
-            logger.error(f"Chunking error for job {chunking_job_id}: {e}")
-            # Reset status to previous state on error
-            config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.FAILED
-            config.save(update_fields=["status"])
-
-            return Response(
-                {
-                    "chunking_job_id": chunking_job_id,
-                    "naive_rag_id": naive_rag_id,
-                    "document_config_id": document_config_id,
-                    "status": "failed",
-                    "chunk_count": None,
-                    "message": str(e),
-                    "elapsed_time": None,
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            with KnowledgeClient() as client:
+                client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
+        except ClientResourceNotFoundError:
+            pass
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class NaiveRagChunkPreviewView(APIView):
+class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
     """
     Get chunks for a document config.
 
@@ -645,12 +674,33 @@ class NaiveRagChunkPreviewView(APIView):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET)
     def get(self, request, naive_rag_id: int, document_config_id: int):
+        config = (
+            NaiveRagDocumentConfig.objects.filter(
+                pk=document_config_id,
+                naive_rag_id=naive_rag_id,
+                **{_DOC_CONFIG_ORG_PATH: self.get_active_org_id()},
+            )
+            .annotate(total_preview_chunks=Count("preview_chunks"))
+            .first()
+        )
+        if config is None:
+            raise Http404()
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.READ,
+        )
         # Validate document config exists and belongs to naive_rag
         try:
-            config = NaiveRagDocumentConfig.objects.get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
+            config = (
+                NaiveRagDocumentConfig.objects
+                .annotate(total_preview_chunks=Count("preview_chunks"))
+                .get(
+                    naive_rag_document_id=document_config_id,
+                    naive_rag_id=naive_rag_id,
+                )
+            )  # fmt: off
         except NaiveRagDocumentConfig.DoesNotExist:
             return Response(
                 {
@@ -672,41 +722,24 @@ class NaiveRagChunkPreviewView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Decide which chunks to return based on status
-        doc_status = config.status
-
-        if doc_status == NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED:
-            # Return indexed chunks
-            chunks_qs = NaiveRagChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            ).order_by("chunk_index")
-            total_count = chunks_qs.count()
-            chunks = chunks_qs[offset : offset + limit]
-            serializer = NaiveRagChunkSerializer(chunks, many=True)
-        else:
-            # Return preview chunks (for CHUNKED or other statuses)
-            chunks_qs = NaiveRagPreviewChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            ).order_by("chunk_index")
-            total_count = chunks_qs.count()
-            chunks = chunks_qs[offset : offset + limit]
-            serializer = NaiveRagPreviewChunkSerializer(chunks, many=True)
+        chunks = config.preview_chunks.all()[offset:offset+limit]
+        chunks = NaiveRagPreviewChunkSerializer(chunks, many=True).data
 
         return Response(
             {
                 "naive_rag_id": naive_rag_id,
-                "document_config_id": document_config_id,
-                "status": doc_status,
-                "total_chunks": total_count,
+                "document_config_id": config.naive_rag_document_id,
+                "status": config.status,
+                "total_chunks": config.total_preview_chunks,
                 "limit": limit,
                 "offset": offset,
-                "chunks": serializer.data,
+                "chunks": chunks,
             },
             status=status.HTTP_200_OK,
         )
 
 
-class NaiveRagChunkSearchView(APIView):
+class NaiveRagChunkSearchView(OrgScopedServiceViewSetMixin, APIView):
     """
     Search preview chunks of a document config by text query.
 
@@ -759,6 +792,18 @@ class NaiveRagChunkSearchView(APIView):
         },
     )
     def get(self, request, naive_rag_id: int, document_config_id: int):
+        self.get_in_active_org_or_404(
+            NaiveRagDocumentConfig,
+            document_config_id,
+            _DOC_CONFIG_ORG_PATH,
+            naive_rag_id=naive_rag_id,
+        )
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.READ,
+        )
         serializer = ChunkSearchRequestSerializer(
             data=request.query_params,
             context={
@@ -803,7 +848,7 @@ class NaiveRagChunkSearchView(APIView):
         )
 
 
-class NaiveRagPreviewChunkBulkByIdsView(APIView):
+class NaiveRagPreviewChunkBulkByIdsView(OrgScopedServiceViewSetMixin, APIView):
     """
     Fetch preview chunks of a document config by a list of preview_chunk_ids.
 
@@ -827,6 +872,18 @@ class NaiveRagPreviewChunkBulkByIdsView(APIView):
         },
     )
     def post(self, request, naive_rag_id: int, document_config_id: int):
+        self.get_in_active_org_or_404(
+            NaiveRagDocumentConfig,
+            document_config_id,
+            _DOC_CONFIG_ORG_PATH,
+            naive_rag_id=naive_rag_id,
+        )
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.READ,
+        )
         serializer = PreviewChunksByIdsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

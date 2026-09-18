@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -18,9 +17,9 @@ import {
     ViewChild,
     ViewChildren,
 } from '@angular/core';
-import { MarkdownModule } from 'ngx-markdown';
-import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { exhaustMap, map, takeUntil } from 'rxjs/operators';
+import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { exhaustMap, takeUntil } from 'rxjs/operators';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
@@ -30,35 +29,32 @@ import {
     GraphSessionStatus,
     SessionUpdates,
 } from '../../../../features/flows/services/flows-sessions.service';
-import { GetProjectRequest } from '../../../../features/projects/models/project.model';
-import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
-import { AgentsService } from '../../../../features/staff/services/staff.service';
-import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
-import { TasksService } from '../../../../features/tasks/services/tasks.service';
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CodeAgentStreamMessageData, GraphMessage, MessageType } from '../../models/graph-session-message.model';
-import { SessionStatusMessageData } from '../../models/update-session-status.model';
-import { AnswerToLLMService } from '../../services/answer-to-llm.service';
+import {
+    AgentNodeStreamMessageData,
+    GraphMessage,
+    MessageData,
+    MessageType,
+    StartSubflowMessageData,
+    TaskNodeStreamMessageData,
+} from '../../models/graph-session-message.model';
 import { RunSessionSSEService } from '../../services/graph-session-sse.service';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
-import { AgentFinishMessageComponent } from './components/agent-finish/agent-finish.component';
-import { AgentMessageComponent } from './components/agent-message/agent-message.component';
 import { ClassificationDtMessageComponent } from './components/classification-dt-message/classification-dt-message.component';
-import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
+import { FindingsMessageComponent } from './components/findings-message/findings-message.component';
 import { FinishMessageComponent } from './components/finish-message/finish-message.component';
 import { LlmMessageComponent } from './components/llm-message/llm-message.component';
 import { LoadingDotsComponent } from './components/loading-animation/loading-animation.component';
+import { NodeStreamMessageComponent } from './components/node-stream-message/node-stream-message.component';
 import { PythonMessageComponent } from './components/python-message/python-message.component';
 import { StartMessageComponent } from './components/start-message/start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
 import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
-import { TaskMessageComponent } from './components/task-message/task-message.component';
-import { ProjectTransitionComponent } from './components/transition/project-transition.component';
-import { WaitForUserInputComponent } from './components/user-input-component/user-input-component.component';
-import { UserMessageComponent } from './components/user-message/user-message.component';
+import { RunTransitionComponent } from './components/transition/run-transition.component';
 import { isMessageType } from './helper_functions/message-helper';
 
 interface MessageContext {
@@ -76,35 +72,44 @@ interface MessageContext {
 // counter, so we keep it out of visibleMessageEntries.
 const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.START,
-    MessageType.USER,
-    MessageType.AGENT,
-    MessageType.AGENT_FINISH,
     MessageType.PYTHON,
     MessageType.LLM,
     MessageType.EXTRACTED_CHUNKS,
     MessageType.ERROR,
-    MessageType.TASK,
     MessageType.FINISH,
-    MessageType.CODE_AGENT_STREAM,
+    MessageType.TASK_NODE_STREAM,
+    MessageType.AGENT_NODE_STREAM,
     MessageType.SUBGRAPH_START,
     MessageType.SUBGRAPH_FINISH,
     MessageType.CONDITION_GROUP,
     MessageType.CONDITION_GROUP_MANIPULATION,
     MessageType.CLASSIFICATION_PROMPT,
+    MessageType.FINDINGS,
+]);
+
+// Stream-style message types that emit many chunks per node run and get collapsed into
+// a single card per node name (see updateVisibleMessages / getMessageKey below).
+const STREAM_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+    MessageType.TASK_NODE_STREAM,
+    MessageType.AGENT_NODE_STREAM,
 ]);
 
 interface MessageViewEntry {
     key: string;
     message: GraphMessage;
     index: number;
-    agent: GetAgentRequest | null;
-    project: GetProjectRequest | null;
+    nodeName: string | null;
     subgraphName: string | null;
     hasNestedMessages: boolean;
+    nestedMessagesCount: number;
     isNestedMessagesOpen: boolean;
     shouldShowTransition: boolean;
     rootKey: string | null;
     rootView: RootDrilldownView | null;
+    // For TASK_NODE_STREAM / AGENT_NODE_STREAM entries: true when this run's (or a later run's)
+    // `finish` or `error` message has already arrived, even if this stream message's own
+    // `is_final` was never set (see isNodeStreamCompleted()).
+    nodeCompleted: boolean;
 }
 
 interface RootDrilldownView {
@@ -128,28 +133,21 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
 
 @Component({
     selector: 'app-graph-messages',
-    standalone: true,
     imports: [
-        CommonModule,
-        MarkdownModule,
         LoadingDotsComponent,
         StartMessageComponent,
-        AgentMessageComponent,
         FinishMessageComponent,
-        TaskMessageComponent,
         PythonMessageComponent,
         LlmMessageComponent,
-        AgentFinishMessageComponent,
         ErrorMessageComponent,
-        ProjectTransitionComponent,
-        WaitForUserInputComponent,
-        UserMessageComponent,
+        RunTransitionComponent,
         ExtractedChunksMessageComponent,
+        FindingsMessageComponent,
         ClassificationDtMessageComponent,
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
         SubgraphFinishMessageComponent,
-        CodeAgentStreamMessageComponent,
+        NodeStreamMessageComponent,
         AppSvgIconComponent,
     ],
     templateUrl: './graph-messages.component.html',
@@ -158,6 +156,8 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
     providers: [RunSessionSSEService],
 })
 export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, AfterViewInit {
+    readonly MessageType = MessageType;
+
     @Input() graphId: number | null = null;
     @Input() sessionId: string | null = null;
     @Input() compact: boolean = false;
@@ -165,8 +165,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     @Output() messagesChanged = new EventEmitter<GraphMessage[]>();
 
     // Data arrays and objects
-    public agents: GetAgentRequest[] = [];
-    public tasks: GetTaskRequest[] = [];
     public session: GraphSession | null = null;
 
     // Animation control for messages
@@ -174,12 +172,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     // Loading state
     private isLoading = true;
-
-    public showUserInputWithDelay: boolean = false;
-
-    // New property for storing update status data from messages
-    public updateSessionStatusData: SessionStatusMessageData | null = null;
-    public statusWaitForUser: boolean = false;
 
     // Warning messages
     public warningMessages: string[] | null = null;
@@ -191,8 +183,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     public sseEnabled = false;
 
     // Lookup maps for quick reference
-    private agentMap: Map<number, GetAgentRequest> = new Map();
-    private taskMap: Map<number, GetTaskRequest> = new Map();
 
     public messages: GraphMessage[] = [];
     public visibleMessageEntries: MessageViewEntry[] = [];
@@ -248,10 +238,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     constructor(
         public sseService: RunSessionSSEService,
-        private agentsService: AgentsService,
-        private tasksService: TasksService,
+        private toast: ToastService,
+        private router: Router,
         private cdr: ChangeDetectorRef,
-        private answerToLLMService: AnswerToLLMService,
         private runGraphPageService: RunGraphPageService,
         private flowService: FlowsApiService,
         private graphSessionService: GraphSessionService
@@ -261,7 +250,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.mergeMessages(sseMessages);
             this.messagesChanged.emit(this.messages);
             this.rebuildMessageState(this.messages);
-            this.processMessages();
             this.checkIfFinish();
             this.cdr.markForCheck();
 
@@ -271,16 +259,22 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     requestAnimationFrame(() => this.scrollToBottom());
                 }
             } else {
-                this.unseenMessageCount = Math.max(0, this.messages.length - this.seenMessageCount);
+                // Invariant: unseenMessageCount and seenMessageCount must both be measured in
+                // visibleMessageEntries (rendered cards), never in the raw messages array — stream
+                // chunks collapse into one card, so counting raw messages inflates the badge.
+                const visibleCount = this.visibleMessageEntries.length;
+                this.seenMessageCount = Math.min(this.seenMessageCount, visibleCount);
+                this.unseenMessageCount = Math.max(0, visibleCount - this.seenMessageCount);
             }
         });
 
         effect(() => {
             const status = this.sseService.status();
             this.sessionStatusChanged.emit(status);
-            this.statusWaitForUser = status === GraphSessionStatus.WAITING_FOR_USER;
-            this.showUserInputWithDelay = this.statusWaitForUser;
             this.checkIfFinish();
+            if (TERMINAL_STATUSES.has(status)) {
+                this.rebuildMessageState(this.messages);
+            }
             // Bugfix: when the run reaches a terminal status, reconcile the full message list
             // from the server so any messages the realtime SSE stream missed are backfilled (once).
             if (TERMINAL_STATUSES.has(status) && !this.hasReconciledTerminal) {
@@ -391,21 +385,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         }
 
         if (visibleCount > this.seenMessageCount) {
-            const prevSeen = this.seenMessageCount;
-            const prevUnseen = this.unseenMessageCount;
-            const newlySeenEntries = this.visibleMessageEntries.slice(prevSeen, visibleCount);
             this.seenMessageCount = visibleCount;
             this.unseenMessageCount = Math.max(0, this.visibleMessageEntries.length - this.seenMessageCount);
-            const delta = prevUnseen - this.unseenMessageCount;
-            console.log(
-                `[unread] -${delta} (${prevUnseen} → ${this.unseenMessageCount}); read ${newlySeenEntries.length} message(s):`,
-                newlySeenEntries.map((entry) => ({
-                    index: entry.index,
-                    type: entry.message.message_data?.message_type,
-                    name: entry.message.name,
-                    key: entry.key,
-                }))
-            );
         }
     }
 
@@ -458,7 +439,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['sessionId'] && !changes['sessionId'].firstChange) {
             this.destroy$.next();
-            this.sseService.stopStream();
+            this.sseService.reset();
             if (this.finishTimer !== null) {
                 clearTimeout(this.finishTimer);
                 this.finishTimer = null;
@@ -467,10 +448,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.sseEnabled = false;
             this.session = null;
             this.animatedIndices = {};
-            this.updateSessionStatusData = null;
-            this.statusWaitForUser = false;
             this.isFinishing = false;
-            this.showUserInputWithDelay = false;
             this.warningMessages = null;
             this.autoScrollEnabled = true;
             this.lastScrollTop = 0;
@@ -528,10 +506,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     }
                     this.loadMoreMessages();
                 },
-                error: () => {
-                    this.sseEnabled = true;
-                    this.sseService.startStream(this.sessionId!);
-                    this.loadMoreMessages();
+                error: (err) => {
+                    this.toast.error(err.error?.detail || 'Failed to fetch session');
+                    void this.router.navigate(['/sessions']);
                 },
             });
 
@@ -556,28 +533,11 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 takeUntil(this.destroy$),
                 exhaustMap((graph) => {
                     this.graphCache.set(graph.id, graph);
-                    const agentsIDs = new Set(graph.crew_node_list.flatMap((node) => node.crew.agents));
-                    const tasksIDs = new Set(graph.crew_node_list.flatMap((node) => node.crew.tasks));
-
-                    return forkJoin({
-                        agents: this.fetchAndMapById(
-                            agentsIDs,
-                            this.agentsService.getAgentById.bind(this.agentsService),
-                            this.agentMap
-                        ),
-                        tasks: this.fetchAndMapById(
-                            tasksIDs,
-                            this.tasksService.getTaskById.bind(this.tasksService),
-                            this.taskMap
-                        ),
-                        graphsLight: this.flowService.getGraphsLight(),
-                    });
+                    return this.flowService.getGraphsLight();
                 })
             )
             .subscribe({
-                next: ({ agents, tasks, graphsLight }) => {
-                    this.agents = agents;
-                    this.tasks = tasks;
+                next: (graphsLight) => {
                     this.graphNameById = new Map(graphsLight.map((graph) => [graph.id, graph.name]));
                     if (this.graphId && this.graphCache.has(this.graphId)) {
                         const rootGraph = this.graphCache.get(this.graphId);
@@ -595,53 +555,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.cdr.markForCheck();
                 },
             });
-    }
-
-    private fetchAndMapById<T>(
-        ids: Set<number>,
-        fetchFn: (id: number) => Observable<T>,
-        mapToUpdate: Map<number, T>
-    ): Observable<T[]> {
-        if ([...ids].length === 0) return of([]);
-        return forkJoin(
-            [...ids].map((id) =>
-                fetchFn(id).pipe(
-                    map((result) => {
-                        mapToUpdate.set(id, result);
-                        return result;
-                    })
-                )
-            )
-        );
-    }
-
-    private processMessages(): void {
-        const messages = this.sseService.messages();
-        if (messages.length > 0) {
-            const lastMessage: GraphMessage = messages[messages.length - 1];
-
-            if (lastMessage.message_data && lastMessage.message_data.message_type === 'update_session_status') {
-                // Cast the message_data to SessionStatusMessageData interface
-                this.updateSessionStatusData = lastMessage.message_data as SessionStatusMessageData;
-
-                // Check if status is "wait_for_user" and update statusWaitForUser flag
-                if (this.updateSessionStatusData.status === 'wait_for_user') {
-                    this.statusWaitForUser = true;
-
-                    // For initial load, show input immediately
-                    if (this.isLoading) {
-                        this.showUserInputWithDelay = true;
-                    }
-                } else {
-                    this.statusWaitForUser = false;
-                    this.showUserInputWithDelay = false;
-                }
-            } else {
-                this.updateSessionStatusData = null;
-                this.statusWaitForUser = false;
-                this.showUserInputWithDelay = false;
-            }
-        }
     }
 
     public getSubgraphName(message: GraphMessage): string | null {
@@ -716,7 +629,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             const lastMessage: GraphMessage = messages[messages.length - 1];
             const lastTime = lastMessage.created_at;
             const sameTimeMessages = messages.filter((msg) => msg.created_at === lastTime);
-            const sessionStatus = this.sseService.status();
 
             // Check for graph_end message - marks the session as finished
             if (sameTimeMessages.some((msg) => msg.message_data.message_type === MessageType.GRAPH_END)) {
@@ -733,18 +645,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.updateSessionStatus();
                 }, this.DRAIN_DELAY_MS);
                 return;
-            }
-
-            if (
-                sameTimeMessages.some(
-                    (msg) =>
-                        msg.message_data.message_type === 'update_session_status' &&
-                        msg.message_data.status === GraphSessionStatus.WAITING_FOR_USER
-                ) &&
-                sessionStatus === GraphSessionStatus.WAITING_FOR_USER
-            ) {
-                this.sseService.stopStream();
-                this.updateSessionStatus();
             }
         }
     }
@@ -766,32 +666,17 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             });
     }
 
-    public getAgentFromMessage(message: GraphMessage): GetAgentRequest | null {
-        if (!message.message_data) return null;
-
-        if (
-            (message.message_data.message_type === 'agent' || message.message_data.message_type === 'agent_finish') &&
-            'agent_id' in message.message_data
-        ) {
-            const agentId = message.message_data.agent_id;
-            return this.agentMap.get(agentId) || null;
-        }
-
-        return null;
-    }
-
-    public getProjectFromMessage(message: GraphMessage): GetProjectRequest | null {
-        if (!message) return null;
-
-        if (message.name) {
-            return { name: message.name } as GetProjectRequest;
-        }
-
-        return null;
+    /** The graph node a message came from. Rendered as the heading of a finish card. */
+    public getNodeNameFromMessage(message: GraphMessage): string | null {
+        return message?.name ?? null;
     }
 
     // Check if we should show transition between sessions
     public shouldShowTransition(currentMessage: GraphMessage, index: number): boolean {
+        // Divider marks a live hand-off between nodes; once the run reaches a terminal
+        // status there is nothing to hand off, so it is not drawn on a finished session.
+        if (TERMINAL_STATUSES.has(this.sseService.status())) return false;
+
         // Don't show transition for the first message
         if (index === 0) return false;
 
@@ -882,9 +767,59 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private hasNestedMessagesForContext(context: MessageContext): boolean {
-        if (!context.isSubgraphStart) return false;
+        return this.getNestedMessagesCountForContext(context) > 0;
+    }
+
+    private getNestedMessagesCountForContext(context: MessageContext): number {
+        if (!context.isSubgraphStart) return 0;
+        const backendCount = this.getBackendNestedMessagesCount(context);
+        const liveCount = this.getLiveNestedMessagesCount(context);
+        return Math.max(backendCount, liveCount);
+    }
+
+    private getBackendNestedMessagesCount(context: MessageContext): number {
+        const message = this.messages[context.index];
+        const data = message?.message_data as StartSubflowMessageData | undefined;
+        if (!data?.messages_count_by_subgraph || data.subgraph_id == null) return 0;
+        const countsByType = data.messages_count_by_subgraph[data.subgraph_id];
+        if (!countsByType) return 0;
+        let sum = 0;
+        for (const [type, count] of Object.entries(countsByType)) {
+            if (RENDERABLE_MESSAGE_TYPES.has(type)) sum += count;
+        }
+        return sum;
+    }
+
+    private getLiveNestedMessagesCount(context: MessageContext): number {
         const nestedPath = [...context.path, context.key];
-        return this.messageContexts.some((ctx) => this.pathsEqual(ctx.path, nestedPath));
+        return this.messageContexts.reduce(
+            (count, ctx) =>
+                this.pathsEqual(ctx.path, nestedPath) && this.isRenderableNestedMessage(ctx) ? count + 1 : count,
+            0
+        );
+    }
+
+    // Mirrors the @switch cases in the nested drilldown template: only messages
+    // whose type matches a case render as a card, so only those should be counted.
+    private isRenderableNestedMessage(ctx: MessageContext): boolean {
+        const type = this.messages[ctx.index]?.message_data?.message_type;
+        switch (type) {
+            case MessageType.START:
+            case MessageType.PYTHON:
+            case MessageType.LLM:
+            case MessageType.EXTRACTED_CHUNKS:
+            case MessageType.ERROR:
+            case MessageType.CONDITION_GROUP:
+            case MessageType.CLASSIFICATION_PROMPT:
+            case MessageType.CONDITION_GROUP_MANIPULATION:
+            case MessageType.FINISH:
+            case MessageType.SUBGRAPH_START:
+            case MessageType.SUBGRAPH_FINISH:
+            case MessageType.FINDINGS:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private isNestedMessagesOpenForContext(context: MessageContext): boolean {
@@ -994,42 +929,17 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         return message?.name || 'Subgraph';
     }
 
-    onUserMessageSubmitted(message: string) {
-        // Make sure we have valid sessionId and updateSessionStatusData
-        if (!this.sessionId) {
-            console.warn('No sessionId available; cannot send answer.');
-            return;
-        }
-        if (!this.updateSessionStatusData) {
-            console.warn('No updateSessionStatusData available; cannot send answer.');
-            return;
-        }
-
-        const requestData = {
-            session_id: +this.sessionId,
-            crew_id: this.updateSessionStatusData.crew_id,
-            execution_order: this.updateSessionStatusData.status_data.execution_order,
-            name: this.updateSessionStatusData.status_data.name,
-            answer: message,
-        };
-
-        this.answerToLLMService.sendAnswerToLLM(requestData).subscribe({
-            next: (response) => {
-                console.log('Answer to LLM sent successfully:', response);
-                this.sseService.resumeStream();
-                this.statusWaitForUser = false;
-                this.autoScrollEnabled = true;
-                this.cdr.markForCheck();
-            },
-            error: (error) => {
-                console.error('Error sending answer to LLM:', error);
-            },
-        });
-    }
-
     private mergeMessages(incoming: GraphMessage[]): void {
+        // Dedup must be per raw message (getDedupKey), not per identity/context key
+        // (getMessageKey) — many stream events (task_start/tool_call/tool_result/task_finish)
+        // share the same coarse node_stream identity key, so using it here would collapse
+        // all but the first event of a node.
+        // Never merge a message that belongs to another session. Guarded on
+        // `session != null` so a payload without the field still merges normally.
+        const currentSessionId = this.sessionId != null ? +this.sessionId : null;
         const toAdd = incoming.filter((m) => {
-            const key = this.getMessageKey(m);
+            if (currentSessionId !== null && m.session != null && +m.session !== currentSessionId) return false;
+            const key = this.getDedupKey(m);
             if (this.seenKeys.has(key)) return false;
             this.seenKeys.add(key);
             return true;
@@ -1039,8 +949,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private insertSubgraphMessages(subgraphExecutionId: string, incoming: GraphMessage[]): void {
+        // See comment in mergeMessages: use the per-raw-message dedup key here too.
         const toAdd = incoming.filter((m) => {
-            const key = this.getMessageKey(m);
+            const key = this.getDedupKey(m);
             if (this.seenKeys.has(key)) return false;
             this.seenKeys.add(key);
             return true;
@@ -1139,7 +1050,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 next: (response) => {
                     this.mergeMessages(response.results);
                     this.rebuildMessageState(this.messages);
-                    this.processMessages();
                     this.messagesChanged.emit(this.messages);
                     this.cdr.markForCheck();
                     if (response.next !== null) {
@@ -1256,6 +1166,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private buildMessageEntry(message: GraphMessage, context?: MessageContext | null): MessageViewEntry {
         const resolvedContext = context ?? this.getMessageContext(message);
         const hasNestedMessages = resolvedContext ? this.hasNestedMessagesForContext(resolvedContext) : false;
+        const nestedMessagesCount = resolvedContext ? this.getNestedMessagesCountForContext(resolvedContext) : 0;
         const isNestedMessagesOpen = resolvedContext ? this.isNestedMessagesOpenForContext(resolvedContext) : false;
         const index = resolvedContext ? resolvedContext.index : 0;
         const rootKey = resolvedContext ? this.getRootKeyForContext(resolvedContext) : null;
@@ -1263,54 +1174,86 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             key: this.getMessageKey(message),
             message,
             index,
-            agent: this.getAgentFromMessage(message),
-            project: this.getProjectFromMessage(message),
+            nodeName: this.getNodeNameFromMessage(message),
             subgraphName: this.getSubgraphName(message),
             hasNestedMessages,
+            nestedMessagesCount,
             isNestedMessagesOpen,
             shouldShowTransition: this.shouldShowTransition(message, index),
             rootKey,
             rootView: null,
+            nodeCompleted: this.isNodeStreamCompleted(message),
         };
     }
 
+    // TaskNode/AgentNode stream events don't reliably carry `is_final: true` — the backend
+    // contract is one `start`, 0..N stream events, then exactly one `finish` OR `error` message
+    // (same `name`). Derive completion from the presence of that finish/error message in the
+    // FULL message list, not the post-filter visible one. The backend stamps
+    // a single execution_order per node run, shared by that run's stream and finish messages, so
+    // equality means "same run". The `>=` comparison still keeps a later run's finish/error from
+    // being matched against an earlier run's stream messages, since the later run's
+    // execution_order is higher.
+    private isNodeStreamCompleted(message: GraphMessage): boolean {
+        const type = message.message_data?.message_type;
+        if (!type || !STREAM_MESSAGE_TYPES.has(type)) return false;
+        return this.messages.some((m) => {
+            const data = m.message_data;
+            return (
+                !!data &&
+                (data.message_type === MessageType.FINISH || data.message_type === MessageType.ERROR) &&
+                m.name === message.name &&
+                m.execution_order >= message.execution_order
+            );
+        });
+    }
+
     private updateVisibleMessages(): void {
-        // Build a set of message indices to show for code_agent_stream:
-        // One card per node name — prefer final, fall back to latest non-final.
-        const caShowIndex = new Map<string, number>(); // node_name -> message index to show
+        // Build a set of message indices to show for stream message types
+        // (task_node_stream, agent_node_stream): one card per node name+type — prefer final,
+        // fall back to latest non-final.
+        const streamShowIndex = new Map<string, number>(); // `${message_type}:${node_name}` -> message index to show
 
         for (const context of this.messageContexts) {
             if (context.path.length !== 0) continue;
             const msg = this.messages[context.index];
-            if (msg?.message_data?.message_type !== 'code_agent_stream') continue;
+            const type = msg?.message_data?.message_type;
+            if (!type || !STREAM_MESSAGE_TYPES.has(type)) continue;
 
-            const isFinal = (msg.message_data as CodeAgentStreamMessageData).is_final === true;
-            const existing = caShowIndex.get(msg.name);
+            const isFinal = this.isStreamMessageFinal(msg.message_data);
+            const groupKey = `${type}:${msg.name}`;
+            const existing = streamShowIndex.get(groupKey);
 
             if (isFinal) {
-                caShowIndex.set(msg.name, context.index);
+                streamShowIndex.set(groupKey, context.index);
             } else if (existing === undefined) {
-                caShowIndex.set(msg.name, context.index);
+                streamShowIndex.set(groupKey, context.index);
             } else {
                 const existingMsg = this.messages[existing];
-                if ((existingMsg?.message_data as CodeAgentStreamMessageData)?.is_final !== true) {
-                    caShowIndex.set(msg.name, context.index);
+                if (!this.isStreamMessageFinal(existingMsg?.message_data)) {
+                    streamShowIndex.set(groupKey, context.index);
                 }
             }
         }
 
-        const caShowSet = new Set(caShowIndex.values());
+        const streamShowSet = new Set(streamShowIndex.values());
 
         this.visibleMessageEntries = this.messageContexts
             .filter((context) => context.path.length === 0)
             .filter((context) => {
                 const msg = this.messages[context.index];
-                const type = msg?.message_data?.message_type;
+                const data = msg?.message_data;
+                const type = data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
-                if (type !== MessageType.CODE_AGENT_STREAM) return true;
-                return caShowSet.has(context.index);
+                if (!STREAM_MESSAGE_TYPES.has(type)) return true;
+                return streamShowSet.has(context.index);
             })
             .map((context) => this.buildMessageEntry(this.messages[context.index], context));
+    }
+
+    private isStreamMessageFinal(data: MessageData | undefined): boolean {
+        if (!data) return false;
+        return (data as TaskNodeStreamMessageData | AgentNodeStreamMessageData).is_final === true;
     }
 
     private updateDrilldownMessages(): void {
@@ -1319,7 +1262,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
         this.drillPaths.forEach((path, rootKey) => {
             const nestedEntries = this.messageContexts
-                .filter((context) => this.pathsEqual(context.path, path))
+                .filter((context) => this.pathsEqual(context.path, path) && this.isRenderableNestedMessage(context))
                 .map((context) => this.buildMessageEntry(this.messages[context.index], context));
             this.drilldownEntriesByRoot.set(rootKey, nestedEntries);
 
@@ -1423,10 +1366,18 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private getMessageKey(message: GraphMessage): string {
-        // Stable key for code_agent_stream: one component per node name
-        if (message.message_data?.message_type === 'code_agent_stream') {
-            return `ca_stream_${message.name}`;
+        const type = message.message_data?.message_type;
+        // Stable key for task_node_stream / agent_node_stream: one component per node name+type
+        if (type === MessageType.TASK_NODE_STREAM || type === MessageType.AGENT_NODE_STREAM) {
+            return `node_stream_${type}_${message.name}`;
         }
+        return message.uuid ?? `${message.id}-${message.execution_order}-${message.created_at}`;
+    }
+
+    // Per-raw-message unique key used only for seenKeys dedup (see mergeMessages /
+    // insertSubgraphMessages). Unlike getMessageKey, this never collapses distinct raw
+    // messages onto a shared coarse key — every individual event must be kept.
+    private getDedupKey(message: GraphMessage): string {
         return message.uuid ?? `${message.id}-${message.execution_order}-${message.created_at}`;
     }
 

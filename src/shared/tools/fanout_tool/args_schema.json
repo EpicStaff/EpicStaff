@@ -1,0 +1,57 @@
+{
+  "title": "FanoutToolArgs",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["parallel", "pipeline"],
+      "description": "Fan-out mode. 'parallel': run the configured 'graph_id' flow concurrently once per item in 'items' and wait for all of them to finish (barrier), returning results in input order. 'pipeline': run the configured ordered 'graph_ids' flows in sequence, feeding each stage's output as the next stage's input, and return the final output."
+    },
+    "items": {
+      "type": "array",
+      "items": {"type": "object"},
+      "description": "Parallel mode only. A list of JSON objects — one per concurrent sub-flow run — each object is the 'variables' payload passed into that run of the configured 'graph_id' flow. Capped at 'max_items' entries per call."
+    },
+    "input": {
+      "type": "object",
+      "description": "Pipeline mode only. The JSON object passed as the input/variables to the first stage in 'graph_ids'. Each subsequent stage receives the previous stage's output as its input."
+    },
+    "graph_id": {
+      "type": "integer",
+      "description": "Parallel mode only. ID of the saved flow (graph) to run once per item in 'items'. Set this in the tool configuration, not by the agent — the agent never chooses which flow to call.",
+      "input_type": "user_input"
+    },
+    "graph_ids": {
+      "type": "array",
+      "items": {"type": "integer"},
+      "description": "Pipeline mode only. Ordered list of saved flow (graph) IDs — stage 1 runs first with 'input', stage 2 receives stage 1's output as its input, and so on. Set this in the tool configuration, not by the agent.",
+      "input_type": "user_input"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "EpicStaff API key used to authenticate the run-session / session-status calls (sent as the X-Api-Key header). Set this in the tool configuration, not by the agent.",
+      "input_type": "user_input"
+    },
+    "api_base_url": {
+      "type": "string",
+      "description": "Base URL of the EpicStaff Django REST API, e.g. http://djangoapp:8000/api. Optional — if unset, falls back to the DJANGO_API_URL environment variable, then to http://djangoapp:8000/api.",
+      "input_type": "user_input"
+    },
+    "poll_timeout_s": {
+      "type": "integer",
+      "description": "Maximum seconds to wait for each individual sub-flow run to finish before giving up. Optional, default 300.",
+      "input_type": "user_input"
+    },
+    "max_items": {
+      "type": "integer",
+      "description": "Optional cap on the number of parallel items (or pipeline stages) allowed in a single call. Default 10. In parallel mode, extra items beyond the cap are truncated with a warning; in pipeline mode, exceeding the cap is rejected outright.",
+      "input_type": "user_input"
+    },
+    "max_workers": {
+      "type": "integer",
+      "description": "Optional cap on the number of sub-flows run concurrently in parallel mode. Default 4. Ignored in pipeline mode, where stages always run strictly sequentially.",
+      "input_type": "user_input"
+    }
+  },
+  "required": ["mode", "api_key"]
+}

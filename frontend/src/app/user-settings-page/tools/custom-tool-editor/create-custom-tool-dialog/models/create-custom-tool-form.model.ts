@@ -6,6 +6,13 @@ export interface CreateCustomToolFormValue {
     pythonCode: string;
     variablesJson: string;
     libraries: string[];
+    useStorage: boolean;
+}
+
+export const DEFAULT_ENTRYPOINT = 'main';
+
+export interface PreservedToolFields {
+    entrypoint?: string;
 }
 
 /**
@@ -15,7 +22,11 @@ export interface CreateCustomToolFormValue {
  * Throws if `variablesJson` is not valid JSON. Caller should guard with the
  * editor's own validity flag before invoking.
  */
-export function toCreatePayload(form: CreateCustomToolFormValue): CreatePythonCodeToolPayload {
+export function toCreatePayload(
+    form: CreateCustomToolFormValue,
+    secretIds: number[],
+    preserved: PreservedToolFields = {}
+): CreatePythonCodeToolPayload {
     const parsedVariables = JSON.parse(form.variablesJson) as unknown;
 
     return {
@@ -24,9 +35,14 @@ export function toCreatePayload(form: CreateCustomToolFormValue): CreatePythonCo
         variables: Array.isArray(parsedVariables) ? parsedVariables : [],
         python_code: {
             code: form.pythonCode,
-            entrypoint: 'main',
+            entrypoint: preserved.entrypoint?.trim() || DEFAULT_ENTRYPOINT,
             libraries: form.libraries,
             global_kwargs: {},
+            secret_ids: secretIds,
         },
+        // The `useStorage` form control is the source of truth for new edits; it is seeded
+        // from `selectedTool()?.use_storage ?? false`, so an existing tool's value is still
+        // preserved whenever the user doesn't touch the toggle.
+        use_storage: form.useStorage,
     };
 }

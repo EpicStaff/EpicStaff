@@ -1,27 +1,39 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
-    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
+    AppTableRowAction,
     ButtonComponent,
+    ConfirmationDialogService,
     LoadingSpinnerComponent,
     SearchComponent,
     SelectItem,
     TableRow,
 } from '@shared/components';
+import { HasPermissionInAnyOrgDirective } from '@shared/directives';
+import { ActionCode, FullMembership, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
-import { finalize } from 'rxjs/operators';
+import { concat, Observable, of } from 'rxjs';
+import { catchError, filter, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
+import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
+import { ToastService } from '../../../../../services/notifications';
 import {
     OverflowBadgeDirective,
     OverflowItemDirective,
     OverflowItemsDirective,
 } from '../../../../../shared/directives/overflow-items.directive';
+import {
+    CreateMembershipDialogComponent,
+    MembershipDialogData,
+} from '../../../components/create-membership-dialog/create-membership-dialog.component';
 import {
     CreateUserDialogComponent,
     UserDialogData,
@@ -29,10 +41,12 @@ import {
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
 import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
+import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
-import { UserService } from '../../../services/users/user.service';
-import { NormalizedUser } from '../../../strategies/users/user-fetch.strategy';
-import { createUserFetchStrategy } from '../../../strategies/users/user-fetch-strategy.factory';
+import { MembershipsService } from '../../../services/admin/memberships.service';
+import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
+import { adminUsersToAggregated, aggregateMembershipsByUser } from '../../../utils/aggregate-users.util';
+import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Online', value: 'online' },
@@ -47,7 +61,6 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
-        AppSvgIconComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -58,23 +71,47 @@ const STATUS_ITEMS: SelectItem[] = [
         OverflowItemDirective,
         OverflowBadgeDirective,
         MatTooltipModule,
+        HasPermissionInAnyOrgDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersTabComponent implements OnInit {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
-    private userService = inject(UserService);
     private adminUserService = inject(AdminUserService);
-    private currentUserService = inject(ProfileService);
+    private membershipsService = inject(MembershipsService);
+    private profileService = inject(ProfileService);
+    private permissionsService = inject(PermissionsService);
+    private activeOrgService = inject(ActiveOrgService);
+    private orgStorage = inject(OrganizationsStorageService);
+    private toast = inject(ToastService);
+    private confirmation = inject(ConfirmationDialogService);
 
-    private normalizedUsers = signal<NormalizedUser[]>([]);
+    private aggregatedUsers = signal<AggregatedUser[]>([]);
 
     usersData = signal<TableRow[]>([]);
     searchTerm = signal('');
     isLoading = signal(true);
+    readonly orgFilterIds = signal<number[]>([]);
 
-    private orgFilterItems = signal<SelectItem[]>([]);
+    /** All orgs whose memberships the current user can list. Populated once on init. */
+    readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
+
+    private roleFilterItems = signal<SelectItem[]>([]);
+
+    readonly orgFilterItems = computed<SelectItem[]>(() =>
+        this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
+    );
+
+    /** Preselected org filter — follows the currently active org, but only if the caller can
+     *  actually read memberships there. Otherwise stays empty so the initial load falls back
+     *  to fetching across all readable orgs (see `ngOnInit`). */
+    private readonly activeOrgDefault = computed<number[] | undefined>(() => {
+        const id = this.activeOrgService.activeOrgId();
+        if (id === null) return undefined;
+        if (this.permissionsService.isSuperadmin) return [id];
+        return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
+    });
 
     filteredUsers = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -87,16 +124,90 @@ export class UsersTabComponent implements OnInit {
         });
     });
 
+    /** Actions are permission-aware:
+     *  - Superadmin: Deactivate (`POST /admin/users/{id}/deactivate/`) on active rows; Reactivate on inactive rows.
+     *  - Delegated admin: Remove membership(s) from every row-org where the caller holds `users:delete`.
+     *    Hidden when the caller has no such membership overlap. */
+    private readonly rowActions = computed<AppTableRowAction[]>(() => {
+        const isSA = this.permissionsService.isSuperadmin;
+        const currentUserId = this.profileService.currentUserSignal()?.id;
+        const editAction: AppTableRowAction = {
+            icon: 'edit',
+            tooltip: 'Edit user',
+            onClick: (row) => this.onEditUser(row['id'] as number),
+            hidden: (row) =>
+                (!isSA && this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0) ||
+                currentUserId === row['id'],
+        };
+        if (isSA) {
+            const deactivateAction: AppTableRowAction = {
+                icon: 'trash',
+                tooltip: 'Deactivate account',
+                variant: 'danger',
+                hidden: (row) => row['isActive'] !== true || currentUserId === row['id'],
+                onClick: (row) => this.onDeactivate(row),
+            };
+            const reactivateAction: AppTableRowAction = {
+                icon: 'refresh',
+                tooltip: 'Reactivate account',
+                hidden: (row) => row['isActive'] !== false,
+                onClick: (row) => this.onReactivate(row),
+            };
+            return [editAction, deactivateAction, reactivateAction];
+        }
+        const removeAction: AppTableRowAction = {
+            icon: 'trash',
+            tooltip: 'Remove from your organizations',
+            variant: 'danger',
+            hidden: (row) => this.membershipsIManage(row['id'] as number, ActionCode.Delete).length === 0,
+            onClick: (row) => this.onRemoveFromMyOrgs(row),
+        };
+        return [editAction, removeAction];
+    });
+
     columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'user', label: 'USER', width: '2fr' },
-        { key: 'roles', label: 'ROLE', width: '1.5fr' },
-        { key: 'organization', label: 'ORGANIZATION', width: '1.5fr', filterItems: this.orgFilterItems() },
-        { key: 'lastActive', label: 'LAST ACTIVE', width: '1.5fr' },
-        { key: 'status', label: 'STATUS', width: '1.5fr', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center' },
+        { key: 'user', label: 'USER', width: 'minmax(200px, 2fr)' },
+        {
+            key: 'roles',
+            label: 'ROLE',
+            width: 'minmax(150px, 1.5fr)',
+            filterItems: this.roleFilterItems(),
+        },
+        {
+            key: 'organization',
+            label: 'ORGANIZATION',
+            width: 'minmax(175px, 1.5fr)',
+            filterItems: this.orgFilterItems(),
+            filterKind: 'multi',
+            filterServerSide: true,
+            defaultValues: this.activeOrgDefault(),
+        },
+        { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
+        { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
+        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center', actions: this.rowActions() },
     ]);
 
     ngOnInit(): void {
+        this.loadReadableOrgs();
+        if (!this.activeOrgDefault()) this.loadUsers();
+    }
+
+    private loadReadableOrgs(): void {
+        if (this.permissionsService.isSuperadmin) {
+            this.orgStorage
+                .getOrganizations()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((orgs) =>
+                    this.readableOrgs.set(orgs.filter((o) => o.is_active).map((o) => ({ id: o.id, name: o.name })))
+                );
+            return;
+        }
+        this.readableOrgs.set(this.permissionsService.orgsWith(ResourceCode.Memberships, ActionCode.Read));
+    }
+
+    onFilterChange(evt: { key: string; values: unknown[] }): void {
+        if (evt.key !== 'organization') return;
+        this.orgFilterIds.set(evt.values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
         this.loadUsers();
     }
 
@@ -114,21 +225,145 @@ export class UsersTabComponent implements OnInit {
         this.openUserDialog();
     }
 
+    /** Superadmin: confirm + deactivate account (global). */
+    private onDeactivate(row: TableRow): void {
+        const userId = row['id'] as number;
+        const label = (row['name'] as string) || (row['email'] as string) || 'this account';
+        this.confirmation
+            .confirm({
+                title: 'Deactivate account?',
+                message: `<strong>${label}</strong> will no longer be able to sign in. You can reactivate them later.`,
+                confirmText: 'Deactivate',
+                cancelText: 'Cancel',
+                type: 'danger',
+            })
+            .pipe(
+                filter((result) => result === true),
+                switchMap(() =>
+                    this.adminUserService.deactivateUser(userId).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            this.toast.error(rbacErrorMessage(err, 'Failed to deactivate account.'));
+                            return of(null);
+                        })
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((result) => {
+                if (result === null) return;
+                this.toast.success('Account deactivated.');
+                this.loadUsers();
+            });
+    }
+
+    /** Superadmin: confirm + reactivate previously-deactivated account. */
+    private onReactivate(row: TableRow): void {
+        const userId = row['id'] as number;
+        const label = (row['name'] as string) || (row['email'] as string) || 'this account';
+        this.confirmation
+            .confirm({
+                title: 'Reactivate account?',
+                message: `<strong>${label}</strong> will regain the ability to sign in.`,
+                confirmText: 'Reactivate',
+                cancelText: 'Cancel',
+            })
+            .pipe(
+                filter((result) => result === true),
+                switchMap(() =>
+                    this.adminUserService.reactivateUser(userId).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            this.toast.error(rbacErrorMessage(err, 'Failed to reactivate account.'));
+                            return of(null);
+                        })
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((result) => {
+                if (result === null) return;
+                this.toast.success('Account reactivated.');
+                this.loadUsers();
+            });
+    }
+
+    /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */
+    private onRemoveFromMyOrgs(row: TableRow): void {
+        const userId = row['id'] as number;
+        const memberships = this.membershipsIManage(userId, ActionCode.Delete);
+        if (memberships.length === 0) return;
+
+        const label = (row['name'] as string) || (row['email'] as string) || 'this user';
+        const orgNames = memberships.map((m) => m.organization.name).join(', ');
+        this.confirmation
+            .confirm({
+                title: 'Remove from your organizations?',
+                message: `<strong>${label}</strong> will lose access to: ${orgNames}.`,
+                confirmText: 'Remove',
+                cancelText: 'Cancel',
+                type: 'danger',
+            })
+            .pipe(
+                filter((result) => result === true),
+                switchMap(() => {
+                    const ops = memberships.map((m) =>
+                        this.membershipsService.remove(m.id).pipe(
+                            map(() => ({ ok: true as const, org: m.organization.name })),
+                            catchError((err: HttpErrorResponse) =>
+                                of({ ok: false as const, org: m.organization.name, err })
+                            )
+                        )
+                    );
+                    return concat(...ops).pipe(toArray());
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((results) => {
+                const failures = results.filter((r) => !r.ok);
+                if (failures.length === 0) {
+                    this.toast.success('User removed from your organizations.');
+                } else if (failures.length === results.length) {
+                    this.toast.error(rbacErrorMessage(failures[0].err, 'Failed to remove user.'));
+                } else {
+                    const failedOrgs = failures.map((f) => f.org).join(', ');
+                    this.toast.error(`Removed from some orgs; failed on: ${failedOrgs}.`);
+                }
+                this.loadUsers();
+            });
+    }
+
+    /** Memberships of `userId` where the caller holds the given `Users:*` action.
+     *  Returns [] for the caller's own row (backend rejects self-membership mutation). */
+    private membershipsIManage(userId: number, action: ActionCode): FullMembership[] {
+        const user = this.aggregatedUsers().find((u) => u.id === userId);
+        if (!user || user.id === this.profileService.currentUserSignal()?.id) return [];
+        return user.memberships.filter((m) =>
+            this.permissionsService.canInOrg(m.organization.id, ResourceCode.Memberships, action)
+        );
+    }
+
     onEditUser(userId: number): void {
-        const user = this.normalizedUsers().find((u) => u.id === userId);
+        const user = this.aggregatedUsers().find((u) => u.id === userId);
         if (user) {
             this.openUserDialog(user);
         }
     }
 
-    private openUserDialog(user?: NormalizedUser): void {
-        const data: UserDialogData = { user };
-        const ref = this.dialog.open(CreateUserDialogComponent, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            disableClose: true,
-            data,
-        });
+    private openUserDialog(user?: AggregatedUser): void {
+        // SA → Create User (email/password/superadmin + memberships).
+        // Delegated → Create Membership (link existing account to org).
+        const ref = this.permissionsService.isSuperadmin
+            ? this.dialog.open(CreateUserDialogComponent, {
+                  width: 'calc(100vw - 2rem)',
+                  height: 'calc(100vh - 2rem)',
+                  disableClose: true,
+                  data: { user } as UserDialogData,
+              })
+            : this.dialog.open(CreateMembershipDialogComponent, {
+                  width: 'calc(100vw - 2rem)',
+                  height: 'calc(100vh - 2rem)',
+                  disableClose: true,
+                  data: { user } as MembershipDialogData,
+              });
 
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
@@ -137,38 +372,54 @@ export class UsersTabComponent implements OnInit {
         });
     }
 
+    /** Superadmin → `/api/admin/users/` (full account list w/ memberships).
+     *  Delegated admin → `/api/admin/memberships/` aggregated client-side.
+     *  Same shape either way so the table stays permission-agnostic. Server-side org filter
+     *  is applied via `orgFilterIds` — memberships returned for other orgs are stripped. */
     private loadUsers(): void {
         this.isLoading.set(true);
-        const strategy = createUserFetchStrategy(this.currentUserService, this.adminUserService, this.userService);
+        const orgIds = this.orgFilterIds();
+        const source$ = this.permissionsService.isSuperadmin
+            ? this.loadFromAdminUsers(orgIds)
+            : this.loadFromMemberships(orgIds);
 
-        strategy
-            .fetchUsers()
+        source$
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isLoading.set(false))
             )
             .subscribe({
                 next: (users) => {
-                    const currentUserId = this.currentUserService.currentUserSignal()?.id;
-                    const filtered = users.filter((u) => u.id !== currentUserId);
-                    this.normalizedUsers.set(filtered);
-                    this.usersData.set(filtered.map((u) => this.mapToRow(u)));
-                    this.orgFilterItems.set(this.extractOrgFilterItems(filtered));
+                    this.aggregatedUsers.set(users);
+                    this.usersData.set(users.map((u) => this.mapToRow(u)));
+                    this.roleFilterItems.set(this.extractRoleFilterItems(users));
                 },
             });
     }
 
-    private extractOrgFilterItems(users: NormalizedUser[]): SelectItem[] {
-        const orgMap = new Map<number, string>();
-        for (const user of users) {
-            for (const m of user.memberships) {
-                orgMap.set(m.organization.id, m.organization.name);
-            }
-        }
-        return Array.from(orgMap, ([value, name]) => ({ name, value }));
+    private loadFromAdminUsers(orgIds: number[]): Observable<AggregatedUser[]> {
+        return this.adminUserService
+            .getUsers(orgIds.length ? { orgIds } : {})
+            .pipe(map((page) => adminUsersToAggregated(page.results)));
     }
 
-    private mapToRow(user: NormalizedUser): TableRow {
+    private loadFromMemberships(orgIds: number[]): Observable<AggregatedUser[]> {
+        return this.membershipsService
+            .list(orgIds.length ? { org_ids: orgIds } : {})
+            .pipe(map((page) => aggregateMembershipsByUser(page.results)));
+    }
+
+    private extractRoleFilterItems(users: AggregatedUser[]): SelectItem[] {
+        const roleNames = new Set<string>();
+        for (const user of users) {
+            for (const m of user.memberships) {
+                roleNames.add(m.role.name);
+            }
+        }
+        return Array.from(roleNames, (name) => ({ name, value: name }));
+    }
+
+    private mapToRow(user: AggregatedUser): TableRow {
         const orgs = user.memberships.map((m) => m.organization);
         const roles = [...new Set(user.memberships.map((m) => m.role.name))];
 
@@ -178,6 +429,7 @@ export class UsersTabComponent implements OnInit {
             email: user.email,
             avatar: user.avatarUrl,
             isSuperadmin: user.isSuperadmin,
+            isActive: user.isActive,
             roles,
             organization: orgs?.map((o) => o.id),
             organizationDetails: orgs,
@@ -187,4 +439,7 @@ export class UsersTabComponent implements OnInit {
     }
 
     protected readonly getRelativeTime = getRelativeTime;
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+    protected readonly isSuperadmin = this.permissionsService.isSuperadmin;
 }

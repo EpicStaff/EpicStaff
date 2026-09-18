@@ -1,0 +1,322 @@
+import pytest
+from rest_framework.test import APIClient
+
+from tables.models.label_models import Label
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.rbac_models import Organization, OrganizationUser, Role
+
+
+# ---- fixtures ----
+
+
+@pytest.fixture
+def org_admin_role(db):
+    return Role.objects.get(name="Org Admin", is_built_in=True, org__isnull=True)
+
+
+@pytest.fixture
+def org_a(db):
+    return Organization.objects.create(name="Org A")
+
+
+@pytest.fixture
+def org_b(db):
+    return Organization.objects.create(name="Org B")
+
+
+@pytest.fixture
+def member_a(db, django_user_model, org_a, org_admin_role):
+    user = django_user_model.objects.create_user(
+        email="copy_member_a@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_a, role=org_admin_role)
+    return user
+
+
+@pytest.fixture
+def client_a(member_a, org_a):
+    client = APIClient()
+    client.force_authenticate(user=member_a)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_a.id))
+    return client
+
+
+def _make_tool(*, org=None, built_in=False, name="tool"):
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    return PythonCodeTool.objects.create(
+        name=name,
+        description="desc",
+        python_code=code,
+        built_in=built_in,
+        org=org,
+    )
+
+
+@pytest.fixture
+def built_in_python_code_tool() -> PythonCodeTool:
+    # Real built-in tools are global (org=None), visible to every org.
+    return _make_tool(built_in=True, org=None, name="BuiltInTool")
+
+
+# ---- copy of a built-in tool ----
+
+
+@pytest.mark.django_db
+def test_copy_built_in_tool_succeeds_and_is_not_built_in(
+    client_a, org_a, built_in_python_code_tool
+):
+    resp = client_a.post(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/copy/",
+        {},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["built_in"] is False
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.built_in is False
+    assert copy.id != built_in_python_code_tool.id
+
+
+@pytest.mark.django_db
+def test_copy_of_built_in_tool_lands_in_active_org(
+    client_a, org_a, built_in_python_code_tool
+):
+    # Source built-in tool has org=None; the copy must be stamped with the
+    # caller's active org, not inherit the None org_id.
+    resp = client_a.post(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/copy/",
+        {},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.org_id == org_a.id
+
+
+@pytest.mark.django_db
+def test_copy_of_built_in_tool_duplicates_python_code_row(
+    client_a, org_a, built_in_python_code_tool
+):
+    resp = client_a.post(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/copy/",
+        {},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.python_code_id != built_in_python_code_tool.python_code_id
+    assert copy.python_code.code == built_in_python_code_tool.python_code.code
+    assert copy.python_code.entrypoint == built_in_python_code_tool.python_code.entrypoint
+
+
+@pytest.mark.django_db
+def test_copy_of_built_in_tool_is_then_fully_patch_editable(
+    client_a, org_a, built_in_python_code_tool
+):
+    resp = client_a.post(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/copy/",
+        {},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    copy_id = resp.data["id"]
+
+    patch_resp = client_a.patch(
+        f"/api/python-code-tool/{copy_id}/",
+        {"name": "RenamedCopy", "description": "new desc"},
+        format="json",
+    )
+    assert patch_resp.status_code == 200, patch_resp.data
+
+    copy = PythonCodeTool.objects.get(id=copy_id)
+    assert copy.name == "RenamedCopy"
+    assert copy.description == "new desc"
+
+
+# ---- existing built-in guardrails must remain intact ----
+
+
+@pytest.mark.django_db
+def test_built_in_tool_still_cannot_be_deleted(client_a, org_a, built_in_python_code_tool):
+    resp = client_a.delete(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/"
+    )
+    assert resp.status_code in (400, 403, 404)
+    assert PythonCodeTool.objects.filter(id=built_in_python_code_tool.id).exists()
+
+
+# ---- EST-3782: copy must carry over tool-scope labels ----
+
+
+@pytest.mark.django_db
+def test_copy_of_python_code_tool_inherits_labels(client_a, org_a):
+    tool = _make_tool(org=org_a, built_in=False, name="LabeledPyTool")
+    label = Label.objects.create(name="prod", scope=Label.Scope.TOOL, org=org_a)
+    tool.labels.set([label])
+
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert list(copy.labels.values_list("id", flat=True)) == [label.id]
+
+
+@pytest.mark.django_db
+def test_copy_of_python_code_tool_without_labels_has_no_labels(client_a, org_a):
+    tool = _make_tool(org=org_a, built_in=False, name="UnlabeledPyTool")
+
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.labels.count() == 0
+
+
+@pytest.mark.django_db
+def test_copy_of_mcp_tool_inherits_labels(client_a, org_a):
+    tool = McpTool.objects.create(
+        name="McpToolWithLabel",
+        transport="https://example.com/mcp",
+        tool_name="some_tool",
+        org=org_a,
+    )
+    label = Label.objects.create(name="staging", scope=Label.Scope.TOOL, org=org_a)
+    tool.labels.set([label])
+
+    resp = client_a.post(f"/api/mcp-tools/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = McpTool.objects.get(id=resp.data["id"])
+    assert list(copy.labels.values_list("id", flat=True)) == [label.id]
+
+
+# ---- EST-3773: copying a shared built-in tool must not carry another org's labels ----
+
+
+@pytest.mark.django_db
+def test_copy_of_built_in_tool_does_not_carry_other_org_labels(
+    client_a, org_a, org_b
+):
+    tool = _make_tool(built_in=True, org=None, name="SharedBuiltInWithForeignLabel")
+    foreign_label = Label.objects.create(
+        name="OrgBLabel", scope=Label.Scope.TOOL, org=org_b
+    )
+    tool.labels.set([foreign_label])
+
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.org_id == org_a.id
+    assert list(copy.labels.values_list("id", flat=True)) == []
+
+
+# ---- EST-4000: copy-name numbering must be org-scoped (and built-in-aware) ----
+
+
+@pytest.fixture
+def member_b(db, django_user_model, org_b, org_admin_role):
+    user = django_user_model.objects.create_user(
+        email="copy_member_b@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_b, role=org_admin_role)
+    return user
+
+
+@pytest.fixture
+def client_b(member_b, org_b):
+    client = APIClient()
+    client.force_authenticate(user=member_b)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_b.id))
+    return client
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_numbering_is_not_inflated_by_other_orgs(
+    client_a, client_b, org_a, org_b
+):
+    """Org B already holds "Shared #2".."Shared #6" — org A's own copy
+    numbering must not be pushed past "Shared #2" by rows it can't even see."""
+    source = _make_tool(org=org_a, built_in=False, name="Shared")
+    for n in range(2, 7):
+        _make_tool(org=org_b, built_in=False, name=f"Shared #{n}")
+
+    resp = client_a.post(f"/api/python-code-tool/{source.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.name == "Shared #2"
+    assert copy.org_id == org_a.id
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_name_avoids_built_in_collision(client_a, org_a):
+    """A copy's generated name must also skip global built-in names, not just
+    the target org's own names, otherwise the copy could collide with (or be
+    confused for) a built-in tool."""
+    built_in = _make_tool(built_in=True, org=None, name="Duplicated")
+    _make_tool(org=org_a, built_in=False, name="Duplicated #2")
+
+    resp = client_a.post(f"/api/python-code-tool/{built_in.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.name == "Duplicated #3"
+
+
+# ---- EST-4002: a concurrent-copy name race must surface cleanly, not leak
+# raw DB internals ----
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_race_on_name_returns_clean_400(
+    client_a, org_a, monkeypatch
+):
+    """Simulates the name-check/create race: `ensure_unique_identifier`
+    hands back a name that collides by the time `create()` runs (e.g. a
+    concurrent copy of the same source just took it), raising IntegrityError.
+    The client must get a clean 400 message, not the raw DB constraint
+    error text."""
+    source = _make_tool(org=org_a, built_in=False, name="RaceTool")
+    # Pre-create the row the "unique" name generator will (wrongly) hand back,
+    # so the service's create() collides on the unique constraint.
+    _make_tool(org=org_a, built_in=False, name="RaceTool #2")
+
+    monkeypatch.setattr(
+        "tables.services.copy_services.python_code_tool_copy_service.ensure_unique_identifier",
+        lambda base_name, existing_names: "RaceTool #2",
+    )
+
+    resp = client_a.post(f"/api/python-code-tool/{source.id}/copy/", {}, format="json")
+    assert resp.status_code == 400
+    assert "message" in resp.data
+    # Must not leak raw DB internals (constraint/table/column names).
+    assert "constraint" not in str(resp.data).lower()
+    assert "duplicate key" not in str(resp.data).lower()
+
+
+@pytest.mark.django_db
+def test_mcp_tool_copy_numbering_is_not_inflated_by_other_orgs(
+    client_a, client_b, org_a, org_b
+):
+    source = McpTool.objects.create(
+        name="SharedMcp",
+        transport="https://example.com/mcp",
+        tool_name="some_tool",
+        org=org_a,
+    )
+    for n in range(2, 7):
+        McpTool.objects.create(
+            name=f"SharedMcp #{n}",
+            transport="https://example.com/mcp",
+            tool_name="some_tool",
+            org=org_b,
+        )
+
+    resp = client_a.post(f"/api/mcp-tools/{source.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    copy = McpTool.objects.get(id=resp.data["id"])
+    assert copy.name == "SharedMcp #2"
+    assert copy.org_id == org_a.id

@@ -3,14 +3,28 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../services/config/config.service';
-import { ImportResult } from '../models/import-result.model';
+import { ImportFlowRequestOptions, ImportResult } from '../models/import-result.model';
+import { InspectResult } from '../models/review-item.model';
+
+export type { ImportFlowRequestOptions };
 
 export type ExportFormat = 'json' | 'csv';
 
-export interface ImportFlowRequestOptions {
-    preserveUuids: boolean;
-    replaceExisting: boolean;
-    importLabels: boolean;
+export interface PartialExportRequest {
+    agent_node_list: number[];
+    task_node_list: number[];
+    python_node_list: number[];
+    audio_transcription_node_list: number[];
+    file_extractor_node_list: number[];
+    subgraph_node_list: number[];
+    webhook_trigger_node_list: number[];
+    telegram_trigger_node_list: number[];
+    decision_table_node_list: number[];
+    classification_decision_table_node_list: number[];
+    graph_note_list: number[];
+    schedule_trigger_node_list: number[];
+    edge_list: number[];
+    knowledge_node_list: number[];
 }
 
 interface ExportAllBody {
@@ -37,6 +51,28 @@ export class ImportExportService {
         return this.configService.apiUrl + 'sessions/';
     }
 
+    private get cdtApiUrl(): string {
+        return this.configService.apiUrl + 'classification-decision-table-node/';
+    }
+
+    partialExport(graphId: number, body: PartialExportRequest): Observable<Blob> {
+        return this.http.post(`${this.apiUrl}${graphId}/partial-export/`, body, {
+            responseType: 'blob',
+        });
+    }
+
+    partialImport(graphId: number, file: File): Observable<unknown> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.http.post(`${this.apiUrl}${graphId}/partial-import/`, formData);
+    }
+
+    cdtExport(nodeId: number, format: ExportFormat): Observable<Blob> {
+        return this.http.get(`${this.cdtApiUrl}${nodeId}/export/?export_format=${format}`, {
+            responseType: 'blob',
+        });
+    }
+
     importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
         const formData = new FormData();
         formData.append('file', file);
@@ -45,6 +81,13 @@ export class ImportExportService {
         formData.append('import_labels', String(settings.importLabels));
 
         return this.http.post<ImportResult>(`${this.apiUrl}import/`, formData);
+    }
+
+    inspectFlow(file: File): Observable<InspectResult> {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        return this.http.post<InspectResult>(`${this.apiUrl}import/inspect/`, formData);
     }
 
     exportFlow(graphId: string): Observable<Blob> {

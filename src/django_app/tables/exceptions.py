@@ -19,12 +19,6 @@ class CustomAPIExeption(APIException):
         super().__init__(detail=detail, code=code)
 
 
-class ToolConfigSerializerError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "Error occured in ToolConfigSerializer"
-    default_code = "tool_config_serializer_error"
-
-
 class GraphEntryPointException(CustomAPIExeption):
     status_code = 400
     default_detail = "No node connected to start node"
@@ -33,16 +27,6 @@ class GraphEntryPointException(CustomAPIExeption):
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
-
-
-class CrewMemoryValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in CrewMemoryValidator -> ConverterService during asigning memory_llm or embedder"
-
-
-class TaskValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in TaskValidator -> ConverterService during validate crews' tasks"
 
 
 class TaskSerializerError(CustomAPIExeption):
@@ -63,6 +47,11 @@ class EndNodeValidationError(CustomAPIExeption):
 class FileNodeValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "FileExtractorNode requires input arguments"
+
+
+class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "KnowledgeNode is not fully configured to run"
 
 
 class InvalidTaskOrderError(CustomAPIExeption):
@@ -161,6 +150,8 @@ class InvalidFileTypeException(DocumentUploadException):
 class CollectionNotFoundException(DocumentUploadException):
     """Raised when source collection is not found."""
 
+    status_code = 404
+
     def __init__(self, collection_id):
         self.collection_id = collection_id
         super().__init__(f"Source collection with id {collection_id} not found")
@@ -232,9 +223,12 @@ class NaiveRagNotFoundException(RagException):
 class DocumentConfigNotFoundException(RagException):
     """Raised when document config is not found."""
 
-    def __init__(self, config_id):
-        self.config_id = config_id
-        super().__init__(f"Document config with id {config_id} not found")
+    def __init__(self, msg: str = "", config_id=None):
+        if msg:
+            super().__init__(msg)
+        else:
+            self.config_id = config_id
+            super().__init__(f"Document config with id {config_id} not found")
 
 
 class EmbedderNotFoundException(RagException):
@@ -311,12 +305,15 @@ class InvalidGraphRagParametersException(RagException):
 class GraphRagDocumentNotFoundException(RagException):
     """Raised when a document is not linked to the specified GraphRag."""
 
-    def __init__(self, document_id, graph_rag_id):
-        self.document_id = document_id
-        self.graph_rag_id = graph_rag_id
-        super().__init__(
-            f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
-        )
+    def __init__(self, msg: str = "", document_id=None, graph_rag_id=None):
+        if msg:
+            super().__init__(msg)
+        else:
+            self.document_id = document_id
+            self.graph_rag_id = graph_rag_id
+            super().__init__(
+                f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
+            )
 
 
 class AgentMissingCollectionException(RagException):
@@ -347,6 +344,14 @@ class UnknownRagTypeException(RagException):
         super().__init__(f"Unknown RAG type: '{rag_type}'")
 
 
+class KnowledgeNodeConfigurationError(RagException):
+    """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
+    or the rag_type has no built implementation to search."""
+
+    status_code = 400
+    default_code = "knowledge_node_misconfigured"
+
+
 class ScheduleTriggerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occurred in ScheduleTriggerValidator"
@@ -357,6 +362,71 @@ class BulkSaveValidationError(CustomAPIExeption):
     def __init__(self, errors: dict):
         self.errors = errors
         super().__init__(str(errors))
+
+
+class NoGraphRagForCollectionException(RagException):
+    """Raised when a collection has no GraphRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} does not exist. "
+            f"Create a GraphRag for this collection first."
+        )
+
+
+class GraphRagIndexNotReadyException(RagException):
+    """Raised when GraphRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
+
+
+class GraphRagMetricsUnavailableException(RagException):
+    """Raised when chunk metrics can't be fetched from the knowledge service."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG metrics for collection {collection_id} are temporarily "
+            f"unavailable. Retry shortly."
+        )
+
+
+class NoNaiveRagForCollectionException(RagException):
+    """Raised when a collection has no NaiveRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"NaiveRag for collection {collection_id} does not exist. "
+            f"Create a NaiveRag for this collection first."
+        )
+
+
+class NaiveRagIndexNotReadyException(RagException):
+    """Raised when NaiveRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"NaiveRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
 
 
 class LLMConfigMissingError(CustomAPIExeption):
@@ -384,3 +454,54 @@ class ToolExecutionError(CustomAPIExeption):
     status_code = 500
     default_detail = "Tool execution failed."
     default_code = "flow_assistant_tool_execution_failed"
+
+
+class PromptNotFoundError(CustomAPIExeption):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
+    status_code = 400
+    default_code = "prompt_not_found"
+
+    def __init__(self, value: int | str):
+        self.value = value
+        super().__init__(
+            f"Prompt {value} doesn't exist or belong to another organization.",
+            code=self.default_code,
+        )
+
+
+class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
+    """Raised when a CDT node id doesn't resolve within the caller's org (cross-org and nonexistent ids are indistinguishable)."""
+
+    status_code = 404
+    default_code = "classification_decision_table_node_not_found"
+
+    def __init__(self, pk):
+        self.pk = pk
+        super().__init__(
+            f"Classification decision table node {pk} not found.",
+            code=self.default_code,
+        )
+
+
+class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config doesn't resolve within the caller's org, or can't build a client."""
+
+    status_code = 404
+    default_code = "cdt_explain_llm_config_not_found"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} doesn't exist, belongs to another organization, "
+            "or has no usable model.",
+            code=self.default_code,
+        )
+
+
+class CdtExplainUpstreamError(CustomAPIExeption):
+    """Raised when every batch of the explain request failed upstream."""
+
+    status_code = 502
+    default_detail = "The explanation could not be generated. Please try again."
+    default_code = "cdt_explain_upstream_failed"

@@ -6,4 +6,4 @@ from tables.models import WebhookTrigger
 class WebhookTriggerImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookTrigger
-        exclude = ["ngrok_webhook_config"]
+        fields = ["id", "path", "provider_type"]

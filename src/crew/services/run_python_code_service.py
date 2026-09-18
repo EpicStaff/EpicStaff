@@ -3,6 +3,8 @@ import asyncio
 from typing import Any
 
 from loguru import logger
+
+import settings
 from services.graph.events import StopEvent
 from utils.singleton_meta import SingletonMeta
 from services.redis_service import AsyncPubsubSubscriber, RedisService
@@ -28,6 +30,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         global_kwargs = python_code_data.global_kwargs or {}
 
+        merged_global_kwargs = {
+            **global_kwargs,
+            **additional_global_kwargs,
+        }
+        if python_code_data.org_id is not None:
+            merged_global_kwargs["org_id"] = python_code_data.org_id
+
         unique_task_id = str(uuid.uuid4())
         code_task_data = CodeTaskData(
             venv_name=venv_name,
@@ -36,31 +45,30 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             execution_id=unique_task_id,
             entrypoint=entrypoint,
             func_kwargs=inputs,
-            global_kwargs={
-                **global_kwargs,
-                **additional_global_kwargs,
-            },
+            global_kwargs=merged_global_kwargs,
             use_storage=python_code_data.use_storage,
             storage_allowed_paths=python_code_data.storage_allowed_paths,
             storage_org_prefix=python_code_data.storage_org_prefix,
             session_id=python_code_data.session_id,
+            secrets=python_code_data.secrets,
+            org_id=python_code_data.org_id,
         )
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
-        await self.redis_service.asubscribe("code_results", subscriber=subscriber)
+        await self.redis_service.asubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
 
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
         await self.redis_service.apublish(
-            "code_exec_tasks", code_task_data.model_dump()
+            settings.CODE_EXEC_CHANNEL, code_task_data.model_dump()
         )
         logger.info("Waiting for code_results")
 
         while True:
             if callback_receiver.results is not None:
-                self.redis_service.unsubscribe("code_results", subscriber=subscriber)
+                self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
                 return callback_receiver.results
             if stop_event is not None:
                 stop_event.check_stop()

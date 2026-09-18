@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -24,7 +23,6 @@ type PageState = 'form' | 'loading' | 'success';
 @Component({
     selector: 'app-sign-up',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         ButtonComponent,
         CustomInputComponent,
@@ -77,8 +75,7 @@ export class SignUpPageComponent {
 
         forkJoin([this.authService.runSetup({ email, password }), timer(1000)]).subscribe({
             next: ([resp]) => {
-                this.authService.storeTokens({ access: resp.access, refresh: resp.refresh });
-                sessionStorage.setItem('needs_onboarding', 'true');
+                this.authService.storeAccessToken(resp.access);
                 this.state.set('success');
                 timer(1000).subscribe(() => {
                     void this.router.navigate(['/onboarding']);

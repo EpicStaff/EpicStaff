@@ -1,6 +1,8 @@
 import { UpperCasePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
@@ -11,17 +13,32 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DragDropAreaComponent {
-    filesDropped = output<FileList>();
-    isDragging = signal<boolean>(false);
+    private readonly permissionService = inject(PermissionsService);
+
     allowedTypes = input<readonly string[]>([]);
+    permissionResource = input<ResourceCode>();
+
+    filesDropped = output<FileList>();
+
+    isDragging = signal<boolean>(false);
 
     onDragOver(event: DragEvent): void {
+        const res = this.permissionResource();
+        if (res && !this.permissionService.can(res, ActionCode.Update)) {
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
         this.isDragging.set(this.isExternalFileDrag(event));
     }
 
     onDragLeave(event: DragEvent): void {
+        const res = this.permissionResource();
+        if (res && !this.permissionService.can(res, ActionCode.Update)) {
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
 
@@ -35,6 +52,11 @@ export class DragDropAreaComponent {
     }
 
     onDrop(event: DragEvent): void {
+        const res = this.permissionResource();
+        if (res && !this.permissionService.can(res, ActionCode.Update)) {
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
         this.isDragging.set(false);

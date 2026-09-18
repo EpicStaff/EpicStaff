@@ -1,9 +1,24 @@
+import io
+import lzma
+import tarfile
+
+import pytest
+from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from rest_framework.exceptions import ValidationError
+
 from tables.serializers.storage_serializers import (
     _normalize_path,
     StorageBulkDeleteSerializer,
+    StorageFilesByIdsQuerySerializer,
+    StorageMoveSerializer,
+    StoragePathQuerySerializer,
+    StorageRemoveFromGraphSerializer,
     StorageRenameSerializer,
     StorageUploadSerializer,
 )
+from utils.exception_handler import custom_exception_handler
 
 
 class TestNormalizePath:
@@ -47,6 +62,29 @@ class TestStorageUploadSerializer:
         assert not ser.is_valid()
         assert "files" in ser.errors
 
+    @override_settings(MAX_ARCHIVE_UNCOMPRESSED_SIZE=5 * 1024 * 1024)
+    def test_rejection_reaches_the_client_without_a_field_label(self):
+        payload = b"\0" * (6 * 1024 * 1024)
+        raw_tar = io.BytesIO()
+        with tarfile.open(fileobj=raw_tar, mode="w") as tf:
+            info = tarfile.TarInfo(name="big.bin")
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
+
+        archive = SimpleUploadedFile(
+            "5-mb-example-file.tar.xz", lzma.compress(raw_tar.getvalue())
+        )
+        ser = StorageUploadSerializer(data={"files": [archive]})
+
+        with pytest.raises(ValidationError) as excinfo:
+            ser.is_valid(raise_exception=True)
+
+        message = custom_exception_handler(excinfo.value, {}).data["message"]
+        assert message == (
+            "Upload rejected. Archive '5-mb-example-file.tar.xz' expands to "
+            f"more than {settings.MAX_ARCHIVE_UNCOMPRESSED_SIZE} bytes"
+        )
+
 
 class TestStorageBulkDeleteSerializer:
     def test_normalizes_all_paths(self):
@@ -57,3 +95,68 @@ class TestStorageBulkDeleteSerializer:
     def test_rejects_empty_paths_list(self):
         ser = StorageBulkDeleteSerializer(data={"paths": []})
         assert not ser.is_valid()
+
+
+class TestPathTraversalRejected:
+    def test_storage_path_query_serializer_rejects_traversal(self):
+        ser = StoragePathQuerySerializer(data={"path": "../../../etc/passwd"})
+        assert not ser.is_valid()
+        assert "path" in ser.errors
+
+    def test_storage_move_serializer_rejects_traversal_in_from_path(self):
+        ser = StorageMoveSerializer(
+            data={"from_path": "../../../etc/passwd", "to_path": "docs"}
+        )
+        assert not ser.is_valid()
+        assert "from_path" in ser.errors
+
+    def test_storage_move_serializer_rejects_traversal_in_to_path(self):
+        ser = StorageMoveSerializer(
+            data={"from_path": "docs", "to_path": "../../../etc/passwd"}
+        )
+        assert not ser.is_valid()
+        assert "to_path" in ser.errors
+
+    def test_storage_path_query_serializer_empty_path_still_valid(self):
+        ser = StoragePathQuerySerializer(data={})
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["path"] == ""
+
+
+class TestStorageRemoveFromGraphSerializer:
+    def test_rejects_traversal_path(self):
+        ser = StorageRemoveFromGraphSerializer(
+            data={"paths": ["../../../etc/passwd"], "graph_ids": [1]}
+        )
+        assert not ser.is_valid()
+        assert "paths" in ser.errors
+        assert "escapes the target folder" in str(ser.errors["paths"])
+
+    def test_accepts_valid_paths(self):
+        ser = StorageRemoveFromGraphSerializer(
+            data={"paths": ["docs/report.txt", "images/logo.png"], "graph_ids": [1, 2]}
+        )
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["paths"] == ["docs/report.txt", "images/logo.png"]
+
+
+class TestStorageFilesByIdsQuerySerializer:
+    def test_accepts_valid_csv(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": "1,2,3"})
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["ids"] == [1, 2, 3]
+
+    def test_tolerates_spaces_around_ids(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": " 1, 2 , 3 "})
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["ids"] == [1, 2, 3]
+
+    def test_rejects_non_numeric_token(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": "1,abc"})
+        assert not ser.is_valid()
+        assert "ids" in ser.errors
+
+    def test_rejects_empty_ids(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": ""})
+        assert not ser.is_valid()
+        assert "ids" in ser.errors

@@ -55,6 +55,7 @@ def mock_ws_client():
 def sample_chat_data() -> RealtimeAgentChatData:
     return RealtimeAgentChatData(
         connection_key=CONNECTION_KEY,
+        org_id=1,
         rt_api_key="fake_key",
         rt_model_name="test_model",
         wake_word="wake",
@@ -88,12 +89,8 @@ def redis_service():
 @pytest.fixture
 def tool_manager(redis_service) -> ToolManagerService:
     return ToolManagerService(
-        redis_service=redis_service,
         python_code_executor_service=PythonCodeExecutorService(redis_service),
-        knowledge_search_get_channel="knowledge:search:get",
-        knowledge_search_response_channel="knowledge:search:response",
-        manager_host="localhost",
-        manager_port=8080,
+        knowledge_client=AsyncMock(),
     )
 
 

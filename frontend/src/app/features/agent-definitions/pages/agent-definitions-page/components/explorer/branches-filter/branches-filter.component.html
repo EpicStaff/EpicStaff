@@ -1,0 +1,69 @@
+<div class="filter">
+    <div class="filter__body">
+        <div class="filter__list">
+            @for (section of sections; track section.id) {
+                <button
+                    type="button"
+                    class="filter__item"
+                    [class.filter__item--locked]="section.locked"
+                    (click)="toggle(section)"
+                >
+                    <span
+                        class="filter__checkbox"
+                        [class.filter__checkbox--checked]="isChecked(section.id)"
+                        [class.filter__checkbox--disabled]="section.locked"
+                    >
+                        @if (isChecked(section.id)) {
+                            <app-svg-icon
+                                icon="check"
+                                size="10px"
+                            />
+                        }
+                    </span>
+                    <span class="filter__label">{{ section.filterLabel }}</span>
+                    @if (section.locked) {
+                        <app-svg-icon
+                            class="filter__lock"
+                            icon="lock"
+                            size="12px"
+                        />
+                    }
+                </button>
+            } @empty {
+                <div class="filter__empty">No items</div>
+            }
+        </div>
+    </div>
+
+    <div
+        class="filter__footer"
+        [class.filter__footer--hide-clear]="footerStage() >= 1"
+        [class.filter__footer--collapse-save]="footerStage() >= 2"
+        #footer
+    >
+        <app-button
+            class="filter__btn filter__btn--clear"
+            type="outline-primary"
+            [disabled]="!canClear"
+            (click)="onClearFilter()"
+        >
+            Clear Filter
+        </app-button>
+        <span class="filter__footer-spacer"></span>
+        <app-button
+            class="filter__btn"
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            class="filter__btn filter__btn--save"
+            type="primary"
+            (click)="onSave()"
+        >
+            <span class="word">Save</span>
+            <span class="word word--secondary">Changes</span>
+        </app-button>
+    </div>
+</div>

@@ -1,10 +1,8 @@
-from django.db.models import Prefetch
+from django.core.exceptions import ValidationError
 
-from tables.serializers.model_serializers.crew_serializers import (
-    ToolConfigSerializer,
-)
 from src.shared.models import (
-    AgentData,
+    LocalhostConfigData,
+    ArgsSchema,
     AudioTranscriptionNodeData,
     BaseToolData,
     ClassificationConditionGroupData,
@@ -12,57 +10,35 @@ from src.shared.models import (
     ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
-    ConfiguredToolData,
-    CrewData,
-    CrewNodeData,
     DecisionTableNodeData,
     EdgeData,
     EmbedderConfigData,
     EmbedderData,
     EndNodeData,
     FileExtractorNodeData,
+    RagSearchConfig,
     GraphRagSearchConfig,
+    KnowledgeNodeData,
+    NaiveRagSearchConfig,
     LLMConfigData,
     LLMData,
     McpToolData,
-    NaiveRagSearchConfig,
     NgrokConfigData,
     PythonCodeData,
     PythonCodeToolData,
     PythonNodeData,
     PromptConfigData,
-    RagSearchConfig,
     RealtimeAgentChatData,
     ScheduleTriggerNodeData,
     SubGraphNodeData,
-    TaskData,
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
-    ToolConfigData,
+    WebhookTriggerAuthData,
     WebhookTriggerNodeData,
+    variables_to_args_schema,
 )
 
-from tables.models import (
-    Agent,
-    Crew,
-    EmbeddingConfig,
-    LLMConfig,
-    PythonCode,
-    PythonCodeTool,
-    Task,
-    ToolConfig,
-)
-from tables.models.crew_models import (
-    AgentConfiguredTools,
-    AgentMcpTools,
-    AgentPythonCodeToolConfigs,
-    AgentPythonCodeTools,
-    TaskConfiguredTools,
-    TaskMcpTools,
-    TaskPythonCodeToolConfigs,
-    TaskPythonCodeTools,
-)
-from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
+from tables.models import PythonCode, PythonCodeTool
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     Condition,
@@ -70,52 +46,50 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
-    CrewNode,
     DecisionTableNode,
     Edge,
     EndNode,
     FileExtractorNode,
     Graph,
-    GraphOrganization,
     GraphStorageFile,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     SubGraphNode,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.llm_models import (
-    LLMConfig,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-)
+from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.realtime_models import RealtimeAgentChat
-from tables.models.webhook_models import NgrokWebhookConfig
-from tables.validators.crew_memory_validator import CrewMemoryValidator
-from tables.validators.task_validator import TaskValidator
-from tables.validators.tool_config_validator import (
-    ToolConfigValidator,
-    validate_tool_configs,
+from tables.models.realtime_models import (
+    RealtimeAgentChat,
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
 )
+from tables.models.webhook_models import (
+    LocalhostWebhookConfig,
+    NgrokWebhookConfig,
+    WebhookTrigger,
+    WebhookTriggerAuth,
+)
+from tables.services.realtime_surface_service import RealtimeSurfaceService
+from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
 )
 from utils.singleton_meta import SingletonMeta
 from tables.services.rag_assignment_service import SearchConfigService
+from tables.services.rag_registry import resolve_rag_in_collection
 
-tool_config_serializer = ToolConfigSerializer(
-    ToolConfigValidator(validate_missing_reqired_fields=True, validate_null_fields=True)
-)
 from tables.models.embedding_models import EmbeddingConfig
 
 
 class ConverterService(metaclass=SingletonMeta):
     def __init__(self):
-        self.memory_validator = CrewMemoryValidator()
-        self.task_validator = TaskValidator()
+        self.realtime_surface_service = RealtimeSurfaceService(converter_service=self)
 
     def build_rag_search_config(
         self, rag_type_id: str | None, all_search_configs: dict | None
@@ -160,6 +134,64 @@ class ConverterService(metaclass=SingletonMeta):
 
         return None
 
+    def convert_knowledge_node_to_pydantic(
+        self, knowledge_node: KnowledgeNode, resolver
+    ) -> KnowledgeNodeData:
+        collection_id = knowledge_node.source_collection_id
+
+        # rag_type ("naive"/"graph") and rag_id are stored verbatim; the knowledge
+        # service resolves the RAG by (collection, rag_id, rag_type), same as the agent.
+        rag_type_id = (
+            f"{knowledge_node.rag_type}:{knowledge_node.rag_id}"
+            if knowledge_node.rag_type and knowledge_node.rag_id
+            else None
+        )
+        all_search_configs = SearchConfigService.get_node_search_configs(knowledge_node)
+        rag_search_config = self.build_rag_search_config(
+            rag_type_id, all_search_configs
+        )
+        embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
+        llm_api_key_secret_id = self._node_rag_llm_secret_id(knowledge_node)
+        return KnowledgeNodeData(
+            node_name=resolver(knowledge_node.id),
+            collection_id=collection_id,
+            rag_type_id=rag_type_id,
+            query=knowledge_node.query,
+            rag_search_config=rag_search_config,
+            input_map=knowledge_node.input_map,
+            output_variable_path=knowledge_node.output_variable_path,
+            embedder_api_key_secret_id=embedder_api_key_secret_id,
+            llm_api_key_secret_id=llm_api_key_secret_id,
+        )
+
+    @staticmethod
+    def _node_rag_embedder_secret_id(knowledge_node: KnowledgeNode) -> int | None:
+        """Secret id of the node's RAG embedder, resolved by the same (collection,
+        rag_id, rag_type) coordinates the knowledge service searches by."""
+        if not (knowledge_node.rag_type and knowledge_node.rag_id):
+            return None
+        rag = resolve_rag_in_collection(
+            knowledge_node.rag_type,
+            knowledge_node.rag_id,
+            knowledge_node.source_collection,
+        )
+        embedder = rag.embedder
+        return embedder.api_key_secret_id if embedder else None
+
+    @staticmethod
+    def _node_rag_llm_secret_id(knowledge_node: KnowledgeNode) -> int | None:
+        """Secret id of the node's RAG LLM (graph search synthesis). Only graph
+        RAGs carry an LLM; naive RAGs have none, so this is None for them."""
+        if not (knowledge_node.rag_type and knowledge_node.rag_id):
+            return None
+        rag = resolve_rag_in_collection(
+            knowledge_node.rag_type,
+            knowledge_node.rag_id,
+            knowledge_node.source_collection,
+        )
+        llm = getattr(rag, "llm", None)
+        return llm.api_key_secret_id if llm else None
+
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
             GraphStorageFile.objects.filter(graph_id=graph_id)
@@ -168,276 +200,53 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
-        graph_org = GraphOrganization.objects.filter(graph_id=graph_id).first()
-        if graph_org is not None:
-            return f"org_{graph_org.organization_id}"
+        org_id = (
+            Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
+        )
+        if org_id is not None:
+            return f"org_{org_id}"
         return None
 
-    def convert_crew_to_pydantic(
-        self, crew_id: int, graph_id: int | None = None, session_id: int | None = None
-    ) -> CrewData:
-        crew = (
-            Crew.objects.select_related(
-                "manager_llm_config__model__llm_provider",
-                "planning_llm_config__model__llm_provider",
-                "memory_llm_config__model__llm_provider",
-                "embedding_config__model__embedding_provider",
-            )
-            .get(pk=crew_id)
-            .fill_with_defaults()
+    def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
+        """Authoritative RBAC org for a graph, read directly from `Graph.org_id`.
+
+        Distinct from `_resolve_org_prefix_for_graph`, which reads the optional
+        `GraphOrganization` join table (a separate storage-prefix concept) and
+        can be None even when `Graph.org_id` is set. This resolver is the only
+        source of truth for the `X-Organization-Id` header injected into
+        sandbox callback tools -- never derive it from agent/tool config input.
+        """
+        return (
+            Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
         )
-
-        manager_llm = self.convert_llm_config_to_pydantic(crew.manager_llm_config)
-        planning_llm = self.convert_llm_config_to_pydantic(crew.planning_llm_config)
-
-        embedder = None
-        memory_llm = None
-        if crew.memory:
-            memory_llm_config = crew.memory_llm_config
-            embedding_config = crew.embedding_config
-            # memory configs validation
-            self.memory_validator.validate_memory_configs(
-                memory_llm_config, embedding_config
-            )
-
-            embedder = self.convert_embedding_config_to_pydantic(embedding_config)
-            memory_llm = self.convert_llm_config_to_pydantic(memory_llm_config)
-        task_list = (
-            Task.objects.filter(crew_id=crew_id)
-            .select_related("agent")
-            .prefetch_related(
-                Prefetch(
-                    "task_configured_tool_list",
-                    queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
-                ),
-                Prefetch(
-                    "task_python_code_tool_list",
-                    queryset=TaskPythonCodeTools.objects.select_related(
-                        "tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "task_python_code_tool_config_list",
-                    queryset=TaskPythonCodeToolConfigs.objects.select_related(
-                        "tool__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "task_mcp_tool_list",
-                    queryset=TaskMcpTools.objects.select_related("tool"),
-                ),
-                "task_context_list",
-            )
-        )
-        self.task_validator.validate_assigned_agents(task_list)
-        task_data_list: list[TaskData] = []
-
-        crew_base_tools: list[BaseToolData] = []
-
-        for task in task_list:
-            base_tools = self._get_task_base_tools(
-                task=task, graph_id=graph_id, session_id=session_id
-            )
-            crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (
-                crew.process == "sequential" and task.agent is None
-            ), f"Task {task.name} has no agent, but it's required for sequential process."
-
-            task_data_list.append(
-                TaskData(
-                    id=task.pk,
-                    name=task.name,
-                    agent_id=task.agent.pk,
-                    instructions=task.instructions,
-                    knowledge_query=task.knowledge_query,
-                    expected_output=task.expected_output,
-                    order=task.order,
-                    human_input=task.human_input,
-                    async_execution=task.async_execution,
-                    config=task.config,
-                    output_model=task.output_model,
-                    tool_unique_name_list=[tool.unique_name for tool in base_tools],
-                    task_context_id_list=[
-                        tc.context_id for tc in task.task_context_list.all()
-                    ],
-                )
-            )
-
-        assert len(task_data_list) > 0, "No tasks found for crew"
-
-        # Fetch agents separately with prefetched tools (crew.fill_with_defaults()
-        # invalidates prefetch cache via agents.set(), so we query independently)
-        agents = list(
-            Agent.objects.filter(crew=crew)
-            .select_related(
-                "llm_config__model__llm_provider",
-                "fcm_llm_config__model__llm_provider",
-                "knowledge_collection",
-                "naive_search_config",
-            )
-            .prefetch_related(
-                Prefetch(
-                    "python_code_tools",
-                    queryset=AgentPythonCodeTools.objects.select_related(
-                        "pythoncodetool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "python_code_tool_configs",
-                    queryset=AgentPythonCodeToolConfigs.objects.select_related(
-                        "pythoncodetoolconfig__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "configured_tools",
-                    queryset=AgentConfiguredTools.objects.select_related(
-                        "toolconfig__tool"
-                    ),
-                ),
-                Prefetch(
-                    "mcp_tools",
-                    queryset=AgentMcpTools.objects.select_related("mcptool"),
-                ),
-                Prefetch(
-                    "agent_naive_rags",
-                    queryset=AgentNaiveRag.objects.select_related("naive_rag"),
-                ),
-            )
-        )
-
-        agents_data = []
-        for agent in agents:
-            agent = agent.fill_with_defaults(
-                crew_id=crew_id, crew_temperature=crew.default_temperature
-            )
-            agent_base_tools = self._get_agent_base_tools(
-                agent=agent, graph_id=graph_id, session_id=session_id
-            )
-            crew_base_tools.extend(agent_base_tools)
-
-            llm = self.convert_llm_config_to_pydantic(agent.llm_config)
-            function_calling_llm = self.convert_llm_config_to_pydantic(
-                agent.fcm_llm_config
-            )
-
-            knowledge_collection_id = None
-            if agent.knowledge_collection is not None:
-                knowledge_collection_id = agent.knowledge_collection.pk
-
-            rag_type_id = agent.get_rag_type_and_id()
-            all_search_configs = SearchConfigService.get_search_configs(agent)
-            rag_search_config = self.build_rag_search_config(
-                rag_type_id, all_search_configs
-            )
-
-            agents_data.append(
-                AgentData(
-                    id=agent.pk,
-                    role=agent.role,
-                    goal=agent.goal,
-                    backstory=agent.backstory,
-                    tool_unique_name_list=[
-                        tool.unique_name for tool in agent_base_tools
-                    ],
-                    allow_delegation=agent.allow_delegation,
-                    memory=agent.memory,
-                    max_iter=agent.max_iter,
-                    max_rpm=agent.max_rpm,
-                    max_execution_time=agent.max_execution_time,
-                    max_retry_limit=agent.max_retry_limit,
-                    respect_context_window=agent.respect_context_window,
-                    cache=agent.cache,
-                    allow_code_execution=agent.allow_code_execution,
-                    llm=llm,
-                    function_calling_llm=function_calling_llm,
-                    knowledge_collection_id=knowledge_collection_id,
-                    rag_type_id=rag_type_id,
-                    rag_search_config=rag_search_config,
-                )
-            )
-
-        crew_data = CrewData(
-            id=crew.pk,
-            name=crew.name,
-            agents=agents_data,
-            process=crew.process,
-            memory=crew.memory,
-            tasks=task_data_list,
-            config=crew.config,
-            max_rpm=crew.max_rpm,
-            cache=crew.cache,
-            full_output=crew.full_output,
-            planning=crew.planning,
-            embedder=embedder,
-            memory_llm=memory_llm,
-            manager_llm=manager_llm,
-            planning_llm=planning_llm,
-            tools=list(
-                {tool.unique_name: tool for tool in crew_base_tools}.values()
-            ),  # TODO: Unique only
-        )
-
-        return crew_data
-
-    def _get_agent_base_tools(
-        self,
-        agent: Agent,
-        graph_id: int | None = None,
-        session_id: int | None = None,
-    ) -> list[BaseToolData]:
-        python_tools = [entry.pythoncodetool for entry in agent.python_code_tools.all()]
-        python_tool_configs = [
-            entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
-        ]
-        configured_tools = [entry.toolconfig for entry in agent.configured_tools.all()]
-        mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
-
-        all_tools = python_tools + python_tool_configs + configured_tools + mcp_tools
-        return [
-            self.convert_tool_to_base_tool_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
-            )
-            for tool in all_tools
-        ]
-
-    def _get_task_base_tools(
-        self,
-        task: Task,
-        graph_id: int | None = None,
-        session_id: int | None = None,
-    ) -> list[BaseToolData]:
-        tools = (
-            [entry.tool for entry in task.task_configured_tool_list.all()]
-            + [entry.tool for entry in task.task_python_code_tool_list.all()]
-            + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
-            + [entry.tool for entry in task.task_mcp_tool_list.all()]
-        )
-        return [
-            self.convert_tool_to_base_tool_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
-            )
-            for tool in tools
-        ]
 
     def convert_tool_to_base_tool_pydantic(
         self,
-        tool: PythonCodeTool | ToolConfig | McpTool | PythonCodeToolConfig,
+        tool: PythonCodeTool | McpTool | PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
+        storage_org_prefix_override: str | None = None,
+        org_id_override: int | None = None,
     ) -> BaseToolData:
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
             data = self.convert_python_code_tool_to_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
+                tool,
+                graph_id=graph_id,
+                session_id=session_id,
+                storage_allowed_paths_override=storage_allowed_paths_override,
+                storage_org_prefix_override=storage_org_prefix_override,
+                org_id_override=org_id_override,
             )
         elif isinstance(tool, PythonCodeToolConfig):
             unique_name = f"python-code-tool-config:{tool.pk}"
             data = self.convert_python_code_tool_config_to_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
+                tool,
+                graph_id=graph_id,
+                session_id=session_id,
+                storage_allowed_paths_override=storage_allowed_paths_override,
             )
-        elif isinstance(tool, ToolConfig):
-            unique_name = f"configured-tool:{tool.pk}"
-            data = self.convert_configured_tool_to_pydantic(tool)
         elif isinstance(tool, McpTool):
             unique_name = f"mcp-tool:{tool.pk}"
             data = self.convert_mcp_tool_to_pydantic(tool)
@@ -446,99 +255,79 @@ class ConverterService(metaclass=SingletonMeta):
 
         return BaseToolData(unique_name=unique_name, data=data)
 
-    def convert_agent_to_pydantic(self, agent: Agent, crew_id: int) -> AgentData:
-        agent = agent.fill_with_defaults(crew_id=crew_id)
-        agent_base_tool_list = self._get_agent_base_tools(
-            agent=agent
-        )  # TODO: optimize it, duplicated db requests may occur
-
-        llm = self.convert_llm_config_to_pydantic(agent.llm_config)
-        function_calling_llm = self.convert_llm_config_to_pydantic(agent.fcm_llm_config)
-
-        knowledge_collection_id = None
-        if agent.knowledge_collection is not None:
-            knowledge_collection_id = agent.knowledge_collection.pk
-
-        # Build RAG search config using factory method
-        rag_type_id = agent.get_rag_type_and_id()
-        all_search_configs = SearchConfigService.get_search_configs(agent)
-        rag_search_config = self.build_rag_search_config(
-            rag_type_id, all_search_configs
-        )
-
-        return AgentData(
-            id=agent.pk,
-            role=agent.role,
-            goal=agent.goal,
-            backstory=agent.backstory,
-            tool_unique_name_list=[tool.unique_name for tool in agent_base_tool_list],
-            allow_delegation=agent.allow_delegation,
-            memory=agent.memory,
-            max_iter=agent.max_iter,
-            max_rpm=agent.max_rpm,
-            max_execution_time=agent.max_execution_time,
-            max_retry_limit=agent.max_retry_limit,
-            respect_context_window=agent.respect_context_window,
-            cache=agent.cache,
-            allow_code_execution=agent.allow_code_execution,
-            llm=llm,
-            function_calling_llm=function_calling_llm,
-            knowledge_collection_id=knowledge_collection_id,
-            rag_type_id=rag_type_id,
-            rag_search_config=rag_search_config,
-        )
-
-    def convert_rt_agent_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
+    def convert_rt_agent_definition_chat_to_pydantic(
+        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
     ) -> RealtimeAgentChatData:
-        agent: Agent = rt_agent_chat.rt_agent.agent.fill_with_defaults(crew_id=None)
+        ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
 
-        rt_config: RealtimeConfig = rt_agent_chat.realtime_config
-        rt_transcription_config: RealtimeTranscriptionConfig = (
-            rt_agent_chat.realtime_transcription_config
-        )
+        surface_resolution = self.realtime_surface_service.resolve(ad)
 
-        knowledge_collection_id = None
-        if agent.knowledge_collection is not None:
-            knowledge_collection_id = agent.knowledge_collection.pk
+        # Resolve provider-specific fields from the active config FK snapshot
+        rt_model_name = None
+        rt_api_key_secret_id = None
+        rt_base_url = None
+        rt_provider = None
+        transcript_model_name = None
+        transcript_api_key_secret_id = None
 
-        # Build RAG search config using factory method
-        rag_type_id = agent.get_rag_type_and_id()
-        all_search_configs = SearchConfigService.get_search_configs(agent)
-        rag_search_config = self.build_rag_search_config(
-            rag_type_id, all_search_configs
-        )
+        if rt_agent_chat.openai_config_id is not None:
+            cfg: OpenAIRealtimeConfig = rt_agent_chat.openai_config
+            rt_provider = "openai"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+            rt_base_url = cfg.base_url
+            transcript_model_name = cfg.transcription_model_name
+            transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
+        elif rt_agent_chat.elevenlabs_config_id is not None:
+            cfg: ElevenLabsRealtimeConfig = rt_agent_chat.elevenlabs_config
+            rt_provider = "elevenlabs"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+        elif rt_agent_chat.gemini_config_id is not None:
+            cfg: GeminiRealtimeConfig = rt_agent_chat.gemini_config
+            rt_provider = "gemini"
+            rt_model_name = cfg.model_name
+            rt_api_key_secret_id = cfg.api_key_secret_id
+
+        if rt_provider is None or rt_model_name is None or rt_api_key_secret_id is None:
+            raise ValidationError(
+                f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
+                "provider config (openai_config, elevenlabs_config, and "
+                "gemini_config are all null on this session snapshot, or the "
+                "active config has no api_key_secret assigned) — cannot build "
+                "realtime session data. The referenced provider config was "
+                "likely deleted after this chat was created."
+            )
 
         rt_agent_chat_data = RealtimeAgentChatData(
-            role=agent.role,
-            goal=agent.goal,
-            backstory=agent.backstory,
-            knowledge_collection_id=knowledge_collection_id,
-            rag_type_id=rag_type_id,
-            rag_search_config=rag_search_config,
-            llm=self.convert_llm_config_to_pydantic(agent.llm_config),
-            memory=agent.memory,
-            tools=self._get_agent_base_tools(agent=agent),
-            rt_model_name=rt_config.realtime_model.name,
-            rt_api_key=rt_config.api_key,
-            transcript_model_name=rt_transcription_config.realtime_transcription_model.name
-            if rt_transcription_config
-            else None,
-            transcript_api_key=rt_transcription_config.api_key
-            if rt_transcription_config
-            else None,
-            temperature=agent.default_temperature,
+            role=ad.name,
+            goal=ad.description or "assist the user",
+            backstory=ad.instructions or "You are a helpful voice assistant",
+            org_id=ad.organization_id,
+            user_id=user_id,
+            knowledge_collection_id=surface_resolution.knowledge_collection_id,
+            rag_type_id=surface_resolution.rag_type_id,
+            rag_search_config=surface_resolution.rag_search_config,
+            rag_embedder_api_key_secret_id=surface_resolution.rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
+            llm=self.convert_llm_config_to_pydantic(ad.llm_config),
+            memory=False,
+            tools=surface_resolution.tools,
+            rt_model_name=rt_model_name,
+            rt_api_key_secret_id=rt_api_key_secret_id,
+            rt_base_url=rt_base_url,
+            transcript_model_name=transcript_model_name,
+            transcript_api_key_secret_id=transcript_api_key_secret_id,
+            temperature=ad.default_temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
             stop_prompt=rt_agent_chat.stop_prompt,
             language=rt_agent_chat.language,
             voice_recognition_prompt=rt_agent_chat.voice_recognition_prompt,
             voice=rt_agent_chat.voice,
-            input_audio_format=rt_agent_chat.input_audio_format.value,
-            output_audio_format=rt_agent_chat.output_audio_format.value,
-            rt_provider=rt_config.realtime_model.provider.name
-            if rt_config.realtime_model.provider
-            else "openai",
+            input_audio_format=rt_agent_chat.input_audio_format,
+            output_audio_format=rt_agent_chat.output_audio_format,
+            rt_provider=rt_provider,
         )
 
         return rt_agent_chat_data
@@ -550,6 +339,7 @@ class ConverterService(metaclass=SingletonMeta):
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ):
         libraries = python_code.get_libraries_list()
         venv_name = str(python_code.pk)
@@ -565,6 +355,14 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+            # The declaration is the allow-list: everything selected is injected,
+            # whether the code reads it or not. That is what makes a computed name
+            # -- get_secret(f"KEY_{env}") -- work, since no static parse could see
+            # it. The parser is now only a validator (declaration_validator.py).
+            # Names only: resolution happens in redis_service, on the copy that
+            # goes to Redis -- never on the object that becomes graph_schema.
+            secret_names=list(python_code.secrets.values_list("name", flat=True)),
+            org_id=org_id,
         )
 
     @staticmethod
@@ -581,13 +379,26 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
-    ) -> PythonCodeToolData:      
+        storage_allowed_paths_override: list[str] | None = None,
+        storage_org_prefix_override: str | None = None,
+        org_id_override: int | None = None,
+    ) -> PythonCodeToolData:
         storage_allowed_paths = None
         storage_org_prefix = None
-        if python_code_tool.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)        
-        
+        if python_code_tool.use_storage:
+            if storage_allowed_paths_override is not None:
+                storage_allowed_paths = storage_allowed_paths_override
+            elif graph_id is not None:
+                storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if storage_org_prefix_override is not None:
+                storage_org_prefix = storage_org_prefix_override
+            elif graph_id is not None:
+                storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        org_id = org_id_override
+        if org_id is None and graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         python_code_data = self.convert_python_code_to_pydantic(
@@ -596,16 +407,29 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+            org_id=org_id,
+        )
+        # A PythonCodeTool is org-owned, not graph-owned, so the session-start graph
+        # walk cannot reach it. Gate it here, where the tool is already in hand and
+        # its name is available for the error.
+        assert_tool_secrets_declared(
+            tool_name=python_code_tool.name,
+            code=python_code_tool.python_code.code,
+            declared=set(python_code_data.secret_names),
         )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
-            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs}
+            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs},
+            # model_dump() omits secret_names (exclude=True), so a plain re-splat
+            # would silently drop the declaration for tools.
+            secret_names=python_code_data.secret_names,
         )
         return PythonCodeToolData(
             id=python_code_tool.pk,
             name=python_code_tool.name,
             description=python_code_tool.description,
             variables=variables,
+            args_schema=ArgsSchema(**variables_to_args_schema(variables)),
             python_code=python_code_data,
         )
 
@@ -614,6 +438,7 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool_config: PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> PythonCodeToolData:
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
@@ -624,9 +449,18 @@ class ConverterService(metaclass=SingletonMeta):
 
         storage_allowed_paths = None
         storage_org_prefix = None
-        if python_code_tool.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+        if python_code_tool.use_storage:
+            if storage_allowed_paths_override is not None:
+                storage_allowed_paths = storage_allowed_paths_override
+            elif graph_id is not None:
+                storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if graph_id is not None:
+                storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         global_kwargs = {**user_defaults, **python_configuration}
@@ -639,6 +473,14 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+            org_id=org_id,
+        )
+        # A configured tool reaches the session through this method only, so gating
+        # convert_python_code_tool_to_pydantic alone would leave it ungated.
+        assert_tool_secrets_declared(
+            tool_name=python_code_tool.name,
+            code=python_code.code,
+            declared=set(python_code_data.secret_names),
         )
 
         return PythonCodeToolData(
@@ -646,40 +488,8 @@ class ConverterService(metaclass=SingletonMeta):
             name=python_code_tool.name,
             description=python_code_tool.description,
             variables=variables,
+            args_schema=ArgsSchema(**variables_to_args_schema(variables)),
             python_code=python_code_data,
-        )
-
-    def convert_configured_tool_to_pydantic(
-        self, tool_config: ToolConfig
-    ) -> ConfiguredToolData:
-        data: dict = tool_config_serializer.to_representation(
-            tool_config, format="pydantic"
-        )
-        configuration = data["configuration"]
-
-        tool_llm_config_id = configuration.pop("llm_config", None)
-        llm_config = None
-        if tool_llm_config_id:
-            llm_config = LLMConfig.objects.get(
-                pk=tool_llm_config_id
-            ).fill_with_defaults()
-
-        tool_embedding_config_id = configuration.pop("embedding_config", None)
-
-        embedding_config = None
-        if tool_embedding_config_id:
-            embedding_config = EmbeddingConfig.objects.get(pk=tool_embedding_config_id)
-
-        tool_config_data = ToolConfigData(
-            id=tool_config.pk,
-            llm=self.convert_llm_config_to_pydantic(llm_config),
-            embedder=self.convert_embedding_config_to_pydantic(embedding_config),
-            tool_init_configuration=configuration,
-        )
-
-        return ConfiguredToolData(
-            name_alias=tool_config.tool.name_alias,
-            tool_config=tool_config_data,
         )
 
     def convert_mcp_tool_to_pydantic(self, mcp_tool: McpTool) -> McpToolData:
@@ -687,7 +497,7 @@ class ConverterService(metaclass=SingletonMeta):
             transport=mcp_tool.transport,
             tool_name=mcp_tool.tool_name,
             timeout=mcp_tool.timeout,
-            auth=mcp_tool.auth,
+            auth_secret_id=mcp_tool.auth_secret_id,
             init_timeout=mcp_tool.init_timeout,
         )
 
@@ -707,13 +517,11 @@ class ConverterService(metaclass=SingletonMeta):
                 presence_penalty=config.presence_penalty,
                 frequency_penalty=config.frequency_penalty,
                 logit_bias=config.logit_bias,
-                response_format=config.response_format,
                 seed=config.seed,
                 base_url=config.model.base_url,
                 api_version=config.model.api_version,
-                api_key=config.api_key,
+                api_key_secret_id=config.api_key_secret_id,
                 deployment_id=config.model.deployment_id,
-                headers=config.headers,
                 extra_headers=config.extra_headers,
             ),
         )
@@ -733,7 +541,7 @@ class ConverterService(metaclass=SingletonMeta):
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,
-                api_key=embedding_config.api_key,
+                api_key_secret_id=embedding_config.api_key_secret_id,
             ),
         )
 
@@ -752,19 +560,23 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths.append(f"sessions/{session_id}/")
             storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         python_code_data = self.convert_python_code_to_pydantic(
             python_code=python_node.python_code,
             use_storage=python_node.use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+            org_id=org_id,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
-            stream_config=python_node.stream_config or {},
         )
 
     def convert_conditional_edge_to_pydantic(
@@ -810,7 +622,7 @@ class ConverterService(metaclass=SingletonMeta):
             ClassificationConditionGroupData(
                 group_name=cg.group_name,
                 expression=cg.expression,
-                prompt_id=cg.prompt_id,
+                prompt_id=cg.prompt.prompt_key if cg.prompt else None,
                 manipulation=cg.manipulation,
                 continue_flag=cg.continue_flag,
                 next_node=resolver(cg.next_node_id) if cg.next_node_id else None,
@@ -883,32 +695,30 @@ class ConverterService(metaclass=SingletonMeta):
             next_error_node=resolver(decision_table_node.next_error_node_id),
         )
 
-    def convert_crew_node_to_pydantic(
-        self,
-        crew_node: CrewNode,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
-        graph_id: int | None = None,
-        session_id: int | None = None,
-    ) -> CrewNodeData:
-        crew: Crew = crew_node.crew
-        validate_tool_configs(crew)
-        crew_data = self.convert_crew_to_pydantic(
-            crew_id=crew.pk, graph_id=graph_id, session_id=session_id
-        )
-        return CrewNodeData(
-            node_name=resolver(crew_node.id),
-            crew=crew_data,
-            input_map=crew_node.input_map,
-            output_variable_path=crew_node.output_variable_path,
-            stream_config=crew_node.stream_config or {},
-        )
-
     def convert_end_node_to_pydantic(
         self, end_node: EndNode, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
     ) -> EndNodeData:
         return EndNodeData(
             node_name=resolver(end_node.id),
             output_map=end_node.output_map,
+        )
+
+    @staticmethod
+    def _convert_trigger_auth(
+        trigger: WebhookTrigger,
+    ) -> WebhookTriggerAuthData | None:
+        auth: WebhookTriggerAuth | None = getattr(trigger, "auth", None)
+        if not auth or auth.header_name is None:
+            return None
+        secret = secret_resolver.resolve(
+            secret_id=auth.secret_id,
+            org_id=trigger.org_id,
+            context="WebhookTriggerAuth.secret",
+        )
+        return WebhookTriggerAuthData(
+            kind=auth.kind,
+            header_name=auth.header_name,
+            secret=secret,
         )
 
     def convert_webhook_trigger_node_to_pydantic(
@@ -979,22 +789,58 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         file_extractor_node: FileExtractorNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> FileExtractorNodeData:
+        storage_allowed_paths = None
+        storage_org_prefix = None
+        if graph_id is not None:
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                storage_allowed_paths.append(f"sessions/{session_id}/")
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         return FileExtractorNodeData(
             node_name=resolver(file_extractor_node.id),
             input_map=file_extractor_node.input_map,
             output_variable_path=file_extractor_node.output_variable_path,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
         )
 
     def convert_audio_transcription_node_to_pydantic(
         self,
         audio_transcription_node: AudioTranscriptionNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> AudioTranscriptionNodeData:
+        storage_allowed_paths = None
+        storage_org_prefix = None
+        if graph_id is not None:
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                storage_allowed_paths.append(f"sessions/{session_id}/")
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         return AudioTranscriptionNodeData(
             node_name=resolver(audio_transcription_node.id),
             input_map=audio_transcription_node.input_map,
             output_variable_path=audio_transcription_node.output_variable_path,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
         )
 
     def convert_subgraph_node_to_pydantic(
@@ -1013,9 +859,33 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_ngrok_webhook_config_to_pydantic(
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
+        auth_token = (
+            secret_resolver.resolve(
+                secret_id=ngrok_webhook_config.auth_token_secret_id,
+                org_id=ngrok_webhook_config.trigger.org_id,
+                context="NgrokWebhookConfig.auth_token",
+            )
+            or ""
+        )
+        auth = self._convert_trigger_auth(ngrok_webhook_config.trigger)
+
         return NgrokConfigData(
-            name=ngrok_webhook_config.name,
-            auth_token=ngrok_webhook_config.auth_token,
+            name=ngrok_webhook_config.trigger.path,
+            org_id=ngrok_webhook_config.trigger.org_id,
+            auth_token=auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
+            auth=auth,
+        )
+
+    def convert_localhost_webhook_config_to_pydantic(
+        self, localhost_webhook_config: LocalhostWebhookConfig
+    ) -> LocalhostConfigData:
+        auth = self._convert_trigger_auth(localhost_webhook_config.trigger)
+
+        return LocalhostConfigData(
+            name=localhost_webhook_config.trigger.path,
+            org_id=localhost_webhook_config.trigger.org_id,
+            domain=localhost_webhook_config.domain,
+            auth=auth,
         )

@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -7,12 +6,15 @@ import {
     EventEmitter,
     Input,
     NgZone,
+    OnChanges,
     OnDestroy,
     Output,
+    SimpleChanges,
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { from, of, Subject, Subscription } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
@@ -28,27 +30,31 @@ const LINT_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-code-editor',
-    imports: [FormsModule, NgIf, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
+    imports: [FormsModule, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
     templateUrl: './code-editor.component.html',
     styleUrls: ['./code-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    standalone: true,
 })
-export class CodeEditorComponent implements OnDestroy {
+export class CodeEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
 
     @Input() public pythonCode: string = '';
     @Input() public showHeader: boolean = true;
+    @Input() public secretNames: string[] = [];
+    @Input() public inputMapKeys: string[] = [];
+    @Input() public readOnly: boolean = false;
     @Output() public pythonCodeChange = new EventEmitter<string>();
     @Output() public errorChange = new EventEmitter<boolean>();
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
+    private completionDisposable: import('monaco-editor').IDisposable | null = null;
     private readonly lintCode$ = new Subject<string>();
     private lintSubscription: Subscription | null = null;
+    private containerResizeObserver: ResizeObserver | null = null;
 
     public editorLoaded = false;
 
-    public editorOptions = {
+    public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'python',
         automaticLayout: true,
@@ -56,7 +62,6 @@ export class CodeEditorComponent implements OnDestroy {
         scrollBeyondLastLine: false,
         wordWrap: 'on',
         wrappingIndent: 'indent',
-        wordWrapMinified: true,
         formatOnPaste: true,
         formatOnType: true,
         tabSize: 4,
@@ -84,14 +89,15 @@ export class CodeEditorComponent implements OnDestroy {
 
     ngOnDestroy(): void {
         this.lintSubscription?.unsubscribe();
+        this.completionDisposable?.dispose();
+        this.containerResizeObserver?.disconnect();
     }
 
     private applyRuffDiagnostics(diagnostics: RuffDiagnostic[]): void {
         if (this.monacoEditor) {
             this.ruffDiagnosticsService.setMarkers(this.monacoEditor, diagnostics);
         }
-        const hasErrors = diagnostics.some((d) => d.code && (d.code.startsWith('E') || d.code.startsWith('F')));
-        this.errorChange.emit(hasErrors);
+        this.errorChange.emit(this.ruffDiagnosticsService.hasSyntaxErrors(diagnostics));
         this.cdr.markForCheck();
     }
 
@@ -110,11 +116,71 @@ export class CodeEditorComponent implements OnDestroy {
             this.monacoEditor.updateOptions({
                 wordWrapBreakAfterCharacters: ',:',
                 wordWrapBreakBeforeCharacters: '}])',
+                readOnly: this.readOnly,
             });
         }
 
+        this.registerSecretCompletions();
+        this.observeContainerResize();
+
         this.lintCode$.next(this.pythonCode);
         this.cdr.markForCheck();
+    }
+
+    private observeContainerResize(): void {
+        this.zone.runOutsideAngular(() => {
+            this.containerResizeObserver = new ResizeObserver(() => {
+                this.monacoEditor?.layout();
+            });
+            this.containerResizeObserver.observe(this.editorContainer.nativeElement);
+        });
+    }
+
+    public ngOnChanges(changes: SimpleChanges): void {
+        if (changes['readOnly'] && !changes['readOnly'].firstChange) {
+            this.monacoEditor?.updateOptions({ readOnly: this.readOnly });
+        }
+    }
+
+    private registerSecretCompletions(): void {
+        const monaco = (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco;
+        if (!monaco) return;
+
+        this.completionDisposable = monaco.languages.registerCompletionItemProvider('python', {
+            provideCompletionItems: (model, position) => {
+                if (
+                    (!this.secretNames.length && !this.inputMapKeys.length) ||
+                    model !== this.monacoEditor?.getModel()
+                ) {
+                    return { suggestions: [] };
+                }
+                const word = model.getWordUntilPosition(position);
+                const range = {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: word.startColumn,
+                    endColumn: word.endColumn,
+                };
+                return {
+                    suggestions: [
+                        ...this.inputMapKeys.map((name) => ({
+                            label: name,
+                            kind: monaco.languages.CompletionItemKind.Variable,
+                            detail: 'Input List argument',
+                            insertText: name,
+                            range,
+                        })),
+                        ...this.secretNames.map((name) => ({
+                            label: name,
+                            kind: monaco.languages.CompletionItemKind.Constant,
+                            detail: `get_secret("${name}")`,
+                            insertText: `get_secret("${name}")`,
+                            range,
+                        })),
+                    ],
+                };
+            },
+        });
     }
 
     public copyCode(): void {

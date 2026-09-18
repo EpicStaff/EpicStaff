@@ -93,9 +93,6 @@ class BaseNode(ABC):
         additional data passed as keyword arguments. The message is then
         written using the provided stream writer.
         """
-        sc = getattr(self, "stream_config", None)
-        if sc and sc.get("final_reply") is False:
-            kwargs["sse_visible"] = False
         self.custom_session_message_writer.add_finish_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -135,6 +132,10 @@ class BaseNode(ABC):
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ): ...
 
+    def get_output_variable_value(self, output: Any) -> Any:
+        """Value stored at output_variable_path. Default: whole output."""
+        return output
+
     async def run(self, state: State, writer: StreamWriter) -> State:
         """
         Run the node.
@@ -173,7 +174,7 @@ class BaseNode(ABC):
             set_output_variables(
                 state=state,
                 output_variable_path=self.output_variable_path,
-                output=output,
+                output=self.get_output_variable_value(output),
             )
 
             self.update_state_history(

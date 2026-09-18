@@ -41,44 +41,49 @@
                     >
                         All sessions
                     </app-button>
-                    <div
-                        class="import-group"
-                        #importOriginEl="cdkOverlayOrigin"
-                        cdkOverlayOrigin
-                    >
-                        <button
-                            type="button"
-                            class="import-group__main"
-                            (click)="onImportClick()"
+                    <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Create]">
+                        <div
+                            class="import-group"
+                            #importOriginEl="cdkOverlayOrigin"
+                            cdkOverlayOrigin
                         >
-                            <app-svg-icon
-                                icon="download"
-                                size="1.1rem"
-                            />
-                            <span>Import</span>
-                        </button>
-                        <button
-                            type="button"
-                            class="import-group__cog"
-                            aria-label="Import options"
-                            matTooltip="Import options"
-                            matTooltipPosition="below"
-                            [class.is-open]="importOptionsOpen()"
-                            (click)="toggleImportOptions()"
-                        >
-                            <app-svg-icon
-                                icon="settings-filled"
-                                size="1rem"
-                            />
-                        </button>
-                    </div>
-                    <app-import-flow-options-popover
-                        [origin]="importOriginEl"
-                        [open]="importOptionsOpen()"
-                        (closed)="closeImportOptions()"
-                    />
+                            <button
+                                type="button"
+                                class="import-group__main"
+                                (click)="onImportClick()"
+                            >
+                                <app-svg-icon
+                                    icon="download"
+                                    size="1.1rem"
+                                />
+                                <span>Import</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="import-group__cog"
+                                aria-label="Import options"
+                                matTooltip="Import options"
+                                matTooltipPosition="below"
+                                [class.is-open]="importOptionsOpen()"
+                                (click)="toggleImportOptions()"
+                            >
+                                <app-svg-icon
+                                    icon="settings-filled"
+                                    size="1rem"
+                                />
+                            </button>
+                        </div>
+                        <app-import-flow-options-popover
+                            [origin]="importOriginEl"
+                            [open]="importOptionsOpen()"
+                            (closed)="closeImportOptions()"
+                        />
+                    </ng-container>
 
-                    <div class="export-group">
+                    <div
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                        class="export-group"
+                    >
                         <button
                             type="button"
                             class="export-group__main"
@@ -92,6 +97,7 @@
                         </button>
                     </div>
                     <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
                         type="primary"
                         class="btn-primary create-btn"
                         [leftIcon]="'plus'"
@@ -104,8 +110,9 @@
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link) {
+                @for (tab of tabs; track tab.link; let last = $last) {
                     <app-tab-button
+                        mod="sm"
                         routerLink="{{ tab.link }}"
                         routerLinkActive="active"
                         #rla="routerLinkActive"
@@ -113,38 +120,19 @@
                     >
                         {{ tab.label }}
                     </app-tab-button>
+                    @if (!last) {
+                        <span class="tab-sep">/</span>
+                    }
                 }
             </div>
             <div class="tabs-right">
-                <div class="search-container">
-                    <app-svg-icon
-                        icon="search"
-                        class="search-icon"
-                        size="1.1rem"
-                    ></app-svg-icon>
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search by name or label..."
-                        [(ngModel)]="searchTerm"
-                        (ngModelChange)="onSearchTermChange($event)"
-                    />
-                    @if (searchTerm) {
-                        <button
-                            type="button"
-                            class="clear-btn"
-                            aria-label="Clear"
-                            matTooltip="Clear search"
-                            matTooltipPosition="above"
-                            (click)="clearSearch()"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="1.1rem"
-                            ></app-svg-icon>
-                        </button>
-                    }
-                </div>
+                <app-search
+                    class="search"
+                    mod="small"
+                    placeholder="Search by name or label..."
+                    [(searchTerm)]="searchTerm"
+                    (searchTermChange)="onSearchTermChange($event)"
+                />
                 <button
                     #filterTrigger="cdkOverlayOrigin"
                     cdkOverlayOrigin
@@ -204,7 +192,15 @@
     </div>
     <section class="body">
         @if (showSidebar()) {
-            <app-flows-label-sidebar (closeSidebar)="toggleSidebar()"></app-flows-label-sidebar>
+            <app-label-sidebar
+                [storageKey]="'flows'"
+                [allItemsLabel]="'All Flows'"
+                [resourceCode]="ResourceCode.Flows"
+                [deleteCaution]="deleteCautionForLabel"
+                [deleteMessage]="deleteMessageForLabel"
+                (closeSidebar)="toggleSidebar()"
+                (labelDeleted)="onLabelDeleted()"
+            ></app-label-sidebar>
         }
         <div class="body-content">
             <div class="breadcrumb-bar">

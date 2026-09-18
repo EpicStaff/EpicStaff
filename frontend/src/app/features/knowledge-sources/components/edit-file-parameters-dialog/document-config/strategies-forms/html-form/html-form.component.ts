@@ -7,6 +7,7 @@ import {
     ToggleSwitchComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { jsonValidator } from '@shared/form-validators';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
@@ -31,6 +32,8 @@ import { StrategyForm } from '../strategy-config-form.abstract';
     ],
 })
 export class HtmlFormComponent extends StrategyForm<HtmlStrategyModel> {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     jsonData: string = '{}';
     editorOptions: Record<string, unknown> = {
         lineNumbers: 'off',

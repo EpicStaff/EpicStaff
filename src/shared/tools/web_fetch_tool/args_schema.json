@@ -1,0 +1,11 @@
+{
+  "title": "WebFetchToolArgs",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "URL to fetch. http and https only; http is upgraded to https."
+    }
+  },
+  "required": ["url"]
+}

@@ -1,0 +1,12 @@
+# Allowlist for scripts/check-external-urls.mjs
+#
+# Format: one substring per line; lines starting with # are comments.
+# A scanned source line that matches a denylisted CDN domain is skipped
+# if it contains any substring listed here.
+#
+# Use this only for known-benign, non-runtime hits (e.g. doc comments,
+# XML namespaces) — never to allow an actual runtime CDN dependency.
+
+# frontend/public/epicchat-widget/embed.js:12 — placeholder domain in a code
+# comment explaining how the script's own base URL is derived; not fetched.
+https://cdn.example.com/

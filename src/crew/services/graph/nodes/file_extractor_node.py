@@ -15,6 +15,9 @@ class FileContentExtractorNode(PythonNode):
         input_map: dict,
         output_variable_path: str,
         python_code_executor_service: RunPythonCodeService,
+        storage_allowed_paths: list[str] | None = None,
+        storage_org_prefix: str | None = None,
+        org_id: int | None = None,
     ):
         if not input_map:
             raise ValueError("FileContentExtractor input cannot be empty.")
@@ -25,6 +28,11 @@ class FileContentExtractorNode(PythonNode):
             code=self._get_extractor_code(arg_names),
             entrypoint="main",
             libraries=["pdfplumber", "python-docx"],
+            use_storage=True,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
         )
 
         super().__init__(
@@ -39,21 +47,21 @@ class FileContentExtractorNode(PythonNode):
 
     def _get_extractor_code(self, arg_names: list[str]):
         return f"""
-import base64
 import pdfplumber
 import csv
 import json
+from epicstaff_storage import storage
 from io import BytesIO, TextIOWrapper
 from docx import Document
 
 
-def extract_text_from_txt(file_data_base64: str) -> str:
-    file_bytes = base64.b64decode(file_data_base64)
+def extract_text_from_txt(file_data_path: str) -> str:
+    file_bytes = storage.read_bytes(file_data_path)
     return file_bytes.decode("utf-8")
 
 
-def extract_text_from_pdf(file_data_base64: str) -> str:
-    file_bytes = base64.b64decode(file_data_base64)
+def extract_text_from_pdf(file_data_path: str) -> str:
+    file_bytes = storage.read_bytes(file_data_path)
     text = []
 
     with pdfplumber.open(BytesIO(file_bytes)) as pdf:
@@ -64,8 +72,8 @@ def extract_text_from_pdf(file_data_base64: str) -> str:
     return "\\n".join(text)
 
 
-def extract_text_from_csv(file_data_base64: str) -> str:
-    file_bytes = base64.b64decode(file_data_base64)
+def extract_text_from_csv(file_data_path: str) -> str:
+    file_bytes = storage.read_bytes(file_data_path)
 
     file_stream = BytesIO(file_bytes)
     wrapper = TextIOWrapper(file_stream, encoding="utf-8")
@@ -74,6 +82,8 @@ def extract_text_from_csv(file_data_base64: str) -> str:
 
     extracted_rows = []
     for row in reader:
+        if not row:
+            continue
         if len(row[0].replace(delimiter, "")) != 0:
             extracted_rows.append(",".join(row))
 
@@ -85,8 +95,8 @@ def extract_text_from_csv(file_data_base64: str) -> str:
     return extracted_text
 
 
-def extract_text_from_json(file_data_base64: str) -> str:
-    file_bytes = base64.b64decode(file_data_base64)
+def extract_text_from_json(file_data_path: str) -> str:
+    file_bytes = storage.read_bytes(file_data_path)
     file_stream = BytesIO(file_bytes)
 
     data = json.load(file_stream)
@@ -96,8 +106,8 @@ def extract_text_from_json(file_data_base64: str) -> str:
     return result
 
 
-def extract_text_from_docx(file_data_base64: str) -> str:
-    file_bytes = base64.b64decode(file_data_base64)
+def extract_text_from_docx(file_data_path: str) -> str:
+    file_bytes = storage.read_bytes(file_data_path)
     file_stream = BytesIO(file_bytes)
 
     document = Document(file_stream)
@@ -107,31 +117,33 @@ def extract_text_from_docx(file_data_base64: str) -> str:
     return "\\n".join(paragraphs)
 
 
-def extract_content(file_name: str, file_data_base64: str) -> str:
-    file_ext = file_name.lower().split(".")[-1] if "." in file_name else ""
+def extract_content(file_data_path: str) -> str:
+    file_ext = (
+        file_data_path.lower().rsplit(".", 1)[-1] if "." in file_data_path else ""
+    )
 
     if file_ext in ["txt", "text", "log"]:
-        return extract_text_from_txt(file_data_base64)
+        return extract_text_from_txt(file_data_path)
 
     elif file_ext == "pdf":
-        return extract_text_from_pdf(file_data_base64)
+        return extract_text_from_pdf(file_data_path)
 
     elif file_ext == "csv":
-        return extract_text_from_csv(file_data_base64)
+        return extract_text_from_csv(file_data_path)
 
     elif file_ext == "json":
-        return extract_text_from_json(file_data_base64)
+        return extract_text_from_json(file_data_path)
 
     elif file_ext in ["docx", "doc"]:
-        return extract_text_from_docx(file_data_base64)
+        return extract_text_from_docx(file_data_path)
 
-    return extract_text_from_txt(file_data_base64)
+    return extract_text_from_txt(file_data_path)
 
 
 def get_files_content(**files):
     content = dict()
-    for key, file_ in files.items():
-        content[key] = extract_content(file_.name, file_.base64_data)
+    for key, file_data_path in files.items():
+        content[key] = extract_content(file_data_path)
     return content
 
 

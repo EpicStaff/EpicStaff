@@ -14,7 +14,6 @@
         [class.time-picker__trigger--disabled]="isDisabled()"
         [class.time-picker__trigger--error]="errorMessage()"
         [style.--active-color]="activeColor()"
-        (click)="openDropdown()"
     >
         <i class="ti ti-clock time-picker__icon"></i>
         <div class="time-picker__time-group">
@@ -25,7 +24,6 @@
                 [disabled]="isDisabled()"
                 [ngModel]="timeInput()"
                 (ngModelChange)="onTimeInput($event)"
-                (focus)="onFocus()"
                 (click)="$event.stopPropagation()"
                 (keydown.enter)="onEnterKey()"
             />
@@ -36,6 +34,7 @@
             width="18"
             height="18"
             viewBox="0 0 24 24"
+            (click)="$event.stopPropagation(); toggleDropdown()"
         >
             <path
                 d="M6 9l6 6 6-6"

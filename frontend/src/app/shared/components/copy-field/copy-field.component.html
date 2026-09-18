@@ -1,0 +1,45 @@
+@if (label()) {
+    <app-tooltip
+        [required]="false"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+    />
+}
+
+<div class="field">
+    <span class="value">{{ displayValue() }}</span>
+    <div class="actions">
+        @if (hidden()) {
+            <button
+                type="button"
+                class="icon-btn"
+                [attr.aria-label]="isMasked() ? 'Show value' : 'Hide value'"
+                (click)="toggleVisibility()"
+            >
+                <app-svg-icon
+                    [icon]="isMasked() ? 'eye' : 'eye-off'"
+                    size="14px"
+                />
+            </button>
+        }
+        <app-button
+            type="outline-secondary"
+            [leftIcon]="isCopied() ? 'check' : 'copy'"
+            iconSize="12px"
+            mod="small"
+            (click)="onCopy()"
+        >
+            {{ isCopied() ? 'Copied' : 'Copy' }}
+        </app-button>
+    </div>
+</div>
+
+@if (info(); as info) {
+    <div
+        class="info"
+        [class.info-warning]="infoType() === 'warning'"
+        [class.info-default]="infoType() === 'info'"
+    >
+        {{ info }}
+    </div>
+}

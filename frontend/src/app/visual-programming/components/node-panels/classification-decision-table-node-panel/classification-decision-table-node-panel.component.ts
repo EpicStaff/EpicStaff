@@ -1,19 +1,41 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    ChangeDetectorRef,
+    Component,
+    computed,
+    effect,
+    inject,
+    input,
+    signal,
+    TemplateRef,
+    untracked,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { ResourceCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { ImportExportService } from '../../../../core/services/import-export.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications/toast.service';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+} from '../../../../shared/components/action-dropdown-button/action-dropdown-button.component';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
+import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
+import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
 import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { FullLLMConfig, FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
+import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
@@ -27,6 +49,8 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
+import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
@@ -37,14 +61,16 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         ReactiveFormsModule,
         FormsModule,
         CustomInputComponent,
-        CommonModule,
         ClassificationDecisionTableGridComponent,
         LlmModelSelectorComponent,
         InputMapComponent,
         CodeEditorComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
+        ActionDropdownButtonComponent,
         SelectComponent,
+        NodeSecretsFieldComponent,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -53,6 +79,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel<ClassificationDecisionTableNodeModel> {
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
+    public readonly exportButtonTemplate = viewChild<TemplateRef<unknown>>('exportButtonTpl');
 
     private flowService = inject(FlowService);
 
@@ -73,18 +100,51 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public activeTab = signal<TabType>('table');
 
+    protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
+    protected readonly isSidebarCollapsed = signal<boolean>(false);
+
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
-    public llmConfigs: FullLLMConfig[] = [];
+    public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
 
     public preCode: string = '';
     public postCode: string = '';
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly preSecretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
+    );
+    public readonly postSecretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+    );
+    public readonly preSelectedSecretIds = signal<number[]>([]);
+    public readonly postSelectedSecretIds = signal<number[]>([]);
+    public readonly preSecretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.preSelectedSecretIds())
+            : ((this.node().data as { table?: ClassificationDecisionTableData })?.table?.pre_computation
+                  ?.secret_names ?? [])
+    );
+    public readonly postSecretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.postSelectedSecretIds())
+            : ((this.node().data as { table?: ClassificationDecisionTableData })?.table?.post_computation
+                  ?.secret_names ?? [])
+    );
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly importExportService = inject(ImportExportService);
+    private readonly cdtExportImportService = inject(CdtExportImportService);
+    private readonly toastService = inject(ToastService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -96,11 +156,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
 
     private preInputMapVersion = signal(0);
+    private postInputMapVersion = signal(0);
 
     public preInputMapKeys = computed(() => {
         this.preInputMapVersion();
         if (!this.form) return [];
         const arr = this.form.get('pre_input_map') as FormArray;
+        if (!arr) return [];
+        return arr.controls.map((ctrl) => ctrl.value?.key?.trim()).filter((k: string) => !!k);
+    });
+
+    public postInputMapKeys = computed(() => {
+        this.postInputMapVersion();
+        if (!this.form) return [];
+        const arr = this.form.get('post_input_map') as FormArray;
         if (!arr) return [];
         return arr.controls.map((ctrl) => ctrl.value?.key?.trim()).filter((k: string) => !!k);
     });
@@ -132,31 +201,35 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return [];
     });
 
-    public get llmConfigOptions(): { id: number; label: string }[] {
-        return this.llmConfigs.map((c) => ({
+    public readonly llmConfigOptions = computed<{ id: number; label: string }[]>(() =>
+        this.llmConfigs().map((c) => ({
             id: c.id,
             label: c.custom_name || `LLM #${c.id}`,
-        }));
-    }
+        }))
+    );
 
     constructor() {
         super();
+        effect(() => {
+            const node = this.node();
+            const nodePrompts = ((node?.data as { table?: ClassificationDecisionTableData })?.table?.prompts ??
+                {}) as Record<string, PromptConfig>;
+            const current = untracked(() => this.prompts());
+            const updated = { ...current };
+            let changed = false;
+            for (const [key, cfg] of Object.entries(nodePrompts)) {
+                const typedCfg = cfg as PromptConfig;
+                if (typedCfg.backendId != null && (updated[key] as PromptConfig | undefined)?.backendId == null) {
+                    updated[key] = { ...(updated[key] as PromptConfig), backendId: typedCfg.backendId };
+                    changed = true;
+                }
+            }
+            if (changed) this.prompts.set(updated);
+        });
         this.codeChange$
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
-        this.fullLlmConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (configs) => {
-                    this.llmConfigs = configs;
-                    this.cdr.markForCheck();
-                },
-                error: () => {
-                    this.llmConfigs = [];
-                    this.cdr.markForCheck();
-                },
-            });
+        this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -181,7 +254,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     protected initializeForm(): FormGroup {
@@ -227,6 +300,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
+        this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
+        this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
@@ -277,6 +352,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'post_input_map', pairs);
+                this.postInputMapVersion.update((v) => v + 1);
                 this.codeChange$.next();
             });
 
@@ -312,12 +388,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
+                secret_ids: this.preSelectedSecretIds(),
+                secret_names: this.preSecretNames(),
             },
             post_computation: {
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.post_libraries),
+                secret_ids: this.postSelectedSecretIds(),
+                secret_names: this.postSecretNames(),
             },
             condition_groups: conditionGroups,
             route_variable_name: 'route_code',
@@ -514,6 +594,80 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return this.sanitizer.bypassSecurityTrustHtml(highlighted);
     }
 
+    // ── Export ──
+
+    readonly exportFormatItems: ActionDropdownItem[] = [
+        { label: 'JSON', value: 'json' },
+        { label: 'CSV', value: 'csv' },
+    ];
+
+    public onExportItemSelected(item: ActionDropdownItem): void {
+        if (item.value === 'csv') {
+            this.exportAsCsv();
+        } else {
+            this.exportAsJson();
+        }
+    }
+
+    public exportAsJson(): void {
+        const backendId = this.node().backendId;
+        if (backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.importExportService
+            .cdtExport(backendId, 'json')
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (blob) => this.downloadBlob(blob, this.buildFileName('json')),
+                error: () => this.toastService.error('Export failed.'),
+            });
+    }
+
+    public exportAsCsv(): void {
+        if (this.node().backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        const exportData = this.cdtExportImportService.buildExportData({
+            nodeName: this.form.value.node_name ?? '',
+            preCode: this.preCode,
+            preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preInputMap: this.serializeInputMap('pre_input_map'),
+            preOutputVariablePath: this.form.value.pre_output_variable_path || null,
+            postCode: this.postCode,
+            postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postInputMap: this.serializeInputMap('post_input_map'),
+            postOutputVariablePath: this.form.value.post_output_variable_path || null,
+            defaultLlmConfig: this.form.value.default_llm_config || null,
+            conditionGroups: this.conditionGroups(),
+            prompts: this.prompts(),
+        });
+        const csv = this.cdtExportImportService.exportToCsv(exportData);
+        this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
+    }
+
+    private downloadBlob(blob: Blob, filename: string): void {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    private buildFileName(extension: string): string {
+        const base = (this.form.value.node_name || 'classification-decision-table')
+            .toString()
+            .trim()
+            .replace(/[^a-z0-9-_]+/gi, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase();
+        return `${base || 'cdt'}.${extension}`;
+    }
+
     // ── Code editor handlers ──
 
     public onPreCodeChange(code: string): void {
@@ -524,6 +678,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onPostCodeChange(code: string): void {
         this.postCode = code;
+        this.notifyExternalChange();
+        this.codeChange$.next();
+    }
+
+    public onPreSecretsChange(values: number[]): void {
+        this.preSelectedSecretIds.set(values);
+        this.notifyExternalChange();
+        this.codeChange$.next();
+    }
+
+    public onPostSecretsChange(values: number[]): void {
+        this.postSelectedSecretIds.set(values);
         this.notifyExternalChange();
         this.codeChange$.next();
     }

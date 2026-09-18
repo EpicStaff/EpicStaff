@@ -1,12 +1,11 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
+import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
@@ -19,12 +18,10 @@ import { UndoRedoService } from '../../../services/undo-redo.service';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 
 @Component({
-    standalone: true,
     selector: 'app-decision-table-node-panel',
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
-        CommonModule,
         DecisionTableGridComponent,
         MatTooltipModule,
         SelectComponent,
@@ -68,7 +65,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     });
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     initializeForm(): FormGroup {

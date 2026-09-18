@@ -1,111 +1,129 @@
 <div class="table__wrapper">
-    <!-- HEADER ROW -->
-    <div
-        class="table__row table__header"
-        [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
-    >
-        <!-- 1. Checkbox -->
-        <div class="table__col">
-            <app-checkbox
-                color="secondary"
-                [checked]="allChecked()"
-                [indeterminate]="indeterminate()"
-                (changed)="toggleAll()"
-            />
-        </div>
-
-        <!-- 2. Files (sortable dropdown) -->
-        <div class="table__col">
-            <app-multi-select
-                icon="filter-rows"
-                label="FILES"
-                searchPlaceholder="Search headers..."
-                [items]="fileTypeSelectItems"
-                (selectionChange)="onFileTypeFilterChange($event)"
-            />
-        </div>
-
-        <!-- 3. Chunk Strategy -->
-        <div class="table__col">
-            <app-multi-select
-                icon="filter-rows"
-                label="CHUNK STRATEGY"
-                searchPlaceholder="Search headers..."
-                [items]="chunkStrategySelectItems"
-                (selectionChange)="onChunkStrategyFilterChange($event)"
-            />
-        </div>
-
-        <!-- 4. Chunk Size -->
-        <div class="table__col table__col--center">CHUNK SIZE</div>
-
-        <!-- 5. Overlap -->
-        <div class="table__col table__col--center">OVERLAP</div>
-
-        <!-- 6. Empty space -->
-        <div class="table__col"></div>
-    </div>
-
-    <!-- BULK EDIT ROW  -->
-    @if (showBulkRow()) {
-        <div class="table__row table__bulk-row">
-            <div class="table__col"></div>
-            <div class="table__col">For selected:</div>
-
-            <!-- strategy select -->
-            <div class="table__col">
-                <app-select
-                    mod="small"
-                    [items]="chunkStrategySelectItems"
-                    [(selectedValue)]="bulkChunkStrategy"
-                />
-            </div>
-
-            @if (bulkChunkStrategy() === 'csv') {
-                <!-- chunk size -->
-                <div class="table__col table__col--unavailable">Unavailable</div>
-
-                <!-- overlap -->
-                <div class="table__col table__col--unavailable">Unavailable</div>
-            } @else {
-                <!-- chunk size -->
-                <div class="table__col">
-                    <app-input-number
-                        mod="small"
-                        [min]="20"
-                        [max]="8000"
-                        [(value)]="bulkChunkSize"
+    <div class="table__files-wrapper">
+        <div class="table__sticky-head">
+            <!-- HEADER ROW -->
+            <div
+                class="table__row table__header"
+                [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
+                [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
+            >
+                <!-- 1. Checkbox -->
+                <div
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    class="table__col"
+                >
+                    <app-checkbox
+                        color="secondary"
+                        [checked]="allChecked()"
+                        [indeterminate]="indeterminate()"
+                        (changed)="toggleAll()"
                     />
                 </div>
 
-                <!-- overlap -->
+                <!-- 2. Files (sortable dropdown) -->
                 <div class="table__col">
-                    <app-input-number
-                        mod="small"
-                        [min]="0"
-                        [max]="1000"
-                        [(value)]="bulkChunkOverlap"
+                    <app-multi-select
+                        icon="filter-rows"
+                        label="FILES"
+                        searchPlaceholder="Search headers..."
+                        [items]="fileTypeSelectItems"
+                        (selectionChange)="onFileTypeFilterChange($event)"
                     />
+                </div>
+
+                <!-- 3. Chunk Strategy -->
+                <div class="table__col">
+                    <app-multi-select
+                        icon="filter-rows"
+                        label="CHUNK STRATEGY"
+                        searchPlaceholder="Search headers..."
+                        [items]="chunkStrategySelectItems"
+                        (selectionChange)="onChunkStrategyFilterChange($event)"
+                    />
+                </div>
+
+                <!-- 4. Chunk Size -->
+                <div
+                    class="table__col"
+                    [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                >
+                    CHUNK SIZE
+                </div>
+
+                <!-- 5. Overlap -->
+                <div
+                    class="table__col"
+                    [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                >
+                    OVERLAP
+                </div>
+
+                <!-- 6. Empty space -->
+                <div class="table__col"></div>
+            </div>
+
+            <!-- BULK EDIT ROW  -->
+            @if (showBulkRow()) {
+                <div class="table__row table__bulk-row">
+                    <div class="table__col"></div>
+                    <div class="table__col">For selected:</div>
+
+                    <!-- strategy select -->
+                    <div class="table__col">
+                        <app-select
+                            mod="small"
+                            [items]="chunkStrategySelectItems"
+                            [(selectedValue)]="bulkChunkStrategy"
+                        />
+                    </div>
+
+                    @if (bulkChunkStrategy() === 'csv') {
+                        <!-- chunk size -->
+                        <div class="table__col table__col--center">Unavailable</div>
+
+                        <!-- overlap -->
+                        <div class="table__col table__col--center">Unavailable</div>
+                    } @else {
+                        <!-- chunk size -->
+                        <div class="table__col">
+                            <app-input-number
+                                mod="small"
+                                [min]="20"
+                                [max]="8000"
+                                [stepSize]="DEFAULT_STEP_SIZE"
+                                [(value)]="bulkChunkSize"
+                            />
+                        </div>
+
+                        <!-- overlap -->
+                        <div class="table__col">
+                            <app-input-number
+                                mod="small"
+                                [min]="0"
+                                [max]="1000"
+                                [stepSize]="DEFAULT_STEP_SIZE"
+                                [(value)]="bulkChunkOverlap"
+                            />
+                        </div>
+                    }
+
+                    <!-- apply -->
+                    <div class="table__col">
+                        <app-button
+                            class="table__col-btn"
+                            type="outline-primary"
+                            mod="small"
+                            [disabled]="!checkedDocumentIds().length || !canUpdateKnowledges()"
+                            (click)="onApplyBulkEdit()"
+                        >
+                            Apply
+                        </app-button>
+                    </div>
                 </div>
             }
-
-            <!-- apply -->
-            <div class="table__col">
-                <app-button
-                    class="table__col-btn"
-                    type="outline-primary"
-                    mod="small"
-                    [disabled]="!checkedDocumentIds().length"
-                    (click)="onApplyBulkEdit()"
-                >
-                    Apply
-                </app-button>
-            </div>
         </div>
-    }
 
-    <!-- DATA ROWS -->
-    <div class="table__files-wrapper">
+        <!-- DATA ROWS -->
         <ol class="table__rows">
             @for (d of filteredDocuments(); track d.naive_rag_document_id; let odd = $odd; let i = $index) {
                 <div
@@ -113,9 +131,57 @@
                     [class.table__row-wrapper--dark]="odd"
                     [class.table__row-wrapper--selected]="d.naive_rag_document_id === selectedRagDocId()"
                 >
-                    <li class="table__row">
+                    @if (isRowProcessing(d)) {
+                        <div class="table__status-icon table__status-spinner"></div>
+                    } @else {
+                        @switch (d.status) {
+                            @case ('completed') {
+                                <app-svg-icon
+                                    matTooltip="Chunked"
+                                    matTooltipPosition="above"
+                                    icon="check"
+                                    class="table__status-icon table__status-icon--completed"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('outdated') {
+                                <app-svg-icon
+                                    matTooltip="Indexed config outdated"
+                                    matTooltipPosition="above"
+                                    icon="clock"
+                                    class="table__status-icon table__status-icon--warning"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('processing') {
+                                <app-svg-icon
+                                    matTooltip="Indexing was stopped — status unknown, re-index to refresh"
+                                    matTooltipPosition="above"
+                                    icon="clock"
+                                    class="table__status-icon table__status-icon--warning"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('failed') {
+                                <app-svg-icon
+                                    matTooltip="Indexing failed"
+                                    matTooltipPosition="above"
+                                    icon="close"
+                                    class="table__status-icon table__status-icon--failed"
+                                    size="0.75rem"
+                                />
+                            }
+                        }
+                    }
+                    <li
+                        class="table__row"
+                        [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
+                    >
                         <!-- checkbox -->
-                        <div class="table__col">
+                        <div
+                            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                            class="table__col"
+                        >
                             <app-checkbox
                                 color="secondary"
                                 [checked]="d.checked"
@@ -134,7 +200,11 @@
                                 class="table__file-icon"
                                 size="0.75rem"
                             />
-                            <span class="table__file-name">
+                            <span
+                                class="table__file-name"
+                                [matTooltip]="parseFullFileName(d.file_name).name"
+                                matTooltipPosition="above"
+                            >
                                 {{ parseFullFileName(d.file_name).name }}
                             </span>
                             <span>
@@ -144,44 +214,77 @@
 
                         <!-- strategy select -->
                         <div class="table__col">
-                            <app-select
-                                mod="small"
-                                [items]="chunkStrategySelectItems"
-                                [(selectedValue)]="d.chunk_strategy"
-                                [invalid]="!!d.errors?.chunk_strategy"
-                                (changed)="onChunkStrategyChange(d, $event)"
-                            />
+                            @if (canUpdateKnowledges()) {
+                                <app-select
+                                    [disabled]="!canUpdateKnowledges()"
+                                    mod="small"
+                                    [items]="chunkStrategySelectItems"
+                                    [selectedValue]="d.chunk_strategy"
+                                    [invalid]="!!d.errors?.chunk_strategy"
+                                    (changed)="onChunkStrategyChange(d, $event)"
+                                />
+                            } @else {
+                                <span>
+                                    {{ d.chunk_strategy }}
+                                </span>
+                            }
                         </div>
 
                         @if (d.chunk_strategy === 'csv') {
                             <!-- chunk size -->
-                            <div class="table__col table__col--unavailable">Unavailable</div>
+                            <div
+                                class="table__col"
+                                [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                            >
+                                Unavailable
+                            </div>
 
                             <!-- overlap -->
-                            <div class="table__col table__col--unavailable">Unavailable</div>
+                            <div
+                                class="table__col"
+                                [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                            >
+                                Unavailable
+                            </div>
                         } @else {
                             <!-- chunk size -->
                             <div class="table__col">
-                                <app-input-number
-                                    mod="small"
-                                    [min]="20"
-                                    [max]="8000"
-                                    [(value)]="d.chunk_size"
-                                    [invalid]="!!d.errors?.chunk_size"
-                                    (changed)="onDocFieldChange(d, 'chunk_size', $event)"
-                                />
+                                @if (canUpdateKnowledges()) {
+                                    <app-input-number
+                                        [disabled]="!canUpdateKnowledges()"
+                                        mod="small"
+                                        [min]="20"
+                                        [max]="8000"
+                                        [stepSize]="DEFAULT_STEP_SIZE"
+                                        [value]="d.chunk_size"
+                                        [invalid]="!!d.errors?.chunk_size"
+                                        (changed)="onDocFieldChange(d, 'chunk_size', $event)"
+                                    />
+                                } @else {
+                                    <span>
+                                        {{ d.chunk_size }}
+                                    </span>
+                                }
                             </div>
 
                             <!-- overlap -->
                             <div class="table__col">
-                                <app-input-number
-                                    mod="small"
-                                    [min]="0"
-                                    [max]="1000"
-                                    [(value)]="d.chunk_overlap"
-                                    [invalid]="!!d.errors?.chunk_overlap"
-                                    (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"
-                                />
+                                @if (canUpdateKnowledges()) {
+                                    <app-input-number
+                                        [disabled]="!canUpdateKnowledges()"
+                                        mod="small"
+                                        [min]="0"
+                                        [max]="1000"
+                                        [stepSize]="DEFAULT_STEP_SIZE"
+                                        [value]="d.chunk_overlap"
+                                        [invalid]="!!d.errors?.chunk_overlap"
+                                        (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"
+                                    />
+                                } @else {
+                                    <span>
+                                        {{ d.chunk_overlap }}
+                                    </span>
+                                }
                             </div>
                         }
 
@@ -193,12 +296,42 @@
                                 mod="small"
                                 (click)="tuneChunk(d.naive_rag_document_id)"
                             >
-                                Tune Chunks
+                                <app-svg-icon
+                                    icon="vertical-sliders"
+                                    size="0.75rem"
+                                />
+                                Tune
                             </app-button>
                         </div>
                     </li>
+                    @if (d.status === 'failed' && d.error_message) {
+                        <label class="table__row-message table__row-message--danger">
+                            {{ d.error_message }}
+                        </label>
+                    }
+                    @if (d.status === 'outdated' && d.outdated_reasons) {
+                        @for (reason of d.outdated_reasons | keyvalue; track reason.key) {
+                            <label class="table__row-message class.table__row-message--danger">
+                                {{ reason.value }}
+                            </label>
+                        }
+                    }
                     @for (error of d.errors | keyvalue; track error.key) {
-                        <label class="table__row-error"> Update failed: {{ error.value?.reason }} </label>
+                        <label class="table__row-message table__row-message--danger">
+                            Action failed: {{ error.value?.reason }}
+                        </label>
+                    }
+                    @if (hasPending(d.naive_rag_document_id)) {
+                        <label class="table__row-message table__row-message--warning">
+                            <span>Parameters changed</span>
+                            <app-button
+                                type="secondary"
+                                mod="small"
+                                (click)="revert(d.naive_rag_document_id)"
+                            >
+                                Revert
+                            </app-button>
+                        </label>
                     }
                 </div>
             }

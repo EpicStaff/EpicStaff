@@ -13,14 +13,18 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers as drf_serializers
 from asgiref.sync import sync_to_async
+from django.http import JsonResponse
+from rest_framework.exceptions import APIException
 
 from tables.utils.mixins import SSEMixin
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
 from tables.models.graph_models import GraphSessionMessage
 from tables.services.redis_service import RedisService
+from tables.services.rbac.session_access import assert_session_org_access
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
 
+from django.conf import settings
 
 redis_service = RedisService()
 
@@ -32,24 +36,14 @@ class RunSessionSSEViewSwagger(APIView):
 
 
 class RunSessionSSEView(SSEMixin):
-    session_status_channel_name = os.environ.get(
-        "SESSION_STATUS_CHANNEL", "sessions:session_status"
-    )
-    graph_messages_channel_name = os.environ.get(
-        "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
-    )
-    memory_updates_channel_name = os.environ.get(
-        "MEMORY_UPDATE_CHANNEL", "memory:update"
-    )
-
-    _sse_filter_enabled = False
+    session_status_channel_name = settings.SESSION_STATUS_CHANNEL
+    graph_messages_channel_name = settings.GRAPH_MESSAGE_UPDATE_CHANNEL
 
     def __init__(self):
         super().__init__()
         self.handlers = {
             self.session_status_channel_name: self._handle_session_statuses,
             self.graph_messages_channel_name: self._handle_graph_session_messages,
-            self.memory_updates_channel_name: self._handle_memory_updates,
         }
 
     def __log(self, event, state, data):
@@ -102,29 +96,12 @@ class RunSessionSSEView(SSEMixin):
         async for data in self.async_orm_generator(from_db):
             yield data
 
-    def _should_filter_message(self, message_data: dict) -> bool:
-        """Check if a message should be filtered out for external consumers.
-        Only applies when sse_filter=true query param is set.
-        Standard messages (start, finish, error) always pass through."""
-        if not self._sse_filter_enabled:
-            return False
-        if not isinstance(message_data, dict):
-            return False
-        msg_type = message_data.get("message_type", "")
-        if msg_type in ("start", "error"):
-            return False
-        if msg_type == "finish":
-            return message_data.get("sse_visible") is False
-        return message_data.get("sse_visible") is False
-
     async def _handle_graph_session_messages(self, data):
         redis_key = f"graph:message:{data['session_id']}:{data['uuid']}"
         redis_data = await redis_service.async_redis_client.get(redis_key)
 
         if redis_data:
             parsed = json.loads(redis_data)
-            if self._should_filter_message(parsed.get("message_data", {})):
-                return
             logger.debug(f"_handle_graph_session_messages: {redis_data}")
             yield {"event": "messages", "data": parsed}
 
@@ -139,28 +116,10 @@ class RunSessionSSEView(SSEMixin):
             },
         }
 
-    async def _handle_memory_updates(self, data):
-        queryset = MemoryDatabase.objects.filter(id=data["uuid"]).values(
-            "id", "payload"
-        )
-        exists = await sync_to_async(queryset.exists)()
-        if not exists:
-            yield {"event": "memory-delete", "data": data["uuid"]}
-        else:
-            # Yield memo lazily using sync_to_async generator wrapper
-            async for memo in self.async_orm_generator(queryset):
-                self.__log(event="memory", state="update", data=memo["id"])
-                yield {
-                    "event": "memory",
-                    "data": memo,
-                }
-
     async def get_initial_data(self):
         # Graph Session Messages
         session_id = self.kwargs["session_id"]
         async for message in self._generate_initial_graph_session_messages(session_id):
-            if self._should_filter_message(message.get("message_data", {})):
-                continue
             self.__log(event="messages", state="initial", data=message["uuid"])
             message["message_data"] = self._trim_base64_file_data(
                 message["message_data"]
@@ -201,7 +160,6 @@ class RunSessionSSEView(SSEMixin):
             channels=[
                 self.graph_messages_channel_name,
                 self.session_status_channel_name,
-                self.memory_updates_channel_name,
             ],
             pubsub=pubsub,
         ):
@@ -227,6 +185,32 @@ class RunSessionSSEView(SSEMixin):
                 logger.exception(f"Error processing live update: {e}")
                 continue
 
+    async def authorize(self, request, *args, **kwargs):
+        """The SSE ticket only proves identity; gate the stream by the org that
+        owns the session's graph (org membership + FLOWS READ). Superadmin
+        passes. Returns a JSON error response on denial, else None."""
+        session_id = self.kwargs.get("session_id")
+        session = await sync_to_async(
+            Session.objects.select_related("graph").filter(pk=session_id).first
+        )()
+        if session is None:
+            return JsonResponse(
+                {
+                    "status_code": 404,
+                    "code": "session_not_found",
+                    "message": "Session not found.",
+                },
+                status=404,
+            )
+        try:
+            await sync_to_async(assert_session_org_access)(self.user, session)
+        except APIException as exc:
+            return JsonResponse(
+                {"status_code": exc.status_code, "message": str(exc.detail)},
+                status=exc.status_code,
+            )
+        return None
+
     async def get(self, request, *args, **kwargs):
         """
         SSE stream for real-time run session updates.
@@ -237,7 +221,7 @@ class RunSessionSSEView(SSEMixin):
 
         Append ?test=true to the URL for a finite sample response
         """
-        logger.info(f"Started run session SSE (sse_filter={self._sse_filter_enabled})")
+        logger.info("Started run session SSE")
         return await super().get(request, *args, **kwargs)
 
     def _trim_base64_file_data(self, message_data: dict) -> dict:
@@ -262,11 +246,3 @@ class RunSessionSSEView(SSEMixin):
 
         trim_data_fields(trimmed_data)
         return trimmed_data
-
-
-class FilteredRunSessionSSEView(RunSessionSSEView):
-    """SSE endpoint for external consumers (EpicChat widget).
-    Always filters out messages where sse_visible=false.
-    Standard messages (start, finish, error) always pass through."""
-
-    _sse_filter_enabled = True

@@ -35,9 +35,6 @@
     { "name": "embed-english-light-v2.0", "recommended": false },
     { "name": "embed-multilingual-v2.0", "recommended": false }
   ],
-  "huggingface": [
-    { "name": "huggingface/microsoft/codebert-base", "recommended": false }
-  ],
   "databricks": [
     { "name": "databricks/databricks-bge-large-en", "recommended": false },
     { "name": "databricks/databricks-gte-large-en", "recommended": false }

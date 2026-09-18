@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { LLMProvider, ModelTypes } from '@shared/models';
-import { catchError, Observable, of, tap, throwError } from 'rxjs';
+import { catchError, finalize, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
 import { StorageService } from '../app-storage.service';
 import { LLMProvidersService } from './llm-providers.service';
@@ -21,6 +21,8 @@ export class LlmProvidersStorageService implements StorageService {
     // Per-type cache
     private providersByTypeSignal = signal<Map<ModelTypes, LLMProvider[]>>(new Map());
     private providerTypesLoaded = signal<Set<ModelTypes>>(new Set());
+    // Shared in-flight request per type so concurrent callers reuse one HTTP.
+    private readonly providerTypeRequests = new Map<ModelTypes, Observable<LLMProvider[]>>();
 
     public readonly providersByType = this.providersByTypeSignal.asReadonly();
 
@@ -48,11 +50,16 @@ export class LlmProvidersStorageService implements StorageService {
     }
 
     getProvidersByType(type: ModelTypes, forceRefresh = false): Observable<LLMProvider[]> {
-        const loadedTypes = this.providerTypesLoaded();
-        if (loadedTypes.has(type) && !forceRefresh) {
+        if (this.providerTypesLoaded().has(type) && !forceRefresh) {
             return of(this.providersByTypeSignal().get(type) ?? []);
         }
-        return this.llmProvidersService.getProvidersByQuery(type).pipe(
+
+        const inFlight = this.providerTypeRequests.get(type);
+        if (inFlight && !forceRefresh) {
+            return inFlight;
+        }
+
+        const request$ = this.llmProvidersService.getProvidersByQuery(type).pipe(
             tap((providers) => {
                 this.providersByTypeSignal.update((map) => {
                     const updated = new Map(map);
@@ -72,7 +79,11 @@ export class LlmProvidersStorageService implements StorageService {
                     return updated;
                 });
                 return throwError(() => err);
-            })
+            }),
+            finalize(() => this.providerTypeRequests.delete(type)),
+            shareReplay(1)
         );
+        this.providerTypeRequests.set(type, request$);
+        return request$;
     }
 }

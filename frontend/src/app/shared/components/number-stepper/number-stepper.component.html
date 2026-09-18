@@ -24,16 +24,10 @@
                 (mousedown)="onStepDown(); $event.preventDefault()"
                 [disabled]="isDisabled() || !canStepDown()"
             >
-                <svg
-                    viewBox="0 0 10 2"
-                    fill="none"
-                >
-                    <path
-                        d="M0 1H10"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                    />
-                </svg>
+                <app-svg-icon
+                    icon="minus-fit"
+                    [size]="stepIconSize()"
+                />
             </button>
         }
 
@@ -58,16 +52,10 @@
                 (mousedown)="onStepUp(); $event.preventDefault()"
                 [disabled]="isDisabled() || !canStepUp()"
             >
-                <svg
-                    viewBox="0 0 10 10"
-                    fill="none"
-                >
-                    <path
-                        d="M5 0V10M0 5H10"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                    />
-                </svg>
+                <app-svg-icon
+                    icon="plus-fit"
+                    [size]="stepIconSize()"
+                />
             </button>
         }
     </div>

@@ -15,7 +15,5 @@ export interface CreateEmbeddingModelRequest {
     base_url?: string | null;
     deployment?: string | null;
     is_visible: boolean;
-    is_custom: boolean;
-    predefined?: boolean;
     embedding_provider: number;
 }

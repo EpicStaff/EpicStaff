@@ -4,7 +4,7 @@ export interface GetLlmConfigRequest {
     id: number;
     custom_name: string;
     model: number;
-    api_key: string;
+    api_key_secret_id: number | null;
     temperature: number | null;
     top_p: number | null;
     stop: string[] | null;
@@ -15,7 +15,6 @@ export interface GetLlmConfigRequest {
     seed: number | null;
     timeout: number | null;
     is_visible: boolean;
-    headers?: Record<string, string>;
     extra_headers?: Record<string, string>;
     tags: Tag[];
 }
@@ -23,7 +22,7 @@ export interface GetLlmConfigRequest {
 export interface CreateLLMConfigRequest {
     custom_name: string;
     model: number;
-    api_key: string;
+    api_key_secret_id: number | null;
     temperature?: number | null;
     top_p?: number | null;
     stop?: string[] | null;
@@ -34,7 +33,6 @@ export interface CreateLLMConfigRequest {
     seed?: number | null;
     timeout?: number | null;
     is_visible?: boolean;
-    headers?: Record<string, string>;
     extra_headers?: Record<string, string>;
     tags?: Tag[];
 }
@@ -43,7 +41,7 @@ export interface UpdateLLMConfigRequest {
     id: number;
     custom_name: string;
     model: number;
-    api_key: string;
+    api_key_secret_id: number | null;
     temperature?: number | null;
     top_p?: number | null;
     stop?: string[] | null;
@@ -54,7 +52,6 @@ export interface UpdateLLMConfigRequest {
     seed?: number | null;
     timeout?: number | null;
     is_visible?: boolean;
-    headers?: Record<string, string>;
     extra_headers?: Record<string, string>;
     tags?: Tag[];
 }

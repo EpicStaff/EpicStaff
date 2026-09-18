@@ -1,5 +1,8 @@
 <div class="dialog__form">
-    <div class="dialog__form-field">
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="dialog__form-field"
+    >
         <div class="dialog__form-label">
             <label for="collection-name">Collection Name</label>
             <app-help-tooltip
@@ -10,15 +13,46 @@
             />
         </div>
 
-        <input
-            type="text"
-            id="collection-name"
-            class="dialog__form-input"
-            [formControl]="collectionName"
-            placeholder="Enter collection name"
-            [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
-        />
-        <app-validation-errors [control]="collectionName" />
+        <div class="dialog__form-input-wrap">
+            <input
+                type="text"
+                id="collection-name"
+                class="dialog__form-input"
+                [formControl]="collectionName"
+                placeholder="Enter collection name"
+                [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
+            />
+            <app-validation-errors [control]="collectionName" />
+        </div>
+    </div>
+
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="dialog__form-field"
+    >
+        <div class="dialog__form-label">
+            <label for="collection-description">Guidance for Agents</label>
+            <app-help-tooltip
+                class="dialog__form-label-icon"
+                text="Describe what's inside this collection and which questions it can answer. Agents use this to decide when to search it."
+                position="right"
+                tooltipClass="dialog__label-tooltip"
+            />
+        </div>
+
+        <div class="dialog__form-input-wrap">
+            <textarea
+                #descriptionTa
+                id="collection-description"
+                class="dialog__form-input dialog__form-textarea"
+                [formControl]="description"
+                placeholder="Describe what's inside and which questions this collection can answer..."
+                rows="1"
+                (input)="autoGrow(descriptionTa)"
+                [class.dialog__input--invalid]="description.invalid && description.touched"
+            ></textarea>
+            <app-validation-errors [control]="description" />
+        </div>
     </div>
 
     <div class="dialog__content">
@@ -27,16 +61,24 @@
                 <h6 class="dialog__content-title">
                     Selected Files: <span class="dialog__content-title--count">(0)</span>
                 </h6>
-                <app-file-uploader (filesUploaded)="onFilesUpload($event)" />
+                <app-file-uploader
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+                    (filesUploaded)="onFilesUpload($event)"
+                />
             </div>
         } @else {
             <div class="dialog__files">
                 <app-files-list
                     [(documents)]="documents"
                     (filesUploaded)="onFilesUpload($event)"
+                    (documentSelected)="selectedDocument.set($event)"
                     class="dialog__files-list"
                 />
-                <app-file-preview class="dialog__file-preview" />
+                <app-blob-preview
+                    [blob]="previewState().blob"
+                    [fileName]="previewState().fileName"
+                    class="dialog__file-preview"
+                />
             </div>
         }
     </div>

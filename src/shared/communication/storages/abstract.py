@@ -10,7 +10,7 @@ class AbstractStorage(ABC):
 
     @abstractmethod
     def put(self, key: str, payload: bytes):
-        """Store a payload under a key syncronously.
+        """Store a payload under a key synchronously.
 
         Persist `payload` under `key`. A TTL is allowed — callers must not
         assume the data lives forever.
@@ -22,7 +22,7 @@ class AbstractStorage(ABC):
 
     @abstractmethod
     async def aput(self, key: str, payload: bytes):
-        """Store a payload under a key asyncronously.
+        """Store a payload under a key asynchronously.
 
         Persist `payload` under `key`. A TTL is allowed — callers must not
         assume the data lives forever.

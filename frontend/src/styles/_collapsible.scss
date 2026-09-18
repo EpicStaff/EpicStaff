@@ -1,0 +1,38 @@
+.grid-collapsible {
+    --collapse-duration: 180ms;
+    --collapse-easing: ease-in-out;
+
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        grid-template-rows var(--collapse-duration) var(--collapse-easing),
+        opacity var(--collapse-duration) var(--collapse-easing),
+        visibility var(--collapse-duration) var(--collapse-easing);
+
+    > * {
+        min-height: 0;
+        overflow: hidden;
+        transition: overflow 0s;
+    }
+
+    &.expanded {
+        grid-template-rows: 1fr;
+        opacity: 1;
+        visibility: visible;
+
+        > * {
+            overflow: visible;
+            transition: overflow 0s var(--collapse-duration);
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .grid-collapsible,
+    .grid-collapsible > * {
+        transition-duration: 0s;
+        transition-delay: 0s;
+    }
+}

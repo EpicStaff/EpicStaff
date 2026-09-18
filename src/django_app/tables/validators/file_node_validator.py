@@ -4,9 +4,6 @@ from tables.models import FileExtractorNode, AudioTranscriptionNode
 
 
 class FileNodeValidator:
-    DOMAIN_NAME = "variables"
-    FILES_IN_DOMAIN = "files"
-
     def validate_file_nodes(
         self, node_list: QuerySet[FileExtractorNode | AudioTranscriptionNode]
     ) -> None:
@@ -16,7 +13,6 @@ class FileNodeValidator:
         """
         for node in node_list:
             self._validate_inputs_exist(node)
-            self._validate_inputs_are_files(node)
 
     def _validate_inputs_exist(
         self, node: FileExtractorNode | AudioTranscriptionNode
@@ -25,12 +21,3 @@ class FileNodeValidator:
             raise FileNodeValidationError(
                 f"FileNode requires input_map. Issue with node: {node.node_name}"
             )
-
-    def _validate_inputs_are_files(
-        self, node: FileExtractorNode | AudioTranscriptionNode
-    ) -> None:
-        for key, value in node.input_map.items():
-            if not value.startswith(f"{self.DOMAIN_NAME}.{self.FILES_IN_DOMAIN}"):
-                raise FileNodeValidationError(
-                    f"FileNode requires files as input. Node: {node.node_name}; {key}: {value}"
-                )

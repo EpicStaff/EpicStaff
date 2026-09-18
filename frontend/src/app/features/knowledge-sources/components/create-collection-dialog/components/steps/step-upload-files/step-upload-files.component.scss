@@ -18,8 +18,14 @@
         color: var(--accent-color);
     }
 
+    &__form-input-wrap {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 240px;
+        min-width: 240px;
+    }
+
     &__form-input {
-        flex-grow: 1;
         height: 2.5rem;
         padding: 0 1rem;
         border-radius: 0.5rem;
@@ -37,6 +43,17 @@
         &::placeholder {
             color: var(--color-input-text-placeholder);
         }
+    }
+
+    &__form-textarea {
+        height: auto;
+        min-height: 2.5rem;
+        max-height: 128px;
+        padding: 0.625rem 1rem;
+        line-height: 1.4;
+        resize: none;
+        overflow-y: hidden;
+        font-family: inherit;
     }
 
     &__form-field {
@@ -59,8 +76,8 @@
 
     &__content-title {
         padding: 1.25rem 0;
-        font-size: 0.875rem;
-        font-weight: 130;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
 
         &--count {
             color: var(--accent-color);

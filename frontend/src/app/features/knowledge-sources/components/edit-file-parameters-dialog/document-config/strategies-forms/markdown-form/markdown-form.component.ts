@@ -7,6 +7,7 @@ import {
     ToggleSwitchComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
 import { HelpTooltipComponent } from '../../../../../../../shared/components/help-tooltip/help-tooltip.component';
@@ -29,6 +30,8 @@ import { StrategyForm } from '../strategy-config-form.abstract';
     ],
 })
 export class MarkdownFormComponent extends StrategyForm<MarkdownStrategyModel> {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     headerItems: SelectItem[] = [
         {
             name: '# Header 1',

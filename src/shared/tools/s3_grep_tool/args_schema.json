@@ -1,0 +1,31 @@
+{
+  "title": "S3GrepArgs",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "Python re-syntax regular expression to search file contents for."
+    },
+    "path": {
+      "type": "string",
+      "description": "A single file path or a folder path to search under. Must be within your flow's allowed files (the files attached to this flow); root/whole-bucket search is not available - pass one of your allowed paths."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "When path is a folder, descend into every nested folder instead of only its direct files. Defaults to true."
+    },
+    "ignore_case": {
+      "type": "boolean",
+      "description": "Case-insensitive matching. Defaults to false."
+    },
+    "show_line_numbers": {
+      "type": "boolean",
+      "description": "Prefix each matching line with its line number. Defaults to true."
+    },
+    "files_with_matches": {
+      "type": "boolean",
+      "description": "Return only the paths of files containing a match, instead of the matching lines themselves. Defaults to false."
+    }
+  },
+  "required": ["pattern"]
+}

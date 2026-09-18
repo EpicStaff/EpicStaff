@@ -1,5 +1,4 @@
-from typing import Any, Literal
-from typing_extensions import TypedDict
+from typing import Any, Literal, TypedDict
 from dotdict import DotDict
 
 

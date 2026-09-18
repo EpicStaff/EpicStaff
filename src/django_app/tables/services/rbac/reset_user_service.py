@@ -1,35 +1,32 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from tables.models.rbac_models import ApiKey
+from tables.services.rbac.utils.bootstrap_lock import acquire_bootstrap_lock
 from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
 
 class ResetUserService:
     """
-    Wipes all Users and ApiKeys, then provisions a fresh superadmin with a
-    default-org membership + system API key via SuperadminBootstrap. The
-    Organizations table is preserved across the wipe — the bootstrap re-uses
-    the existing default org if present, or creates one if not.
+    Wipes all Users, then provisions a fresh superadmin with a default-org
+    membership via SuperadminBootstrap. The Organizations table is preserved
+    across the wipe — the bootstrap re-uses the existing default org if
+    present, or creates one if not.
 
-    Returns the new user and the raw API key. The view layer wraps both in
-    the response payload.
+    User-owned API keys cascade-delete with their owning users; the system
+    API key (owned by no user) survives the wipe untouched. No new key is
+    created here — personal keys come only from POST /api/profile/api-keys/.
+
+    Returns the new user. The view layer wraps it in the response payload.
     """
-
-    REALTIME_KEY_NAME = "realtime-default"
 
     _bootstrap = SuperadminBootstrap()
 
     @transaction.atomic
-    def reset(self, *, email: str, password: str) -> tuple:
+    def reset(self, *, email: str, password: str):
+        acquire_bootstrap_lock()
+
         UserModel = get_user_model()
-        UserModel.objects.all().delete()
-        ApiKey.objects.all().delete()
+        UserModel.objects.all().delete()  # user keys cascade; system key survives
 
-        result = self._bootstrap.provision(
-            email=email,
-            password=password,
-            api_key_name=self.REALTIME_KEY_NAME,
-        )
-
-        return result.user, result.raw_key
+        result = self._bootstrap.provision(email=email, password=password)
+        return result.user

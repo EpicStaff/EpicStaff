@@ -1,0 +1,11 @@
+{
+  "title": "S3FolderDeleteArgs",
+  "type": "object",
+  "properties": {
+    "folder_path": {
+      "type": "string",
+      "description": "S3 folder path to delete, along with everything nested under it. Cannot be the bucket root or empty."
+    }
+  },
+  "required": ["folder_path"]
+}

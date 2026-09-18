@@ -27,12 +27,16 @@ class TranscriptionClientEventHandler:
         """Handle incoming event by calling the appropriate method."""
         event_type = data.get("type")
 
-        logger.debug(f"Processing event type: {event_type}")
+        if event_type != "input_audio_buffer.append":
+            logger.debug(f"Processing event type: {event_type}")
 
         handler = self.event_map.get(event_type, self.unknown_event_handler)
         await handler(data)
         await save_realtime_session_item_to_db(
-            data=data, connection_key=self.client.connection_key
+            data=data,
+            connection_key=self.client.connection_key,
+            org_id=self.client.org_id,
+            user_id=self.client.user_id,
         )
 
     async def unknown_event_handler(self, data: Dict[str, Any]) -> None:

@@ -1,31 +1,42 @@
 :host {
-    display: block;
-    flex: 0 0 30%;
-    width: 30%;
-    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
     height: 100%;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+    position: relative;
+    border-right: 1px solid var(--color-divider-subtle);
+    background-color: var(--color-background-body);
 }
 
 .chats-sidebar {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
     width: 100%;
-    height: 100%;
     overflow: auto;
-    min-width: 0;
+    padding: 1rem 1.25rem;
 
-    border-right: 1px solid var(--color-divider-subtle);
-    padding: 1rem 3rem;
-
-    .search-container {
-        padding: 0 0 8px 0;
+    &__search {
+        flex-shrink: 0;
+        margin-bottom: 0.75rem;
     }
 
-    ul {
+    &__empty {
+        margin: 0.75rem 0;
+        color: var(--color-text-secondary);
+        font-size: 0.875rem;
+    }
+
+    &__list {
         list-style: none;
         padding: 0;
         margin: 0;
-    }
-
-    li {
-        margin-bottom: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
     }
 }

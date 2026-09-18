@@ -1,8 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
@@ -10,9 +9,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
 @Component({
     selector: 'app-python-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
+    imports: [CommonModule, JsonViewerComponent, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="python-flow-container">
             <!-- Python Message Header with Toggle -->
@@ -37,134 +34,142 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
             <!-- Collapsible Python Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="python-content">
                     <!-- Code Section -->
-                    <div
-                        class="code-container"
-                        *ngIf="hasCode()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('code')"
-                        >
-                            <app-svg-icon
-                                [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Python Code
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="code-wrapper">
-                                <div class="result-content">
-                                    <pre>{{ getCode() }}</pre>
+                    @if (hasCode()) {
+                        <div class="code-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('code')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Python Code
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isCodeExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="code-wrapper">
+                                        <div class="result-content">
+                                            <pre>{{ getCode() }}</pre>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Input Section -->
-                    <div
-                        class="input-container"
-                        *ngIf="hasInput()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('input')"
-                        >
-                            <app-svg-icon
-                                [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Input
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="input-wrapper">
-                                <div class="result-content">
-                                    <ngx-json-viewer
-                                        *ngIf="getParsedInput() && isValidJson(getInput())"
-                                        [json]="getParsedInput()"
-                                        [expanded]="false"
-                                    ></ngx-json-viewer>
-                                    <pre *ngIf="!isValidJson(getInput())">{{ getInput() }}</pre>
+                    @if (hasInput()) {
+                        <div class="input-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('input')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Input
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="input-wrapper">
+                                        <div class="result-content">
+                                            @if (getParsedInput() && isValidJson(getInput())) {
+                                                <app-json-viewer
+                                                    [json]="getParsedInput()"
+                                                    [expanded]="false"
+                                                ></app-json-viewer>
+                                            }
+                                            @if (!isValidJson(getInput())) {
+                                                <pre>{{ getInput() }}</pre>
+                                            }
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Output Section -->
-                    <div
-                        class="output-container"
-                        *ngIf="hasOutput()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('output')"
-                        >
-                            <app-svg-icon
-                                [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Output
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="output-wrapper">
-                                <div
-                                    class="result-content"
-                                    [ngClass]="{
-                                        collapsed: isCollapsed && shouldShowToggle(),
-                                    }"
-                                >
-                                    <pre>{{ getOutput() }}</pre>
+                    @if (hasOutput()) {
+                        <div class="output-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('output')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Output
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isOutputExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="output-wrapper">
+                                        <div
+                                            class="result-content"
+                                            [ngClass]="{
+                                                collapsed: isCollapsed && shouldShowToggle(),
+                                            }"
+                                        >
+                                            <pre>{{ getOutput() }}</pre>
+                                        </div>
+                                        @if (shouldShowToggle() && isOutputExpanded) {
+                                            <button
+                                                class="toggle-button"
+                                                (click)="toggleCollapse()"
+                                            >
+                                                {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
-                                <button
-                                    *ngIf="shouldShowToggle() && isOutputExpanded"
-                                    class="toggle-button"
-                                    (click)="toggleCollapse()"
-                                >
-                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
-                                </button>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Error Section -->
-                    <div
-                        class="error-container"
-                        *ngIf="hasError()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('error')"
-                        >
-                            <app-svg-icon
-                                [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Error
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="error-wrapper">
-                                <div class="result-content error-content">
-                                    <pre>{{ getError() }}</pre>
+                    @if (hasError()) {
+                        <div class="error-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('error')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Error
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isErrorExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="error-wrapper">
+                                        <div class="result-content error-content">
+                                            <pre>{{ getError() }}</pre>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Raw Data Section -->
                     <div class="raw-data-container">
@@ -179,16 +184,18 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             Raw Execution Data
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isRawDataExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isRawDataExpanded"
                         >
-                            <div class="raw-data-wrapper">
-                                <div class="raw-data-content">
-                                    <app-copy-button [text]="copyText" />
-                                    <ngx-json-viewer
-                                        [json]="getExecutionData() | formatExecutionData"
-                                        [expanded]="false"
-                                    ></ngx-json-viewer>
+                            <div class="collapsible-inner">
+                                <div class="raw-data-wrapper">
+                                    <div class="raw-data-content">
+                                        <app-copy-button [text]="copyText" />
+                                        <app-json-viewer
+                                            [json]="getExecutionData() | formatExecutionData"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -197,13 +204,14 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .python-flow-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, 0.5rem 1rem);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #ffcf3f;
             }
@@ -216,9 +224,12 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             .play-arrow {
-                margin-right: 16px;
+                width: 1.1rem;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #ffcf3f;
@@ -226,8 +237,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #ffcf3f;
                 display: flex;
@@ -243,8 +254,9 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -252,9 +264,12 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .python-content > :first-child {
+                margin-top: 1.25rem;
             }
 
             /* Collapsible content container */
@@ -263,13 +278,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 position: relative;
             }
 
-            .collapsible-content.ng-animating {
-                overflow: hidden;
-            }
-
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -323,8 +336,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 }
             }
 
-            .raw-data-content ::ng-deep ngx-json-viewer,
-            .raw-data-content ::ng-deep .ngx-json-viewer {
+            .raw-data-content ::ng-deep app-json-viewer,
+            .raw-data-content ::ng-deep .json-viewer {
                 display: inline-block;
                 min-width: 100%;
                 white-space: pre-wrap;
@@ -338,7 +351,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 background-color: transparent;
                 border: none;
                 color: #ffcf3f;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;

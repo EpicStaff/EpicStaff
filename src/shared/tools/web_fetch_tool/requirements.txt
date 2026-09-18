@@ -1,0 +1,4 @@
+httpx
+trafilatura>=1.8
+markdownify
+charset-normalizer

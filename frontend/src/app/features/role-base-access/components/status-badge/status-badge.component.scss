@@ -4,7 +4,7 @@
     gap: 4px;
     padding: 4px 8px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     white-space: nowrap;
 
     &.online {
@@ -29,6 +29,16 @@
 
     &.deactivated {
         background: var(--transparent-white-4);
+        color: var(--text-secondary-60);
+    }
+
+    &.expired {
+        background: var(--transparent-white-8);
+        color: var(--text-secondary-60);
+    }
+
+    &.revoked {
+        background: var(--transparent-white-8);
         color: var(--text-secondary-60);
     }
 }

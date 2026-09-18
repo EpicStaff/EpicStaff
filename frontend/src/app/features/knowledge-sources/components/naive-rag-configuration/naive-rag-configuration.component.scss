@@ -4,41 +4,53 @@
     overflow: auto;
 
     app-document-chunks-section {
-        flex: 1 1 auto;
-        min-width: 500px;
+        flex: 1 1 0;
+        min-width: 340px;
     }
 
     &__files-section {
         display: flex;
         flex-direction: column;
-        flex-shrink: 0;
-        width: 735px;
+        flex: 0 1 735px;
+        min-width: 640px;
         border-right: 1px solid var(--color-divider-subtle);
     }
 
     &__files-searchbar {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr // search
+            150px // select
+            110px // reinclude files
+            120px // bulk config
+            60px; // bulk delete
         gap: 0.5rem;
+        align-items: center;
         padding: 1.25rem 2.5rem 1rem 2.5rem;
     }
 
     &__input {
-        width: 255px;
+        flex: 0 1 255px;
+        min-width: 150px;
     }
 
     &__bulk-delete {
-        width: 2.5rem;
-        height: 2.5rem;
-        padding: 0.75rem;
-        border-radius: 8px;
+        width: 28px;
+        height: 28px;
+        padding: 0.25rem;
+        border-radius: 4px;
         border: 1px solid var(--accent-color);
         background: transparent;
         color: var(--accent-color);
         cursor: pointer;
 
-        &:hover {
+        &:hover:not(&--disabled) {
             border-color: var(--accent-color-hover);
             color: var(--accent-color-hover);
+        }
+
+        &--disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
     }
 }

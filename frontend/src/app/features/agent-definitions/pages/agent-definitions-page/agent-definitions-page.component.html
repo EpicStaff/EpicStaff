@@ -1,0 +1,289 @@
+﻿<div class="agent-definitions-page">
+    <header class="header">
+        <div
+            class="header-titles"
+            appHideInlineSubtitleOnOverflow
+        >
+            <h1 class="title">
+                Agents
+                <span class="subtitle-inline">
+                    Define reusable agents and Surfaces controlling tool and knowledge access.
+                </span>
+            </h1>
+        </div>
+
+        <app-button
+            *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
+            class="header__add-agent"
+            type="primary"
+            leftIcon="plus-fit"
+            iconSize="10px"
+            (click)="onAddAgent()"
+        >
+            Add Agent
+        </app-button>
+    </header>
+
+    <section class="body">
+        @if (store.showSidebar()) {
+            <app-explorer
+                (selectNode)="onSelectNode($event)"
+                (selectStorageItem)="onSelectStorageItem($event)"
+                (addInSection)="onAddInSection($event)"
+                (treeMenuAction)="onExplorerTreeMenu($event)"
+                (attachSharedSurface)="onExplorerAttachSharedSurface($event)"
+                (close)="store.toggleSidebar()"
+            />
+        }
+
+        <div class="body__detail">
+            @if (store.isStorageSelected()) {
+                <app-storage-preview
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
+                    [item]="storageFacade.selectedFile()"
+                    [selectedItems]="storageFacade.selectedItems()"
+                    [showSidebar]="store.showSidebar()"
+                    [readOnly]="filesReadOnly()"
+                    (toggleSidebar)="store.toggleSidebar()"
+                    (contextAction)="onPreviewContextAction($event)"
+                    (breadcrumbClick)="onPreviewBreadcrumb($event)"
+                />
+            } @else if (store.selectedAgentDoc()) {
+                <app-agent-doc-preview
+                    [agent]="store.selectedAgentDoc()!.agent"
+                    [showSidebar]="store.showSidebar()"
+                    [initialEditMode]="openDocInEdit"
+                    (toggleSidebar)="store.toggleSidebar()"
+                    (save)="store.updateAgent(store.selectedAgentDoc()!.agent.id, { instructions: $event })"
+                    (openAgent)="store.selectAgent($event)"
+                />
+            } @else if (store.selectedSurfaceView()) {
+                <app-detail-header
+                    [showSidebar]="store.showSidebar()"
+                    [crumbs]="surfaceCrumbs()"
+                    (toggleSidebar)="store.toggleSidebar()"
+                    (navAgent)="store.selectAgent($event)"
+                    (navAgentSurfaces)="store.selectAgentSurfaces($event)"
+                >
+                    <button
+                        type="button"
+                        class="detail-header__used-by"
+                        (click)="onOpenUsage()"
+                    >
+                        Used by {{ selectedSurfaceUsageCount() }}
+                        <app-svg-icon
+                            icon="arrow-up-right"
+                            size="12px"
+                        />
+                    </button>
+                </app-detail-header>
+
+                <div class="detail-body">
+                    @if (store.selectedSurfaceView(); as view) {
+                        <div class="surface-pane">
+                            @if (view.ownerAgent && view.places.length <= 1 && selectedSurfacePlace(); as place) {
+                                <div class="surface-pane__place">
+                                    <app-svg-icon
+                                        [icon]="place.icon"
+                                        size="16px"
+                                    />
+                                    {{ place.label }}
+                                </div>
+                            }
+
+                            <app-surface-detail
+                                [surface]="view.surface"
+                                [readOnly]="view.readOnly"
+                                [isShared]="store.isSurfaceShared(view.surface.id)"
+                                [showMeta]="!view.ownerAgent && store.isSurfaceShared(view.surface.id)"
+                                [currentPlace]="view.place"
+                                [surfacePlaces]="view.places"
+                                [placesBusy]="store.saving()"
+                                [saveError]="store.surfaceSaveError()"
+                                (rename)="store.updateSurface(view.surface.id, { name: $event })"
+                                (surfaceChange)="store.updateSurface(view.surface.id, $event)"
+                                (openSource)="store.openSharedSurfaceSource(view.surface.id)"
+                                (detach)="store.detachSurfaceFromAgent(view.surface.id, view.ownerAgent!.id)"
+                                (makeShared)="store.makeSurfaceShared(view.surface.id)"
+                                (makeAgentSpecificCopy)="
+                                    store.makeAgentSpecificCopy(view.surface.id, view.ownerAgent!.id)
+                                "
+                                (setSurfacePlaces)="
+                                    store.setSurfacePlaces(view.surface.id, view.ownerAgent!.id, $event)
+                                "
+                                (duplicate)="store.duplicateSurface(view.surface.id)"
+                                (deleteSurface)="onDeleteSurface(view.surface.id)"
+                            />
+                        </div>
+                    }
+                </div>
+            } @else {
+                <app-detail-header
+                    [showSidebar]="store.showSidebar()"
+                    [crumbs]="agentCrumbs()"
+                    (toggleSidebar)="store.toggleSidebar()"
+                    (navAgent)="store.selectAgent($event)"
+                >
+                    @if ((store.selectedAgent() || store.selectedSurface()) && canOpenHeaderMenu()) {
+                        <button
+                            #headerMenuTrigger="cdkOverlayOrigin"
+                            cdkOverlayOrigin
+                            type="button"
+                            class="detail-header__kebab"
+                            aria-label="More actions"
+                            [disabled]="store.saving()"
+                            (click)="toggleHeaderMenu($event)"
+                        >
+                            <app-svg-icon
+                                icon="dots-vertical"
+                                size="1rem"
+                            />
+                        </button>
+                        <ng-template
+                            cdkConnectedOverlay
+                            [cdkConnectedOverlayOrigin]="headerMenuTrigger"
+                            [cdkConnectedOverlayOpen]="headerMenuOpen()"
+                            [cdkConnectedOverlayPositions]="headerMenuPositions"
+                            [cdkConnectedOverlayFlexibleDimensions]="true"
+                            (overlayOutsideClick)="closeHeaderMenu()"
+                            (detach)="closeHeaderMenu()"
+                        >
+                            <div class="detail-header__menu">
+                                @if (canDuplicateSelected()) {
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item"
+                                        (click)="onHeaderDuplicate()"
+                                    >
+                                        Duplicate
+                                    </button>
+                                }
+                                @if (canDeleteSelected()) {
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item detail-header__menu-item--danger"
+                                        (click)="onHeaderDelete()"
+                                    >
+                                        Delete
+                                    </button>
+                                }
+                            </div>
+                        </ng-template>
+                    }
+                </app-detail-header>
+
+                <div class="detail-body">
+                    @if (store.isDraftingAgent()) {
+                        <app-agent-detail
+                            [agent]="null"
+                            [isCreating]="true"
+                            [saving]="store.saving()"
+                            [surfaces]="store.surfaces()"
+                            [saveErrorTick]="store.agentSaveErrorTick()"
+                            [surfaceSaveError]="store.surfaceSaveError()"
+                            [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
+                            (save)="onSaveAgent($event)"
+                            (dirtyChange)="onDirtyChange($event)"
+                        />
+                    } @else if (store.isDraftingSurface()) {
+                        <div class="surface-pane">
+                            <app-surface-detail
+                                [surface]="null"
+                                [isCreating]="true"
+                                [showMeta]="true"
+                                (create)="onCreateSurface($event)"
+                            />
+                        </div>
+                    } @else if (store.selectedAgent()) {
+                        <app-agent-detail
+                            [agent]="store.selectedAgent()!"
+                            [saving]="store.saving()"
+                            [surfaces]="store.surfaces()"
+                            [saveErrorTick]="store.agentSaveErrorTick()"
+                            [surfaceSaveError]="store.surfaceSaveError()"
+                            [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
+                            [bootIsDoc]="store.isBootDoc(store.selectedAgent()!.id)"
+                            [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [readOnly]="agentsReadOnly()"
+                            (save)="onSaveAgent($event)"
+                            (delete)="onDeleteAgent($event)"
+                            (dirtyChange)="onDirtyChange($event)"
+                            (bootDocChange)="onBootDocChange($event)"
+                            (openBootDoc)="onOpenBootDoc()"
+                            (extractText)="store.applyBootDocFromText(store.selectedAgent()!.id, $event)"
+                            (createSurface)="
+                                store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
+                            "
+                            (setSharedInCategory)="
+                                store.setSharedSurfacesInCategory(
+                                    $event.surfaceIds,
+                                    store.selectedAgent()!.id,
+                                    $event.category
+                                )
+                            "
+                            (dropSharedSurface)="
+                                store.dropSharedSurfaceOnAgent(
+                                    $event.surfaceId,
+                                    store.selectedAgent()!.id,
+                                    $event.category
+                                )
+                            "
+                            (setSurfacePlaces)="
+                                store.setSurfacePlaces($event.surfaceId, store.selectedAgent()!.id, $event.places)
+                            "
+                            (makeSharedSurface)="store.makeSurfaceShared($event)"
+                            (detachSurface)="store.detachSurfaceFromAgent($event, store.selectedAgent()!.id)"
+                            (deleteSurfaceFromPanel)="onDeleteSurface($event)"
+                            (duplicateSurface)="store.duplicateSurface($event)"
+                            (makeAgentSpecificCopy)="store.makeAgentSpecificCopy($event, store.selectedAgent()!.id)"
+                            (openSurfaceSource)="store.openSharedSurfaceSource($event)"
+                            (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
+                            (surfaceChange)="store.updateSurface($event.id, $event.patch)"
+                            (viewSummary)="onViewSummary($event)"
+                        />
+                    } @else if (store.surfacesOnlyAgent()) {
+                        <app-agent-detail
+                            [agent]="store.surfacesOnlyAgent()!"
+                            [surfacesOnly]="true"
+                            [saving]="store.saving()"
+                            [surfaces]="store.surfaces()"
+                            [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [readOnly]="agentsReadOnly()"
+                            (createSurface)="
+                                store.createSurfaceForAgent(store.surfacesOnlyAgent()!.id, $event.body, $event.place)
+                            "
+                            (setSharedInCategory)="
+                                store.setSharedSurfacesInCategory(
+                                    $event.surfaceIds,
+                                    store.surfacesOnlyAgent()!.id,
+                                    $event.category
+                                )
+                            "
+                            (dropSharedSurface)="
+                                store.dropSharedSurfaceOnAgent(
+                                    $event.surfaceId,
+                                    store.surfacesOnlyAgent()!.id,
+                                    $event.category
+                                )
+                            "
+                            (setSurfacePlaces)="
+                                store.setSurfacePlaces($event.surfaceId, store.surfacesOnlyAgent()!.id, $event.places)
+                            "
+                            (makeSharedSurface)="store.makeSurfaceShared($event)"
+                            (detachSurface)="store.detachSurfaceFromAgent($event, store.surfacesOnlyAgent()!.id)"
+                            (deleteSurfaceFromPanel)="onDeleteSurface($event)"
+                            (duplicateSurface)="store.duplicateSurface($event)"
+                            (makeAgentSpecificCopy)="store.makeAgentSpecificCopy($event, store.surfacesOnlyAgent()!.id)"
+                            (openSurfaceSource)="store.openSharedSurfaceSource($event)"
+                            (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
+                            (surfaceChange)="store.updateSurface($event.id, $event.patch)"
+                            (viewSummary)="onViewSummary($event)"
+                        />
+                    } @else {
+                        <app-empty-detail />
+                    }
+                </div>
+            }
+        </div>
+    </section>
+</div>

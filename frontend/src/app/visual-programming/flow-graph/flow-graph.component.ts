@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -29,12 +30,8 @@ import {
     EFZoomDirection,
     F_CONNECTION_BUILDERS,
     FCanvasComponent,
-    FConnectionContent,
-    FConnectionGradient,
-    FConnectionWaypoints,
     FCreateConnectionEvent,
     FCreateNodeEvent,
-    FDragNodeStartEventData,
     FDragStartedEvent,
     FFlowComponent,
     FFlowModule,
@@ -42,21 +39,25 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
+import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
+import { FlowExportImportButtonComponent } from '../components/flow-export-import-button/flow-export-import-button.component';
 import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-files-button.component';
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
 import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
+import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
-import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -81,7 +82,7 @@ import {
 } from '../core/helpers/segment-avoidance.helper';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
-import { GraphNoteModel, NodeModel, ProjectNodeModel, StartNodeModel } from '../core/models/node.model';
+import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
@@ -102,7 +103,6 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     selector: 'app-flow-graph',
     templateUrl: './flow-graph.component.html',
     styleUrls: ['../styles/_variables.scss', './flow-graph.component.scss'],
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [
         {
@@ -126,12 +126,11 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
-        FConnectionGradient,
-        FConnectionContent,
-        FConnectionWaypoints,
         WaypointTooltipDirective,
+        FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -139,10 +138,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() currentFlowId: number | null = null;
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
+    @Input() initialNodeExpand: boolean = true;
     @Input() isSaving: boolean = false;
+    @Input() hasUnsavedChanges: boolean = false;
 
     @Output() save = new EventEmitter<FlowModel>();
+    @Output() requestReload = new EventEmitter<void>();
     readonly openShortcuts = output<DOMRect>();
+    readonly importComplete = output<void>();
 
     @ViewChild(FFlowComponent, { static: false })
     private fFlowComponent!: FFlowComponent;
@@ -174,6 +177,38 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly hasUnarrangedChanges = signal(true);
     protected readonly isArranging = signal<boolean>(false);
     protected readonly flowSettings = inject(FlowSettingsService);
+    public smartRoutingEnabled = signal<boolean>(false);
+
+    private _dragStartClientX: number | null = null;
+    private _dragStartClientY: number | null = null;
+    private _dragEndClientX: number | null = null;
+    private _dragEndClientY: number | null = null;
+    private _isReselecting = false;
+
+    public multiSelectActive = signal<boolean>(false);
+    private selectedNodeIds = signal<string[]>([]);
+    public selectedNodeCount = computed(() => {
+        const nodes = this.flowService.nodes();
+        return this.selectedNodeIds().filter((id) => {
+            const t = nodes.find((n) => n.id === id)?.type;
+            return t !== NodeType.START && t !== NodeType.END;
+        }).length;
+    });
+    public allSelectedAreCdt = computed(() => {
+        const ids = this.selectedNodeIds();
+        if (ids.length === 0) return false;
+        const nodes = this.flowService.nodes();
+        return ids.every((id) => nodes.find((n) => n.id === id)?.type === NodeType.CLASSIFICATION_TABLE);
+    });
+
+    readonly multiSelectTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
+
+    readonly selectionAreaTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
+
+    readonly canvasMoveTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        !this.multiSelectActive() && !(event instanceof MouseEvent && event.shiftKey);
 
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
@@ -190,6 +225,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         for (const conn of connections) {
             if (isBackwardConnection(conn, nodes)) {
+                ids.add(conn.id);
+            }
+        }
+
+        return ids;
+    });
+
+    protected readonly frozenConnectionIds = computed<Set<string>>(() => {
+        const ids = new Set<string>();
+
+        for (const conn of this.flowService.connections()) {
+            if (conn.userAdjustedWaypoints) {
                 ids.add(conn.id);
             }
         }
@@ -220,8 +267,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return Math.max(2, 500 - Math.floor(Math.max(0, node.position?.y ?? 0) / 10));
     }
 
+    private fitAfterNextFlowChange = false;
+    private _preImportBackendIds: Set<number> | null = null;
+    private _importPositionSnapshot: Map<number, { x: number; y: number }> | null = null;
+
     private readonly destroy$ = new Subject<void>();
-    private readonly userAdjustedConnectionIds = new Set<string>();
     private readonly previousBackwardConnectionIds = new Set<string>();
     private draggedNodeIds = new Set<string>();
     private draggingElements = new Set<string>();
@@ -237,6 +287,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly cd = inject(ChangeDetectorRef);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
+    private readonly importExportService = inject(ImportExportService);
+    private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly injector = inject(Injector);
 
     private lastSeenFullSaveRequest = 0;
@@ -254,16 +306,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public ngOnInit(): void {
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
-            this.openNodePanel(this.initialNodeId);
+            this.openNodePanel(this.initialNodeId, this.initialNodeExpand);
         }
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['flowState'] && !changes['flowState'].firstChange) {
-            this.applyIncomingFlowState(this.flowState);
+            const stateToApply = this._preImportBackendIds
+                ? this._shiftImportedNodes(this.flowState, this._preImportBackendIds)
+                : this.flowState;
+            this._preImportBackendIds = null;
+            this.applyIncomingFlowState(stateToApply);
+            if (this.fitAfterNextFlowChange) {
+                this.fitAfterNextFlowChange = false;
+                setTimeout(() => {
+                    this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+                }, 0);
+            }
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
-            this.openNodePanel(changes['initialNodeId'].currentValue);
+            this.openNodePanel(changes['initialNodeId'].currentValue, this.initialNodeExpand);
         }
         if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
             this.onCloseContextMenu();
@@ -363,6 +425,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
+        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
+        const sourcePort = allPorts.find((p) => p.id === pair.sourcePortId);
+        const targetPort = allPorts.find((p) => p.id === pair.targetPortId);
+        const sourceOccupied =
+            !!sourcePort &&
+            !sourcePort.multiple &&
+            currentConnections.some((conn) => conn.sourcePortId === pair.sourcePortId);
+        const targetOccupied =
+            !!targetPort &&
+            !targetPort.multiple &&
+            currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
+        if (sourceOccupied || targetOccupied) {
+            this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
+            return;
+        }
+
         const sourceNodeId = pair.sourcePortId.split('_')[0];
         const targetNodeId = pair.targetPortId.split('_')[0];
 
@@ -432,7 +510,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const newConnectionIds = newConnections.map((conn) => conn.id);
 
         setTimeout(() => {
+            this.rerouteSegmentConnections();
             this.fFlowComponent.select(newNodeIds, newConnectionIds);
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
         }, 0);
     }
 
@@ -443,6 +524,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         this.hasUnarrangedChanges.set(true);
         this.undoRedoService.onUndo();
+        this.rerouteSegmentConnections();
     }
 
     public onRedo(): void {
@@ -452,6 +534,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         this.hasUnarrangedChanges.set(true);
         this.undoRedoService.onRedo();
+        this.rerouteSegmentConnections();
+    }
+
+    protected onUndoRedoPerformed(): void {
+        this.hasUnarrangedChanges.set(true);
+        this.rerouteSegmentConnections();
     }
 
     public onDelete(): void {
@@ -495,18 +583,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         const existingCount = connection.waypoints?.length ?? 0;
         if (waypoints.length > existingCount) {
-            this.userAdjustedConnectionIds.add(connectionId);
             this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
             return;
         }
 
         const normalizedWaypoints = this.normalizeWaypointsForConnection(connection, waypoints);
-
-        if (normalizedWaypoints.length > 0) {
-            this.userAdjustedConnectionIds.add(connectionId);
-        } else {
-            this.userAdjustedConnectionIds.delete(connectionId);
-        }
 
         const isSameElements =
             normalizedWaypoints.length === waypoints.length && normalizedWaypoints.every((p, i) => p === waypoints[i]);
@@ -538,6 +619,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ),
         };
         this.flowService.updateNode(updatedNode);
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
     }
 
     public onContextMenu(event: MouseEvent): void {
@@ -568,10 +655,32 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             PointExtensions.initialize(this.contextMenuPosition().x, this.contextMenuPosition().y)
         );
         const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
-        this.flowService.addNode(newNode);
+        const safePosition = this.findNearestFreePosition(
+            { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
+            this.getCollisionBounds(newNode),
+            this.flowService.nodes()
+        );
+        this.flowService.addNode({ ...newNode, position: safePosition });
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
     }
 
     public onOpenNodePanel(node: NodeModel): void {
+        if (this.multiSelectActive()) {
+            const current = this.fFlowComponent.getSelection();
+            const alreadySelected = current.fNodeIds.includes(node.id);
+            const newNodeIds = alreadySelected
+                ? current.fNodeIds.filter((id) => id !== node.id)
+                : [...current.fNodeIds, node.id];
+            this.selectedNodeIds.set(newNodeIds);
+            this.fFlowComponent.select(newNodeIds, current.fConnectionIds);
+            return;
+        }
+
         if (this.sidePanelService.selectedNodeId() === node.id) {
             return;
         }
@@ -683,7 +792,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public emitSave(): void {
         if (this.nodePanelShell?.hasPanelInstance()) {
-            const updatedNode = this.nodePanelShell.captureCurrentNodeState();
+            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+            // get a node back here — even when their form is invalid — so their own invalid
+            // state can be reported by a flow-wide validation + blocking toast further down
+            // the save pipeline instead of a hard client-side abort. A panel with its own hard
+            // client-side validation that must never reach the backend (e.g. the
+            // schedule-trigger panel's date/timezone checks) can override
+            // `captureForValidation()` to return `null` on failure — which aborts the entire
+            // save right here (no request sent), matching this panel's pre-existing behavior.
+            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
             if (updatedNode === null) {
                 return;
             }
@@ -715,7 +832,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.isDragging = true;
         this.draggingElements.clear();
 
-        const dragData = event.data as FDragNodeStartEventData | undefined;
+        const dragData = event.fData as { fNodeIds?: string[] } | undefined;
         if (dragData?.fNodeIds) {
             dragData.fNodeIds.forEach((id: string) => this.draggingElements.add(id));
         }
@@ -732,9 +849,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const wasBackward = this.previousBackwardConnectionIds.has(conn.id);
             const isBackward = backwardIds.has(conn.id);
             const changedFromBackwardToForward = wasBackward && !isBackward;
+            const changedFromForwardToBackward = !wasBackward && isBackward;
+            const classificationFlipped = changedFromBackwardToForward || changedFromForwardToBackward;
+            const wasFrozen = this.frozenConnectionIds().has(conn.id);
 
             if (isBackward) {
-                if (this.userAdjustedConnectionIds.has(conn.id)) continue;
+                if (wasFrozen && !classificationFlipped) continue;
 
                 const bwSource = nodes.find((n) => n.id === conn.sourceNodeId);
                 const bwTarget = nodes.find((n) => n.id === conn.targetNodeId);
@@ -759,14 +879,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     Math.abs(existing.x - newWaypoint.x) > 0.5;
 
                 if (changed) {
-                    this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint]);
+                    this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint], wasFrozen ? false : undefined);
                     this.bumpConnectionRenderVersion(conn.id);
                 }
 
                 continue;
             }
 
-            if (this.userAdjustedConnectionIds.has(conn.id)) continue;
+            if (wasFrozen && !classificationFlipped) continue;
 
             const MAX_ATTEMPTS = 3;
             let current = this.flowService.connections().find((c) => c.id === conn.id);
@@ -805,13 +925,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     const normalizedRestore = this.normalizeWaypointsForConnection(currentConnection, restoreResult);
 
                     if (!waypointsEqual(currentConnection.waypoints ?? [], normalizedRestore)) {
-                        this.flowService.updateConnectionWaypoints(currentConnection.id, normalizedRestore);
+                        this.flowService.updateConnectionWaypoints(
+                            currentConnection.id,
+                            normalizedRestore,
+                            wasFrozen ? false : undefined
+                        );
                         this.bumpConnectionRenderVersion(currentConnection.id);
                     }
+                } else if (changedFromBackwardToForward && (currentConnection.waypoints?.length ?? 0) > 0) {
+                    this.flowService.updateConnectionWaypoints(currentConnection.id, [], wasFrozen ? false : undefined);
+                    this.bumpConnectionRenderVersion(currentConnection.id);
                 }
 
                 continue;
             }
+
+            let clearedStaleFlipWaypoint = false;
 
             for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
                 const waypoints = computeSegmentAvoidanceWaypoints(
@@ -820,14 +949,29 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     changedFromBackwardToForward ? undefined : current.waypoints
                 );
 
-                if (waypoints === null) break;
+                if (waypoints === null) {
+                    if (
+                        changedFromBackwardToForward &&
+                        !clearedStaleFlipWaypoint &&
+                        (current.waypoints?.length ?? 0) > 0
+                    ) {
+                        this.flowService.updateConnectionWaypoints(current.id, [], wasFrozen ? false : undefined);
+                        this.bumpConnectionRenderVersion(current.id);
+                    }
+                    break;
+                }
 
                 const normalizedWaypoints = this.normalizeWaypointsForConnection(current, waypoints);
                 if (waypointsEqual(current.waypoints ?? [], normalizedWaypoints)) break;
 
-                this.flowService.updateConnectionWaypoints(current.id, normalizedWaypoints);
+                this.flowService.updateConnectionWaypoints(
+                    current.id,
+                    normalizedWaypoints,
+                    wasFrozen ? false : undefined
+                );
                 this.bumpConnectionRenderVersion(current.id);
                 current = { ...current, waypoints: normalizedWaypoints };
+                clearedStaleFlipWaypoint = true;
             }
         }
 
@@ -908,6 +1052,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.fZoomDirective.setZoom(position, 1, EFZoomDirection.ZOOM_IN, true);
     }
 
+    public onSmartRoutingToggle(value: boolean): void {
+        this.smartRoutingEnabled.set(value);
+    }
+
     protected openSettings(): void {
         this.dialog.open(FlowSettingsPanelComponent, {
             width: '480px',
@@ -957,14 +1105,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         // Pre-identify non-user-adjusted backward connections for per-frame arc updates.
         const backwardIds = this.backwardConnectionIds();
-        const backwardConns = connections.filter(
-            (c) => backwardIds.has(c.id) && !this.userAdjustedConnectionIds.has(c.id)
-        );
+        const backwardConns = connections.filter((c) => backwardIds.has(c.id) && !c.userAdjustedWaypoints);
 
         // Clear ALL non-user-adjusted waypoints (including backward) so every connection
         // starts from a clean state. Backward arcs are re-computed each frame below.
         for (const conn of connections) {
-            if (conn.waypoints?.length && !this.userAdjustedConnectionIds.has(conn.id)) {
+            if (conn.waypoints?.length && !conn.userAdjustedWaypoints) {
                 this.flowService.updateConnectionWaypoints(conn.id, []);
             }
         }
@@ -1032,7 +1178,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     const finalConnections = this.flowService.connections();
                     const bwIds = this.backwardConnectionIds();
                     for (const conn of finalConnections) {
-                        if (!bwIds.has(conn.id) || this.userAdjustedConnectionIds.has(conn.id)) continue;
+                        if (!bwIds.has(conn.id) || conn.userAdjustedWaypoints) continue;
                         const src = finalNodes.find((n) => n.id === conn.sourceNodeId);
                         const tgt = finalNodes.find((n) => n.id === conn.targetNodeId);
                         if (!src || !tgt) continue;
@@ -1082,17 +1228,318 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    public onProjectExpandToggled(project: ProjectNodeModel): void {
-        const dialogRef = this.dialog.open(ProjectDialogComponent, {
-            width: '90vw',
-            height: '90vh',
-            data: {
-                projectId: project.data.id,
-                projectName: project.data.name,
+    public onFlowPointerDown(event: PointerEvent): void {
+        this._dragStartClientX = event.clientX;
+        this._dragStartClientY = event.clientY;
+        this._dragEndClientX = null;
+        this._dragEndClientY = null;
+    }
+
+    public onFlowPointerUp(event: PointerEvent): void {
+        this._dragEndClientX = event.clientX;
+        this._dragEndClientY = event.clientY;
+    }
+
+    public onFlowClick(event: MouseEvent): void {
+        this.showContextMenu.set(false);
+        if (this.multiSelectActive() && !this.isDragging && !(event.target as Element).closest('app-flow-base-node')) {
+            this.multiSelectActive.set(false);
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
+    }
+
+    public onEscapeKey(): void {
+        if (this.multiSelectActive()) {
+            this.multiSelectActive.set(false);
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
+    }
+
+    public onToggleMultiSelect(): void {
+        const wasActive = this.multiSelectActive();
+        this.multiSelectActive.update((v) => !v);
+        if (wasActive) {
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
+    }
+
+    public onSelectionChange(event: { nodeIds: string[] }): void {
+        if (this._isReselecting) {
+            this._isReselecting = false;
+            return;
+        }
+
+        const nodeIds = event.nodeIds;
+
+        // In multiselect mode, ignore automatic empty-selection events (e.g. from CDK overlay interactions)
+        if (this.multiSelectActive() && nodeIds.length === 0) {
+            return;
+        }
+
+        const endX = this._dragEndClientX ?? this.mouseCursorPosition.x;
+        const endY = this._dragEndClientY ?? this.mouseCursorPosition.y;
+
+        const isLeftToRight =
+            nodeIds.length > 0 && this._dragStartClientX !== null && endX - this._dragStartClientX > 10;
+
+        if (isLeftToRight) {
+            const selStart = this.fFlowComponent.getPositionInFlow(
+                PointExtensions.initialize(this._dragStartClientX!, this._dragStartClientY!)
+            );
+            const selEnd = this.fFlowComponent.getPositionInFlow(PointExtensions.initialize(endX, endY));
+            const selLeft = Math.min(selStart.x, selEnd.x);
+            const selRight = Math.max(selStart.x, selEnd.x);
+            const selTop = Math.min(selStart.y, selEnd.y);
+            const selBottom = Math.max(selStart.y, selEnd.y);
+
+            const allNodes = this.flowService.nodes();
+            const containedIds = nodeIds.filter((id) => {
+                const node = allNodes.find((n) => n.id === id);
+                if (!node) return false;
+                return (
+                    node.position.x >= selLeft &&
+                    node.position.x + (node.size?.width ?? 0) <= selRight &&
+                    node.position.y >= selTop &&
+                    node.position.y + (node.size?.height ?? 0) <= selBottom
+                );
+            });
+
+            if (containedIds.length !== nodeIds.length) {
+                this._isReselecting = true;
+                this.selectedNodeIds.set(containedIds);
+                this.fFlowComponent.select(containedIds, []);
+                return;
+            }
+        }
+
+        this.selectedNodeIds.set(nodeIds);
+    }
+
+    public onExportSelectedAsJson(): void {
+        const selectedIds = this.selectedNodeIds();
+        const nodes = this.flowService.nodes();
+        const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId === null);
+        if (hasUnsaved) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.triggerPartialExport(selectedIds);
+    }
+
+    public onExportSelectedAsCsv(): void {
+        const selectedIds = this.selectedNodeIds();
+        const nodes = this.flowService.nodes();
+
+        for (const id of selectedIds) {
+            const node = nodes.find((n) => n.id === id);
+
+            if (!node) {
+                continue;
+            }
+
+            if (node.backendId === null) {
+                this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+                continue;
+            }
+
+            this.importExportService.cdtExport(node.backendId, 'json').subscribe({
+                next: (blob) => {
+                    blob.text().then((text) => {
+                        const parsed = JSON.parse(text) as Record<string, unknown>;
+                        const exportData = this.cdtExportImportService.partialExportNodeToCdtExportData(parsed);
+                        const csv = this.cdtExportImportService.exportToCsv(exportData);
+                        this.cdtExportImportService.downloadFile(
+                            csv,
+                            node.node_name + '.csv',
+                            'text/csv;charset=utf-8;'
+                        );
+                    });
+                },
+                error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+            });
+        }
+    }
+
+    public onExportAllAsJson(): void {
+        const exportable = this.flowService.nodes().filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
+        if (exportable.length === 0) {
+            this.toastService.warning('No nodes to export', 3000, 'bottom-right');
+            return;
+        }
+        if (this.flowService.nodes().some((n) => n.backendId === null)) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.triggerPartialExport([]);
+    }
+
+    public onImportNodes(): void {
+        if (!this.currentFlowId) return;
+        if (this.hasUnsavedChanges) {
+            this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');
+            return;
+        }
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.value = '';
+        input.onchange = (e: Event) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file || !this.currentFlowId) return;
+            this.doPartialImport(file);
+        };
+        input.click();
+    }
+
+    private doPartialImport(file: File): void {
+        if (!this.currentFlowId) return;
+        this.importExportService.partialImport(this.currentFlowId, file).subscribe({
+            next: () => {
+                this.toastService.success('Import successful', 3000, 'bottom-right');
+                const currentNodes = this.flowService.nodes();
+                this._preImportBackendIds = new Set(
+                    currentNodes.map((n) => n.backendId).filter((id): id is number => id !== null)
+                );
+                this._importPositionSnapshot = new Map(
+                    currentNodes
+                        .filter((n): n is typeof n & { backendId: number } => n.backendId !== null)
+                        .map((n) => [n.backendId, { x: n.position.x, y: n.position.y }])
+                );
+                this.fitAfterNextFlowChange = true;
+                this.importComplete.emit();
+            },
+            error: (err: HttpErrorResponse) => {
+                const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
+                const rawMessage =
+                    (err.error as Record<string, string>)?.['message'] ??
+                    (err.error as Record<string, string>)?.['detail'] ??
+                    null;
+                if (body.includes('node_name must make a unique set')) {
+                    this.toastService.error(
+                        'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
+                        6000,
+                        'bottom-right'
+                    );
+                } else {
+                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
+                }
             },
         });
+    }
 
-        dialogRef.closed.subscribe(() => {});
+    private triggerPartialExport(nodeIds: string[]): void {
+        if (!this.currentFlowId) return;
+        const body = this.buildPartialExportBody(nodeIds);
+        const filename = nodeIds.length > 0 ? 'selected-nodes.json' : 'all-nodes.json';
+        this.importExportService.partialExport(this.currentFlowId, body).subscribe({
+            next: (blob) => {
+                this.downloadBlob(blob, filename);
+                const count = Object.entries(body)
+                    .filter(([key]) => key !== 'edge_list')
+                    .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
+                const isExportAll = nodeIds.length === 0;
+                const hasStartOrEnd =
+                    !isExportAll &&
+                    this.flowService
+                        .nodes()
+                        .some((n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END));
+                const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
+                this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+            },
+            error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+        });
+    }
+
+    private buildPartialExportBody(selectedIds: string[]): PartialExportRequest {
+        const allNodes = this.flowService.nodes();
+        const nodes = selectedIds.length > 0 ? allNodes.filter((n) => selectedIds.includes(n.id)) : allNodes;
+        const selectedIdSet = new Set(
+            nodes.filter((n) => n.type !== NodeType.START && n.type !== NodeType.END).map((n) => n.id)
+        );
+
+        const body: PartialExportRequest = {
+            agent_node_list: [],
+            task_node_list: [],
+            python_node_list: [],
+            audio_transcription_node_list: [],
+            file_extractor_node_list: [],
+            subgraph_node_list: [],
+            webhook_trigger_node_list: [],
+            telegram_trigger_node_list: [],
+            decision_table_node_list: [],
+            classification_decision_table_node_list: [],
+            graph_note_list: [],
+            schedule_trigger_node_list: [],
+            edge_list: [],
+            knowledge_node_list: [],
+        };
+
+        for (const node of nodes) {
+            if (node.backendId === null) continue;
+            if (node.type === NodeType.START || node.type === NodeType.END) continue;
+            const id = node.backendId;
+            switch (node.type) {
+                case NodeType.AGENT:
+                    body.agent_node_list.push(id);
+                    break;
+                case NodeType.TASK:
+                    body.task_node_list.push(id);
+                    break;
+                case NodeType.PYTHON:
+                    body.python_node_list.push(id);
+                    break;
+                case NodeType.AUDIO_TO_TEXT:
+                    body.audio_transcription_node_list.push(id);
+                    break;
+                case NodeType.FILE_EXTRACTOR:
+                    body.file_extractor_node_list.push(id);
+                    break;
+                case NodeType.SUBGRAPH:
+                    body.subgraph_node_list.push(id);
+                    break;
+                case NodeType.WEBHOOK_TRIGGER:
+                    body.webhook_trigger_node_list.push(id);
+                    break;
+                case NodeType.TELEGRAM_TRIGGER:
+                    body.telegram_trigger_node_list.push(id);
+                    break;
+                case NodeType.TABLE:
+                    body.decision_table_node_list.push(id);
+                    break;
+                case NodeType.CLASSIFICATION_TABLE:
+                    body.classification_decision_table_node_list.push(id);
+                    break;
+                case NodeType.NOTE:
+                    body.graph_note_list.push(id);
+                    break;
+                case NodeType.SCHEDULE_TRIGGER:
+                    body.schedule_trigger_node_list.push(id);
+                    break;
+                case NodeType.KNOWLEDGE_RETRIEVER:
+                    body.knowledge_node_list.push(id);
+                    break;
+            }
+        }
+
+        for (const conn of this.flowService.connections()) {
+            if (selectedIdSet.has(conn.sourceNodeId) && selectedIdSet.has(conn.targetNodeId) && conn.data?.id != null) {
+                body.edge_list.push(conn.data.id);
+            }
+        }
+
+        return body;
+    }
+
+    private downloadBlob(blob: Blob, filename: string): void {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     public onOpenShortcuts(anchorEl: HTMLElement): void {
@@ -1102,13 +1549,39 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private applyIncomingFlowState(flowState: FlowModel): void {
         const normalizedFlowState = normalizeFlowPorts(flowState);
         this.flowService.setFlow(normalizedFlowState);
-        for (const conn of normalizedFlowState.connections) {
-            if (conn.userAdjustedWaypoints) {
-                this.userAdjustedConnectionIds.add(conn.id);
-            } else {
-                this.userAdjustedConnectionIds.delete(conn.id);
-            }
-        }
+        this.rerouteSegmentConnections();
+    }
+
+    private _shiftImportedNodes(flowState: FlowModel, preImportIds: Set<number>): FlowModel {
+        const newNodes = flowState.nodes.filter((n) => n.backendId !== null && !preImportIds.has(n.backendId));
+
+        if (!newNodes.length) return flowState;
+
+        const snapshot = this._importPositionSnapshot;
+        this._importPositionSnapshot = null;
+
+        // maxRightX uses snapshot positions so previous imports' shifts are respected
+        const maxRightX = flowState.nodes
+            .filter((n) => n.backendId !== null && preImportIds.has(n.backendId))
+            .reduce((max, n) => {
+                const pos = snapshot?.get(n.backendId!) ?? n.position;
+                return Math.max(max, pos.x + n.size.width);
+            }, 0);
+
+        const minNewX = newNodes.reduce((min, n) => Math.min(min, n.position.x), Infinity);
+        const offsetX = maxRightX + 400 - minNewX;
+        if (offsetX <= 0) return flowState;
+
+        return {
+            ...flowState,
+            nodes: flowState.nodes.map((n) => {
+                if (n.backendId !== null && preImportIds.has(n.backendId)) {
+                    const snapshotPos = snapshot?.get(n.backendId);
+                    return snapshotPos ? { ...n, position: snapshotPos } : n;
+                }
+                return { ...n, position: { ...n.position, x: n.position.x + offsetX } };
+            }),
+        };
     }
 
     private isDialogOpen(): boolean {
@@ -1141,8 +1614,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
-    public openNodePanel(nodeId: string): void {
+    public openNodePanel(nodeId: string, expand: boolean = true): void {
         this.sidePanelService.setSelectedNodeId(nodeId);
+        if (!expand) return;
         afterNextRender(() => this.nodePanelShell?.expandPanel(), { injector: this.injector });
     }
 
@@ -1167,6 +1641,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             fNodeIds: nodeIdsToDelete,
             fConnectionIds: selections.fConnectionIds,
         });
+
+        if (selections.fNodeIds.length > 0) {
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
     }
 
     private resolveTableOverlaps(node: NodeModel): string[] {
@@ -1253,4 +1732,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

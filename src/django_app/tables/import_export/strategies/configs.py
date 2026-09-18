@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from django.db.models import Q
+
 from tables.models import (
     LLMConfig,
     EmbeddingConfig,
@@ -8,12 +10,20 @@ from tables.models import (
     RealtimeModel,
     RealtimeTranscriptionModel,
 )
+from tables.models.realtime_models import (
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+)
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.configs import (
     LLMConfigImportSerializer,
     EmbeddingConfigImportSerializer,
     RealtimeConfigImportSerializer,
     RealtimeTranscriptionConfigImportSerializer,
+    OpenAIRealtimeConfigImportSerializer,
+    ElevenLabsRealtimeConfigImportSerializer,
+    GeminiRealtimeConfigImportSerializer,
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -63,11 +73,17 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 
         return deps
 
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
+
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
+        org_id = kwargs.get("org_id")
         if "custom_name" in data:
-            existing_names = self.config_model.objects.values_list(
-                "custom_name", flat=True
-            )
+            existing_names = self.config_model.objects.filter(
+                org_id=org_id
+            ).values_list("custom_name", flat=True)
             data["custom_name"] = ensure_unique_identifier(
                 base_name=data["custom_name"],
                 existing_names=existing_names,
@@ -84,7 +100,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 
         resolved_fks = self.remap_foreign_keys(data, id_mapper)
         serializer = self.serializer_class(
-            data={**data, **resolved_fks, **tag_overrides}
+            data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
         return serializer.save()
@@ -92,7 +108,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper):
+    def find_existing(self, data, id_mapper, org_id: int = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("tags", None)
@@ -100,11 +116,15 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
         filters, null_filters = create_filters(data_copy)
 
-        return self.config_model.objects.filter(
-            **filters,
-            **null_filters,
-            **fk_filters,
-        ).first()
+        return (
+            self.config_model.objects.filter(
+                **filters,
+                **null_filters,
+                **fk_filters,
+            )
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
 
     def remap_foreign_keys(self, data: dict, id_mapper: IDMapper) -> dict:
         old_model_id = data.pop(self.model_fk_field, None)
@@ -149,3 +169,69 @@ class RealtimeTranscriptionConfigStrategy(BaseConfigStrategy):
     model_entity_type = EntityType.REALTIME_TRANSCRIPTION_MODEL
     config_model = RealtimeTranscriptionConfig
     serializer_class = RealtimeTranscriptionConfigImportSerializer
+
+
+class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
+    config_model = None
+    serializer_class = None
+
+    def get_instance(self, entity_id: int):
+        return self.config_model.objects.filter(id=entity_id).first()
+
+    def get_preview_data(self, instance) -> dict:
+        return {"id": instance.id, "name": instance.custom_name}
+
+    def extract_dependencies_from_instance(self, instance) -> dict:
+        return {}
+
+    def export_entity(self, instance) -> dict:
+        return self.serializer_class(instance).data
+
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
+
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs):
+        org_id = kwargs.get("org_id")
+        existing_names = self.config_model.objects.filter(
+            org_id=org_id
+        ).values_list("custom_name", flat=True)
+        data["custom_name"] = ensure_unique_identifier(
+            base_name=data["custom_name"],
+            existing_names=existing_names,
+        )
+        serializer = self.serializer_class(data={**data, "org": org_id})
+        serializer.is_valid(raise_exception=True)
+        return serializer.save()
+
+    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int = None):
+        custom_name = data.get("custom_name")
+        model_name = data.get("model_name")
+        if custom_name and model_name:
+            return (
+                self.config_model.objects.filter(
+                    custom_name=custom_name, model_name=model_name
+                )
+                .filter(self.get_org_scope_q(org_id))
+                .first()
+            )
+        return None
+
+
+class OpenAIRealtimeConfigStrategy(BaseProviderRealtimeConfigStrategy):
+    entity_type = EntityType.OPENAI_REALTIME_CONFIG
+    config_model = OpenAIRealtimeConfig
+    serializer_class = OpenAIRealtimeConfigImportSerializer
+
+
+class ElevenLabsRealtimeConfigStrategy(BaseProviderRealtimeConfigStrategy):
+    entity_type = EntityType.ELEVENLABS_REALTIME_CONFIG
+    config_model = ElevenLabsRealtimeConfig
+    serializer_class = ElevenLabsRealtimeConfigImportSerializer
+
+
+class GeminiRealtimeConfigStrategy(BaseProviderRealtimeConfigStrategy):
+    entity_type = EntityType.GEMINI_REALTIME_CONFIG
+    config_model = GeminiRealtimeConfig
+    serializer_class = GeminiRealtimeConfigImportSerializer

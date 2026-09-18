@@ -1,5 +1,8 @@
 <div class="panel-container">
-    <div class="panel-content">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
         <form
             [formGroup]="form"
             class="form-container"
@@ -8,65 +11,65 @@
                 class="form-layout"
                 [class.expanded]="isExpanded()"
                 [class.collapsed]="!isExpanded()"
-                [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
+                [class.form-collapsed]="isFormCollapsed()"
             >
-                <div class="form-fields">
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
-
-                    <app-custom-input
-                        label="Webhook trigger path"
-                        tooltipText="Only enter the webhook name. The base URL is shown below."
-                        formControlName="webhook_trigger_path"
-                        placeholder="Enter webhook path"
-                        [required]="true"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getWebhookNameErrorMessage()"
-                    ></app-custom-input>
-
-                    <div>
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
-                        <div class="webhook-url-display">
-                            @if (webhookUrlDisplay(); as url) {
-                                <span
-                                    class="webhook-url-text"
-                                    [style.color]="activeColor"
-                                >
-                                    {{ url }}
-                                </span>
-                                <button
-                                    type="button"
-                                    class="copy-button"
-                                    (click)="copyWebhookUrl()"
-                                    [disabled]="!url"
-                                    aria-label="Copy webhook URL"
-                                >
-                                    <span
-                                        class="copy-icon"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span>Copy</span>
-                                </button>
-                            } @else if (loadingTunnel()) {
-                                <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
-                            } @else {
-                                <div class="webhook-url-error">Ngrok config or path is empty</div>
-                            }
-                        </div>
+                <div
+                    #formColumn
+                    class="form-fields"
+                    [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
+                >
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
+
+                    <app-webhook-trigger-select
+                        formControlName="webhook_trigger"
+                        [disallowedAuthKinds]="['telegram', 'twilio']"
+                        disallowedProviderMessage="This trigger is not supported for Webhook nodes. Use a trigger with webhook auth."
+                        (triggerResolved)="onTriggerResolved($event)"
+                    ></app-webhook-trigger-select>
+
+                    @if (fullUrl(); as url) {
+                        <div class="webhook-url-display">
+                            <span
+                                class="webhook-url-text"
+                                [style.color]="activeColor"
+                            >
+                                {{ url }}
+                            </span>
+                            <button
+                                type="button"
+                                class="copy-button"
+                                (click)="copyWebhookUrl()"
+                                [disabled]="!url"
+                                aria-label="Copy webhook URL"
+                            >
+                                <span
+                                    class="copy-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span>{{ copied() ? 'Copied' : 'Copy' }}</span>
+                            </button>
+                        </div>
+                    } @else if (webhookInvalid()) {
+                        <div class="webhook-warning">Webhook is not registered. Check the trigger configuration.</div>
+                    }
+
+                    <app-node-secrets-field
+                        [activeColor]="activeColor"
+                        [value]="selectedSecretIds()"
+                        [readonly]="!canEditSecrets()"
+                        [names]="secretNames()"
+                        [tooltipText]="secretsTooltip()"
+                        (valueChange)="onSecretsChange($event)"
+                    />
 
                     <app-custom-input
                         label="Libraries"
@@ -77,48 +80,30 @@
                     ></app-custom-input>
                 </div>
                 @if (isExpanded()) {
-                    <div class="code-editor-wrapper">
-                        <button
-                            type="button"
-                            class="toggle-icon-button"
-                            [matTooltip]="isCodeEditorFullWidth() ? 'Collapse editor' : 'Expand editor'"
-                            matTooltipPosition="right"
-                            [attr.aria-label]="isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'"
-                            (click)="toggleCodeEditorFullWidth()"
-                        >
-                            <svg
-                                width="9"
-                                height="22"
-                                viewBox="0 0 9 22"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                [style.transform]="isCodeEditorFullWidth() ? 'scaleX(1)' : 'scaleX(-1)'"
-                            >
-                                <path
-                                    d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                        </button>
-                        <div class="code-editor-section">
-                            <app-code-editor
-                                [pythonCode]="pythonCode"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                            ></app-code-editor>
-                        </div>
-                    </div>
-                } @else {
-                    <div class="code-editor-section">
-                        <app-code-editor
-                            [pythonCode]="pythonCode"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                        ></app-code-editor>
-                    </div>
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and code editor columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
                 }
+
+                <div
+                    #editorColumn
+                    class="code-editor-wrapper"
+                >
+                    <app-code-editor
+                        class="code-editor-section"
+                        [pythonCode]="pythonCode"
+                        [secretNames]="secretNames()"
+                        (pythonCodeChange)="onPythonCodeChange($event)"
+                        (errorChange)="onCodeErrorChange($event)"
+                    ></app-code-editor>
+                </div>
             </div>
         </form>
     </div>

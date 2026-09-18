@@ -1,9 +1,5 @@
-import {
-    IFConnectionBuilder,
-    IFConnectionBuilderRequest,
-    IFConnectionBuilderResponse,
-} from '@foblex/flow';
 import { PointExtensions } from '@foblex/2d';
+import { IFConnectionBuilder, IFConnectionBuilderRequest, IFConnectionBuilderResponse } from '@foblex/flow';
 
 export class BackwardConnectionBuilder implements IFConnectionBuilder {
     public handle(request: IFConnectionBuilderRequest): IFConnectionBuilderResponse {

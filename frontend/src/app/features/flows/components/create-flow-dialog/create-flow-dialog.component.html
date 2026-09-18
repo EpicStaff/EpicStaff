@@ -16,7 +16,11 @@
     </div>
 
     <div class="dialog-content">
-        <form [formGroup]="flowForm">
+        <form
+            [formGroup]="flowForm"
+            [appServerErrors]="flowForm"
+            [errorsRef]="nameErrorsRef"
+        >
             <!-- Name field with icon selector -->
             <div class="form-group name-with-icon">
                 <label for="name">Flow Name <span class="required">*</span></label>
@@ -32,11 +36,10 @@
                         formControlName="name"
                         placeholder="Enter flow name"
                         class="form-control"
+                        autocomplete="off"
                     />
                 </div>
-                @if (flowForm.get('name')?.invalid && flowForm.get('name')?.touched) {
-                    <div class="error-message">Flow name is required.</div>
-                }
+                <app-validation-errors [control]="flowForm.get('name')!" />
             </div>
 
             <div class="form-group">
@@ -58,9 +61,6 @@
                 ></textarea>
             </div>
         </form>
-        @if (errorMessage) {
-            <div class="dialog-error-message">{{ errorMessage }}</div>
-        }
     </div>
 
     <div class="dialog-footer">

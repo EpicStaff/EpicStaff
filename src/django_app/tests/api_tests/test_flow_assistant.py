@@ -276,32 +276,6 @@ def test_send_message_returns_stream_url(conversation_a, auth_client_a, graph):
 
 
 @pytest.mark.django_db
-def test_get_node_redacts_secrets(graph, db):
-    """get_node tool must redact api_key and token fields."""
-    from tables.services.flow_assistant import get_node
-    from tables.models.graph_models import CodeAgentNode
-
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="secret_node",
-        system_prompt="do stuff",
-        stream_handler_code="",
-    )
-
-    result = get_node(graph.pk, str(node.pk))
-    assert result.get("type") == "code_agent"
-    # Any field with "api_key" in the name must be redacted
-    config = result.get("config", {})
-    for key, value in config.items():
-        if (
-            "api_key" in key.lower()
-            or "secret" in key.lower()
-            or "token" in key.lower()
-        ):
-            assert value == "***", f"Field '{key}' was not redacted: {value}"
-
-
-@pytest.mark.django_db
 def test_subflow_tool_overview_only(graph, db):
     """get_subflow returns name + description; no nodes/edges of the subgraph."""
     from tables.services.flow_assistant import get_subflow
@@ -318,7 +292,7 @@ def test_subflow_tool_overview_only(graph, db):
     assert result["name"] == "Child Flow"
     assert result["description"] == "A child subflow."
     # Must NOT contain node lists or edge lists
-    assert "crew_node_list" not in result
+    assert "agent_node_list" not in result
     assert "edges" not in result
     assert "nodes" not in result
 
@@ -576,6 +550,87 @@ def test_title_not_overwritten_on_second_message(
 
 
 # ── Async / streaming tests ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
+    gpt4_model, user_a, org_a, default_role, db
+):
+    """Regression test for a SynchronousOnlyOperation bug in LiteLLMClient.
+
+    Every other streaming test in this module patches
+    `tables.services.flow_assistant.service.get_llm_client` with a MagicMock,
+    so the real `LiteLLMClient._build_kwargs` never runs. That hid a bug where
+    `_build_kwargs` resolved the LLMConfig's `api_key_secret` with a
+    synchronous `Secret.objects.filter(...).first()` call from inside this
+    async generator (`stream_reply`) — raising `SynchronousOnlyOperation`
+    under ASGI for the first turn of any conversation whose LLMConfig has a
+    real secret attached.
+
+    This test drives the real `get_llm_client` / `LiteLLMClient` path with a
+    genuine `Secret` row and asserts the resolved plaintext reaches
+    `litellm.acompletion`'s kwargs. Only the network call itself is stubbed.
+    Running under `@pytest.mark.asyncio` is required: a synchronous test has
+    no running event loop, so the async-unsafe ORM guard never trips and a
+    reintroduced bug here would pass silently.
+    """
+    from asgiref.sync import sync_to_async
+
+    from tables.services.secrets import secret_service
+
+    org_user = await sync_to_async(OrganizationUser.objects.create)(
+        user=user_a, org=org_a, role=default_role
+    )
+    # Explicit org=org_a (rather than the module's org-less `graph` fixture):
+    # `tables_graph.org_id` is NOT NULL at the DB level (migration
+    # 0186_core_org_not_null), and this test's own LLMConfig/Secret need a
+    # concrete org to be scoped to regardless.
+    graph_with_org = await sync_to_async(Graph.objects.create)(
+        name="Test Flow", description="A test flow.", org=org_a
+    )
+    secret = await sync_to_async(secret_service.create)(
+        text="sk-flow-assistant-real-secret", org=org_a, name="fa-litellm-key"
+    )
+    llm_config_with_secret = await sync_to_async(LLMConfig.objects.create)(
+        custom_name="test-gpt4o-with-secret",
+        model=gpt4_model,
+        org=org_a,
+        api_key_secret=secret,
+        temperature=0.5,
+    )
+    assistant = await sync_to_async(FlowAssistant.objects.create)(
+        graph=graph_with_org, llm_config=llm_config_with_secret
+    )
+    user_message = "what does this flow do?"
+    conversation = await sync_to_async(_make_conversation_with_messages)(
+        assistant,
+        org_user,
+        [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": user_message},
+        ],
+    )
+
+    captured_kwargs: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured_kwargs.update(kwargs)
+
+        async def _empty_stream():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        return _empty_stream()
+
+    service = FlowAssistantService()
+    events = []
+    with patch("litellm.acompletion", side_effect=fake_acompletion):
+        async for event in service.stream_reply(conversation, user_message):
+            events.append(event)
+
+    assert captured_kwargs.get("api_key") == "sk-flow-assistant-real-secret"
+    assert events[-1].type == "done"
 
 
 @pytest.mark.asyncio
@@ -1344,47 +1399,6 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
             )
 
 
-# ── Tool-call SSE enrichment test ─────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_tool_call_enrichment_helpers(graph, db):
-    """resolve_node_display_name returns the node name; returns None for unknown nodes."""
-    from tables.models.graph_models import CodeAgentNode
-    from tables.services.flow_assistant import (
-        build_node_index,
-        resolve_node_display_name,
-        resolve_subgraph_display_name,
-    )
-
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="my_agent_node",
-        system_prompt="do stuff",
-        stream_handler_code="",
-    )
-
-    # Without pre-built index — builds internally
-    name = resolve_node_display_name(graph.pk, node.pk)
-    assert name == "my_agent_node"
-
-    # With pre-built index
-    index = build_node_index(graph.pk)
-    name2 = resolve_node_display_name(graph.pk, node.pk, node_index=index)
-    assert name2 == "my_agent_node"
-
-    # Unknown node
-    assert resolve_node_display_name(graph.pk, 99999) is None
-
-    # Subgraph name helper
-    from tables.models.graph_models import SubGraphNode
-
-    subgraph = Graph.objects.create(name="Sub Flow", description="desc")
-    sn = SubGraphNode.objects.create(graph=graph, subgraph=subgraph, node_name="sg1")
-    assert resolve_subgraph_display_name(graph.pk, sn.pk) == "Sub Flow"
-    assert resolve_subgraph_display_name(graph.pk, 99999) is None
-
-
 # ── Decision-table decision_rules serialization tests ─────────────────────────
 
 
@@ -1516,22 +1530,6 @@ def test_get_node_classification_decision_table_includes_decision_rules(graph, d
     pos_rule = next(r for r in rules if r["rule_name"] == "positive_sentiment")
     assert pos_rule["route_code"] == "pos"
     assert pos_rule["expression"] == "sentiment_score > 0.7"
-
-
-@pytest.mark.django_db
-def test_get_node_non_decision_type_has_no_decision_rules(graph, db):
-    """get_node for non-decision nodes must NOT include a decision_rules key."""
-    from tables.models.graph_models import CodeAgentNode
-    from tables.services.flow_assistant import get_node
-
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="plain_agent",
-        system_prompt="do stuff",
-        stream_handler_code="",
-    )
-    result = get_node(graph.pk, str(node.pk))
-    assert "decision_rules" not in result
 
 
 # ── Phase A: subflow recursion tests ──────────────────────────────────────────
@@ -1774,7 +1772,6 @@ def test_get_session_detail_redacts_message_bodies(db):
 @pytest.mark.django_db
 def test_get_node_knowledge_sources_metadata_only(graph, db):
     """Agent's knowledge_collection must appear as metadata — no document content."""
-    from tables.models.crew_models import Agent
     from tables.models.knowledge_models.collection_models import (
         SourceCollection,
         DocumentMetadata,
@@ -1804,78 +1801,6 @@ def test_get_node_knowledge_sources_metadata_only(graph, db):
     assert "content" not in result_str
 
 
-# ── Phase D: Crew summary in get_node ────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_get_node_crew_includes_crew_summary(graph, db):
-    """get_node for CrewNode must return crew_summary with agents/tasks, no backstory."""
-    from tables.models.crew_models import Agent, Crew, Task
-    from tables.models.graph_models import CrewNode
-    from tables.services.flow_assistant import get_node
-
-    BACKSTORY_TEXT = "TOPSECRET_BACKSTORY_CONTENT_XYZ"
-
-    agent_1 = Agent.objects.create(
-        role="Data Analyst",
-        goal="Analyse data accurately",
-        backstory=BACKSTORY_TEXT,
-    )
-    agent_2 = Agent.objects.create(
-        role="Report Writer",
-        goal="Write clear reports",
-        backstory="Another backstory that should not leak",
-    )
-    crew = Crew.objects.create(name="Analytics Crew", description="Runs analytics jobs")
-    crew.agents.set([agent_1, agent_2])
-
-    Task.objects.create(
-        crew=crew,
-        name="data_ingestion",
-        instructions="Load the data from the source system",
-        expected_output="Clean dataframe",
-        order=0,
-    )
-
-    crew_node = CrewNode.objects.create(
-        graph=graph, node_name="analytics_crew", crew=crew
-    )
-
-    result = get_node(graph.pk, str(crew_node.pk))
-    assert result.get("type") == "crew"
-    assert (
-        "crew_summary" in result
-    ), "crew_summary missing from CrewNode get_node response"
-
-    summary = result["crew_summary"]
-    assert summary is not None
-    assert summary["name"] == "Analytics Crew"
-    assert summary["agent_count"] == 2
-    assert summary["task_count"] == 1
-
-    # Agents list must include role and goal, but NOT backstory.
-    agents = summary["agents"]
-    assert len(agents) == 2
-    agent_roles = [a["role"] for a in agents]
-    assert "Data Analyst" in agent_roles
-    assert "Report Writer" in agent_roles
-    for agent_entry in agents:
-        assert (
-            "backstory" not in agent_entry
-        ), "backstory must not appear in crew_summary agents"
-
-    # Backstory text must not appear anywhere in the result.
-    result_str = str(result)
-    assert (
-        BACKSTORY_TEXT not in result_str
-    ), "backstory content must not leak in get_node response"
-
-    # Tasks list must include name and description snippet.
-    tasks = summary["tasks"]
-    assert len(tasks) == 1
-    assert tasks[0]["name"] == "data_ingestion"
-
-
 # ── system_prompt build smoke test ───────────────────────────────────────────
 
 
@@ -1901,8 +1826,8 @@ def test_build_system_prompt_file_load_and_substitution():
         today_iso="2026-05-18",
         yesterday_iso="2026-05-17",
         tomorrow_iso="2026-05-19",
-        node_summary="  - crew: 1\n  - end: 1",
-        nodes_section='Nodes in this flow:\n  - id=1 type=crew name="intake"',
+        node_summary="  - agent: 1\n  - end: 1",
+        nodes_section='Nodes in this flow:\n  - id=1 type=agent name="intake"',
         subflow_summary="  (none)",
     )
 

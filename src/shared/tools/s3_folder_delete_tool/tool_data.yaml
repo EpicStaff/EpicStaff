@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 Folder Delete Tool"
+  description: "Recursively delete a folder and everything under it in S3 storage (rm -r semantics). Params: folder_path (required). Refuses to delete the bucket root or an empty/'.' path - narrow to a real subfolder. Returns how many objects were removed, or a clear error if the folder doesn't exist."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

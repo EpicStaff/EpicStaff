@@ -1,0 +1,34 @@
+<div
+    class="ivt"
+    role="group"
+    aria-label="Instructions view"
+>
+    <button
+        type="button"
+        class="ivt__btn"
+        [class.ivt__btn--active]="view() === 'preview'"
+        [attr.aria-pressed]="view() === 'preview'"
+        title="Markdown preview"
+        (click)="select('preview')"
+    >
+        <app-svg-icon
+            icon="eye"
+            size="0.8rem"
+        />
+        Preview
+    </button>
+    <button
+        type="button"
+        class="ivt__btn"
+        [class.ivt__btn--active]="view() === 'edit'"
+        [attr.aria-pressed]="view() === 'edit'"
+        title="Edit instructions"
+        (click)="select('edit')"
+    >
+        <app-svg-icon
+            icon="edit"
+            size="0.8rem"
+        />
+        Edit
+    </button>
+</div>

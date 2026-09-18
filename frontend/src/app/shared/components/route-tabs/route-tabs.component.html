@@ -1,0 +1,13 @@
+@for (tab of visibleTabs(); track tab.routerLink) {
+    <a
+        [routerLink]="tab.routerLink"
+        routerLinkActive="active"
+        class="route-tab"
+    >
+        <app-svg-icon
+            size="18px"
+            [icon]="tab.icon"
+        />
+        {{ tab.label }}
+    </a>
+}

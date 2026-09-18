@@ -1,0 +1,7 @@
+tool-data:
+  name: "Write File Tool"
+  description: "Creates a new file or overwrites an existing one with the given content. Overwriting an existing file requires overwrite=true. Path is relative to the sandbox root."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

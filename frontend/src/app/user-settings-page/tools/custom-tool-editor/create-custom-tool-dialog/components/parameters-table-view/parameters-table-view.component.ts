@@ -46,6 +46,7 @@ const ITEM_ROW_NAME = 'item';
 export class ParametersTableViewComponent implements OnInit {
     variables = input.required<ToolVariable[]>();
     initialDrillStack = input<DrillStep[]>([]);
+    readOnly = input<boolean>(false);
     variablesChange = output<ToolVariable[]>();
     drillStackChange = output<DrillStep[]>();
 
@@ -162,11 +163,11 @@ export class ParametersTableViewComponent implements OnInit {
     }
 
     parameterRowDropListId(type: VariableInputType): string | null {
-        return this.isDrilling() ? null : this.parameterDropIdForType(type);
+        return this.readOnly() || this.isDrilling() ? null : this.parameterDropIdForType(type);
     }
 
     parameterRowDropConnectedTo(): string[] {
-        return this.isDrilling() ? [] : [...this.parameterRowDropConnectedIds];
+        return this.readOnly() || this.isDrilling() ? [] : [...this.parameterRowDropConnectedIds];
     }
 
     onCrossListDrop(event: CdkDragDrop<unknown[]>): void {

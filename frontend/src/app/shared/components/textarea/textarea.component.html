@@ -11,20 +11,20 @@
     <div
         class="textarea-field"
         [class.invalid]="invalid()"
-        [class.disabled]="disabled()"
+        [class.disabled]="isDisabled()"
     >
         <textarea
             #textareaRef
             class="textarea"
             [attr.rows]="rows()"
             [placeholder]="placeholder()"
-            [disabled]="disabled()"
+            [disabled]="isDisabled()"
             [value]="value()"
             (input)="handleInput($event)"
             (blur)="handleBlur()"
         ></textarea>
 
-        @if (!disabled()) {
+        @if (!isDisabled()) {
             <span
                 class="resize-handle"
                 title="Drag to resize"

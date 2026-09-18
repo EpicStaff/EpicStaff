@@ -8,22 +8,55 @@ import asyncio
 from loguru import logger
 from dotdict import DotDict
 
+from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
-from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from services.graph.graph_builder import SessionGraphBuilder
 from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from utils.singleton_meta import SingletonMeta
 from models.graph_models import GraphMessage
+from settings import DEFAULT_TOKEN_BUDGET
 
 from src.shared.models import SessionData, StopSessionMessage
-from src.crew.services.graph.shared_variables import (
-    SharedVariables,
-    SharedVariableScope,
-    cleanup_session,
-)
+
+# Reserved key smuggled through SessionData.initial_state (a pre-existing
+# free-form dict[str, Any] field) to carry an optional per-run token-budget
+# override from Django's RunSession request without adding a new typed field
+# to the SessionData pydantic contract. Popped out of initial_state before it
+# becomes part of the graph's live "variables" state, so it never leaks to
+# user-visible flow variables/templates.
+TOKEN_BUDGET_STATE_KEY = "__token_budget__"
+
+
+def _extract_finish_token_total(message_data: dict) -> int:
+    """Extract total_tokens from a streamed custom-chunk's message_data, if any.
+
+    Mirrors the extraction logic in
+    tables/services/redis_pubsub.py::_calculate_subgraph_token_usage so both
+    sides agree on where token usage lives in a "finish" message: AgentNode
+    (services/graph/nodes/agent_node.py) and TaskNode
+    (services/graph/nodes/task_node.py) embed it as output["token_usage"].
+    Subgraph finish messages are re-streamed through the same parent
+    graph.astream() custom-stream (see subgraphs/subgraph_node.py
+    _execute_subgraph -> writer(data)), so nested agent/task nodes' finish
+    messages surface here too and are counted the same way.
+    """
+    if not isinstance(message_data, dict):
+        return 0
+
+    output = message_data.get("output")
+    token_usage = None
+    if isinstance(output, dict) and isinstance(output.get("token_usage"), dict):
+        token_usage = output["token_usage"]
+    elif isinstance(message_data.get("token_usage"), dict):
+        token_usage = message_data["token_usage"]
+
+    if not token_usage:
+        return 0
+
+    return token_usage.get("total_tokens", 0) or 0
 
 
 @dataclass
@@ -36,13 +69,12 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     def __init__(
         self,
         redis_service: RedisService,
-        crew_parser_service: CrewParserService,
         python_code_executor_service: RunPythonCodeService,
         session_schema_channel: str,
         session_timeout_channel: str,
-        crewai_output_channel: str,
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
+        agent_task_service: AgentTaskService | None = None,
         max_concurrent_sessions: int = 20,
     ):
         """
@@ -50,20 +82,19 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         Args:
             redis_service (RedisService): The service responsible for Redis operations.
-            crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             session_schema_channel (str): The Redis channel for listening to session schema messages.
-            crewai_output_channel (str): The Redis channel for publishing CrewAI output messages.
+            agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
+                execution to the agent microservice.
         """
 
         self.redis_service = redis_service
-        self.crew_parser_service = crew_parser_service
         self.python_code_executor_service = python_code_executor_service
         self.session_schema_channel = session_schema_channel
         self.session_timeout_channel = session_timeout_channel
-        self.crewai_output_channel = crewai_output_channel
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
+        self.agent_task_service = agent_task_service
         self.session_graph_pool: dict[int, SessionCoroItem] = {}
         self.session_queue = asyncio.Queue()
         self._worker_task: asyncio.Task | None = None
@@ -78,24 +109,34 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
         try:
             session_id = session_data.id
-            initial_state = session_data.initial_state
+            # Copy so popping the reserved budget key never mutates the
+            # pydantic SessionData model itself.
+            initial_state = dict(session_data.initial_state)
+
+            # optional run-level token budget hard stop.
+            # Per-run override (if Django threaded one through the request)
+            # takes precedence over the global env/settings default. Both
+            # default to None ("no limit"), so this is fully inert unless
+            # explicitly configured -- byte-for-byte unchanged behavior for
+            # existing runs.
+            token_budget = initial_state.pop(TOKEN_BUDGET_STATE_KEY, None)
+            if token_budget is None:
+                token_budget = DEFAULT_TOKEN_BUDGET
+            # Local to this call -- NOT stored on `self` -- so concurrent
+            # sessions (GraphSessionManagerService is a process-wide
+            # singleton) never share or leak a running total.
+            token_usage_total = 0
 
             session_graph_builder = SessionGraphBuilder(
                 session_id=session_id,
                 redis_service=self.redis_service,
-                crew_parser_service=self.crew_parser_service,
                 python_code_executor_service=self.python_code_executor_service,
-                crewai_output_channel=self.crewai_output_channel,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
+                agent_task_service=self.agent_task_service,
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
-
-            shared_vars = SharedVariables(
-                session_id=session_id,
-                redis_service=self.redis_service,
-            )
 
             state = {
                 "state_history": [],
@@ -103,9 +144,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 "system_variables": {"nodes": {}},
                 "execution_counts": {},
             }
-
-            # Add shared variables to state
-            state["variables"]["shared"] = shared_vars
 
             await self.redis_service.aupdate_session_status(
                 session_id=session_id,
@@ -121,41 +159,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "values":
                     final_state = chunk
                 elif stream_mode == "custom":
-                    # Clean SharedVariable objects from chunk before serialization
-                    import dataclasses
-
-                    def deep_clean(obj):
-                        if isinstance(obj, (SharedVariables, SharedVariableScope)):
-                            return None
-                        elif isinstance(obj, dict):
-                            cleaned = {}
-                            for k, v in obj.items():
-                                if k == "shared" and isinstance(
-                                    v, (SharedVariables, SharedVariableScope)
-                                ):
-                                    continue
-                                cleaned_v = deep_clean(v)
-                                if cleaned_v is not None or not isinstance(
-                                    v, (SharedVariables, SharedVariableScope)
-                                ):
-                                    cleaned[k] = cleaned_v
-                            return cleaned
-                        elif isinstance(obj, (list, tuple)):
-                            return [deep_clean(item) for item in obj]
-                        elif dataclasses.is_dataclass(obj) and not isinstance(
-                            obj, type
-                        ):
-                            cleaned_fields = {}
-                            for field in dataclasses.fields(obj):
-                                value = getattr(obj, field.name)
-                                cleaned_fields[field.name] = deep_clean(value)
-                            return dataclasses.replace(obj, **cleaned_fields)
-                        else:
-                            return obj
-
                     try:
-                        cleaned_chunk = deep_clean(chunk)
-                        data = asdict(cleaned_chunk)
+                        data = asdict(chunk)
                     except Exception as e:
                         logger.error(
                             f"Error during chunk cleaning/serialization: {e}",
@@ -174,6 +179,27 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
+
+                    if token_budget is not None:
+                        token_usage_total += _extract_finish_token_total(
+                            data.get("message_data") or {}
+                        )
+                        if token_usage_total > token_budget:
+                            logger.warning(
+                                f"Session {session_id} exceeded token budget "
+                                f"({token_usage_total} > {token_budget}). "
+                                "Stopping session."
+                            )
+                            stop_event.reason = "token budget exceeded"
+                            # Reuse the existing manual-stop status/path
+                            # (StopEvent default_status="stop") -- same
+                            # mechanism as _handle_stop_session /
+                            # _handle_session_timeout, so the abort is
+                            # handled by the already-exercised StopSession
+                            # flow (nodes' _cleanup_on_stop, EndNode skip,
+                            # etc.) with no new status.
+                            stop_event.set()
+
                     self.redis_service.publish("graph:messages", data)
                 elif stream_mode == "values":
                     final_state = chunk
@@ -185,20 +211,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             end_node_result = session_graph_builder.end_node_result
 
-            def _clean_result(obj):
-                if isinstance(obj, (SharedVariables, SharedVariableScope)):
-                    return None
-                elif isinstance(obj, dict):
-                    return {
-                        k: _clean_result(v)
-                        for k, v in obj.items()
-                        if not isinstance(v, (SharedVariables, SharedVariableScope))
-                    }
-                elif isinstance(obj, (list, tuple)):
-                    return [_clean_result(i) for i in obj]
-                return obj
-
-            end_node_result = _clean_result(end_node_result)
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",
@@ -220,15 +232,15 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 variables=final_state["variables"].model_dump(),
             )
 
-            # Cleanup shared variables
-            await cleanup_session(session_id, self.redis_service, status="completed")
+            await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:
             # Status updated in _handle_session_timeout
             logger.warning(f"Session {session_id} was cancelled")
-        except StopSession:
+        except StopSession as e:
+            status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
-                session_id=session_id, status=stop_event.status
+                session_id=session_id, status=stop_event.status, **status_kwargs
             )
 
         except Exception as e:
@@ -242,7 +254,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         try:
             channel = message["channel"]
             data = message["data"]
-            logger.debug(f"Get message from {channel}: {data}")
+            logger.debug("Get message from {}", channel)
 
             if channel == self.session_schema_channel:
                 await self._handle_session_start(data)
@@ -329,15 +341,16 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         stop_session_message = StopSessionMessage.model_validate(json.loads(data))
         session_id = stop_session_message.session_id
-        await self.redis_service.aupdate_session_status(
-            session_id=session_id, status="stop"
-        )
 
         if session_id not in self.session_graph_pool:
             logger.warning(
                 f"Can not fetch task from session_graph_pool for session ID: {session_id}."
             )
             return
+
+        await self.redis_service.aupdate_session_status(
+            session_id=session_id, status="stop"
+        )
         self.session_graph_pool[session_id].stop_event.set()
         self.session_graph_pool.pop(session_id, None)
 

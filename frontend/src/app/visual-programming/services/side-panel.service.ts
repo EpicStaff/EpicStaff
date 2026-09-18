@@ -9,7 +9,7 @@ import { FlowService } from './flow.service';
 })
 export class SidePanelService {
     private readonly selectedNodeIdSignal = signal<string | null>(null);
-    private readonly autosaveTriggerSignal = signal<boolean>(false);
+    private readonly autosaveTriggerSignal = signal<number>(0);
     private readonly fullSaveRequestSignal = signal<number>(0);
 
     private readonly expandRequestSignal = signal<boolean>(false);
@@ -20,6 +20,9 @@ export class SidePanelService {
 
     private readonly graphSavedSubject = new Subject<void>();
     public readonly graphSaved$: Observable<void> = this.graphSavedSubject.asObservable();
+
+    private readonly reloadRequestedSubject = new Subject<void>();
+    public readonly reloadRequested$: Observable<void> = this.reloadRequestedSubject.asObservable();
 
     private readonly savingNodeIdSignal = signal<string | null>(null);
     public readonly savingNodeId: Signal<string | null> = this.savingNodeIdSignal.asReadonly();
@@ -34,7 +37,7 @@ export class SidePanelService {
         return this.flowService.nodes().find((node) => node.id === selectedId) || null;
     });
 
-    public readonly autosaveTrigger: Signal<boolean> = this.autosaveTriggerSignal.asReadonly();
+    public readonly autosaveTrigger: Signal<number> = this.autosaveTriggerSignal.asReadonly();
     public readonly fullSaveRequest: Signal<number> = this.fullSaveRequestSignal.asReadonly();
 
     public requestExpand(): void {
@@ -80,11 +83,7 @@ export class SidePanelService {
     }
 
     public triggerAutosave(): void {
-        this.autosaveTriggerSignal.set(!this.autosaveTriggerSignal());
-    }
-
-    public clearAutosaveTrigger(): void {
-        this.autosaveTriggerSignal.set(false);
+        this.autosaveTriggerSignal.update((v) => v + 1);
     }
 
     public requestSaveNode(node: NodeModel): void {
@@ -93,6 +92,10 @@ export class SidePanelService {
 
     public notifyGraphSaved(): void {
         this.graphSavedSubject.next();
+    }
+
+    public requestReload(): void {
+        this.reloadRequestedSubject.next();
     }
 
     public markNodeSaving(nodeId: string): void {

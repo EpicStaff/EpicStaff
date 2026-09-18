@@ -3,10 +3,13 @@
 from django.db.models import OuterRef, Exists, F, IntegerField
 from django.db.models.functions import Extract, Cast
 from django_filters import rest_framework as filters
+from tables.models.webhook_models import WebhookTrigger
 from tables.models import GraphSessionMessage
 from rest_framework.filters import BaseFilterBackend
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeTool
 from tables.models.session_models import Session
 from tables.models import Provider  # SourceCollection,
 
@@ -67,9 +70,11 @@ class SessionFilter(filters.FilterSet):
     node_name = filters.CharFilter(
         field_name="graphsessionmessage__name", lookup_expr="exact", distinct=True
     )
-    graph_name = filters.CharFilter(field_name="graph__name", lookup_expr="iexact")
+    graph_name = CharInFilter(field_name="graph__name", lookup_expr="in")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
+    trigger_type = CharInFilter(field_name="trigger__trigger_type", lookup_expr="in")
 
+    created_at = filters.DateTimeFromToRangeFilter(field_name="created_at")
     # duration filters
     duration_lt = filters.NumberFilter(method="filter_duration_lt")
     duration_gt = filters.NumberFilter(method="filter_duration_gt")
@@ -78,7 +83,7 @@ class SessionFilter(filters.FilterSet):
 
     class Meta:
         model = Session
-        fields = ["graph_id", "graph_name", "status", "node_name"]
+        fields = ["graph_id", "graph_name", "status", "node_name", "trigger_type"]
 
     def _annotate_duration(self, queryset):
         """Calculate duration and cast it to integer type"""
@@ -188,3 +193,44 @@ class EmbeddingModelFilter(BaseTagFilter):
             "predefined": ["exact"],
             "is_visible": ["exact"],
         }
+
+
+class IsFavoriteFilterMixin(filters.FilterSet):
+    """Filters on the `is_favorite` annotation added by the viewset's
+    get_queryset() (Exists() against the per-user favorite table). Not a real
+    column, so it can't go through plain `filterset_fields` — it needs the
+    `method=` form, filtering the already-annotated queryset directly.
+
+    Must itself subclass FilterSet (not a plain mixin) — django_filters'
+    FilterSetMetaclass only inherits `declared_filters` from base classes
+    that went through the metaclass themselves, so a plain mixin's declared
+    Filter would be silently dropped when combined with FilterSet below.
+    """
+
+    is_favorite = filters.BooleanFilter(
+        method="filter_is_favorite",
+        help_text="Filter tools by whether the current user has favorited them.",
+    )
+
+    def filter_is_favorite(self, queryset, name, value):
+        return queryset.filter(is_favorite=value)
+
+
+class PythonCodeToolFilter(IsFavoriteFilterMixin, filters.FilterSet):
+    class Meta:
+        model = PythonCodeTool
+        fields = ["name", "python_code"]
+
+
+class McpToolFilter(IsFavoriteFilterMixin, filters.FilterSet):
+    class Meta:
+        model = McpTool
+        fields = ["name", "tool_name"]
+
+
+class WebhookTriggerFilter(filters.FilterSet):
+    kind = filters.CharFilter(field_name="auth__kind")
+
+    class Meta:
+        model = WebhookTrigger
+        fields = ["kind"]

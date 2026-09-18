@@ -1,10 +1,44 @@
 from rest_framework import serializers
 from tables.models.mcp_models import McpTool
-from tables.models.crew_models import ToolConfig
 from tables.models.python_models import PythonCodeTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models import PythonCode
 from tables.models.session_models import Session
+from tables.import_export.services.partial_export_service import (
+    LIST_KEY_TO_ENTITY_TYPE,
+)
+
+
+class ToolUsageSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    agent_surface_count = serializers.IntegerField()
+    shared_surface_count = serializers.IntegerField()
+    inline_surface_count = serializers.IntegerField()
+    is_built_in = serializers.BooleanField()
+
+
+class ToolUsageSurfaceEntrySerializer(serializers.Serializer):
+    """Shared `{id, name, node_id}` shape reused for all three usage-detail
+    lists — list membership (agent_surface/shared_surface/inline_surface) already
+    conveys what a `kind` discriminator used to.
+
+    `id` is a navigation target, not a unique row key: for `agent_surface`/
+    `shared_surface` it's the catalog `Surface` id (unique per entry); for
+    `inline_surface` it's the owning graph's id, which two different nodes in the
+    same graph can share. `node_id` disambiguates that case — the id of the
+    `TaskNode`/`AgentNode` the inline attachment lives on — and is always
+    `null` for `agent_surface`/`shared_surface` entries, which have no node.
+    """
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    node_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
+class ToolUsageDetailSerializer(serializers.Serializer):
+    agent_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    shared_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    inline_surface = ToolUsageSurfaceEntrySerializer(many=True)
 
 
 class RunSessionSerializer(serializers.Serializer):
@@ -14,7 +48,21 @@ class RunSessionSerializer(serializers.Serializer):
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
-    username = serializers.CharField(required=False)
+    # Optional: links the newly created Session to a caller session via the
+    # existing Session.parent_session self-FK (see migration 0162). Used by
+    # the built-in "subflow_tool" so a sub-flow run is traceable back to the
+    # agent session that triggered it. Not exposed by any UI form — purely a
+    # programmatic/tool-runtime input.
+    parent_session_id = serializers.IntegerField(required=False, allow_null=True)
+    # optional run-level token budget hard stop. Not exposed
+    # by any UI form. Threaded to crew via SessionData.initial_state's
+    # reserved "__token_budget__" key (see
+    # SessionManagerService.create_session_data) rather than a new typed
+    # SessionData field. Omitted/None (default) means "no limit" -- inert
+    # for every existing caller.
+    token_budget = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -28,20 +76,16 @@ class GetUpdatesSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
 
 
-class AnswerToLLMSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-    crew_id = serializers.IntegerField(required=True)
-    execution_order = serializers.IntegerField(required=True)
-    name = serializers.CharField()
-    answer = serializers.CharField()
-
-
-class EnvironmentConfigSerializer(serializers.Serializer):
-    data = serializers.DictField(required=True)
+class NotifyEmailSerializer(serializers.Serializer):
+    to = serializers.EmailField(required=True)
+    subject = serializers.CharField(
+        required=False, default="EpicStaff notification", max_length=200
+    )
+    message = serializers.CharField(required=True, max_length=1000)
 
 
 class InitRealtimeSerializer(serializers.Serializer):
-    agent_id = serializers.IntegerField(required=True)
+    agent_definition_id = serializers.IntegerField(required=True)
     config = serializers.DictField(required=False, default=dict)
 
 
@@ -53,7 +97,6 @@ class BaseToolSerializer(serializers.Serializer):
         from tables.serializers.model_serializers import (
             PythonCodeToolSerializer,
             McpToolSerializer,
-            ToolConfigSerializer,
             PythonCodeToolConfigSerializer,
         )
 
@@ -61,9 +104,6 @@ class BaseToolSerializer(serializers.Serializer):
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
             repr["data"] = PythonCodeToolSerializer(instance).data
-        elif isinstance(instance, ToolConfig):
-            repr["unique_name"] = f"configured-tool:{instance.pk}"
-            repr["data"] = ToolConfigSerializer(instance).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
             repr["data"] = McpToolSerializer(instance).data
@@ -76,10 +116,6 @@ class BaseToolSerializer(serializers.Serializer):
             )
 
         return repr
-
-
-class RegisterTelegramTriggerSerializer(serializers.Serializer):
-    telegram_trigger_node_id = serializers.IntegerField(required=True)
 
 
 class ProcessDocumentChunkingSerializer(serializers.Serializer):
@@ -98,6 +134,7 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
 
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
+    document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
 
 
 class BulkExportSerializer(serializers.Serializer):
@@ -106,6 +143,56 @@ class BulkExportSerializer(serializers.Serializer):
         allow_empty=False,
         help_text="List of entity IDs",
     )
+
+
+class GraphNodesPartialExportSerializer(serializers.Serializer):
+    python_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    audio_transcription_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    file_extractor_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    subgraph_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    webhook_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    telegram_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    decision_table_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    classification_decision_table_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    graph_note_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    schedule_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    knowledge_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    agent_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    task_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    edge_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+
+    def validate(self, attrs):
+        if not any(attrs.get(key) for key in LIST_KEY_TO_ENTITY_TYPE):
+            raise serializers.ValidationError("At least one node must be provided.")
+        return attrs
 
 
 class SessionExportAllSerializer(serializers.Serializer):
@@ -137,6 +224,10 @@ class ImportRequestSerializer(serializers.Serializer):
                 }
             )
         return attrs
+
+
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

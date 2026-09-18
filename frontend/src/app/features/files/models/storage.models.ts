@@ -1,4 +1,5 @@
 export interface StorageItem {
+    id?: number | null;
     name: string;
     path: string;
     type: 'file' | 'folder';
@@ -7,6 +8,35 @@ export interface StorageItem {
     modified?: string;
     children?: StorageItem[];
     isExpanded?: boolean;
+}
+
+export interface StorageFileRecord {
+    id: number;
+    path: string;
+    name: string;
+    item_type: 'file' | 'folder';
+    size: number | null;
+    s3_modified: string | null;
+    is_system: boolean;
+    parent_path: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface StorageTreeNode {
+    id: number | null;
+    name: string;
+    path: string;
+    type: 'file' | 'folder';
+    size: number;
+    modified: string | null;
+    children: StorageTreeNode[] | null;
+}
+
+export interface StorageTreeResponse {
+    path: string;
+    truncated: boolean;
+    tree: StorageTreeNode;
 }
 
 export interface StorageGraph {

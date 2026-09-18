@@ -1,3 +1,6 @@
+from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    validate_classification_condition_group_names,
+)
 from tables.services.graph_bulk_save_service.data_types import NodeRef, ParsedNodeRef
 from tables.services.graph_bulk_save_service.factories.base import NodeSaveableFactory
 from tables.services.graph_bulk_save_service.saveables import (
@@ -31,6 +34,10 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
                     data[id_field] = None
                 elif parsed.ref is None:
                     data.setdefault(id_field, None)
+
+        routing_errors.extend(
+            validate_classification_condition_group_names(condition_groups_data)
+        )
 
         group_routing_refs: list[NodeRef | None] = []
 

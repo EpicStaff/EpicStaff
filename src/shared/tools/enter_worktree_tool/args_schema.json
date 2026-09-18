@@ -1,0 +1,15 @@
+{
+  "title": "EnterWorktreeToolArgs",
+  "type": "object",
+  "properties": {
+    "repo_path": {
+      "type": "string",
+      "description": "Path to a git repository, relative to the sandbox root."
+    },
+    "name": {
+      "type": "string",
+      "description": "Name for the new worktree and branch (letters, digits, '.', '_', '-' only). If omitted, a random name is generated."
+    }
+  },
+  "required": ["repo_path"]
+}

@@ -40,7 +40,6 @@ class FinishMessageData:
     state: dict
     message_type: str = "finish"
     additional_data: dict | None = None
-    sse_visible: bool | None = None
 
 
 @dataclass
@@ -130,6 +129,18 @@ class ConditonGroupManipulationMessageData:
     state: dict
     changed_variables: dict = field(default_factory=dict)
     message_type: str = "condition_group_manipulation"
+
+
+@dataclass
+class NodeExtractedChunksMessageData:
+    knowledge_query: str
+    collection_id: int
+    retrieved_chunks: int
+    rag_search_config: dict
+    chunks: list[dict]
+    token_usage: dict
+    input: object
+    message_type: str = "extracted_chunks"
 
 
 @dataclass

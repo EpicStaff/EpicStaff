@@ -1,0 +1,7 @@
+tool-data:
+  name: "Sleep Tool"
+  description: "Pauses agent execution for a stated duration with a stated reason (e.g. waiting for a rate-limit window to reset, or for an external process to finish). Useful for looped agent runs that need to self-pace. Duration is capped by the configured 'max_seconds' limit; if the requested duration exceeds it, the sleep is clamped and the response says so. Returns a short confirmation string stating the reason and the actual (possibly clamped) duration slept."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

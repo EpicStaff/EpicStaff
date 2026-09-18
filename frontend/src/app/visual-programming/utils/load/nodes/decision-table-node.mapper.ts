@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { GetDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapDecisionTableNodeToModel(dn: GetDecisionTableNodeRequest): DecisionTableNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(dn.metadata, NodeType.TABLE);
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: dn.id,
         type: NodeType.TABLE,
         node_name: dn.node_name,

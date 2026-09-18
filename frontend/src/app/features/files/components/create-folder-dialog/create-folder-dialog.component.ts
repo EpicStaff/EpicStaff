@@ -4,14 +4,16 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, HostListener, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { FileUploaderComponent } from '@shared/components';
+import { EMPTY, of, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DragDropAreaComponent } from '../../../../shared/components/drag-drop-area/drag-drop-area.component';
+import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
+import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageApiService } from '../../services/storage-api.service';
 
 export interface CreateFolderDialogData {
@@ -42,6 +44,7 @@ export interface FolderNode {
     hasChildren: boolean;
     children: FolderNode[];
     isLoaded: boolean;
+    isEmpty: boolean;
 }
 
 @Component({
@@ -49,12 +52,13 @@ export interface FolderNode {
     imports: [
         FormsModule,
         AppSvgIconComponent,
+        HelpTooltipComponent,
         Spinner2Component,
-        MatIconModule,
         MatTooltipModule,
         OverlayModule,
         FileUploaderComponent,
         DragDropAreaComponent,
+        FileSizePipe,
     ],
     templateUrl: './create-folder-dialog.component.html',
     styleUrls: ['./create-folder-dialog.component.scss'],
@@ -149,6 +153,7 @@ export class CreateFolderDialogComponent {
     }
 
     readonly isUploading = signal(false);
+    private confirmInFlight = false;
     /** Maps filename → error label returned by the server (e.g. archive contains executables) */
     readonly fileServerErrors = signal<Map<string, string>>(new Map());
     readonly hasBlockedFiles = computed(
@@ -157,7 +162,7 @@ export class CreateFolderDialogComponent {
     readonly isValid = computed(
         () => !this.hasBlockedFiles() && (this.files().length > 0 || this.folderName().trim().length > 0)
     );
-    readonly totalSize = computed(() => this.formatSize(this.files().reduce((sum, f) => sum + f.size, 0)));
+    readonly totalSizeBytes = computed(() => this.files().reduce((sum, f) => sum + f.size, 0));
 
     ngOnInit(): void {
         if (this.data.folderPath) {
@@ -248,27 +253,32 @@ export class CreateFolderDialogComponent {
         return this.fileServerErrors().get(file.name) ?? null;
     }
 
-    formatSize(bytes: number): string {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-
     onConfirm(): void {
-        if (!this.isValid() || this.isUploading()) return;
+        if (!this.isValid() || this.isUploading() || this.confirmInFlight) return;
         const destination = this.selectedPath();
         const subfolder = this.folderName().trim();
         const targetPath = subfolder ? (destination ? `${destination}/${subfolder}` : subfolder) : destination;
         const files = this.files();
+        const mkdirOnly = files.length === 0;
 
-        this.isUploading.set(true);
         this.fileServerErrors.set(new Map());
-        this.storageApiService
-            .handleAddFilesResult({ targetPath, files, mkdirOnly: files.length === 0 })
-            .pipe(takeUntilDestroyed(this.destroyRef))
+        this.confirmInFlight = true;
+
+        const confirmed$ = mkdirOnly ? of(true) : this.storageApiService.confirmOverwrite(targetPath, files);
+
+        confirmed$
+            .pipe(
+                switchMap((confirmed) => {
+                    if (!confirmed) return EMPTY;
+                    this.isUploading.set(true);
+                    return this.storageApiService.handleAddFilesResult({ targetPath, files, mkdirOnly });
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe({
                 next: (res) => this.dialogRef.close(res),
                 error: (error: unknown) => {
+                    this.confirmInFlight = false;
                     this.isUploading.set(false);
                     const perFileErrors = this.extractPerFileErrors(error);
                     if (perFileErrors.size > 0) {
@@ -276,6 +286,10 @@ export class CreateFolderDialogComponent {
                     } else {
                         this.toastService.error(this.getUploadErrorMessage(error));
                     }
+                },
+                complete: () => {
+                    this.confirmInFlight = false;
+                    this.isUploading.set(false);
                 },
             });
     }
@@ -302,6 +316,7 @@ export class CreateFolderDialogComponent {
                                 hasChildren: !i.is_empty,
                                 children: [],
                                 isLoaded: false,
+                                isEmpty: i.is_empty ?? false,
                             })
                         );
 

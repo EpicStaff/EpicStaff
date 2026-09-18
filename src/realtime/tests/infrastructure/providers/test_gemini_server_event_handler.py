@@ -42,6 +42,21 @@ def handler(client):
         return GeminiServerEventHandler(client)
 
 
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+async def test_handle_event_forwards_org_id_to_db_write(mock_db, handler, client):
+    client.org_id = 77
+    response = MagicMock()
+    response.setup_complete = None
+    response.server_content = None
+    response.tool_call = None
+
+    await handler.handle_event(response)
+
+    _, kwargs = mock_db.call_args
+    assert kwargs.get("org_id") == 77
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

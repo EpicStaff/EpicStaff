@@ -7,9 +7,10 @@ MAX_LOG_LENGTH = 200
 
 
 def truncate_filter(record):
-    msg = record["message"]
+    msg = record["message"].replace("\r", "").replace("\n", "\\n")
     if len(msg) > MAX_LOG_LENGTH:
-        record["message"] = msg[:MAX_LOG_LENGTH] + "..."
+        msg = msg[:MAX_LOG_LENGTH] + "..."
+    record["message"] = msg
     return True
 
 

@@ -1,4 +1,3 @@
-import os
 from loguru import logger
 import redis.asyncio as aioredis
 from app.core.settings import settings
@@ -22,12 +21,19 @@ class RedisService:
         logger.info(f"RedisService initialized for {self.redis_url}")
 
     async def publish_webhook(
-        self, path: str, payload: Dict[str, Any], config_id: str | None = None
+        self,
+        path: str,
+        payload: Dict[str, Any],
+        config_id: str | None = None,
     ):
         """
         Modifies the data and publishes it to a Redis channel.
         """
-        message_data = WebhookEventData(path=path, payload=payload, config_id=config_id)
+        message_data = WebhookEventData(
+            path=path,
+            payload=payload,
+            config_id=config_id,
+        )
 
         logger.debug(f"Publishing to Redis channel '{self.webhook_channel}'")
         await self.client.publish(self.webhook_channel, message_data.model_dump_json())
@@ -57,13 +63,12 @@ _redis_service: Optional[RedisService] = None
 async def get_redis_service() -> RedisService:
     """FastAPI dependency to get the singleton RedisService."""
     global _redis_service
-    WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
     if _redis_service is None:
         _redis_service = RedisService(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             password=settings.REDIS_PASSWORD,
-            webhook_channel=WEBHOOK_MESSAGE_CHANNEL,
+            webhook_channel=settings.WEBHOOK_MESSAGE_CHANNEL,
         )
         _redis_service
 

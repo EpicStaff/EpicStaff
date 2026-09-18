@@ -1,6 +1,6 @@
 tool-data:
   name: "S3 File Info Tool"
-  description: "Get metadata (name, size, content type, last modified) for an S3-stored file."
+  description: "Get metadata for an S3-stored file: name, size (bytes), content type, and last-modified timestamp. Param: file_path (required). Fails with a clear error if the file does not exist. Use s3_file_count_lines_tool for line/word/byte counts instead."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

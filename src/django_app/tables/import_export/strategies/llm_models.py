@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from django.db.models import Q
+
 from tables.models import (
     LLMModel,
     EmbeddingModel,
@@ -17,7 +19,11 @@ from tables.import_export.serializers.llm_models import (
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.utils import ensure_unique_identifier, create_filters
+from tables.import_export.utils import (
+    create_filters,
+    ensure_unique_identifier,
+    resolve_import_organization,
+)
 
 
 class BaseProviderModelStrategy(EntityImportExportStrategy):
@@ -41,9 +47,17 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
             deps[self.tag_entity] = set(instance.tags.values_list("id", flat=True))
         return deps
 
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(is_custom=False) | Q(org_id=org_id)
+
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
+        organization = resolve_import_organization(kwargs.get("org_id"))
         if "name" in data:
-            existing_names = self.model_class.objects.values_list("name", flat=True)
+            existing_names = self.model_class.objects.filter(
+                org=organization
+            ).values_list("name", flat=True)
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -53,7 +67,14 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         provider_name = data.pop("provider_name")
         provider = Provider.objects.get(name=provider_name)
         serializer = self.serializer_class(
-            data={**data, "provider_id": provider.id, "tags": tags_ids}
+            data={
+                **data,
+                "provider_id": provider.id,
+                "tags": tags_ids,
+                "org": organization.id if organization is not None else None,
+                "is_custom": True,
+                "predefined": False,
+            }
         )
         serializer.is_valid(raise_exception=True)
         return serializer.save()
@@ -61,7 +82,7 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper):
+    def find_existing(self, data, id_mapper, org_id: int = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         provider_name = data_copy.pop("provider_name", None)
@@ -70,11 +91,15 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         filters, null_filters = create_filters(data_copy)
         provider_filter_field = f"{self.provider_field}__name"
 
-        return self.model_class.objects.filter(
-            **filters,
-            **null_filters,
-            **{provider_filter_field: provider_name},
-        ).first()
+        return (
+            self.model_class.objects.filter(
+                **filters,
+                **null_filters,
+                **{provider_filter_field: provider_name},
+            )
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
 
     def _get_tags(self, data: dict, id_mapper: IDMapper) -> list[int]:
         old_tag_ids = data.pop("tags", [])

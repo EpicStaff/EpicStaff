@@ -1,0 +1,112 @@
+<div class="toolbar">
+    <h3 class="section-title">
+        <app-svg-icon
+            icon="key"
+            size="16px"
+            class="icon"
+        />
+        Personal API Keys
+        <span class="count">
+            <span class="active">{{ activeCount() }}</span
+            ><span class="limit">/{{ MAX_PERSONAL_KEYS }} active</span>
+        </span>
+    </h3>
+
+    <div class="toolbar-actions">
+        <app-button
+            type="primary"
+            leftIcon="plus"
+            [matTooltip]="maxCountReached() ? 'Maximum active keys reached' : 'Create API key'"
+            [disabled]="maxCountReached()"
+            (click)="onCreateKey()"
+        >
+            Create API Key
+        </app-button>
+    </div>
+</div>
+
+<app-table
+    [columns]="columns"
+    [data]="tableData()"
+    [selectable]="false"
+    rowId="id"
+>
+    <!-- NAME -->
+    <ng-template
+        appTableCell="name"
+        let-row
+    >
+        <span
+            class="key-name"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+            [matTooltip]="row['name']"
+            matTooltipPosition="above"
+            >{{ row['name'] }}</span
+        >
+    </ng-template>
+
+    <!-- KEY -->
+    <ng-template
+        appTableCell="key"
+        let-row
+    >
+        <span
+            class="key-value"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+            >{{ row['key'] }}</span
+        >
+    </ng-template>
+
+    <!-- CREATED -->
+    <ng-template
+        appTableCell="created"
+        let-row
+    >
+        <span class="cell-text">{{ row['created'] | date: 'mediumDate' }}</span>
+    </ng-template>
+
+    <!-- EXPIRES -->
+    <ng-template
+        appTableCell="expires"
+        let-row
+    >
+        <span
+            class="expires-value"
+            [class.warning]="row['expiryUrgency'] === 'orange'"
+            [class.danger]="row['expiryUrgency'] === 'red'"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+            >{{ row['expiresLabel'] }}</span
+        >
+    </ng-template>
+
+    <!-- LAST USED -->
+    <ng-template
+        appTableCell="lastUsed"
+        let-row
+    >
+        <span class="cell-text">{{ row['lastUsedLabel'] }}</span>
+    </ng-template>
+
+    <!-- STATUS -->
+    <ng-template
+        appTableCell="status"
+        let-row
+    >
+        @if (row['status']) {
+            <app-status-badge
+                [modifier]="row['status']"
+                [label]="statusLabel(row['status'])"
+                [icon]="statusIcon(row['status'])"
+            />
+        } @else {
+            <span class="empty-value">-</span>
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        <h4 class="empty-title">Any keys yet</h4>
+        <p class="empty-subtitle">
+            A key acts as you in any organization you belong to. API clients choose the organization per request.
+        </p>
+    </div>
+</app-table>

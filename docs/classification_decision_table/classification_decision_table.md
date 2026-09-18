@@ -134,11 +134,53 @@ class PromptConfigData(BaseModel):
     llm_data: LLMData | None = None         # resolved at runtime
 ```
 
-The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}` (takes precedence over the LLM config's own `response_format`); a string schema is JSON-parsed first. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
+The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
 
 ## Message Ordering
 
 CDT messages (start, condition-group result, manipulation, prompt, finish) are tagged with a global monotonic `execution_order` (one value per CDT iteration), shared with all other nodes via `system_variables["execution_order"]`, so the session timeline orders correctly across loops and subflows.
+
+## Export
+
+A CDT node can be exported on its own via `GET /api/classification-decision-table-node/{id}/export`. The `export_format` query parameter selects the output:
+
+```
+GET /api/classification-decision-table-node/{id}/export?export_format=json   # default
+GET /api/classification-decision-table-node/{id}/export?export_format=csv
+```
+
+### JSON (`export_format=json`, default)
+
+Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). Because of this, a JSON export **is re-importable** into any existing graph via the graph `partial-import` endpoint.
+
+The filename is prefixed `CDT_` (e.g. `CDT_my_node_20260611.json`).
+
+### CSV (`export_format=csv`)
+
+Produced by `export_condition_groups_csv()` in `tables/import_export/tabular/classification_decision_table.py`. This is a **read-only, human-readable report** — it flattens the node's rules into a spreadsheet and **cannot be re-imported**. Use it for review, sharing, or auditing decision logic outside the app.
+
+The file is laid out as several labelled sections:
+
+| Section | Contents |
+|---|---|
+| `CLASSIFICATION DECISION TABLE` | Node-level summary: node name, default AI model, whether pre/post scripts exist, default next step, on-error step, rule count |
+| `AI MODELS USED` | One row per distinct LLM config referenced by the node or its rows — columns: Configuration Name, Model, Temperature, Max Tokens |
+| `DECISION RULES` | One row per condition group |
+
+Each rule row in the `DECISION RULES` section has these columns:
+
+```
+#, Rule Name, Section, Route Code, Condition, AI Prompt, AI Model,
+Saves Result To, Action, Field Conditions, Field Actions,
+Continue After Match, Next Step
+```
+
+Notes on formatting:
+- Field-level mappings (`Field Conditions`, `Field Actions`) are rendered as newline-joined `key: value` pairs within a single cell.
+- Node references (`Next Step`, and the node-level next/error steps) are resolved to the target node's `node_name`, falling back to `node #<id>` when the name is unavailable.
+- `Continue After Match` is rendered as `Yes` / `No`.
+
+The filename is `CDT_<node_name>.csv`.
 
 ## DB Schema
 

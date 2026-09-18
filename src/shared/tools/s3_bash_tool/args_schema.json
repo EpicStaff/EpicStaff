@@ -1,0 +1,11 @@
+{
+  "title": "S3BashArgs",
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "description": "A single bash-like command to run against S3 storage, e.g. \"ls -l reports/\" or \"grep -n TODO src/main.py\"."
+    }
+  },
+  "required": ["command"]
+}

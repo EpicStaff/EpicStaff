@@ -1,19 +1,17 @@
-import asyncio
 from typing import Dict, Any
 from loguru import logger
 from domain.models.realtime_tool import RealtimeTool, ToolParameters
-from domain.ports.i_redis_messaging_service import IRedisMessagingService
-from uuid import uuid4
 
 from .base_tool_executor import BaseToolExecutor
+from src.shared.knowledge.target import KnowledgeSearchTarget
+from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import (
-    BaseKnowledgeSearchMessage,
     RagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
 )
 
-import json
+DEFAULT_KNOWLEDGE_SEARCH_TIMEOUT = 30.0
 
 
 class KnowledgeSearchToolExecutor(BaseToolExecutor):
@@ -22,61 +20,51 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
         knowledge_collection_id: int,
         rag_type_id: str,
         rag_search_config: Dict[str, Any],
-        redis_service: IRedisMessagingService,
-        knowledge_search_get_channel: str,
-        knowledge_search_response_channel: str,
+        knowledge_client: KnowledgeClient,
+        rag_embedder_api_key: str | None = None,
+        rag_llm_api_key: str | None = None,
     ):
         super().__init__(tool_name="knowledge_tool")
-        self.knowledge_search_get_channel = knowledge_search_get_channel
+        self.rag_embedder_api_key = rag_embedder_api_key
+        self.rag_llm_api_key = rag_llm_api_key
         self.knowledge_collection_id = knowledge_collection_id
-        self.knowledge_search_response_channel = knowledge_search_response_channel
-        self.redis_service = redis_service
+        self.knowledge_client = knowledge_client
         self._realtime_model = self._gen_knowledge_realtime_tool_model()
         self.rag_type, self.rag_id = self._parse_rag_type_id(rag_type_id)
         self.rag_search_config = RagConfigBuilder.build(
             self.rag_type, rag_search_config
         )
 
-    async def execute(self, **kwargs) -> list[str]:
+    async def execute(self, **kwargs) -> str:
         query = kwargs.get("query")
         if query is None:
-            return
-        # TODO: wait for redis search
-        pubsub = await self.redis_service.async_subscribe(
-            channel=self.knowledge_search_response_channel
-        )
-        execution_uuid = str(uuid4())
-        execution_message = BaseKnowledgeSearchMessage(
+            return ""
+
+        target = KnowledgeSearchTarget(
             collection_id=self.knowledge_collection_id,
             rag_id=self.rag_id,
             rag_type=self.rag_type,
-            uuid=execution_uuid,
-            query=query,
-            rag_search_config=self.rag_search_config,
+            search_config=self.rag_search_config,
+            embedder_api_key=self.rag_embedder_api_key,
+            llm_api_key=self.rag_llm_api_key,
         )
-        await self.redis_service.async_publish(
-            channel=self.knowledge_search_get_channel,
-            message=execution_message.model_dump(),
-        )
-        logger.info("Waiting for knowledges")
-        while True:
-            message = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=0.1
+
+        try:
+            result = await self.knowledge_client.search(
+                target, query, timeout=DEFAULT_KNOWLEDGE_SEARCH_TIMEOUT
             )
-            if not message:
-                continue
-            data = json.loads(message["data"])
+        except Exception as error:
+            logger.warning(
+                "Knowledge search failed rag_id={} error={}", self.rag_id, error
+            )
+            return f"Knowledge search failed: {error}"
 
-            if data["uuid"] == execution_uuid:
-                knowledges = "\n\n".join(data["results"])
-                result = (
-                    f"\nUse this information for answer: {knowledges}"
-                    if knowledges
-                    else ""
-                )
-                return result
+        if isinstance(result, str):
+            knowledges = result
+        else:
+            knowledges = "\n\n".join(chunk.text for chunk in result)
 
-            await asyncio.sleep(0.1)
+        return f"\nUse this information for answer: {knowledges}" if knowledges else ""
 
     def _gen_knowledge_realtime_tool_model(self) -> RealtimeTool:
         tool_parameters = ToolParameters(

@@ -3,6 +3,8 @@ Tests for Document Management operations
 """
 
 import pytest
+from django.core.exceptions import SuspiciousFileOperation
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework import status
 
@@ -262,3 +264,80 @@ class TestCollectionDocuments:
         response = auth_client.get(url)
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+# A stored file_name is joined to a directory when the knowledge service writes
+# the document to disk for GraphRAG indexing, so a path would let that write
+# land outside the input folder. Uploads cannot express these names — Django
+# basenames every UploadedFile.name — so they are written to the model directly.
+PATH_FILE_NAMES = [
+    "../../../../etc/cron.d/evil.txt",
+    "a/../../../evil.txt",
+    "sub/dir.txt",
+    "/etc/passwd",
+    "..\\..\\win.ini",
+    "C:evil.txt",
+    "..",
+    ".",
+]
+
+
+@pytest.mark.django_db
+class TestDocumentFileNameValidation:
+    """Tests that a file_name carrying a path is refused on write."""
+
+    @pytest.mark.parametrize("file_name", PATH_FILE_NAMES)
+    def test_save_rejects_path_as_file_name(
+        self, source_collection, document_content, file_name
+    ):
+        """A name with a path component is refused and nothing is stored."""
+        document = DocumentMetadata(
+            source_collection=source_collection,
+            document_content=document_content,
+            file_name=file_name,
+            file_type="txt",
+            file_size=1,
+        )
+
+        with pytest.raises(SuspiciousFileOperation) as exc_info:
+            document.save()
+
+        assert repr(file_name) in str(exc_info.value)
+        assert not DocumentMetadata.objects.exists()
+
+    @pytest.mark.parametrize("file_name", ["report.txt", "..hidden.txt", ""])
+    def test_save_accepts_plain_file_name(
+        self, source_collection, document_content, file_name
+    ):
+        """A plain file name — including a blank one — is stored unchanged."""
+        document = DocumentMetadata.objects.create(
+            source_collection=source_collection,
+            document_content=document_content,
+            file_name=file_name,
+            file_type="txt",
+            file_size=1,
+        )
+
+        document.refresh_from_db()
+        assert document.file_name == file_name
+
+    def test_uploaded_file_name_never_contains_a_path(
+        self, auth_client, source_collection
+    ):
+        """An upload whose filename is a path stores a bare name, never a path."""
+        url = reverse("document-upload", args=[source_collection.collection_id])
+        traversal_file = SimpleUploadedFile(
+            name="../../../../etc/cron.d/evil.txt",
+            content=b"x",
+            content_type="text/plain",
+        )
+
+        response = auth_client.post(
+            url, {"files": [traversal_file]}, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        stored_names = list(
+            DocumentMetadata.objects.values_list("file_name", flat=True)
+        )
+        assert stored_names == ["evil.txt"]

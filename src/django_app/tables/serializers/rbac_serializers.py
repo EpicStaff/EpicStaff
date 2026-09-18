@@ -7,6 +7,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class FirstSetupStatusSerializer(serializers.Serializer):
     needs_setup = serializers.BooleanField()
+    setup_mode = serializers.CharField()
 
 
 class FirstSetupRequestSerializer(serializers.Serializer):
@@ -34,7 +35,6 @@ class FirstSetupResponseSerializer(serializers.Serializer):
     user = _SetupUserPayload()
     organization = _SetupOrganizationPayload()
     access = serializers.CharField()
-    refresh = serializers.CharField()
 
 
 # ---- Token introspect ----
@@ -49,17 +49,13 @@ class TokenIntrospectResponseSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=False)
     email = serializers.EmailField(required=False)
     scopes = serializers.ListField(child=serializers.CharField(), required=False)
-
-
-# ---- API-key validate ----
-
-
-class ApiKeyValidateResponseSerializer(serializers.Serializer):
-    active = serializers.BooleanField()
-    name = serializers.CharField()
-    prefix = serializers.CharField()
-    scopes = serializers.ListField(child=serializers.CharField())
-    owner_user_id = serializers.IntegerField(allow_null=True)
+    org_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="Org ids the token's user is a member of. Used by internal "
+        "services (e.g. realtime) to verify the caller owns a given resource's org.",
+    )
+    is_superadmin = serializers.BooleanField(required=False)
 
 
 # ---- Reset user ----
@@ -74,8 +70,6 @@ class ResetUserRequestSerializer(serializers.Serializer):
 
 class ResetUserResponseSerializer(serializers.Serializer):
     access = serializers.CharField()
-    refresh = serializers.CharField()
-    api_key = serializers.CharField()
 
 
 # ---- Logout ----
@@ -126,7 +120,7 @@ class PasswordResetRequestResponseSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     # Schema-only: real validation in
     # `AuthValidationService.validate_password_reset_confirm`.
-    token = serializers.UUIDField()
+    token = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
 
 
@@ -152,5 +146,8 @@ class LoginSerializer(TokenObtainPairSerializer):
 
 
 class LoginResponseSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
+    access = serializers.CharField()
+
+
+class RefreshResponseSerializer(serializers.Serializer):
     access = serializers.CharField()

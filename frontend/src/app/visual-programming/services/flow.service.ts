@@ -34,7 +34,7 @@ export class FlowService {
         connections: [],
     });
 
-    private _nextNodeNumber = 1;
+    private _lastIssuedNumber = 0;
 
     // Subject to request canvas redraw (e.g., after port reordering)
     private canvasRedrawRequest$ = new Subject<void>();
@@ -79,19 +79,17 @@ export class FlowService {
 
     public setFlow(flow: FlowModel) {
         this.flowSignal.set(flow);
-        // Re-seed the counter above the highest existing nodeNumber
-        let max = 0;
-        for (const n of flow.nodes) {
-            if (n.nodeNumber != null && n.nodeNumber > max) {
-                max = n.nodeNumber;
-            }
-        }
-        this._nextNodeNumber = max + 1;
+        this._lastIssuedNumber = 0;
     }
 
-    /** Returns the next node number and increments the counter. */
     public getNextNodeNumber(): number {
-        return this._nextNodeNumber++;
+        const next = Math.max(this.highestNodeNumber(), this._lastIssuedNumber) + 1;
+        this._lastIssuedNumber = next;
+        return next;
+    }
+
+    private highestNodeNumber(): number {
+        return this.flowSignal().nodes.reduce((max, n) => Math.max(max, n.nodeNumber ?? 0), 0);
     }
 
     public addNode(node: NodeModel) {
@@ -457,10 +455,11 @@ export class FlowService {
             return;
         }
 
-        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table;
-        if (!tableData) {
-            return;
-        }
+        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table ?? {
+            condition_groups: [],
+            default_next_node: null,
+            next_error_node: null,
+        };
 
         const targetNode = this.nodes().find((node) => node.id === connection.targetNodeId);
         if (!targetNode) {
@@ -538,10 +537,11 @@ export class FlowService {
             return;
         }
 
-        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table;
-        if (!tableData) {
-            return;
-        }
+        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table ?? {
+            condition_groups: [],
+            default_next_node: null,
+            next_error_node: null,
+        };
 
         const sourceRole = this.extractPortRole(sourcePortId);
         if (!sourceRole) {
@@ -987,13 +987,6 @@ export class FlowService {
         allPorts.forEach((current) => {
             // Start with an empty set so we don't include the port itself
             const eligible = new Set<CustomPortId>();
-
-            const currentConnCount = connectionCount[current.port.id] || 0;
-            if (!current.port.multiple && currentConnCount > 0) {
-                // If already connected and single-use, no allowed connections.
-                map[current.port.id] = ['__none__'];
-                return;
-            }
 
             allPorts.forEach((other) => {
                 // Skip self

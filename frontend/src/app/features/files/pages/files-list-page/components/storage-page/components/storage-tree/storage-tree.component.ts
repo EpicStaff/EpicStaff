@@ -1,20 +1,41 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, ViewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../../../../models/storage.models';
+import { StorageDragService } from '../../../../../../services/storage-drag.service';
 import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
 @Component({
     selector: 'app-storage-tree',
-    imports: [NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
+    imports: [
+        NgTemplateOutlet,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './storage-tree.component.html',
     styleUrls: ['./storage-tree.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StorageTreeComponent {
+    private readonly storageDrag = inject(StorageDragService);
+
     items = input<StorageItem[]>([]);
+    showHeader = input<boolean>(true);
     fileSelected = output<StorageItem>();
     folderSelected = output<StorageItem>();
     folderToggled = output<StorageItem>();
@@ -29,8 +50,8 @@ export class StorageTreeComponent {
     openCreateFolder = output<string>();
     selectionChange = output<StorageItem[]>();
 
-    @ViewChild('renameInput') renameInputRef?: ElementRef<HTMLInputElement>;
-    @ViewChild('listEl') listElRef?: ElementRef<HTMLElement>;
+    private readonly renameInputRef = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    private readonly listElRef = viewChild<ElementRef<HTMLElement>>('listEl');
 
     private hoveredItemEl: HTMLElement | null = null;
 
@@ -50,8 +71,8 @@ export class StorageTreeComponent {
     moreMenuOpen = signal<boolean>(false);
     moreMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
 
-    // Drag-and-drop state
     draggedItem = signal<StorageItem | null>(null);
+    draggedItems = signal<StorageItem[]>([]);
     dropTarget = signal<StorageItem | null>(null);
     dropTargetRoot = signal<boolean>(false);
     private dragExpandTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,7 +151,7 @@ export class StorageTreeComponent {
     }
 
     private scrollItemIntoView(item: StorageItem): void {
-        const listEl = this.listElRef?.nativeElement;
+        const listEl = this.listElRef()?.nativeElement;
         if (!listEl) return;
         const el = listEl.querySelector(`[data-path="${CSS.escape(item.path)}"]`) as HTMLElement | null;
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -141,11 +162,12 @@ export class StorageTreeComponent {
         this.renameValue = item.name;
 
         const path = item.path || item.name;
+        const listEl = this.listElRef()?.nativeElement;
         const itemEl =
-            this.hoveredItemEl ??
-            (this.listElRef?.nativeElement.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
-        const listEl = this.listElRef?.nativeElement;
+            (this.hoveredItemEl?.getAttribute('data-path') === path ? this.hoveredItemEl : null) ??
+            (listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
         if (itemEl && listEl) {
+            itemEl.scrollIntoView({ block: 'nearest' });
             const itemRect = itemEl.getBoundingClientRect();
             const listRect = listEl.getBoundingClientRect();
             this.renamePos.set({
@@ -159,9 +181,26 @@ export class StorageTreeComponent {
 
         this.renamingItem.set(item);
         setTimeout(() => {
-            this.renameInputRef?.nativeElement.focus();
-            this.renameInputRef?.nativeElement.select();
+            this.renameInputRef()?.nativeElement.focus();
+            this.renameInputRef()?.nativeElement.select();
         });
+    }
+
+    /**
+     * Like startRename, but waits for the item's row to actually exist in the DOM first.
+     * Needed right after a tree reload (e.g. after grouping), where the row may not be
+     * rendered yet — starting the rename immediately would leave renamePos unset and the
+     * overlay would fall back to a default position instead of the item's real row.
+     */
+    startRenameWhenReady(item: StorageItem, retriesLeft = 20): void {
+        const path = item.path || item.name;
+        const listEl = this.listElRef()?.nativeElement;
+        const exists = listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`);
+        if (exists || retriesLeft <= 0) {
+            this.startRename(item);
+            return;
+        }
+        setTimeout(() => this.startRenameWhenReady(item, retriesLeft - 1), 50);
     }
 
     onContextMenuAction(action: string): void {
@@ -170,6 +209,8 @@ export class StorageTreeComponent {
 
         if (action === 'rename') {
             this.startRename(item);
+        } else if (action === 'group-selected') {
+            this.startGrouping();
         } else if (action === 'delete') {
             const selectedSet = this.selectedPaths();
             const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
@@ -217,6 +258,23 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
         this.onRenameConfirm();
+    }
+
+    canGroupSelected(): boolean {
+        return this.getGroupableItems().length >= 2;
+    }
+
+    startGrouping(): void {
+        const items = this.getGroupableItems();
+        if (items.length < 2) {
+            return;
+        }
+
+        this.contextAction.emit({
+            action: 'group-selected',
+            item: items[0],
+            selectedItems: items,
+        });
     }
 
     getFileIcon(item: StorageItem): string {
@@ -277,8 +335,10 @@ export class StorageTreeComponent {
         const btn = event.currentTarget as HTMLElement;
         const rect = btn.getBoundingClientRect();
         const menuWidth = 180;
+        const menuHeight = 140;
         const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
-        const y = rect.bottom + 4;
+        const below = rect.bottom + 4;
+        const y = below + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight - 4) : below;
         this.moreMenuPosition.set({ x, y });
         this.moreMenuOpen.set(true);
     }
@@ -301,25 +361,41 @@ export class StorageTreeComponent {
         });
     }
 
-    // Drag-and-drop handlers
+    private getSelectedItems(): StorageItem[] {
+        const selectedSet = this.selectedPaths();
+        return this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
+    }
+
+    private getGroupableItems(): StorageItem[] {
+        const items = this.pruneNestedItems(this.getSelectedItems());
+        if (items.length < 2) {
+            return [];
+        }
+        const parent = this.getParentPath(items[0].path);
+        return items.every((item) => this.getParentPath(item.path) === parent) ? items : [];
+    }
+
     onDragStart(event: DragEvent, item: StorageItem): void {
         if (this.renamingItem()) {
             event.preventDefault();
             return;
         }
-        event.dataTransfer!.effectAllowed = 'move';
-        event.dataTransfer!.setData('text/plain', item.path);
+        const items = this.resolveDraggedItems(item);
+        event.dataTransfer!.effectAllowed = 'copyMove';
+        event.dataTransfer!.setData('text/plain', items.map((i) => i.path).join('\n'));
         this.draggedItem.set(item);
+        this.draggedItems.set(items);
+        this.storageDrag.start(item);
     }
 
     onDragOver(event: DragEvent, node: StorageItem): void {
         event.preventDefault();
         event.dataTransfer!.dropEffect = 'move';
 
-        const dragged = this.draggedItem();
-        if (!dragged) return;
+        const dragged = this.draggedItems();
+        if (dragged.length === 0) return;
 
-        if (node.type !== 'folder' || !this.isValidDropTarget(dragged, node)) {
+        if (node.type !== 'folder' || !this.isValidDropTargetForItems(dragged, node)) {
             if (this.dropTarget()?.path === node.path) {
                 this.dropTarget.set(null);
             }
@@ -352,13 +428,24 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
 
-        const dragged = this.draggedItem();
-        if (!dragged || node.type !== 'folder' || !this.isValidDropTarget(dragged, node)) {
+        const dragged = this.draggedItems();
+        if (dragged.length === 0 || node.type !== 'folder' || !this.isValidDropTargetForItems(dragged, node)) {
             this.resetDragState();
             return;
         }
 
-        this.contextAction.emit({ action: 'move', item: dragged, targetPath: node.path });
+        const movable = this.filterMovableTo(dragged, node.path);
+        if (movable.length === 0) {
+            this.resetDragState();
+            return;
+        }
+
+        this.contextAction.emit({
+            action: 'move',
+            item: movable[0],
+            selectedItems: movable,
+            targetPath: node.path,
+        });
         this.resetDragState();
     }
 
@@ -370,8 +457,8 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.dataTransfer!.dropEffect = 'move';
 
-        const dragged = this.draggedItem();
-        if (!dragged || this.getParentPath(dragged.path) === '') {
+        const dragged = this.draggedItems();
+        if (dragged.length === 0 || dragged.every((item) => this.getParentPath(item.path) === '')) {
             this.dropTargetRoot.set(false);
             return;
         }
@@ -391,18 +478,28 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
 
-        const dragged = this.draggedItem();
-        if (!dragged || this.getParentPath(dragged.path) === '') {
+        const dragged = this.draggedItems();
+        const movable = this.filterMovableTo(dragged, '/');
+        if (movable.length === 0) {
             this.resetDragState();
             return;
         }
 
-        this.contextAction.emit({ action: 'move', item: dragged, targetPath: '/' });
+        this.contextAction.emit({
+            action: 'move',
+            item: movable[0],
+            selectedItems: movable,
+            targetPath: '/',
+        });
         this.resetDragState();
     }
 
     isDropTarget(node: StorageItem): boolean {
         return this.dropTarget()?.path === node.path;
+    }
+
+    isDraggingItem(node: StorageItem): boolean {
+        return this.draggedItems().some((item) => item.path === node.path);
     }
 
     trackByPath(_index: number, item: StorageItem): string {
@@ -411,8 +508,10 @@ export class StorageTreeComponent {
 
     private resetDragState(): void {
         this.draggedItem.set(null);
+        this.draggedItems.set([]);
         this.dropTarget.set(null);
         this.dropTargetRoot.set(false);
+        this.storageDrag.end();
         this.clearDragExpandTimer();
     }
 
@@ -423,11 +522,31 @@ export class StorageTreeComponent {
         }
     }
 
-    private isValidDropTarget(dragged: StorageItem, target: StorageItem): boolean {
-        if (target.path === dragged.path) return false;
-        if (target.path.startsWith(dragged.path + '/')) return false;
-        if (target.path === this.getParentPath(dragged.path)) return false;
-        return true;
+    private resolveDraggedItems(grabbed: StorageItem): StorageItem[] {
+        const selected = this.selectedPaths();
+        if (!selected.has(grabbed.path) || selected.size <= 1) {
+            return [grabbed];
+        }
+        const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selected.has(node.path));
+        return this.pruneNestedItems(selectedItems);
+    }
+
+    private pruneNestedItems(items: StorageItem[]): StorageItem[] {
+        const paths = items.map((item) => item.path);
+        return items.filter((item) => !paths.some((path) => path !== item.path && item.path.startsWith(`${path}/`)));
+    }
+
+    private filterMovableTo(items: StorageItem[], targetPath: string): StorageItem[] {
+        const normalizedTarget = targetPath === '/' ? '' : targetPath;
+        return items.filter((item) => {
+            if (this.getParentPath(item.path) === normalizedTarget) return false;
+            if (normalizedTarget === item.path || normalizedTarget.startsWith(`${item.path}/`)) return false;
+            return true;
+        });
+    }
+
+    private isValidDropTargetForItems(dragged: StorageItem[], target: StorageItem): boolean {
+        return this.filterMovableTo(dragged, target.path).length > 0;
     }
 
     private getParentPath(path: string): string {
@@ -484,4 +603,7 @@ export class StorageTreeComponent {
         }
         return flat;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -1,17 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
-import { MarkdownModule } from 'ngx-markdown';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { MarkdownComponent } from 'ngx-markdown';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-message.model';
+import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-llm-message',
-    standalone: true,
-    imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
+    imports: [CommonModule, MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="llm-flow-container">
             <!-- LLM Message Header with Toggle -->
@@ -36,8 +33,8 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
 
             <!-- Collapsible LLM Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="llm-content">
                     <!-- Response Subsection -->
@@ -53,36 +50,40 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
                             Response
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isResponseExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isResponseExpanded"
                         >
-                            <div
-                                class="result-content"
-                                [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
-                            >
-                                <app-copy-button [text]="llmResponse" />
-                                <markdown [data]="llmResponse"></markdown>
+                            <div class="grid-collapsible__inner">
+                                <div
+                                    class="result-content"
+                                    [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
+                                >
+                                    <app-copy-button [text]="llmResponse" />
+                                    <markdown [data]="llmResponse"></markdown>
+                                </div>
+                                @if (shouldShowToggle() && isResponseExpanded) {
+                                    <button
+                                        class="toggle-button"
+                                        (click)="toggleCollapse()"
+                                    >
+                                        {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                    </button>
+                                }
                             </div>
-                            <button
-                                *ngIf="shouldShowToggle() && isResponseExpanded"
-                                class="toggle-button"
-                                (click)="toggleCollapse()"
-                            >
-                                {{ isCollapsed ? 'Show more' : 'Show less' }}
-                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .llm-flow-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
+                padding: 0.5rem 1rem;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #36cfc9; /* Teal accent */
             }
@@ -95,7 +96,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
 
@@ -105,8 +106,8 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #36cfc9;
                 display: flex;
@@ -122,17 +123,21 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
             .llm-content {
                 display: flex;
                 flex-direction: column;
-                padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .llm-content > :first-child {
+                margin-top: 1.25rem;
             }
 
             .llm-section {
@@ -140,7 +145,9 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             }
 
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -158,10 +165,6 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .result-content {
@@ -190,7 +193,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
                 background-color: transparent;
                 border: none;
                 color: #36cfc9;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;
@@ -213,7 +216,7 @@ export class LlmMessageComponent {
     isCollapsed = true;
 
     get llmResponse(): string {
-        if (this.message.message_data && this.message.message_data.message_type === 'llm') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.LLM) {
             const data = this.message.message_data as LLMMessageData;
             return data.response;
         }

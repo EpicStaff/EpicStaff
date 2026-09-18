@@ -1,7 +1,7 @@
-import requests
+import httpx
 from loguru import logger
 
-from core.config import settings
+from core import config
 
 
 _api_key_validated = False
@@ -12,10 +12,10 @@ def validate_api_key() -> bool:
     if _api_key_validated:
         return True
     try:
-        resp = requests.get(
-            f"{settings.DJANGO_AUTH_URL}/api/auth/api-key/validate/",
-            headers={"X-API-Key": settings.DJANGO_API_KEY},
-            timeout=settings.DJANGO_AUTH_TIMEOUT,
+        resp = httpx.get(
+            f"{config.DJANGO_AUTH_URL}/api/auth/api-key/validate/",
+            headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
+            timeout=config.DJANGO_AUTH_TIMEOUT,
         )
     except Exception:
         logger.warning("API key validation request failed")
@@ -38,11 +38,11 @@ def introspect_token(token: str) -> dict | None:
     if not validate_api_key():
         return None
     try:
-        resp = requests.post(
-            f"{settings.DJANGO_AUTH_URL}/api/auth/introspect/",
+        resp = httpx.post(
+            f"{config.DJANGO_AUTH_URL}/api/auth/introspect/",
             json={"token": token},
-            headers={"X-API-Key": settings.DJANGO_API_KEY},
-            timeout=settings.DJANGO_AUTH_TIMEOUT,
+            headers={"Host": "localhost", "X-API-Key": config.DJANGO_API_KEY},
+            timeout=config.DJANGO_AUTH_TIMEOUT,
         )
     except Exception:
         logger.warning("Token introspection request failed")

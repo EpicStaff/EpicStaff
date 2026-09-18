@@ -1,0 +1,40 @@
+{
+  "title": "GrepToolArgs",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "Regular expression to search for."
+    },
+    "path": {
+      "type": "string",
+      "description": "File or directory to search in, relative to the sandbox root. Defaults to the sandbox root."
+    },
+    "glob": {
+      "type": "string",
+      "description": "Filename filter, e.g. '*.log'. Matches against both the filename and the sandbox-relative path (so patterns like 'src/**/*.py' work). Brace expansion such as '*.{ts,tsx}' is not supported."
+    },
+    "output_mode": {
+      "type": "string",
+      "enum": ["files_with_matches", "content", "count"],
+      "description": "files_with_matches: list matching file paths. content: matching lines with context. count: number of matching lines per file.",
+      "default": "files_with_matches"
+    },
+    "case_insensitive": {
+      "type": "boolean",
+      "description": "Case-insensitive search.",
+      "default": false
+    },
+    "context_lines": {
+      "type": "integer",
+      "description": "Lines of context around each match (content mode only). 0-10.",
+      "default": 0
+    },
+    "head_limit": {
+      "type": "integer",
+      "description": "Maximum output lines/entries to return. Default 250.",
+      "default": 250
+    }
+  },
+  "required": ["pattern"]
+}

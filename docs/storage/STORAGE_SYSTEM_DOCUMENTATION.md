@@ -27,9 +27,11 @@ This document covers the EpicStaff storage system architecture, data models, sec
 
 ## 1. System Overview
 
-EpicStaff Storage is an org-scoped file management system supporting S3-compatible and local filesystem backends. It provides REST APIs for file CRUD, archive handling, graph-file linking, and an SDK for use within flow execution (Python/Code Agent nodes).
+EpicStaff Storage is an org-scoped file management system backed by S3-compatible object storage. It provides REST APIs for file CRUD, archive handling, graph-file linking, and an SDK for use within flow execution (Python nodes).
 
-All file operations are namespaced per organization. Permissions are enforced at every layer — REST API, StorageManager, and the flow execution SDK.
+Storage also integrates with the agent system (`AgentDefinition`) via Surfaces: a `Surface`/`InlineSurface`/`AgentInlineSurface` can grant an agent per-file access (`can_list` / `can_view` / `can_edit` / `can_delete`) to specific `StorageFile` records, independent of the Python-node SDK path. See [agent-definitions.md](../agents/agent-definitions.md).
+
+All file operations are namespaced per organization. Permissions are enforced at every layer — REST API, StorageManager, the flow execution SDK, and the Surface storage-access grants used by agents.
 
 ---
 
@@ -44,27 +46,31 @@ StorageAPIView (REST endpoints)        SessionViewSet.output_files()
     ▼                                        ▼
 StorageManager                         SessionStorageFile queries
   ├─ org isolation (org_{id}/ prefix)
-  ├─ permission checks (OrganizationUser)
   ├─ archive auto-extraction
   ├─ DB sync (StorageFileSync)
   │
   ▼
 AbstractStorageBackend
-  ├─ LocalStorageBackend (pathlib/shutil)
   └─ S3StorageBackend (boto3)
 
 Storage SDK (EpicStaffStorage)
-  └─ Used by Python/Code Agent nodes during flow execution
+  └─ Used by Python nodes during flow execution
   └─ Direct S3 access with path allowlist
+
+Surface storage grants (SurfaceStorageItem / InlineSurfaceStorageItem / AgentInlineSurfaceStorageItem)
+  └─ Per-file ACLs (can_list/can_view/can_edit/can_delete) attached to an agent's Surface
+  └─ Resolved to s3_refs on AgentSpec, dispatched to the agent microservice
 ```
 
-**StorageManager** is the central org-aware service. It wraps every backend operation with org isolation, permission checks, and DB sync. Views never call the backend directly.
+**StorageManager** is the central org-aware service. It wraps every backend operation with org isolation and DB sync (authorization is enforced upstream at the REST API layer, not in the manager). Views never call the backend directly.
 
-**AbstractStorageBackend** defines the interface. Two implementations exist: `LocalStorageBackend` for development/testing and `S3StorageBackend` for production (MinIO or any S3-compatible service).
+**AbstractStorageBackend** defines the interface. `S3StorageBackend` is the sole production implementation (MinIO or any S3-compatible service). Tests exercise the same interface against `InMemoryStorageBackend`, a fake that mirrors S3 semantics.
 
 **StorageFileSync** keeps the `StorageFile` DB table consistent with actual storage mutations. It is called by `StorageManager` after every mutating operation.
 
-**EpicStaffStorage SDK** is used inside flow execution (Code Agent nodes). It operates with direct S3 access and is constrained by an allowlist of permitted paths (`STORAGE_ALLOWED_PATHS`).
+**EpicStaffStorage SDK** is used inside flow execution (Python nodes). It operates with direct S3 access and is constrained by an allowlist of permitted paths (`STORAGE_ALLOWED_PATHS`).
+
+**Surface storage grants** are a separate, file-level access mechanism for the agent system: `SurfaceStorageItem`, `InlineSurfaceStorageItem`, and `AgentInlineSurfaceStorageItem` each attach per-file permissions (`can_list`/`can_view`/`can_edit`/`can_delete`, each `allow`/`unset`/`deny`) to a `Surface`. At dispatch time, `AgentTaskService._build_agent_spec` resolves these into `s3_refs` on the `AgentSpec` sent to the `agent` microservice — this does not go through the `EpicStaffStorage` SDK/path-allowlist path at all.
 
 ---
 
@@ -188,23 +194,19 @@ These formats use ZIP internally but represent document containers, not archives
 
 ## 7. Cross-Org Operations
 
-Both cross-org operations require explicit permission verification in both the source and destination organizations.
+Cross-org operations are restricted to **superadmin**, enforced at the REST API layer (`StorageAPIView`).
 
 ### `copy_cross_org`
 
-- Requires DOWNLOAD permission in source org
-- Requires UPLOAD permission in destination org
 - Uses server-side S3 copy (no data round-trip through application server)
 - DB sync: `on_copy_cross_org(dst_org, dst_path)` creates record in destination
 
 ### `move_cross_org`
 
-- Requires DELETE permission in source org
-- Requires UPLOAD permission in destination org
 - **Non-atomic**: copy happens first, then delete. If the delete step fails, the file exists in both orgs. No automatic rollback.
 - DB sync: `on_move_cross_org(src_org, src_path, dst_org, dst_path)` deletes from source, creates in destination
 
-Permissions are checked via `_require_permission()` which validates `OrganizationUser` membership.
+Authorization (superadmin) is enforced at the API layer; the `StorageManager` performs no permission checks.
 
 ---
 
@@ -226,12 +228,12 @@ Permissions are checked via `_require_permission()` which validates `Organizatio
 
 | Control | Mechanism |
 |---------|-----------|
-| Org isolation | All storage keys namespaced under `org_{id}/`; cross-org access requires explicit permission |
+| Org isolation | All storage keys namespaced under `org_{id}/`; every request scoped to the active org, cross-org transfer superadmin-only |
 | Executable blocking | Upload and rename reject known executable extensions via `FileValidator` |
 | Archive scanning | ZIP/TAR contents inspected for executable entries without extraction |
 | Password-protected archives | Rejected at upload time before extraction begins |
 | Path traversal protection | Local backend resolves and validates paths; SDK normalizes and checks via `posixpath.normpath` |
-| Permission checks | Every `StorageManager` method verifies the user is an `OrganizationUser` member |
+| Authorization | Enforced at the REST API layer: `IsAuthenticated` + `HasOrgPermission(FILES)` + active-org membership (`StorageAPIView`) |
 | SDK allowlist | Flow execution constrains file access to paths listed in `STORAGE_ALLOWED_PATHS` env var |
 
 ---
@@ -246,13 +248,10 @@ Permissions are checked via `_require_permission()` which validates `Organizatio
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org-aware wrapper) |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/local_backend.py` | Local filesystem backend |
 | `tables/services/storage_service/s3_backend.py` | S3/MinIO backend |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
-| `tables/services/storage_service/enums.py` | `StorageAction` enum |
 | `tables/validators/file_upload_validator.py` | `FileValidator` (upload security) |
-| `tables/storage_permissions.py` | `StoragePermission` DRF permission class |
 | `shared/epicstaff_storage/storage.py` | Storage SDK for flow execution |
 | `tables/views/views.py` | `SessionViewSet.output_files` endpoint |
 
@@ -273,11 +272,9 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 
 | Variable | Purpose |
 |----------|---------|
-| `STORAGE_BACKEND` | `s3` or `local` |
 | `STORAGE_ENDPOINT` | S3/MinIO endpoint URL |
 | `STORAGE_ACCESS_KEY` | S3 access key |
 | `STORAGE_SECRET_KEY` | S3 secret key |
 | `STORAGE_BUCKET_NAME` | Target bucket name |
-| `STORAGE_LOCAL_ROOT` | Root path for local backend |
 | `STORAGE_ORG_PREFIX` | Org prefix used by SDK (set per execution context) |
 | `STORAGE_ALLOWED_PATHS` | JSON array of allowed paths for SDK access |

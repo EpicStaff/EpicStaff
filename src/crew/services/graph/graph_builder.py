@@ -8,13 +8,16 @@ from models.state import State
 from services.graph.nodes import (
     AudioTranscriptionNode,
     FileContentExtractorNode,
+    KnowledgeNode,
     PythonNode,
-    CrewNode,
     BaseNode,
     EndNode,
 )
 
-from services.graph.nodes.code_agent_node import CodeAgentNode
+from services.agent_task_service import AgentTaskService
+from services.graph.nodes.agent_node import AgentNode
+from services.graph.nodes.task_node import TaskNode
+from services.graph.remembered_outputs import RememberedOutputsStore
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
@@ -26,7 +29,6 @@ from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import RedisService
 from src.shared.models import (
     DecisionTableNodeData,
@@ -49,11 +51,10 @@ class SessionGraphBuilder:
         self,
         session_id: int,
         redis_service: RedisService,
-        crew_parser_service: CrewParserService,
         python_code_executor_service: RunPythonCodeService,
-        crewai_output_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
+        agent_task_service: AgentTaskService | None = None,
     ):
         """
         Initializes the SessionGraphBuilder with the required services and session details.
@@ -61,17 +62,19 @@ class SessionGraphBuilder:
         Args:
             session_id (int): The unique identifier for the session.
             redis_service (RedisService): The service responsible for Redis operations.
-            crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
-            crewai_output_channel (str): The output channel for CrewAI communications.
+            agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
+                execution to the agent microservice. Required if the graph schema contains task nodes.
         """
 
         self.session_id = session_id
         self.redis_service = redis_service
-        self.crew_parser_service = crew_parser_service
         self.python_code_executor_service = python_code_executor_service
-        self.crewai_output_channel = crewai_output_channel
         self.knowledge_search_service = knowledge_search_service
+        self.agent_task_service = agent_task_service
+        self.remembered_outputs_store = RememberedOutputsStore(
+            redis_service=redis_service
+        )
 
         self._graph_builder = StateGraph(State)
         self._end_node_result: dict | None = {}
@@ -267,21 +270,38 @@ class SessionGraphBuilder:
 
         schema = session_data.graph
 
-        for crew_node_data in schema.crew_node_list:
-            crew_node = CrewNode(
-                session_id=self.session_id,
-                node_name=crew_node_data.node_name,
-                crew_data=crew_node_data.crew,
-                redis_service=self.redis_service,
-                crewai_output_channel=self.crewai_output_channel,
-                crew_parser_service=self.crew_parser_service,
-                input_map=crew_node_data.input_map,
-                output_variable_path=crew_node_data.output_variable_path,
-                knowledge_search_service=self.knowledge_search_service,
-                stop_event=self.stop_event,
-                stream_config=crew_node_data.stream_config,
+        if schema.task_node_list and self.agent_task_service is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.task_node_list)} task node(s) "
+                "but no agent_task_service was provided to SessionGraphBuilder."
             )
-            self.add_node(crew_node)
+
+        for task_node_data in schema.task_node_list:
+            task_node = TaskNode(
+                session_id=self.session_id,
+                node_name=task_node_data.node_name,
+                stop_event=self.stop_event,
+                task_node_data=task_node_data,
+                agent_task_service=self.agent_task_service,
+                remembered_outputs_store=self.remembered_outputs_store,
+            )
+            self.add_node(task_node)
+
+        if schema.agent_node_list and self.agent_task_service is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.agent_node_list)} agent node(s) "
+                "but no agent_task_service was provided to SessionGraphBuilder."
+            )
+
+        for agent_node_data in schema.agent_node_list:
+            agent_node = AgentNode(
+                session_id=self.session_id,
+                node_name=agent_node_data.node_name,
+                stop_event=self.stop_event,
+                agent_node_data=agent_node_data,
+                agent_task_service=self.agent_task_service,
+            )
+            self.add_node(agent_node)
 
         for python_node_data in schema.python_node_list:
             python_node = PythonNode(
@@ -292,9 +312,25 @@ class SessionGraphBuilder:
                 input_map=python_node_data.input_map,
                 output_variable_path=python_node_data.output_variable_path,
                 stop_event=self.stop_event,
-                stream_config=python_node_data.stream_config,
             )
             self.add_node(python_node)
+
+        for knowledge_node_data in schema.knowledge_node_list:
+            knowledge_node = KnowledgeNode(
+                session_id=self.session_id,
+                node_name=knowledge_node_data.node_name,
+                stop_event=self.stop_event,
+                input_map=knowledge_node_data.input_map,
+                output_variable_path=knowledge_node_data.output_variable_path,
+                collection_id=knowledge_node_data.collection_id,
+                rag_type_id=knowledge_node_data.rag_type_id,
+                query=knowledge_node_data.query,
+                rag_search_config=knowledge_node_data.rag_search_config,
+                knowledge_search_service=self.knowledge_search_service,
+                embedder_api_key=knowledge_node_data.embedder_api_key,
+                llm_api_key=knowledge_node_data.llm_api_key,
+            )
+            self.add_node(knowledge_node)
 
         for file_extractor_node_data in schema.file_extractor_node_list:
             file_extractor_node = FileContentExtractorNode(
@@ -304,6 +340,9 @@ class SessionGraphBuilder:
                 input_map=file_extractor_node_data.input_map,
                 output_variable_path=file_extractor_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_allowed_paths=file_extractor_node_data.storage_allowed_paths,
+                storage_org_prefix=file_extractor_node_data.storage_org_prefix,
+                org_id=file_extractor_node_data.org_id,
             )
             self.add_node(file_extractor_node)
 
@@ -315,34 +354,11 @@ class SessionGraphBuilder:
                 input_map=audio_transcription_node_data.input_map,
                 output_variable_path=audio_transcription_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_allowed_paths=audio_transcription_node_data.storage_allowed_paths,
+                storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
+                org_id=audio_transcription_node_data.org_id,
             )
             self.add_node(audio_transcription_node)
-
-        for ca_data in schema.code_agent_node_list:
-            code_agent_node = CodeAgentNode(
-                session_id=self.session_id,
-                graph_id=schema.graph_id,
-                node_name=ca_data.node_name,
-                stop_event=self.stop_event,
-                input_map=ca_data.input_map,
-                output_variable_path=ca_data.output_variable_path,
-                python_code_executor_service=self.python_code_executor_service,
-                llm_config_id=ca_data.llm_config_id,
-                agent_mode=ca_data.agent_mode,
-                code_session_id=ca_data.session_id,
-                system_prompt=ca_data.system_prompt,
-                stream_handler_code=ca_data.stream_handler_code,
-                libraries=ca_data.libraries,
-                polling_interval_ms=ca_data.polling_interval_ms,
-                silence_indicator_s=ca_data.silence_indicator_s,
-                indicator_repeat_s=ca_data.indicator_repeat_s,
-                chunk_timeout_s=ca_data.chunk_timeout_s,
-                inactivity_timeout_s=ca_data.inactivity_timeout_s,
-                max_wait_s=ca_data.max_wait_s,
-                stream_config=ca_data.stream_config,
-                output_schema=ca_data.output_schema,
-            )
-            self.add_node(code_agent_node)
 
         for edge in schema.edge_list:
             self.add_edge(edge.start_key, edge.end_key)

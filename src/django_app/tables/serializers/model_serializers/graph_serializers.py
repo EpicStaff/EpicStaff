@@ -9,13 +9,14 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
     ClassificationDecisionTableNodeSerializer,
 )
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
-    CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
+    KnowledgeNodeReadSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
 )
 from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
     TelegramTriggerNodeSerializer,
@@ -29,13 +30,18 @@ from tables.models.graph_models import (
     GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
-    StartNode,
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 
 
 class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
     class Meta(BaseGraphEntityMixin.Meta):
         model = GraphNote
         fields = "__all__"
@@ -46,59 +52,75 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
         model = GraphSessionMessage
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        message_data = data.get("message_data") or {}
+        if message_data.get("message_type") != "subgraph_start":
+            return data
+
+        exec_id = message_data.get("subgraph_execution_id")
+        if not exec_id:
+            return data
+
+        subtree_messages = list(
+            GraphSessionMessage.objects.filter(
+                session_id=instance.session_id,
+                message_data__subgraph_execution_ids__contains=[exec_id],
+            )
+            .exclude(id=instance.id)
+            .values("parent_subgraph_execution_id", "message_data", "name")
+        )
+
+        exec_to_subgraph_id = {exec_id: message_data.get("subgraph_id")}
+        counts_by_exec_id: dict[str, dict[str, int]] = {}
+        for msg in subtree_messages:
+            msg_data = msg["message_data"] or {}
+            msg_type = msg_data.get("message_type")
+            if not msg_type:
+                continue
+
+            if msg_type == "subgraph_start":
+                child_exec = msg_data.get("subgraph_execution_id")
+                child_sgid = msg_data.get("subgraph_id")
+                if child_exec and child_sgid is not None:
+                    exec_to_subgraph_id[child_exec] = child_sgid
+
+            parent_exec = msg["parent_subgraph_execution_id"]
+            if not parent_exec:
+                continue
+            parent_exec = str(parent_exec)
+
+            per_type = counts_by_exec_id.setdefault(parent_exec, {})
+            per_type[msg_type] = per_type.get(msg_type, 0) + 1
+
+        messages_count_by_subgraph: dict[int, dict[str, int]] = {}
+        for e_id, per_type in counts_by_exec_id.items():
+            sgid = exec_to_subgraph_id.get(e_id)
+            if sgid is None:
+                continue
+            agg = messages_count_by_subgraph.setdefault(sgid, {})
+            for msg_type, count in per_type.items():
+                agg[msg_type] = agg.get(msg_type, 0) + count
+
+        data["message_data"] = {
+            **message_data,
+            "messages_count_by_subgraph": messages_count_by_subgraph,
+        }
+        return data
+
 
 class GraphOrganizationSerializer(serializers.ModelSerializer):
+    # Read-only: org is derived from graph.org and the row is created
+    # alongside its graph (see GraphViewSet.perform_create), so this
+    # serializer only ever needs to expose the current state.
     class Meta:
         model = GraphOrganization
-        fields = [
-            "id",
-            "graph",
-            "organization",
-            "persistent_variables",
-            "user_variables",
-        ]
-
-    def validate(self, attrs):
-        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
-        if not graph:
-            raise serializers.ValidationError("Graph is required to validate variables")
-
-        organization_variables = attrs.get("persistent_variables", {})
-        user_variables = attrs.get("user_variables", {})
-
-        qs = GraphOrganization.objects.filter(graph=graph)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError("This flow already has an organization")
-
-        start_node: StartNode = graph.start_node_list.first()
-        for key in user_variables:
-            if key not in start_node.variables:
-                raise serializers.ValidationError(
-                    {
-                        "user_variables": f"Provided user_variables have to be in flow domain. Variable `{key}` is not in domain."
-                    }
-                )
-        for key in organization_variables:
-            if key not in start_node.variables:
-                raise serializers.ValidationError(
-                    {
-                        "persistent_variables": f"Provided persistent_variables have to be in flow domain. Variable `{key}` is not in domain."
-                    }
-                )
-            if key in user_variables:
-                raise serializers.ValidationError(
-                    {
-                        "user_variables": f"User variables and Organization variables cannot have same values. Issue with key `{key}`"
-                    }
-                )
-
-        return super().validate(attrs)
+        fields = ["id", "graph", "persistent_variables", "user_variables"]
+        read_only_fields = ["id", "graph", "persistent_variables", "user_variables"]
 
 
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
+    # TODO refactor to use user_variable for persistent variables
     class Meta:
         model = GraphOrganizationUser
         fields = ["id", "graph", "organization_user", "persistent_variables"]
@@ -139,7 +161,6 @@ class GraphLightSerializer(GraphLightBaseSerializer):
 
 class GraphSerializer(serializers.ModelSerializer):
     # Reverse relationships
-    crew_node_list = CrewNodeSerializer(many=True, read_only=True)
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
     audio_transcription_node_list = AudioTranscriptionNodeSerializer(
@@ -154,7 +175,9 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
-    code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
+    knowledge_node_list = KnowledgeNodeReadSerializer(many=True, read_only=True)
+    task_node_list = TaskNodeSerializer(many=True, read_only=True)
+    agent_node_list = AgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
     telegram_trigger_node_list = TelegramTriggerNodeSerializer(
         many=True, read_only=True
@@ -162,11 +185,22 @@ class GraphSerializer(serializers.ModelSerializer):
     schedule_trigger_node_list = ScheduleTriggerNodeSerializer(
         many=True, read_only=True
     )
-    label_ids = serializers.PrimaryKeyRelatedField(
-        many=True, source="labels", queryset=Label.objects.all(), required=False
+    label_ids = OrgScopedPrimaryKeyRelatedField(
+        many=True,
+        source="labels",
+        queryset=Label.objects.filter(scope=Label.Scope.FLOW),
+        required=False,
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
+    name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=Graph.objects.all(),
+                message="A flow with this name already exists.",
+            )
+        ]
+    )
 
     class Meta:
         model = Graph
@@ -176,7 +210,6 @@ class GraphSerializer(serializers.ModelSerializer):
             "name",
             "metadata",
             "description",
-            "crew_node_list",
             "python_node_list",
             "file_extractor_node_list",
             "audio_transcription_node_list",
@@ -186,11 +219,13 @@ class GraphSerializer(serializers.ModelSerializer):
             "decision_table_node_list",
             "classification_decision_table_node_list",
             "subgraph_node_list",
-            "code_agent_node_list",
+            "task_node_list",
+            "agent_node_list",
+            "knowledge_node_list",
             "start_node_list",
             "end_node_list",
             "time_to_live",
-            "persistent_variables",
+            "enable_persistent_variables",
             "epicchat_enabled",
             "telegram_trigger_node_list",
             "schedule_trigger_node_list",
@@ -198,6 +233,8 @@ class GraphSerializer(serializers.ModelSerializer):
             "graph_note_list",
             "save_version",
         ]
+        # Derived on Domain save — never set directly by the client.
+        read_only_fields = ["enable_persistent_variables"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

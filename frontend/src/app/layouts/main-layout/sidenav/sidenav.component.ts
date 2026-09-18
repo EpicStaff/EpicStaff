@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { ClickOutsideDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
@@ -20,6 +21,7 @@ import { UserAvatarComponent } from '../../../features/role-base-access/componen
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config/config.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -27,17 +29,19 @@ import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string;
+    routeLink?: string | (() => string | null);
     icon?: string;
     label: string;
     showTooltip: boolean;
+    /** Function (not boolean) so signal reads inside happen at template-eval time.
+     *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
+    isPermitted: () => boolean;
     action?: () => void;
     customClass?: string;
 }
 
 @Component({
     selector: 'app-left-sidebar',
-    standalone: true,
     imports: [
         TooltipComponent,
         RouterLinkActive,
@@ -131,12 +135,19 @@ export class LeftSidebarComponent implements AfterViewInit {
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
+    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
+     *  binding re-evaluates when active-org permissions reload after an org switch. */
+    public canReadFlows(): boolean {
+        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
+    }
+
     constructor(
         public epicChatService: EpicChatService,
         public activeOrgService: ActiveOrgService,
         private configService: ConfigService,
         private configureModelsDialogService: ConfigureModelsDialogService,
-        private authService: AuthService
+        private authService: AuthService,
+        private permissionService: PermissionsService
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
@@ -144,23 +155,18 @@ export class LeftSidebarComponent implements AfterViewInit {
         // avoiding CORS failures and hardcoded URLs.
         // this.apiBaseUrl = `${window.location.origin}/api/`;
 
+        // Comment on the comment above:
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;
         this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
-                id: 'projects',
-                routeLink: 'projects',
-                icon: 'project',
-                label: 'Projects',
-                showTooltip: false,
-            },
-            {
-                id: 'staff',
-                routeLink: 'staff',
-                icon: 'agent',
-                label: 'Staff',
+                id: 'agents',
+                routeLink: 'agents',
+                icon: 'agents',
+                label: 'Agents',
+                isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -168,6 +174,15 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'tools',
                 icon: 'tools',
                 label: 'Tools',
+                isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
+                showTooltip: false,
+            },
+            {
+                id: 'files',
+                routeLink: () => this.resolveFilesRoute(),
+                icon: 'sources',
+                label: 'Files',
+                isPermitted: () => this.resolveFilesRoute() !== null,
                 showTooltip: false,
             },
             {
@@ -175,19 +190,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'flows',
                 icon: 'flows',
                 label: 'Flows',
-                showTooltip: false,
-            },
-            {
-                id: 'files',
-                routeLink: 'files',
-                icon: 'sources',
-                label: 'Files',
+                isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'chats',
                 routeLink: 'chats',
                 icon: 'chats',
+                isPermitted: () => true,
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -198,6 +208,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
+            isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
@@ -243,5 +254,18 @@ export class LeftSidebarComponent implements AfterViewInit {
             event.preventDefault();
             item.action();
         }
+    }
+
+    public resolveRouteLink(item: NavItem): string | null {
+        if (typeof item.routeLink === 'function') return item.routeLink();
+        return item.routeLink ?? null;
+    }
+
+    /** Route to whichever `/files/*` sub-tab the user has read access to in the current org, or `null` if none. */
+    private resolveFilesRoute(): string | null {
+        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read))
+            return '/files/knowledge-sources';
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        return null;
     }
 }

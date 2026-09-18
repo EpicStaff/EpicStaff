@@ -1,0 +1,87 @@
+{
+  "title": "ScheduleManagerToolArgs",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["create", "list", "update", "delete"],
+      "description": "Which operation to perform: 'create' a new schedule, 'list' this tool's schedules (always scoped to the configured graph_id), 'update' an existing schedule (requires schedule_id), or 'delete' an existing schedule (requires schedule_id)."
+    },
+    "schedule_id": {
+      "type": "integer",
+      "description": "ID of an existing schedule. Required for 'update' and 'delete'. Ignored for 'create'/'list'."
+    },
+    "node_name": {
+      "type": "string",
+      "description": "Human-readable name for the schedule. Optional for 'create' — an auto-generated unique name is used if omitted. Optional for 'update' to rename."
+    },
+    "run_mode": {
+      "type": "string",
+      "enum": ["once", "repeat"],
+      "description": "'once' fires a single time at start_date_time. 'repeat' fires every N units (see 'every'/'unit') starting at start_date_time. Required for 'create'."
+    },
+    "start_date_time": {
+      "type": "string",
+      "description": "ISO 8601 datetime (e.g. '2026-07-06T09:00:00'). Naive values are interpreted in 'timezone'. Required for 'create' when run_mode is set."
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone name used to interpret naive start_date_time/end_date_time values, e.g. 'UTC', 'Europe/Kyiv'. Optional, default 'UTC'."
+    },
+    "every": {
+      "type": "integer",
+      "description": "Interval size for run_mode='repeat', e.g. 2 with unit='hours' means every 2 hours. Required for run_mode='repeat'."
+    },
+    "unit": {
+      "type": "string",
+      "enum": ["seconds", "minutes", "hours", "days", "weeks", "months"],
+      "description": "Interval unit for run_mode='repeat'. Required for run_mode='repeat'."
+    },
+    "weekdays": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Optional list of weekday codes (mon/tue/wed/thu/fri/sat/sun) restricting repeat fires. Only valid with unit='days' or unit='weeks'."
+    },
+    "end_type": {
+      "type": "string",
+      "enum": ["never", "on_date", "after_n_runs"],
+      "description": "When the schedule stops firing. 'never' runs indefinitely, 'on_date' stops after end_date_time, 'after_n_runs' stops after max_runs fires. Optional, default 'never'."
+    },
+    "end_date_time": {
+      "type": "string",
+      "description": "ISO 8601 datetime after which the schedule stops firing. Required when end_type='on_date'."
+    },
+    "max_runs": {
+      "type": "integer",
+      "description": "Maximum number of times the schedule may fire before auto-deactivating. Required when end_type='after_n_runs'."
+    },
+    "is_active": {
+      "type": "boolean",
+      "description": "Whether the schedule should be enabled. Optional, default true for 'create'."
+    },
+    "apply_jitter": {
+      "type": "boolean",
+      "description": "If true (default), a small random offset (0-jitter_seconds_max seconds) is added to a start_date_time that lands exactly on a round boundary (:00 or :30 seconds=0), so recurring schedules don't all fire in the same instant as everyone else's. Set false to use start_date_time exactly as given."
+    },
+    "jitter_seconds_max": {
+      "type": "integer",
+      "description": "Upper bound (exclusive) in seconds for the random jitter offset described in apply_jitter. Optional, default 45."
+    },
+    "graph_id": {
+      "type": "integer",
+      "description": "ID of the saved flow (graph) this tool manages schedules for. Set this in the tool configuration, not by the agent — the agent can never create/list/update/delete a schedule for any other graph.",
+      "input_type": "user_input"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "EpicStaff API key used to authenticate the schedule-trigger-nodes calls (sent as the X-Api-Key header). Set this in the tool configuration, not by the agent.",
+      "input_type": "user_input"
+    },
+    "api_base_url": {
+      "type": "string",
+      "description": "Base URL of the EpicStaff Django REST API, e.g. http://djangoapp:8000/api. Optional — if unset, falls back to the DJANGO_API_URL environment variable, then to http://djangoapp:8000/api.",
+      "input_type": "user_input"
+    }
+  },
+  "required": ["action", "graph_id", "api_key"]
+}

@@ -1,0 +1,21 @@
+<button
+    #triggerEl
+    class="cd-toggle"
+    [class.cd-toggle--active]="hasValue || isOpen"
+    title="Filter by date"
+    (click)="toggle($event)"
+>
+    <ng-content></ng-content>
+    <app-svg-icon
+        icon="date-filter"
+        size="16px"
+    ></app-svg-icon>
+</button>
+
+<ng-template #dropdownTemplate>
+    <app-date-range-picker
+        [value]="value"
+        (apply)="onSelect($event)"
+        (clear)="clear()"
+    />
+</ng-template>

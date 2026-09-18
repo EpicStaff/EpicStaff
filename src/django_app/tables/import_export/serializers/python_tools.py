@@ -8,11 +8,19 @@ from tables.models import (
 
 
 class PythonCodeImportSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(allow_blank=True)
     libraries = serializers.CharField(allow_blank=True)
+    entrypoint = serializers.CharField(allow_blank=True, required=False)
 
     class Meta:
         model = PythonCode
-        exclude = ["id"]
+        exclude = ["id", "secrets"]
+
+    def to_internal_value(self, data):
+        result = super().to_internal_value(data)
+        if not result.get("entrypoint"):
+            result["entrypoint"] = "main"
+        return result
 
 
 class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
@@ -24,7 +32,7 @@ class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCodeToolConfig
-        exclude = ["id", "tool"]
+        exclude = ["id", "tool", "created_by"]
 
 
 class PythonCodeToolImportSerializer(serializers.ModelSerializer):
@@ -40,4 +48,4 @@ class PythonCodeToolImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCodeTool
-        exclude = ["favorite"]
+        exclude = ["labels", "created_by"]

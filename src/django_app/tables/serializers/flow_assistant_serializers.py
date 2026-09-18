@@ -1,12 +1,17 @@
 from rest_framework import serializers
 
 from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
+from tables.models.llm_models import LLMConfig
+from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 
 
 class FlowAssistantSerializer(serializers.ModelSerializer):
     """Read + write serializer for FlowAssistant config."""
 
     system_prompt_preview = serializers.SerializerMethodField()
+    llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = FlowAssistant

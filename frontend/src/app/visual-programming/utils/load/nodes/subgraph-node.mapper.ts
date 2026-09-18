@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { SubGraphNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -15,7 +15,7 @@ export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
         tags: [],
     };
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: sn.id,
         type: NodeType.SUBGRAPH,
         node_name: sn.node_name,

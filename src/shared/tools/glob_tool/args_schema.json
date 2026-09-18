@@ -1,0 +1,15 @@
+{
+  "title": "GlobToolArgs",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "Glob pattern to match file paths against, e.g. '**/*.csv' or 'reports/2026-*.pdf'."
+    },
+    "path": {
+      "type": "string",
+      "description": "Directory to search in, relative to the sandbox root. Defaults to the sandbox root."
+    }
+  },
+  "required": ["pattern"]
+}

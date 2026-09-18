@@ -11,29 +11,45 @@ import { PermissionsService } from '../../services/auth/permissions.service';
 export const workspaceGuard: CanActivateFn = () => {
     const permissionsService = inject(PermissionsService);
     const router = inject(Router);
-
-    const hasAccess =
-        permissionsService.isSuperadmin ||
-        permissionsService.can('organizations', 'read') ||
-        permissionsService.can('users', 'read') ||
-        permissionsService.can('roles', 'read');
-    return hasAccess ? true : router.parseUrl('/projects/my');
+    return permissionsService.canAccessWorkspace() ? true : router.parseUrl(permissionsService.resolveDefaultRoute());
 };
 
-/** /workspace/main — superadmins only. */
+/** /workspace index redirect — sends the caller to their first accessible workspace tab. */
+export const workspaceIndexGuard: CanActivateFn = () => {
+    const permissionsService = inject(PermissionsService);
+    const router = inject(Router);
+    return router.parseUrl(permissionsService.resolveDefaultWorkspaceTab() ?? permissionsService.resolveDefaultRoute());
+};
+
+/**
+ * Cross-org permission guard for /workspace/* tabs. Reads [ResourceCode, ActionCode]
+ * from route.data['permission'] and checks `canInAnyOrg` (any org the caller belongs to),
+ * not the currently-active org. On failure, redirects to the first accessible workspace tab.
+ */
+export const workspacePermissionGuard: CanActivateFn = (route) => {
+    const permissionsService = inject(PermissionsService);
+    const router = inject(Router);
+    const [resource, action] = route.data['permission'] as [ResourceCode, ActionCode];
+    if (permissionsService.canInAnyOrg(resource, action)) return true;
+    return router.parseUrl(permissionsService.resolveDefaultWorkspaceTab() ?? permissionsService.resolveDefaultRoute());
+};
+
+/** /workspace/main — superadmins only. Non-SA bounce to the first accessible workspace tab. */
 export const superAdminGuard: CanActivateFn = () => {
     const permissionsService = inject(PermissionsService);
     const router = inject(Router);
-    return permissionsService.isSuperadmin ? true : router.parseUrl('/workspace/users');
+    if (permissionsService.isSuperadmin) return true;
+    const tab = permissionsService.resolveDefaultWorkspaceTab();
+    return router.parseUrl(tab ?? permissionsService.resolveDefaultRoute());
 };
 
 /**
  * Generic permission guard. Reads [ResourceCode, ActionCode] from route.data['permission'].
- * Redirects to /workspace/users on failure.
+ * Redirects to the first accessible route on failure.
  */
 export const permissionGuard: CanActivateFn = (route) => {
     const permissionsService = inject(PermissionsService);
     const router = inject(Router);
     const [resource, action] = route.data['permission'] as [ResourceCode, ActionCode];
-    return permissionsService.can(resource, action) ? true : router.parseUrl('/workspace/users');
+    return permissionsService.can(resource, action) ? true : router.parseUrl(permissionsService.resolveDefaultRoute());
 };

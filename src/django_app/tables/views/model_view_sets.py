@@ -1,32 +1,37 @@
-import base64
 import json
-import urllib.error
-import urllib.parse
-import urllib.request
+import logging
+import uuid
+
+logger = logging.getLogger(__name__)
 
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.db.models import NOT_PROVIDED, IntegerField, Prefetch
-from django.db.models.functions import Cast
+from django.http import HttpResponse
+from django.db.models import NOT_PROVIDED, Exists, OuterRef, Q
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
-    CharFilter,
     DjangoFilterBackend,
     FilterSet,
     NumberFilter,
 )
-from rest_framework import filters as drf_filters
-from rest_framework import generics, mixins, status, viewsets, serializers
+from rest_framework import (
+    generics,
+    serializers,
+    viewsets,
+    mixins,
+    status,
+    filters as drf_filters,
+)
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    PermissionDenied,
     ValidationError as DRFValidationError,
+    PermissionDenied,
+    NotFound,
 )
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -35,27 +40,13 @@ from tables.serializers.model_serializers.embedding_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
-    RealtimeConfigSerializer,
-    RealtimeModelSerializer,
-    RealtimeTranscriptionConfigSerializer,
-    RealtimeTranscriptionModelSerializer,
-)
-from tables.serializers.model_serializers.provider_serializers import (
-    ProviderSerializer,
-)
-from tables.serializers.model_serializers.tag_serializers import (
-    AgentTagSerializer,
-    CrewTagSerializer,
-    GraphTagSerializer,
 )
 from tables.exceptions import (
-    AgentSerializerError,
     BuiltInToolModificationError,
     BulkSaveValidationError,
-    TaskSerializerError,
-    GraphSaveVersionConflictError,
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.graph_versioning.services import GraphVersioningService
 from tables.graph_versioning.serializers import (
@@ -64,15 +55,16 @@ from tables.graph_versioning.serializers import (
     GraphVersionUpdateSerializer,
     RestoreVersionInputSerializer,
 )
+from agents.serializers.surface_serializers import SurfaceReadSerializer
+from agents.services.node_surface_service import NodeSurfaceService
 
 from tables.import_export.enums import EntityType
+
 from tables.models import (
-    Agent,
+    AgentNode,
+    AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     ConditionalEdge,
-    Crew,
-    CrewNode,
     Edge,
     EmbeddingConfig,
     EmbeddingModel,
@@ -83,32 +75,15 @@ from tables.models import (
     LLMConfig,
     LLMModel,
     Provider,
-    PythonCode,
     PythonCodeResult,
     PythonCodeTool,
     PythonNode,
     RealtimeModel,
+    Secret,
     StartNode,
     SubGraphNode,
-    Task,
     TaskContext,
-    TemplateAgent,
-    ToolConfig,
-    ToolConfigField,
-)
-from tables.models.crew_models import (
-    AgentConfiguredTools,
-    AgentMcpTools,
-    AgentPythonCodeTools,
-    AgentPythonCodeToolConfigs,
-    TaskConfiguredTools,
-    TaskMcpTools,
-    TaskPythonCodeToolConfigs,
-    TaskPythonCodeTools,
-)
-from tables.exceptions import (
-    TaskSerializerError,
-    AgentSerializerError,
+    TaskNode,
 )
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -126,37 +101,55 @@ from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
-from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.exceptions import PermissionDenied
-from django_filters.rest_framework import (
-    DjangoFilterBackend,
-    FilterSet,
-    CharFilter,
-    NumberFilter,
+from tables.swagger_schemas.partial_import_schemas import (
+    PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
 )
-from rest_framework import viewsets, mixins, status, filters as drf_filters
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser, FormParser
+from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
+    GRAPH_DELETE_BY_UUID_DELETE,
+)
+from tables.swagger_schemas.tools_schemas import (
+    MCP_TOOL_BULK_DELETE_POST,
+    MCP_TOOL_BULK_EXPORT_POST,
+    MCP_TOOL_COPY_POST,
+    MCP_TOOL_EXPORT_GET,
+    MCP_TOOL_FAVORITE_DELETE,
+    MCP_TOOL_FAVORITE_POST,
+    MCP_TOOL_IMPORT_POST,
+    PYTHON_CODE_TOOL_BULK_DELETE_POST,
+    PYTHON_CODE_TOOL_BULK_EXPORT_POST,
+    PYTHON_CODE_TOOL_COPY_POST,
+    PYTHON_CODE_TOOL_EXPORT_GET,
+    PYTHON_CODE_TOOL_FAVORITE_DELETE,
+    PYTHON_CODE_TOOL_FAVORITE_POST,
+    PYTHON_CODE_TOOL_IMPORT_POST,
+    TOOL_ORDERING_PARAMETER,
+)
+from tables.swagger_schemas.tools_usage_schemas import (
+    MCP_TOOL_USAGE_DETAIL_GET,
+    MCP_TOOL_USAGE_POST,
+    PYTHON_CODE_TOOL_USAGE_DETAIL_GET,
+    PYTHON_CODE_TOOL_USAGE_POST,
+)
+from tables.services.tools_usage_service import (
+    get_mcp_tool_usage_detail,
+    get_python_code_tool_usage_detail,
+)
 from django.db import transaction
 from django.db.models import Prefetch
 from tables.models.graph_models import (
-    ClassificationConditionGroup,
     ClassificationDecisionTableNode,
-    ClassificationDecisionTablePrompt,
     Condition,
     ConditionGroup,
     DecisionTableNode,
     EndNode,
+    KnowledgeNode,
     GraphOrganization,
     GraphOrganizationUser,
     GraphNote,
     TelegramTriggerNode,
-    TelegramTriggerNodeField,
     WebhookTriggerNode,
     ScheduleTriggerNode,
 )
-from tables.models.rbac_models import Organization, OrganizationUser
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeTranscriptionConfig,
@@ -164,48 +157,74 @@ from tables.models.llm_models import (
 )
 from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
+from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
-    RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeAgentDefinition,
     RealtimeSessionItem,
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+    ConversationRecording,
 )
 from tables.filters import (
     EmbeddingModelFilter,
     LabelFilterBackend,
     LLMModelFilter,
+    McpToolFilter,
     ProviderFilter,
+    PythonCodeToolFilter,
+    WebhookTriggerFilter,
 )
 from tables.utils.helpers import natural_sort_key
-from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.label_models import Label
-from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
-    NgrokWebhookConfig,
-    VoiceSettings,
+    LOCAL_ONLY_PROVIDERS,
     WebhookTrigger,
+    RealtimeChannel,
+    TwilioChannel,
+    ProviderType,
 )
 from tables.services.copy_services import (
-    AgentCopyService,
-    CrewCopyService,
     GraphCopyService,
     McpToolCopyService,
     PythonCodeToolCopyService,
 )
-from tables.views.mixins import CopyActionMixin
+from tables.views.mixins import (
+    BuiltInWriteProtectedMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    OrgScopedChildViewSetMixin,
+    OrgScopedHybridViewSetMixin,
+    OrgScopedViewSetMixin,
+    SuperadminWriteMixin,
+    ToolUsageActionsMixin,
+)
+from tables.models.rbac_models import ApiKey
+from tables.models.rbac_models.rbac_enums import Permission
+from tables.services.rbac.permissions import (
+    IsSystemApiKeyAuthenticated,
+    DenyApiKeyAuth,
+)
+from tables.serializers.org_scoped_fields import resolve_active_org_id
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.cdt_explain.service import CdtExplainService
+from tables.serializers.cdt_explain_serializers import (
+    CdtExplainRequestSerializer,
+    CdtExplainResponseSerializer,
+)
+from tables.services.rbac.permission_resolver import PermissionResolver
+from tables.services.secrets import secret_resolver, secret_usage_service
+from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
-    AgentReadSerializer,
+    AgentNodeSerializer,
+    AgentNodeTaskSerializer,
     ClassificationDecisionTableNodeSerializer,
-    AgentTagSerializer,
-    AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     GraphNoteSerializer,
-    ConditionGroupSerializer,
-    ConditionSerializer,
-    CrewNodeSerializer,
-    CrewSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
     EndNodeSerializer,
@@ -215,45 +234,78 @@ from tables.serializers.model_serializers import (
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
+    KnowledgeNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    KnowledgeNodeWriteSerializer,
     LabelSerializer,
     McpToolSerializer,
-    MemorySerializer,
-    NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
-    PythonCodeSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
+    ConversationRecordingSerializer,
+    ElevenLabsRealtimeConfigSerializer,
+    GeminiRealtimeConfigSerializer,
+    OpenAIRealtimeConfigSerializer,
     RealtimeAgentChatSerializer,
-    RealtimeAgentSerializer,
+    RealtimeChannelInternalSerializer,
+    RealtimeChannelSerializer,
+    RealtimeConfigSerializer,
+    RealtimeModelSerializer,
+    RealtimeAgentDefinitionSerializer,
     RealtimeSessionItemSerializer,
+    RealtimeTranscriptionConfigSerializer,
+    RealtimeTranscriptionModelSerializer,
+    TwilioChannelSerializer,
+    SecretSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
-    TaskReadSerializer,
-    TaskWriteSerializer,
-    TemplateAgentSerializer,
-    ToolConfigSerializer,
-    VoiceSettingsSerializer,
+    TaskNodeSerializer,
     WebhookTriggerNodeSerializer,
-    WebhookTriggerSerializer,
+    WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
-    TelegramTriggerNodeFieldSerializer,
+    TelegramTriggerNodeReadSerializer,
 )
+
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
+from tables.import_export.registry import entity_registry
+from tables.import_export.services.partial_export_service import (
+    GraphPartialExportService,
+    NodeRef,
+    LIST_KEY_TO_ENTITY_TYPE,
+)
+from tables.import_export.services.partial_import_service import PartialImportService
+from tables.utils.helpers import generate_file_name
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.classification_decision_table_node_service import (
+    ClassificationDecisionTableNodeService,
+)
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
-    TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
+    TWILIO_CHANNEL_PHONE_NUMBERS_GET,
+    REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET,
 )
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
+from tables.swagger_schemas.webhook_schemas import (
+    WEBHOOK_TRIGGER_NODE_CREATE,
+    WEBHOOK_TRIGGER_NODE_UPDATE,
+    WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
+    WEBHOOK_TRIGGER_CREATE,
+    WEBHOOK_TRIGGER_UPDATE,
+    WEBHOOK_TRIGGER_PARTIAL_UPDATE,
+)
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -266,6 +318,10 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
     Allows updating non-critical fields of predefined objects.
     Prevents deletion of predefined objects.
     """
+
+    # No permission_classes / rbac_resource_type here on purpose: this is an
+    # abstract base. Every concrete subclass (LLMModelReadWriteViewSet,
+    # EmbeddingModelReadWriteViewSet) declares its own gate.
 
     def get_queryset(self):
         if self.action == "destroy":
@@ -313,14 +369,11 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
         instance.delete()
 
 
-class TemplateAgentReadWriteViewSet(ModelViewSet):
-    queryset = TemplateAgent.objects.all()
-    serializer_class = TemplateAgentSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = serializer_class.Meta.fields
+class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
 
-
-class LLMConfigReadWriteViewSet(ModelViewSet):
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
             field_name="model__llm_provider__id", lookup_expr="icontains"
@@ -334,27 +387,55 @@ class LLMConfigReadWriteViewSet(ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = LLMConfig.objects.all()
+    queryset = LLMConfig.objects.select_related("api_key_secret").all()
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
 
 
-class ProviderReadWriteViewSet(ModelViewSet):
+class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
+    # No rbac_resource_type: Provider is a global catalog (no org column).
+    # SuperadminWriteMixin gates writes to superadmin (seeded via the
+    # upload_models command) and provides the permission classes:
+    # [IsAuthenticated()] for reads, [IsAuthenticated(), IsSuperadmin()]
+    # for writes. Reads are intentionally global-readable — the frontend
+    # lists providers here (LLMProvidersService.getProviders).
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = ProviderFilter
 
 
-class LLMModelReadWriteViewSet(BasePredefinedRestrictedViewSet):
+class LLMModelReadWriteViewSet(
+    OrgScopedHybridViewSetMixin,
+    BuiltInWriteProtectedMixin,
+    BasePredefinedRestrictedViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    global_visibility_q = Q(is_custom=False)
+    # force created rows into the org's custom, non-predefined subset (also
+    # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
+    custom_create_values = {"is_custom": True, "predefined": False}
     queryset = LLMModel.objects.select_related("llm_provider").prefetch_related("tags")
     serializer_class = LLMModelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMModelFilter
 
 
-class EmbeddingModelReadWriteViewSet(BasePredefinedRestrictedViewSet):
+class EmbeddingModelReadWriteViewSet(
+    OrgScopedHybridViewSetMixin,
+    BuiltInWriteProtectedMixin,
+    BasePredefinedRestrictedViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    global_visibility_q = Q(is_custom=False)
+    # force created rows into the org's custom, non-predefined subset (also
+    # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
+    custom_create_values = {"is_custom": True, "predefined": False}
     queryset = EmbeddingModel.objects.select_related(
         "embedding_provider"
     ).prefetch_related("tags")
@@ -363,7 +444,11 @@ class EmbeddingModelReadWriteViewSet(BasePredefinedRestrictedViewSet):
     filterset_class = EmbeddingModelFilter
 
 
-class EmbeddingConfigReadWriteViewSet(ModelViewSet):
+class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
             field_name="model__embedding_provider__id", lookup_expr="icontains"
@@ -377,290 +462,10 @@ class EmbeddingConfigReadWriteViewSet(ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = EmbeddingConfig.objects.all()
+    queryset = EmbeddingConfig.objects.select_related("api_key_secret").all()
     serializer_class = EmbeddingConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingConfigFilter
-
-
-class AgentViewSet(CopyActionMixin, ModelViewSet):
-    copy_service_class = AgentCopyService
-    copy_serializer_class = AgentReadSerializer
-
-    queryset = Agent.objects.select_related(
-        "realtime_agent",
-        "naive_search_config",
-    ).prefetch_related(
-        Prefetch(
-            "python_code_tools",
-            queryset=AgentPythonCodeTools.objects.select_related(
-                "pythoncodetool__python_code"
-            ),
-            to_attr="prefetched_python_code_tools",
-        ),
-        Prefetch(
-            "python_code_tool_configs",
-            queryset=AgentPythonCodeToolConfigs.objects.select_related(
-                "pythoncodetoolconfig__tool__python_code"
-            ),
-            to_attr="prefetched_python_code_tool_configs",
-        ),
-        Prefetch(
-            "configured_tools",
-            queryset=AgentConfiguredTools.objects.select_related(
-                "toolconfig__tool"
-            ).prefetch_related(
-                Prefetch(
-                    "toolconfig__tool__tool_fields",
-                    queryset=ToolConfigField.objects.all(),
-                    to_attr="prefetched_config_fields",
-                )
-            ),
-            to_attr="prefetched_configured_tools",
-        ),
-        Prefetch(
-            "mcp_tools",
-            queryset=AgentMcpTools.objects.select_related("mcptool"),
-            to_attr="prefetched_mcp_tools",
-        ),
-        Prefetch(
-            "agent_naive_rags",
-            queryset=AgentNaiveRag.objects.select_related("naive_rag"),
-            to_attr="prefetched_agent_naive_rags",
-        ),
-    )
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = [
-        "memory",
-        "allow_delegation",
-        "cache",
-        "allow_code_execution",
-    ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.AGENT, export_prefix="agent", filename_attr="role"
-        )
-
-    def get_serializer_class(self):
-        if self.action in ["list", "retrieve"]:
-            return AgentReadSerializer
-        return AgentWriteSerializer
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        crew_id = self.request.query_params.get("crew_id")
-
-        if crew_id is not None:
-            queryset = queryset.filter(crew__id=crew_id)
-
-        if self.request.query_params.get("has_realtime_config") == "true":
-            queryset = queryset.filter(
-                realtime_agent__isnull=False,
-                realtime_agent__realtime_config__isnull=False,
-            )
-
-        return queryset
-
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        """Create agent and return response with AgentReadSerializer."""
-        write_serializer = self.get_serializer(data=request.data)
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_create(write_serializer)
-
-        # Return response using read serializer to include rag and search_configs
-        read_serializer = AgentReadSerializer(
-            write_serializer.instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
-
-    @transaction.atomic
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise AgentSerializerError(detail="Use tool_ids instead of tools")
-        write_serializer = self.get_serializer(
-            instance, data=request.data, partial=False
-        )
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-
-        instance.refresh_from_db()
-        read_serializer = AgentReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-    @transaction.atomic
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise AgentSerializerError(detail="Use tool_ids instead of tools")
-
-        write_serializer = self.get_serializer(
-            instance, data=request.data, partial=True
-        )
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-
-        instance.refresh_from_db()
-        read_serializer = AgentReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
-
-    @action(detail=False, methods=["post"], url_path="import")
-    def import_entity(self, request):
-        file_serializer = ImportRequestSerializer(data=request.data)
-        file_serializer.is_valid(raise_exception=True)
-
-        data = self.import_export_service.import_entity(
-            file_serializer.validated_data["file"]
-        )
-        return Response(data, status=status.HTTP_200_OK)
-
-
-class CrewReadWriteViewSet(CopyActionMixin, ModelViewSet):
-    copy_service_class = CrewCopyService
-    copy_serializer_class = CrewSerializer
-
-    queryset = Crew.objects.prefetch_related("task_set", "agents", "tags")
-    serializer_class = CrewSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = [
-        "description",
-        "name",
-        "process",
-        "memory",
-        "embedding_config",
-        "manager_llm_config",
-        "cache",
-        "full_output",
-        "planning",
-        "planning_llm_config",
-    ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.CREW, export_prefix="crew", filename_attr="name"
-        )
-
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
-
-    @action(detail=False, methods=["post"], url_path="import")
-    def import_entity(self, request):
-        file_serializer = ImportRequestSerializer(data=request.data)
-        file_serializer.is_valid(raise_exception=True)
-
-        data = self.import_export_service.import_entity(
-            file_serializer.validated_data["file"]
-        )
-        return Response(data, status=status.HTTP_200_OK)
-
-
-class TaskReadWriteViewSet(ModelViewSet):
-    queryset = Task.objects.prefetch_related(
-        Prefetch(
-            "task_python_code_tool_list",
-            queryset=TaskPythonCodeTools.objects.select_related("tool__python_code"),
-        ),
-        Prefetch(
-            "task_python_code_tool_config_list",
-            queryset=TaskPythonCodeToolConfigs.objects.select_related(
-                "tool__tool__python_code"
-            ),
-        ),
-        Prefetch(
-            "task_context_list",
-            queryset=TaskContext.objects.select_related("context"),
-        ),
-        Prefetch(
-            "task_configured_tool_list",
-            queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
-        ),
-        Prefetch(
-            "task_mcp_tool_list",
-            queryset=TaskMcpTools.objects.select_related("tool"),
-        ),
-    )
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = [
-        "crew",
-        "name",
-        "agent",
-        "order",
-        "async_execution",
-        "task_context_list",
-    ]
-
-    def get_serializer_class(self):
-        if self.action in ["list", "retrieve"]:
-            return TaskReadSerializer
-        return TaskWriteSerializer
-
-    def create(self, request, *args, **kwargs):
-        write_serializer = self.get_serializer(data=request.data)
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_create(write_serializer)
-
-        read_serializer = TaskReadSerializer(
-            write_serializer.instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
-
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise TaskSerializerError(detail="Use tool_ids instead of tools")
-
-        write_serializer = self.get_serializer(instance, data=request.data)
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-        instance.refresh_from_db()
-
-        read_serializer = TaskReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise TaskSerializerError(detail="Use tool_ids instead of tools")
-
-        write_serializer = self.get_serializer(
-            instance, data=request.data, partial=True
-        )
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-        instance.refresh_from_db()
-
-        read_serializer = TaskReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-
-class ToolConfigViewSet(ModelViewSet):
-    queryset = ToolConfig.objects.select_related("tool").prefetch_related(
-        Prefetch(
-            "tool__tool_fields",
-            queryset=ToolConfigField.objects.all(),
-            to_attr="prefetched_config_fields",
-        )
-    )
-    serializer_class = ToolConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["tool", "name"]
 
 
 class ContentHashPreconditionMixin:
@@ -678,28 +483,76 @@ class ContentHashPreconditionMixin:
         super().perform_update(serializer)
 
 
-class PythonCodeViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
-    """
-    A viewset for viewing and editing PythonCode instances.
-    """
-
-    queryset = PythonCode.objects.all()
-    serializer_class = PythonCodeSerializer
-
-
-class PythonCodeToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
+@extend_schema_view(
+    copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
+class PythonCodeToolViewSet(
+    OrgScopedHybridViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
+):
     """
     A viewset for viewing and editing PythonCodeTool instances.
+    Built-in tools are global; custom tools are org-owned.
     Prevents modifications or deletions of built-in tools.
     """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
+    }
+    global_visibility_q = Q(built_in=True)
+    custom_create_values = {"built_in": False}
 
     copy_service_class = PythonCodeToolCopyService
     copy_serializer_class = PythonCodeToolSerializer
 
-    queryset = PythonCodeTool.objects.all().select_related("python_code")
+    queryset = (
+        PythonCodeTool.objects.all()
+        .select_related("python_code")
+        .prefetch_related("python_code__secrets")
+    )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "python_code"]
+    filterset_class = PythonCodeToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.PYTHON_CODE_TOOL,
+            export_prefix="python_code_tool",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    PythonCodeToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -707,22 +560,140 @@ class PythonCodeToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
 
+    @extend_schema(methods=["POST"], **PYTHON_CODE_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **PYTHON_CODE_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            PythonCodeToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            PythonCodeToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
 
-class PythonCodeToolConfigViewSet(viewsets.ModelViewSet):
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Built-in tools are silently excluded, never rejected — they are
+            # simply not part of the deletable queryset (org_id also filters
+            # them out since built-ins have org_id=None, but built_in=False
+            # is kept explicit for clarity/defense-in-depth).
+            tool_list = PythonCodeTool.objects.filter(
+                id__in=ids,
+                org_id=self.get_active_org_id(),
+                built_in=False,
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, PythonCodeTool)
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(
+            pk, get_python_code_tool_usage_detail, "PythonCodeTool"
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        # Built-in tools (org_id=None) are globally visible and must be
+        # exportable like any org's own tool, mirroring get_org_scope_q()
+        # used by the import/export strategy and the get_queryset() scoping
+        # that export/get_object() already relies on.
+        existing_ids = PythonCodeTool.objects.filter(
+            Q(built_in=True) | Q(org_id=self.get_active_org_id()),
+            id__in=entity_ids,
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = PythonCodeToolConfig.objects.select_related("tool")
     serializer_class = PythonCodeToolConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(ReadOnlyModelViewSet):
+class PythonCodeResultReadViewSet(
+    OrgScopedViewSetMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["execution_id", "returncode"]
 
 
-class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
+class GraphViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "partial_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
+        "partial_import": Permission.UPDATE,
+        "save_flow": Permission.UPDATE,
+        "delete_by_uuid": Permission.DELETE,
+    }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
 
@@ -734,20 +705,17 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         self.import_export_service = ViewSetImportExportService(
             entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
         )
+        self._partial_export_service = GraphPartialExportService(entity_registry)
 
     def get_queryset(self):
         qs = (
             Graph.objects.defer("metadata", "tags")
             .prefetch_related(
                 Prefetch(
-                    "crew_node_list",
-                    queryset=CrewNode.objects.select_related("crew").prefetch_related(
-                        "crew__task_set"
-                    ),
-                ),
-                Prefetch(
                     "python_node_list",
-                    queryset=PythonNode.objects.select_related("python_code"),
+                    queryset=PythonNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "file_extractor_node_list", queryset=FileExtractorNode.objects.all()
@@ -759,14 +727,26 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
                 Prefetch("edge_list", queryset=Edge.objects.all()),
                 Prefetch(
                     "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code"),
+                    queryset=ConditionalEdge.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "webhook_trigger_node_list",
-                    queryset=WebhookTriggerNode.objects.all(),
+                    queryset=WebhookTriggerNode.objects.select_related(
+                        "python_code"
+                    ).prefetch_related("python_code__secrets"),
                 ),
                 Prefetch(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()
+                ),
+                Prefetch(
+                    "classification_decision_table_node_list",
+                    queryset=ClassificationDecisionTableNode.objects.select_related(
+                        "pre_python_code", "post_python_code"
+                    ).prefetch_related(
+                        "pre_python_code__secrets", "post_python_code__secrets"
+                    ),
                 ),
                 Prefetch(
                     "subgraph_node_list",
@@ -775,8 +755,38 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
                     ).prefetch_related("subgraph__tags"),
                 ),
                 Prefetch(
-                    "code_agent_node_list",
-                    queryset=CodeAgentNode.objects.select_related("llm_config"),
+                    "task_node_list",
+                    queryset=TaskNode.objects.select_related(
+                        "inline_surface"
+                    ).prefetch_related(
+                        "surface_list",
+                        "inline_surface__python_tools",
+                        "inline_surface__mcp_tools",
+                        "inline_surface__storage_items",
+                        "inline_surface__knowledge__naive_search_config",
+                        "inline_surface__knowledge__graph_basic_search_config",
+                        "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
+                    ),
+                ),
+                Prefetch(
+                    "agent_node_list",
+                    queryset=AgentNode.objects.select_related(
+                        "inline_surface"
+                    ).prefetch_related(
+                        "surface_list",
+                        "tasks",
+                        "tasks__context_tasks",
+                        "inline_surface__python_tools",
+                        "inline_surface__mcp_tools",
+                        "inline_surface__storage_items",
+                        "inline_surface__knowledge__naive_search_config",
+                        "inline_surface__knowledge__graph_basic_search_config",
+                        "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
+                    ),
                 ),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
                 Prefetch(
@@ -789,16 +799,26 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
                 ),
                 "start_node_list",
                 Prefetch("graph_note_list", queryset=GraphNote.objects.all()),
+                Prefetch(
+                    "knowledge_node_list",
+                    queryset=KnowledgeNode.objects.select_related(
+                        "source_collection",
+                        "naive_search_config",
+                        "graph_basic_search_config",
+                        "graph_local_search_config",
+                        "graph_global_search_config",
+                        "graph_drift_search_config",
+                    ),
+                ),
             )
             .all()
         )
-        return qs
+        return qs.filter(org_id=self.get_active_org_id())
 
     def perform_create(self, serializer):
-        created_graph = serializer.save()
-        # TODO: RESOLVE BY X-Organization-Id header
-        organization = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
-        GraphOrganization.objects.create(graph=created_graph, organization=organization)
+        org_id = self.get_active_org_id()
+        created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
+        GraphOrganization.objects.create(graph=created_graph)
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
@@ -810,9 +830,9 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         entity_ids = serializer.validated_data["ids"]
 
-        existing_ids = Graph.objects.filter(id__in=entity_ids).values_list(
-            "id", flat=True
-        )
+        existing_ids = Graph.objects.filter(
+            id__in=entity_ids, org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
         if len(existing_ids) != len(entity_ids):
             return Response(
                 {"message": "Some entity IDs do not exist"},
@@ -821,6 +841,44 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
 
         return self.import_export_service.bulk_export(entity_ids)
 
+    @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
+    @action(detail=True, methods=["post"], url_path="partial-export")
+    def partial_export(self, request, pk=None):
+        serializer = GraphNodesPartialExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        graph = self.get_object()
+        node_refs = [
+            NodeRef(entity_type=entity_type, node_id=node_id)
+            for list_key, entity_type in LIST_KEY_TO_ENTITY_TYPE.items()
+            for node_id in serializer.validated_data.get(list_key, [])
+        ]
+
+        result = self._partial_export_service.export(
+            node_refs,
+            edge_ids=serializer.validated_data.get("edge_list", []),
+        )
+
+        if result.has_errors:
+            return Response(
+                {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        filename = generate_file_name(f"nodes_{graph.name}", prefix="graph_nodes")
+        response = HttpResponse(
+            json.dumps(result.data, indent=4), content_type="application/json"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @extend_schema(
+        request={"multipart/form-data": ImportRequestSerializer},
+        responses={
+            200: OpenApiResponse(
+                description="Import summary with created/skipped entity counts"
+            )
+        },
+    )
     @action(detail=False, methods=["post"], url_path="import")
     def import_entity(self, request):
         file_serializer = ImportRequestSerializer(data=request.data)
@@ -829,13 +887,44 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         vd = file_serializer.validated_data
         data = self.import_export_service.import_entity(
             vd["file"],
+            user=request.user,
             settings=ImportSettings(
                 preserve_uuids=vd["preserve_uuids"],
                 replace_existing=vd["replace_existing"],
                 import_labels=vd["import_labels"],
             ),
+            org_id=self.get_active_org_id(),
         )
         return Response(data, status=status.HTTP_200_OK)
+
+    @extend_schema(**PARTIAL_IMPORT_SWAGGER)
+    @action(detail=True, methods=["post"], url_path="partial-import")
+    def partial_import(self, request, pk=None):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+
+        try:
+            data = json.load(file_serializer.validated_data["file"])
+        except (json.JSONDecodeError, UnicodeDecodeError, Exception):
+            raise DRFValidationError(
+                {"detail": "File format is incorrect. Please upload a valid JSON file."}
+            )
+
+        graph = self.get_object()
+        org_id = self.get_active_org_id()
+        effective_permissions = PermissionResolver().resolve(
+            user=request.user, org_id=org_id
+        )
+        partial_import_service = PartialImportService(entity_registry)
+        id_mapper = partial_import_service.import_data(
+            export_data=data,
+            graph=graph,
+            org_id=org_id,
+            user=request.user,
+            effective_permissions=effective_permissions,
+        )
+        summary = id_mapper.get_detailed_summary(entity_registry)
+        return Response(summary, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
@@ -861,7 +950,9 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
 
         graph = self.get_object()
         try:
-            GraphBulkSaveService().save(graph, input_serializer.validated_data)
+            GraphBulkSaveService().save(
+                graph, input_serializer.validated_data, request=request
+            )
         except BulkSaveValidationError as exc:
             return Response({"errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
         # GraphSaveVersionConflictError propagates → DRF returns 409 automatically.
@@ -877,8 +968,35 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
 
         return Response(GraphSerializer(refreshed).data, status=status.HTTP_200_OK)
 
+    @extend_schema(**GRAPH_DELETE_BY_UUID_DELETE)
+    @action(
+        detail=False,
+        methods=["delete"],
+        url_path=r"uuid/(?P<graph_uuid>[0-9a-fA-F-]{36})",
+    )
+    def delete_by_uuid(self, request, graph_uuid: str):
+        try:
+            parsed_uuid = uuid.UUID(graph_uuid)
+        except ValueError:
+            return Response(
+                {"message": "Invalid graph UUID format"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-class GraphLightViewSet(viewsets.ReadOnlyModelViewSet):
+        graph = self.get_queryset().filter(uuid=parsed_uuid).first()
+        if graph is None:
+            return Response(
+                {"message": "Provided graph does not exist"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        self.perform_destroy(graph)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
     serializer_class = GraphLightSerializer
     filter_backends = [
         DjangoFilterBackend,
@@ -889,13 +1007,41 @@ class GraphLightViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["name", "description"]
 
     def get_queryset(self):
-        return Graph.objects.only("id", "name", "description").prefetch_related(
-            "tags", "labels"
+        return (
+            Graph.objects.only("id", "name", "description")
+            .prefetch_related("tags", "labels")
+            .filter(org_id=self.get_active_org_id())
         )
 
 
 @extend_schema_view(
+    list=extend_schema(
+        description=(
+            "Returns a paginated list of graph versions for the given graph. "
+            "Soft-deleted versions are excluded. "
+            "Use the `graph_id` query parameter to filter by a specific graph."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="graph_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter versions by graph ID.",
+            )
+        ],
+    ),
     restore=extend_schema(
+        summary="Restore the graph to the state captured in this version, with optional auto-backup before restoring.",
+        description=(
+            "Restores the target graph to the exact state stored in this version's snapshot. "
+            "Before applying the snapshot, the service validates that all external dependencies "
+            "(LLMs, tools, knowledge sources) referenced in the snapshot are still available; "
+            "any that are missing are stripped and reported in the `warnings` list. "
+            "If the `backup` query parameter is `true`, the current graph state is saved as a new "
+            "version before restoring, and its ID is returned in `auto_backup_version_id`. "
+            "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits."
+        ),
         request=RestoreVersionInputSerializer,
         responses={
             200: inline_serializer(
@@ -918,6 +1064,13 @@ class GraphLightViewSet(viewsets.ReadOnlyModelViewSet):
         ],
     ),
     create_graph=extend_schema(
+        summary="Create a new independent graph from this version's snapshot.",
+        description=(
+            "Creates a new, fully independent graph from the snapshot stored in this version. "
+            "The new graph is a copy — it does not remain linked to the original. "
+            "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
+            "Returns the ID of the newly created graph."
+        ),
         request=None,
         responses={
             201: inline_serializer(
@@ -929,8 +1082,34 @@ class GraphLightViewSet(viewsets.ReadOnlyModelViewSet):
             )
         },
     ),
+    all=extend_schema(
+        summary="List all graph versions including soft-deleted ones.",
+        description=(
+            "Returns all graph versions including those that have been soft-deleted. "
+            "Intended for audit or recovery workflows where deleted versions need to be visible. "
+            "Use the `graph_id` query parameter to scope results to a specific graph."
+        ),
+        responses={200: GraphVersionReadSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="graph_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter versions by graph ID.",
+            )
+        ],
+    ),
 )
-class GraphVersionViewSet(viewsets.ModelViewSet):
+class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "all": Permission.READ,
+        "restore": Permission.UPDATE,
+        "create_graph": Permission.CREATE,
+    }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph_id"]
 
@@ -941,7 +1120,7 @@ class GraphVersionViewSet(viewsets.ModelViewSet):
         qs = manager.all()
         if self.action in ("list", "all"):
             qs = qs.defer("snapshot", "dependencies")
-        return qs
+        return qs.filter(graph__org_id=self.get_active_org_id())
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -955,8 +1134,13 @@ class GraphVersionViewSet(viewsets.ModelViewSet):
         write_serializer = serializer_class(data=request.data)
         write_serializer.is_valid(raise_exception=True)
 
+        graph = write_serializer.validated_data["graph"]
+        # Cannot version a flow outside the active org.
+        if graph.org_id != self.get_active_org_id():
+            raise NotFound()
+
         version = GraphVersioningService().save_version(
-            graph=write_serializer.validated_data["graph"],
+            graph=graph,
             name=write_serializer.validated_data["name"],
             description=write_serializer.validated_data.get("description", ""),
         )
@@ -1018,58 +1202,243 @@ class IdempotentNodeCreateMixin:
         graph_id = request.data.get("graph")
         node_name = request.data.get("node_name")
         if graph_id and node_name:
+            # Org-scoped queryset: an idempotent match only updates a node whose
+            # graph is in the active org; a node in another org is never touched.
+            queryset = self.get_queryset()
             try:
-                existing = self.get_queryset().model.objects.get(
-                    graph_id=graph_id, node_name=node_name
-                )
+                existing = queryset.get(graph_id=graph_id, node_name=node_name)
                 serializer = self.get_serializer(existing, data=request.data)
                 serializer.is_valid(raise_exception=True)
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_200_OK)
-            except self.get_queryset().model.DoesNotExist:
+            except queryset.model.DoesNotExist:
                 pass
         return super().create(request, *args, **kwargs)
 
 
-class CrewNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
-):
-    queryset = CrewNode.objects.all()
-    serializer_class = CrewNodeSerializer
-
-
 class PythonNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = PythonNode.objects.all()
     serializer_class = PythonNodeSerializer
 
 
 class FileExtractorNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = FileExtractorNode.objects.all()
     serializer_class = FileExtractorNodeSerializer
 
 
-class AudioTranscriptionNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+class KnowledgeNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = KnowledgeNode.objects.select_related(
+        "naive_search_config",
+        "graph_basic_search_config",
+        "graph_local_search_config",
+        "graph_global_search_config",
+        "graph_drift_search_config",
+    )
+    serializer_class = KnowledgeNodeWriteSerializer
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return KnowledgeNodeReadSerializer
+        return KnowledgeNodeWriteSerializer
+
+    def perform_create(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_update(serializer)
+
+
+class AudioTranscriptionNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = AudioTranscriptionNode.objects.all()
     serializer_class = AudioTranscriptionNodeSerializer
 
 
-class CodeAgentNodeViewSet(IdempotentNodeCreateMixin, viewsets.ModelViewSet):
-    queryset = CodeAgentNode.objects.all()
-    serializer_class = CodeAgentNodeSerializer
+class TaskNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
+    org_filter_path = "graph__org_id"
+    queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
+        "surface_list",
+        "inline_surface__python_tools",
+        "inline_surface__mcp_tools",
+        "inline_surface__storage_items",
+        "inline_surface__knowledge__naive_search_config",
+        "inline_surface__knowledge__graph_basic_search_config",
+        "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
+    )
+    serializer_class = TaskNodeSerializer
+
+    def perform_update(self, serializer):
+        # The serializer allows writing `graph`; without this check a PATCH
+        # could move the node into another org's graph.
+        self._assert_parent_in_active_org(serializer)
+        super().perform_update(serializer)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceReadSerializer,
+                description="Combined surface data merged from the node's "
+                "attached surfaces and inline surface.",
+            ),
+            400: OpenApiResponse(description="Conflicting RAG configs."),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="combine")
+    def combine(self, request, pk=None):
+        node = self.get_object()
+        combined = NodeSurfaceService.build_combined_surface(node)
+        return Response(combined, status=status.HTTP_200_OK)
 
 
-class EdgeViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
+class AgentNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
+    org_filter_path = "graph__org_id"
+    queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
+        "surface_list",
+        "tasks",
+        "tasks__context_tasks",
+        "inline_surface__python_tools",
+        "inline_surface__mcp_tools",
+        "inline_surface__storage_items",
+        "inline_surface__knowledge__naive_search_config",
+        "inline_surface__knowledge__graph_basic_search_config",
+        "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
+    )
+    serializer_class = AgentNodeSerializer
+
+    def perform_update(self, serializer):
+        # The serializer allows writing `graph`; without this check a PATCH
+        # could move the node into another org's graph.
+        self._assert_parent_in_active_org(serializer)
+        super().perform_update(serializer)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceReadSerializer,
+                description="Combined surface data merged from the node's "
+                "attached surfaces and inline surface.",
+            ),
+            400: OpenApiResponse(description="Conflicting RAG configs."),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="combine")
+    def combine(self, request, pk=None):
+        node = self.get_object()
+        combined = NodeSurfaceService.build_combined_surface(node)
+        return Response(combined, status=status.HTTP_200_OK)
+
+
+class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "agent_node__graph__org_id"
+    queryset = AgentNodeTask.objects.all()
+    serializer_class = AgentNodeTaskSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["agent_node"]
+
+    def _clean_and_save(self, serializer):
+        instance = serializer.save()
+        try:
+            instance.full_clean()
+        except ValidationError as error:
+            raise serializers.ValidationError(
+                error.message_dict if hasattr(error, "message_dict") else error.messages
+            )
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        # Parent org lives on agent_node.graph, so the mixin's default assert
+        # (which reads parent.org_id) does not apply — check explicitly.
+        agent_node = serializer.validated_data.get("agent_node")
+        if agent_node is not None and (
+            agent_node.graph.org_id != self.get_active_org_id()
+        ):
+            raise NotFound()
+        self._clean_and_save(serializer)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        # Parent org lives on agent_node.graph — same reasoning as
+        # perform_create: a PATCH could otherwise reassign agent_node to
+        # another org's parent.
+        agent_node = serializer.validated_data.get("agent_node")
+        if agent_node is not None and (
+            agent_node.graph.org_id != self.get_active_org_id()
+        ):
+            raise NotFound()
+        self._clean_and_save(serializer)
+
+
+class EdgeViewSet(
+    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = Edge.objects.all()
     serializer_class = EdgeSerializer
 
 
-class ConditionalEdgeViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
+class ConditionalEdgeViewSet(
+    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = ConditionalEdge.objects.all()
     serializer_class = ConditionalEdgeSerializer
 
@@ -1085,7 +1454,12 @@ class GraphSessionMessageFilter(FilterSet):
         fields = ["session_id", "parent_subgraph_execution_id"]
 
 
-class GraphSessionMessageReadOnlyViewSet(ReadOnlyModelViewSet):
+class GraphSessionMessageReadOnlyViewSet(
+    OrgScopedChildViewSetMixin, ReadOnlyModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "session__graph__org_id"
     queryset = GraphSessionMessage.objects.all().order_by("id")
     serializer_class = GraphSessionMessageSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1098,55 +1472,23 @@ class GraphSessionMessageReadOnlyViewSet(ReadOnlyModelViewSet):
         return qs
 
 
-class MemoryFilter(FilterSet):
-    run_id = NumberFilter(method="filter_run_id")
-    agent_id = CharFilter(field_name="payload__agent_id", lookup_expr="exact")
-    user_id = CharFilter(field_name="payload__user_id", lookup_expr="exact")
-    type = CharFilter(field_name="payload__type", lookup_expr="exact")
-
-    class Meta:
-        model = MemoryDatabase
-        fields = ["run_id", "agent_id", "user_id", "type"]
-
-    def filter_run_id(self, queryset, name, value):
-        return queryset.annotate(
-            run_id_int=Cast("payload__run_id", IntegerField())
-        ).filter(run_id_int=value)
-
-
-class MemoryViewSet(
-    mixins.RetrieveModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
+class RealtimeModelViewSet(
+    OrgScopedHybridViewSetMixin, BuiltInWriteProtectedMixin, viewsets.ModelViewSet
 ):
-    queryset = MemoryDatabase.objects.all()
-    serializer_class = MemorySerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = MemoryFilter
-
-
-class CrewTagViewSet(viewsets.ModelViewSet):
-    queryset = CrewTag.objects.all()
-    serializer_class = CrewTagSerializer
-
-
-class AgentTagViewSet(viewsets.ModelViewSet):
-    queryset = AgentTag.objects.all()
-    serializer_class = AgentTagSerializer
-
-
-class GraphTagViewSet(viewsets.ModelViewSet):
-    queryset = GraphTag.objects.all()
-    serializer_class = GraphTagSerializer
-
-
-class RealtimeModelViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    global_visibility_q = Q(is_custom=False)
+    custom_create_values = {"is_custom": True}
     queryset = RealtimeModel.objects.all()
     serializer_class = RealtimeModelSerializer
 
 
-class RealtimeConfigModelViewSet(viewsets.ModelViewSet):
+class RealtimeConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+
     class RealtimeConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
             field_name="realtime_model__provider__id", lookup_expr="icontains"
@@ -1159,19 +1501,32 @@ class RealtimeConfigModelViewSet(viewsets.ModelViewSet):
                 "realtime_model",
             ]
 
-    queryset = RealtimeConfig.objects.all()
+    queryset = RealtimeConfig.objects.select_related("api_key_secret").all()
     serializer_class = RealtimeConfigSerializer
 
     filter_backends = [DjangoFilterBackend]
     filterset_class = RealtimeConfigFilter
 
 
-class RealtimeTranscriptionModelViewSet(viewsets.ModelViewSet):
+class RealtimeTranscriptionModelViewSet(
+    OrgScopedHybridViewSetMixin, BuiltInWriteProtectedMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    global_visibility_q = Q(is_custom=False)
+    custom_create_values = {"is_custom": True}
     queryset = RealtimeTranscriptionModel.objects.all()
     serializer_class = RealtimeTranscriptionModelSerializer
 
 
-class RealtimeTranscriptionConfigModelViewSet(viewsets.ModelViewSet):
+class RealtimeTranscriptionConfigModelViewSet(
+    OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+
     class RealtimeTranscriptionConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
             field_name="realtime_transcription_model__provider__id",
@@ -1185,31 +1540,46 @@ class RealtimeTranscriptionConfigModelViewSet(viewsets.ModelViewSet):
                 "realtime_transcription_model",
             ]
 
-    queryset = RealtimeTranscriptionConfig.objects.all()
+    queryset = RealtimeTranscriptionConfig.objects.select_related(
+        "api_key_secret"
+    ).all()
     serializer_class = RealtimeTranscriptionConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = RealtimeTranscriptionConfigFilter
 
 
-class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
+class RealtimeSessionItemViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
+    # Realtime session items hold conversation payloads (incl. base64 audio).
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.VOICE
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
 
 
-class RealtimeAgentViewSet(viewsets.ModelViewSet):
-    queryset = RealtimeAgent.objects.all()
-    serializer_class = RealtimeAgentSerializer
+class RealtimeAgentDefinitionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    org_filter_path = "agent_definition__organization_id"
+    queryset = RealtimeAgentDefinition.objects.all()
+    serializer_class = RealtimeAgentDefinitionSerializer
 
 
-class RealtimeAgentChatViewSet(ReadOnlyModelViewSet):
+class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
     """
     ViewSet for reading and deleting RealtimeAgentChat instances.
+
+    Scoped through the chat's realtime agent definition to its agent
+    definition's org. Chats whose rt_agent_definition is NULL (orphaned) are
+    not visible — acceptable for chat history.
     """
 
+    rbac_resource_type = ResourceType.VOICE
+    org_filter_path = "rt_agent__agent__org_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["rt_agent"]
+    filterset_fields = ["rt_agent_definition"]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1218,35 +1588,326 @@ class RealtimeAgentChatViewSet(ReadOnlyModelViewSet):
             {"detail": "Deleted successfully"}, status=status.HTTP_204_NO_CONTENT
         )
 
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="end",
+        permission_classes=[IsSystemApiKeyAuthenticated],
+    )
+    def end(self, request):
+        """Mark a RealtimeAgentChat as ended.
 
-class StartNodeModelViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
+        Called server-to-server by the `realtime`/`voice_app` services
+        (`voice_call_service._patch_agent_chat`) once a call ends. That caller
+        has no logged-in user/org context and identifies the target chat by
+        its opaque `connection_key` alone, so this action cannot be scoped
+        through `self.get_queryset()` (which requires an active org via
+        `OrgContextService`/`X-Organization-Id`) the way `destroy`/`retrieve`
+        are.
+        """
+        from django.utils import timezone
+
+        connection_key = request.data.get("connection_key")
+        if not connection_key:
+            return Response(
+                {"detail": "connection_key required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            chat = RealtimeAgentChat.objects.get(connection_key=connection_key)
+        except RealtimeAgentChat.DoesNotExist:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        chat.ended_at = timezone.now()
+        chat.duration_seconds = request.data.get("duration_seconds")
+        chat.end_reason = request.data.get("end_reason", "completed")
+        chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+        return Response({"detail": "Updated"})
+
+
+class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = OpenAIRealtimeConfig.objects.all()
+    serializer_class = OpenAIRealtimeConfigSerializer
+
+
+class ElevenLabsRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = ElevenLabsRealtimeConfig.objects.all()
+    serializer_class = ElevenLabsRealtimeConfigSerializer
+
+
+class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = GeminiRealtimeConfig.objects.all()
+    serializer_class = GeminiRealtimeConfigSerializer
+
+
+class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    rbac_resource_type = ResourceType.VOICE
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+
+    queryset = RealtimeChannel.objects.select_related(
+        "twilio__webhook_trigger__ngrok",
+        "twilio__webhook_trigger__localhost",
+    ).all()
+    serializer_class = RealtimeChannelSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = [
+        # realtime_agent is read-only for writes (serializer), but stays
+        # filterable so a stranded legacy row can still be located, and so an
+        # existing `?realtime_agent=` caller keeps getting a filtered result
+        # instead of the whole org's channels.
+        "realtime_agent",
+        "realtime_agent_definition",
+        "channel_type",
+        "is_enabled",
+        "token",
+    ]
+
+    @extend_schema(**REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET)
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="lookup-by-token",
+        permission_classes=[IsSystemApiKeyAuthenticated],
+    )
+    def lookup_by_token(self, request):
+        """Resolve a channel by its unique `token`, unscoped by org.
+
+        Used only by the `realtime`/`voice_app` services to route an inbound
+        Twilio call (POST /voice/{token}) to the right agent — that caller has
+        no logged-in user and cannot supply `X-Organization-Id`. The token
+        itself (an unguessable UUID) is the lookup/authorization key, so the
+        normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
+        filter is deliberately bypassed here.
+        """
+        raw_token = request.query_params.get("token")
+        if not raw_token:
+            return Response(
+                {"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            token = uuid.UUID(str(raw_token))
+        except (ValueError, AttributeError, TypeError):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        channel = (
+            RealtimeChannel.enabled_objects.select_related(
+                "twilio__webhook_trigger__ngrok",
+                "twilio__webhook_trigger__localhost",
+            )
+            .filter(token=token)
+            .first()
+        )
+        if channel is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(RealtimeChannelInternalSerializer(channel).data)
+
+
+class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    org_filter_path = "channel__org_id"
+    queryset = TwilioChannel.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    )
+    rbac_resource_type = ResourceType.VOICE
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "phone_numbers": Permission.READ}
+    serializer_class = TwilioChannelSerializer
+
+    def create(self, request, *args, **kwargs):
+        channel_id = request.data.get("channel")
+        instance = TwilioChannel.objects.filter(channel_id=channel_id).first()
+        if instance:
+            serializer = self.get_serializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self._assert_parent_in_active_org(serializer)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
+    @action(detail=False, methods=["get"], url_path="phone-numbers")
+    def phone_numbers(self, request, pk=None):
+        """Return this channel's Twilio incoming phone numbers."""
+
+        sid = request.query_params.get("sid")
+        auth_token_secret_id = request.query_params.get("auth_token_secret_id")
+
+        if not sid or not auth_token_secret_id:
+            return Response(
+                {
+                    "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            TwilioService().validate_account_sid(sid)
+            auth_token = secret_resolver.resolve(
+                secret_id=auth_token_secret_id,
+                org_id=resolve_active_org_id(request),
+                context="TwilioChannel.auth_token",
+            )
+            numbers = TwilioService().get_phone_numbers(sid, auth_token)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
+
+        return Response({"results": numbers})
+
+
+class ConversationRecordingViewSet(
+    OrgScopedChildViewSetMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Scoped through the recording's chat -> realtime agent to its agent's org
+    (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
+    rt_agent (orphaned) are not visible — same accepted trade-off as chat history.
+
+    `create` is reachable two ways:
+    - An authenticated org member (JWT) or a self-issued USER API key, sending
+      `X-Organization-Id` as usual — org-scoping is enforced via
+      `_assert_parent_in_active_org` exactly like any other child resource.
+    - The `realtime`/`voice_app` services (`voice_call_service._post_recording`),
+      authenticated with a `key_type=SYSTEM` API key, once a call ends. That
+      caller has no logged-in user/org context and can never supply
+      `X-Organization-Id`, and identifies its target purely by the opaque
+      `connection_key` — same trust model as `RealtimeAgentChatViewSet.end`.
+      For that caller only, `_assert_parent_in_active_org` is skipped (the
+      SYSTEM key itself is the authorization check); a self-issued USER key
+      still goes through the normal org check, so it cannot attach a
+      recording to another org's chat by guessing a `connection_key`.
+    """
+
+    queryset = ConversationRecording.objects.all()
+    serializer_class = ConversationRecordingSerializer
+    parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["rt_agent_chat", "recording_type"]
+    rbac_resource_type = ResourceType.VOICE
+    org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    def _is_system_api_key_request(self) -> bool:
+        return (
+            isinstance(self.request.auth, ApiKey)
+            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
+        )
+
+    def perform_create(self, serializer):
+        file = self.request.FILES.get("file")
+        file_size = file.size if file else None
+        audio_format = "wav"
+
+        # Allow creating by connection_key (used by the realtime service)
+        connection_key = self.request.data.get("connection_key")
+        rt_agent_chat = None
+        if connection_key:
+            try:
+                rt_agent_chat = RealtimeAgentChat.objects.get(
+                    connection_key=connection_key
+                )
+            except RealtimeAgentChat.DoesNotExist:
+                from rest_framework.exceptions import (
+                    ValidationError as DRFValidationError,
+                )
+
+                raise DRFValidationError(
+                    {"connection_key": "No matching RealtimeAgentChat found"}
+                )
+            serializer.validated_data["rt_agent_chat"] = rt_agent_chat
+
+        # A trusted SYSTEM API key (the realtime/voice_app services) has no
+        # X-Organization-Id to check against — skip the org assertion for it,
+        # same trust boundary as RealtimeAgentChatViewSet.end. Any other
+        # caller (JWT session or a self-issued USER key) still goes through
+        # the normal parent-org check.
+        if not self._is_system_api_key_request():
+            self._assert_parent_in_active_org(serializer)
+
+        serializer.save(
+            file_size=file_size,
+            audio_format=audio_format,
+            **({"rt_agent_chat": rt_agent_chat} if rt_agent_chat is not None else {}),
+        )
+
+
+def _load_realtime_voices() -> dict:
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).parent.parent / "static" / "realtime_voices.json"
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+_REALTIME_VOICES = _load_realtime_voices()
+
+
+class RealtimeVoicesView(generics.GenericAPIView):
+    """Return static list of available voices per realtime provider."""
+
+    # Response body is a static constant (loaded from realtime_voices.json
+    # at import time) — no DB access, no queryset to scope.
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.VOICE
+    action = "retrieve"
+
+    def get(self, request, *args, **kwargs):
+        return Response(_REALTIME_VOICES)
+
+
+class StartNodeModelViewSet(
+    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = StartNode.objects.all()
     serializer_class = StartNodeSerializer
 
 
-class EndNodeModelViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
+class EndNodeModelViewSet(
+    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = EndNode.objects.all()
     serializer_class = EndNodeSerializer
 
 
-class SubGraphNodeModelViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
+class SubGraphNodeModelViewSet(
+    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = SubGraphNode.objects.all()
     serializer_class = SubGraphNodeSerializer
 
 
-class ConditionGroupModelViewSet(viewsets.ModelViewSet):
-    queryset = ConditionGroup.objects.all()
-    serializer_class = ConditionGroupSerializer
-
-
-class ConditionModelViewSet(viewsets.ModelViewSet):
-    queryset = Condition.objects.all()
-    serializer_class = ConditionSerializer
-
-
 class DecisionTableNodeModelViewSet(
-    ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = DecisionTableNode.objects.all()
     serializer_class = DecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1304,6 +1965,18 @@ class DecisionTableNodeModelViewSet(
         node_serializer.is_valid(raise_exception=True)
         node = node_serializer.save()
 
+        # Org isolation: each condition group's next_node_id must reference a node
+        # in this decision table's own graph (⇒ same org). Condition groups are
+        # created here rather than by the serializer (they're popped from `data`
+        # before validation), so the same same-graph check the serializer applies
+        # to default_next_node_id / next_error_node_id is enforced here too. A
+        # cross-graph, cross-org, or non-existent id is rejected identically
+        # ("Invalid pk ..."), so existence never leaks
+        for group in condition_groups_data or []:
+            assert_node_ref_in_graph(
+                group.get("next_node_id"), node.graph, "condition_groups.next_node_id"
+            )
+
         # If PATCH and no condition_groups provided, skip nested updates
         if partial and condition_groups_data is None:
             return node, None
@@ -1357,90 +2030,182 @@ class DecisionTableNodeModelViewSet(
         node.save()
 
 
-class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
-    queryset = ClassificationDecisionTableNode.objects.all()
+class ClassificationDecisionTableNodeModelViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "export": Permission.EXPORT,
+        "explain": Permission.READ,
+    }
+    org_filter_path = "graph__org_id"
+    queryset = ClassificationDecisionTableNode.objects.select_related(
+        "pre_python_code", "post_python_code"
+    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets")
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._node_service = ClassificationDecisionTableNodeService()
+        self._explain_service = CdtExplainService()
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        node, _ = self._create_or_update_node(data=request.data)
+        node, _ = self._node_service.create_or_update(
+            data=request.data, request=request
+        )
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
-        node, _ = self._create_or_update_node(
-            data=request.data, instance=instance, partial=partial
+        node, _ = self._node_service.create_or_update(
+            data=request.data,
+            instance=instance,
+            partial=partial,
+            request=request,
         )
         return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
 
-    def _create_or_update_node(self, data, instance=None, partial=False):
-        data = data.copy()
-        condition_groups_data = data.pop("condition_groups", None)
-        prompt_configs_data = data.pop("prompt_configs", None)
-
-        node_serializer = self.get_serializer(instance, data=data, partial=partial)
-        node_serializer.is_valid(raise_exception=True)
-        node = node_serializer.save()
-
-        if partial and condition_groups_data is None and prompt_configs_data is None:
-            return node, None
-
-        if instance:
-            ClassificationConditionGroup.objects.filter(
-                classification_decision_table_node=node
-            ).delete()
-
-        if condition_groups_data:
-            groups_to_create = []
-            for group_data in condition_groups_data:
-                gd = {
-                    k: v
-                    for k, v in group_data.items()
-                    if k not in ("id", "classification_decision_table_node")
-                }
-                groups_to_create.append(
-                    ClassificationConditionGroup(
-                        classification_decision_table_node=node, **gd
-                    )
-                )
-            ClassificationConditionGroup.objects.bulk_create(groups_to_create)
-
-        if prompt_configs_data is not None:
-            if instance:
-                ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).delete()
-
-            ClassificationDecisionTablePrompt.objects.bulk_create(
-                [
-                    ClassificationDecisionTablePrompt(
-                        cdt_node=node,
-                        llm_config_id=prompt_data.get("llm_config"),
-                        **{
-                            k: v
-                            for k, v in prompt_data.items()
-                            if k not in ("id", "cdt_node", "llm_config")
-                        },
-                    )
-                    for prompt_data in prompt_configs_data
-                ]
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="export_format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["json", "csv"],
+                description="Export format. Defaults to 'json'.",
+            )
+        ],
+        responses={200: OpenApiTypes.BINARY},
+    )
+    @action(detail=True, methods=["get"], url_path="export")
+    def export(self, request, pk=None):
+        export_format = request.query_params.get("export_format", "json")
+        result = self._node_service.export(
+            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+        )
+        if result.errors is not None:
+            return Response(
+                {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        return node, condition_groups_data
+        response = HttpResponse(result.content, content_type=result.content_type)
+        response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+        return response
+
+    @extend_schema(
+        request=CdtExplainRequestSerializer,
+        responses={200: CdtExplainResponseSerializer},
+        description=(
+            "Generate plain-language explanations of one or more steps of this "
+            "Classification Decision Table. Send a single block to explain one step, "
+            "or every block to explain them all. Step content is read from the request "
+            "body, not the database, so unsaved panel edits are explained as shown."
+        ),
+    )
+    @action(detail=True, methods=["post"], url_path="explain")
+    def explain(self, request, pk=None):
+        serializer = CdtExplainRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self._explain_service.explain(
+            pk=pk,
+            org_id=self.get_active_org_id(),
+            llm_config_id=data["llm_config"],
+            table=data["table"],
+            blocks=data["blocks"],
+        )
+        return Response(
+            {"explanations": result.explanations, "failures": result.failures},
+            status=status.HTTP_200_OK,
+        )
 
 
-class McpToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
+@extend_schema_view(
+    copy=extend_schema(**MCP_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
+class McpToolViewSet(
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
+    }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
-    queryset = McpTool.objects.all()
+    queryset = McpTool.objects.select_related("auth_secret").all()
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "tool_name"]
+    filterset_class = McpToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.MCP_TOOL,
+            export_prefix="mcp_tool",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    McpToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
+
+    @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            McpToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            McpToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
+        # PUT is a full-replace: any concrete field missing from the body is
+        # explicitly back-filled with its model default (or None) so a bare
+        # PUT clears unspecified fields instead of silently keeping stale
+        # values. This must NOT run for PATCH — partial_update overrides it
+        # below so a partial body (e.g. {"labels": [...]}) isn't forced
+        # through this full-replace path and doesn't get its other required
+        # fields nulled out.
         instance = self.get_object()
         data = request.data.copy()
         for field in self.serializer_class.Meta.model._meta.get_fields():
@@ -1452,26 +2217,134 @@ class McpToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
 
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
-# TODO: refactor for rbac
-class GraphOrganizationViewSet(viewsets.ModelViewSet):
+    @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # McpTool has no built-in concept — every matching id is deletable.
+            tool_list = McpTool.objects.filter(
+                id__in=ids, org_id=self.get_active_org_id()
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**MCP_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, McpTool)
+
+    @extend_schema(**MCP_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(pk, get_mcp_tool_usage_detail, "McpTool")
+
+    @extend_schema(**MCP_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        existing_ids = McpTool.objects.filter(
+            id__in=entity_ids, org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**MCP_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class GraphOrganizationViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = GraphOrganization.objects.all()
     serializer_class = GraphOrganizationSerializer
 
 
-# TODO: refactor for rbac
-class GraphOrganizationUserViewSet(viewsets.ReadOnlyModelViewSet):
+# TODO refactor to use user_variable for persistent variables
+class GraphOrganizationUserViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = GraphOrganizationUser.objects.all()
     serializer_class = GraphOrganizationUserSerializer
 
 
+@extend_schema_view(
+    create=extend_schema(**WEBHOOK_TRIGGER_NODE_CREATE),
+    update=extend_schema(**WEBHOOK_TRIGGER_NODE_UPDATE),
+    partial_update=extend_schema(**WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE),
+)
 class WebhookTriggerNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
-    queryset = WebhookTriggerNode.objects.all()
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = WebhookTriggerNode.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    )
     serializer_class = WebhookTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return WebhookTriggerNodeReadSerializer
+        return WebhookTriggerNodeSerializer
 
     def create(self, request, *args, **kwargs):
         logger.info(f"[WebhookTriggerNode] CREATE payload: {request.data}")
@@ -1485,27 +2358,82 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
-class WebhookTriggerViewSet(viewsets.ModelViewSet):
-    queryset = WebhookTrigger.objects.all()
-    serializer_class = WebhookTriggerSerializer
+@extend_schema_view(
+    create=extend_schema(**WEBHOOK_TRIGGER_CREATE),
+    update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
+    partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
+)
+class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = WebhookTrigger.objects.select_related(
+        "ngrok", "localhost", "auth", "auth__secret"
+    )
+    serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
+    filterset_class = WebhookTriggerFilter
+
+    def _wait_for_tunnel_url(self, trigger):
+        service = WebhookTriggerService()
+        if trigger.provider_type == ProviderType.NGROK:
+            service.wait_for_tunnel_url(trigger)
+        elif trigger.provider_type == ProviderType.LOCALHOST:
+            service.wait_for_localhost_tunnel_url(trigger)
+
+    def perform_create(self, serializer):
+        trigger = serializer.save()
+        self._wait_for_tunnel_url(trigger)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        new_provider = request.data.get("provider_type", instance.provider_type)
+        if new_provider in LOCAL_ONLY_PROVIDERS and instance.twilio_channels.exists():
+            return Response(
+                {
+                    "provider_type": (
+                        "Cannot switch to a local-only provider while this trigger "
+                        "is linked to a Twilio channel."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().update(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        trigger = serializer.save()
+        self._wait_for_tunnel_url(trigger)
 
 
 class TelegramTriggerNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    ModelViewSet,
 ):
-    queryset = TelegramTriggerNode.objects.prefetch_related("fields")
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = TelegramTriggerNode.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    ).prefetch_related("fields")
     serializer_class = TelegramTriggerNodeSerializer
 
-
-class TelegramTriggerNodeFieldViewSet(ModelViewSet):
-    queryset = TelegramTriggerNodeField.objects.select_related("telegram_trigger_node")
-    serializer_class = TelegramTriggerNodeFieldSerializer
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return TelegramTriggerNodeReadSerializer
+        return TelegramTriggerNodeSerializer
 
 
 class ScheduleTriggerNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = ScheduleTriggerNode.objects.all()
     serializer_class = ScheduleTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1513,51 +2441,65 @@ class ScheduleTriggerNodeViewSet(
 
 
 class GraphNoteViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = GraphNote.objects.all()
     serializer_class = GraphNoteSerializer
 
 
-class NgrokWebhookConfigViewSet(ModelViewSet):
-    queryset = NgrokWebhookConfig.objects.all()
-    serializer_class = NgrokWebhookConfigModelSerializer
+class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Shared behavior for the two independent label trees — Flow labels
+    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    disjoint subset of `Label` partitioned by `Label.scope`; concrete
+    subclasses set `label_scope` and a `queryset` pre-filtered to it.
+    """
 
-    def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
-        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
-        WebhookTriggerService().wait_for_tunnel_url(instance)
-        response.data = self.get_serializer(instance).data
-        return response
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
-        WebhookTriggerService().wait_for_tunnel_url(instance)
-        response.data = self.get_serializer(instance).data
-        return response
-
-
-class LabelViewSet(viewsets.ModelViewSet):
-    queryset = Label.objects.all()
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     serializer_class = LabelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "parent"]
+    label_scope: str = None
+
+    def perform_create(self, serializer):
+        # Never trust client-supplied scope — the URL/viewset is the only
+        # source of truth for which label tree a new row joins.
+        serializer.save(
+            org_id=self.get_active_org_id(),
+            created_by=self.request.user,
+            scope=self.label_scope,
+        )
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         labels = list(queryset)
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
-        # and to correctly resolve parents that may be filtered out.
+        # and to correctly resolve parents that may be filtered out. Scoped to
+        # the active org and this tree's scope (the label tree never crosses
+        # orgs or Flow/Tool scopes).
         id_to_row = {
-            row["id"]: row for row in Label.objects.values("id", "parent_id", "name")
+            row["id"]: row
+            for row in Label.objects.filter(
+                org_id=self.get_active_org_id(), scope=self.label_scope
+            ).values("id", "parent_id", "name")
         }
 
         def full_path_key(label):
             parts = []
+            visited = set()
             current_id = label.id
             while current_id is not None:
+                if current_id in visited:
+                    # Stored cycle (self-parent or parent loop) — stop
+                    # walking rather than looping forever.
+                    break
+                visited.add(current_id)
                 row = id_to_row.get(current_id)
                 if row is None:
                     break
@@ -1565,122 +2507,100 @@ class LabelViewSet(viewsets.ModelViewSet):
                 current_id = row["parent_id"]
             return "/".join(reversed(parts))
 
-        labels.sort(key=lambda label: natural_sort_key(full_path_key(label)))
+        full_paths = {label.id: full_path_key(label) for label in labels}
+        labels.sort(key=lambda label: natural_sort_key(full_paths[label.id]))
+
+        context = self.get_serializer_context()
+        context["full_paths"] = full_paths
 
         page = self.paginate_queryset(labels)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer(page, many=True, context=context)
             return self.get_paginated_response(serializer.data)
 
-        return Response(self.get_serializer(labels, many=True).data)
+        return Response(self.get_serializer(labels, many=True, context=context).data)
 
 
-class VoiceSettingsView(generics.RetrieveUpdateAPIView):
-    serializer_class = VoiceSettingsSerializer
-
-    def get_object(self):
-        return VoiceSettings.load()
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        redis_service.redis_client.publish("voice_settings:invalidate", "{}")
-        return response
+class LabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    label_scope = Label.Scope.FLOW
+    queryset = Label.objects.filter(scope=Label.Scope.FLOW)
 
 
-def _twilio_request(
-    account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict = None
+class ToolLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    label_scope = Label.Scope.TOOL
+    queryset = Label.objects.filter(scope=Label.Scope.TOOL)
+
+
+class SecretViewSet(
+    OrgScopedViewSetMixin,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
 ):
-    """Make an authenticated request to the Twilio REST API."""
-    credentials = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
-    headers = {"Authorization": f"Basic {credentials}", "Accept": "application/json"}
-    body = None
-    if data:
-        encoded = urllib.parse.urlencode(data).encode()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        body = encoded
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode())
+    """Create / read / delete only — a Secret's name and value are immutable."""
 
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
+    rbac_resource_type = ResourceType.SECRETS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
+    queryset = Secret.objects.all()
+    serializer_class = SecretSerializer
 
-class TwilioPhoneNumbersView(generics.GenericAPIView):
-    """Return the list of incoming phone numbers from Twilio."""
-
-    @extend_schema(**TWILIO_PHONE_NUMBERS_GET)
-    def get(self, request):
-        vs = VoiceSettings.load()
-        if not vs.twilio_account_sid or not vs.twilio_auth_token:
-            return Response(
-                {"error": "Twilio Account SID and Auth Token are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{vs.twilio_account_sid}/IncomingPhoneNumbers.json?PageSize=100"
-            data = _twilio_request(vs.twilio_account_sid, vs.twilio_auth_token, url)
-            numbers = [
-                {
-                    "sid": n["sid"],
-                    "phone_number": n["phone_number"],
-                    "friendly_name": n["friendly_name"],
-                    "voice_url": n.get("voice_url") or "",
-                }
-                for n in data.get("incoming_phone_numbers", [])
-            ]
-            return Response(numbers)
-        except urllib.error.HTTPError as e:
-            return Response({"error": e.read().decode()}, status=e.code)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+    @extend_schema(**SECRET_USAGE_GET)
+    @action(detail=True, methods=["get"], url_path="usage")
+    def usage(self, request, pk=None):
+        """Where this secret is referenced, for the deletion-safety dialog."""
+        secret = self.get_object()
+        effective = PermissionResolver().resolve(
+            user=request.user, org_id=self.get_active_org_id()
+        )
+        return Response(
+            secret_usage_service.summary(secret=secret, effective=effective)
+        )
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
-    """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL."""
+    """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
+
+    Credentials and the target channel are org-owned (RealtimeChannel is an
+    OrgScopedModel) — org isolation is enforced in two
+    layers here: `HasOrgPermission` checks that the caller's role has
+    VOICE:UPDATE permission in their active org (a generic role-bit check,
+    with no knowledge of this specific channel), and the manual
+    `channel.org_id != active_org_id` check below verifies that the
+    *specific* channel resolved by `channel_token` actually belongs to the
+    caller's active org. The manual check is not a superadmin gate and must
+    stay: a channel belonging to another org (or no channel at all) is
+    rejected exactly like a missing token, via the same 404 "Channel not
+    found" response, so existence never leaks.
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.VOICE
+    # Plain GenericAPIView (not router-registered), so DRF never populates
+    # view.action — HasOrgPermission needs it declared explicitly. This is a
+    # POST-only endpoint that mutates the Twilio webhook config of an
+    # existing channel, so it maps to "update" (Permission.UPDATE) in
+    # DEFAULT_ACTION_MAP, not "create" (no new resource is created).
+    action = "update"
 
     @extend_schema(**TWILIO_CONFIGURE_WEBHOOK_POST)
     def post(self, request):
         phone_sid = request.data.get("phone_sid")
-        if not phone_sid:
-            return Response(
-                {"error": "phone_sid is required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        vs = VoiceSettings.load()
-        if not vs.twilio_account_sid or not vs.twilio_auth_token:
-            return Response(
-                {"error": "Twilio Account SID and Auth Token are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        from tables.serializers.model_serializers import VoiceSettingsSerializer
-
-        voice_stream_url = VoiceSettingsSerializer(vs).data.get("voice_stream_url")
-        if not voice_stream_url:
-            return Response(
-                {
-                    "error": "No voice stream URL configured — set up an ngrok tunnel first"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Twilio expects the webhook as an HTTP/HTTPS URL not WSS
-        # voice_stream_url is wss://host/voice/stream → https://host/voice
-        webhook_url = (
-            voice_stream_url.replace("wss://", "https://")
-            .replace("/stream", "")
-            .rstrip("/")
-        )
+        channel_token = request.data.get("channel_token")
 
         try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{vs.twilio_account_sid}/IncomingPhoneNumbers/{phone_sid}.json"
-            _twilio_request(
-                vs.twilio_account_sid,
-                vs.twilio_auth_token,
-                url,
-                method="POST",
-                data={"VoiceUrl": webhook_url, "VoiceMethod": "POST"},
+            webhook_url = TwilioService().configure_webhook(
+                phone_sid=phone_sid,
+                channel_token=channel_token,
+                org_id=resolve_active_org_id(request),
             )
-            return Response({"webhook_url": webhook_url})
-        except urllib.error.HTTPError as e:
-            return Response({"error": e.read().decode()}, status=e.code)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
+
+        return Response({"webhook_url": webhook_url})

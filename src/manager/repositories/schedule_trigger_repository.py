@@ -10,7 +10,8 @@ from src.shared.models import ScheduleTriggerNodePayload
 class ScheduleTriggerNodeRepository:
     """Read schedule nodes via raw SQL through SQLAlchemy async.
 
-    Uses a restricted DB user (manager_user) with SELECT/UPDATE only.
+    Read-only: writes to tables_scheduletriggernode go through Django
+    (Manager publishes 'deactivate'/'run_session' on schedule_channel).
     """
 
     def __init__(self, session_factory=None):
@@ -48,7 +49,7 @@ class ScheduleTriggerNodeRepository:
                     start_date_time, every, unit, weekdays,
                     end_type, end_date_time, max_runs, current_runs
                 FROM tables_scheduletriggernode
-                WHERE is_active = true
+                WHERE is_active = true AND is_soft_deleted = false
                 """
             )
             result = await session.execute(query)

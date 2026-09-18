@@ -86,7 +86,7 @@ def test_create_version_with_nonexistent_graph_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_list_versions_filters_by_graph_id(auth_client, graph, make_graph_version):
-    other_graph = Graph.objects.create(name="other")
+    other_graph = Graph.objects.create(name="other", org=graph.org)
 
     make_graph_version(name="v-main")
     make_graph_version(name="v-other", graph_obj=other_graph)
@@ -140,7 +140,7 @@ def test_delete_version_soft_deletes(auth_client, make_graph_version):
 
     assert not GraphVersion.objects.filter(id=version_id).exists()
     assert GraphVersion.all_objects.filter(id=version_id).exists()
-    assert GraphVersion.all_objects.get(id=version_id).deleted_at is not None
+    assert GraphVersion.all_objects.get(id=version_id).soft_deleted_at is not None
 
 
 @pytest.mark.django_db

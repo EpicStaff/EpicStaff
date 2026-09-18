@@ -119,7 +119,7 @@ export class PasswordChangeDialogComponent {
             .subscribe({
                 next: (tokens) => {
                     this.toast.success('Password updated successfully.');
-                    this.authService.storeTokens(tokens);
+                    this.authService.storeAccessToken(tokens.access);
                     this.dialogRef.close(true);
                 },
                 error: (err: HttpErrorResponse) => {

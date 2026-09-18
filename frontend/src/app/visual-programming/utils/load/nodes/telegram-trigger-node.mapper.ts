@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { GetTelegramTriggerNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,13 +8,13 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest): TelegramTriggerNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(tn.metadata, NodeType.TELEGRAM_TRIGGER);
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: tn.id,
         type: NodeType.TELEGRAM_TRIGGER,
         node_name: tn.node_name,
         nodeNumber: ui.nodeNumber,
         data: {
-            telegram_bot_api_key: tn.telegram_bot_api_key,
+            telegram_bot_api_key_secret_id: tn.telegram_bot_api_key_secret_id,
             webhook_trigger: tn.webhook_trigger,
             fields: tn.fields,
         },

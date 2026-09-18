@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from typing import Any, Literal
-from pydantic import ConfigDict, HttpUrl
+from typing import Literal, Optional
+from pydantic import ConfigDict, Field
 
 
 class LLMConfigData(BaseModel):
@@ -13,13 +13,14 @@ class LLMConfigData(BaseModel):
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     logit_bias: dict[int, float] | None = None
-    response_format: dict[str, Any] | None = None
     seed: int | None = None
     base_url: str | None = None
     api_version: str | None = None
     api_key: str | None = None
+    api_key_secret_id: int | None = Field(default=None, exclude=True)
+    """In-memory carrier for SecretResolver; excluded from every dump so no
+    Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
-    headers: dict[str, str] | None = None
     extra_headers: dict[str, str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -28,8 +29,9 @@ class LLMConfigData(BaseModel):
 class EmbedderConfigData(BaseModel):
     model: str
     deployment_name: str | None = None
-    base_url: HttpUrl | None = None
+    base_url: str | None = None
     api_key: str | None = None
+    api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,16 +50,36 @@ class EmbedderData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WebhookTriggerAuthData(BaseModel):
+    kind: Literal["webhook", "telegram"]
+    header_name: str
+    secret: Optional[str] = None
+
+
 class BaseTunnelConfigData(BaseModel):
     name: str
+    org_id: int | None = None
+
+    auth: WebhookTriggerAuthData | None = None
 
     @classmethod
-    def _tunnel_prefix(cls):
+    def _tunnel_prefix(cls) -> str:
         return "base"
 
     @property
-    def unique_id(self):
-        return f"{self.__class__._tunnel_prefix()}:{self.name}"
+    def unique_id(self) -> str:
+        """`"<provider>:<org_id>:<path-name>"`.
+
+        The `org_id` segment is load-bearing, not cosmetic: it is the only
+        thing that keeps two different orgs' tunnel configs from colliding
+        on the same registry/Redis key when they happen to choose an
+        identical `path` (see `org_id` docstring above). `org_id=None`
+        renders as the literal string `"none"` -- kept distinguishable from
+        a real id rather than silently collapsing to the pre-org-aware
+        2-part format.
+        """
+        org_segment = "none" if self.org_id is None else str(self.org_id)
+        return f"{self.__class__._tunnel_prefix()}:{org_segment}:{self.name}"
 
 
 class NgrokConfigData(BaseTunnelConfigData):
@@ -70,7 +92,16 @@ class NgrokConfigData(BaseTunnelConfigData):
         return "ngrok"
 
 
+class LocalhostConfigData(BaseTunnelConfigData):
+    domain: str | None = None
+
+    @classmethod
+    def _tunnel_prefix(cls) -> str:
+        return "localhost"
+
+
 class WebhookConfigData(BaseModel):
-    ngrok_configs: list[NgrokConfigData]
+    ngrok_configs: list[NgrokConfigData] = []
+    localhost_configs: list[LocalhostConfigData] = []
     # other configs
     ...

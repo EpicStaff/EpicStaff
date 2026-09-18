@@ -8,7 +8,7 @@
     },
     "line_number": {
       "type": "integer",
-      "description": "1-based line number BEFORE which content will be inserted. Use 1 to insert at the very top. Use a line number past the end of the file to append."
+      "description": "1-based line number BEFORE which content will be inserted. Use 1 to insert at the very top. Must be between 1 and (current line count + 1); an out-of-range value returns an error stating the file's actual line count."
     },
     "content": {
       "type": "string",

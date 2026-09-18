@@ -42,7 +42,7 @@ class LLMModelImportSerializer(BaseModelImportSerializer):
 
     class Meta:
         model = LLMModel
-        exclude = ["llm_provider"]
+        exclude = ["llm_provider", "created_by"]
 
 
 class EmbeddingModelImportSerializer(BaseModelImportSerializer):
@@ -58,7 +58,7 @@ class EmbeddingModelImportSerializer(BaseModelImportSerializer):
 
     class Meta:
         model = EmbeddingModel
-        exclude = ["embedding_provider"]
+        exclude = ["embedding_provider", "created_by"]
 
 
 class RealtimeModelImportSerializer(BaseModelImportSerializer):
@@ -71,7 +71,7 @@ class RealtimeModelImportSerializer(BaseModelImportSerializer):
 
     class Meta:
         model = RealtimeModel
-        exclude = ["provider"]
+        exclude = ["provider", "created_by"]
 
 
 class RealtimeTranscriptionModelImportSerializer(BaseModelImportSerializer):
@@ -84,4 +84,4 @@ class RealtimeTranscriptionModelImportSerializer(BaseModelImportSerializer):
 
     class Meta:
         model = RealtimeTranscriptionModel
-        exclude = ["provider"]
+        exclude = ["provider", "created_by"]

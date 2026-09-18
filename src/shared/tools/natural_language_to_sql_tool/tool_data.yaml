@@ -1,6 +1,6 @@
 tool-data:
   name: "Natural Language To SQL Tool"
-  description: "A tool that converts natural language into SQL queries and executes them on the provided database.  Write your OpenAI API key and DB URI in the domain variables in the format {\"OPENAI_API_KEY\" = \"YOUR_SECRET_KEY\", \"DB_URI\" = \"YOUR_DB_URI\"}"
+  description: "A tool that converts natural language into SQL queries and executes them on the provided database. Configure it via domain variables: \"DB_URI\" (required), \"API_KEY\" (your LLM provider API key), and \"MODEL\" (optional, defaults to \"gpt-4o-mini\"). MODEL supports any LiteLLM-compatible provider that only needs a model name and API key, using the \"<provider>/<model>\" convention: a bare name means OpenAI (e.g. \"gpt-4o-mini\"), \"anthropic/claude-3-5-sonnet-20241022\" for Anthropic, \"gemini/gemini-1.5-pro\" for Gemini. (Providers requiring extra config, such as Azure OpenAI's endpoint/api-version, are not currently supported since only MODEL and API_KEY are wired through.) Example: {\"DB_URI\" = \"YOUR_DB_URI\", \"API_KEY\" = \"YOUR_SECRET_KEY\", \"MODEL\" = \"anthropic/claude-3-5-sonnet-20241022\"}. For backward compatibility, \"OPENAI_API_KEY\" is still accepted as a fallback if \"API_KEY\" is not set."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

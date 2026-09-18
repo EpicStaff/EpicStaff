@@ -1,9 +1,39 @@
+import ntpath
+
+from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
 
 from loguru import logger
 
+from tables.models.base_models import (
+    ActiveManager,
+    SoftDeleteFields,
+    SoftDeleteMixin,
+    soft_delete_consistency_constraint,
+)
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
-class SourceCollection(models.Model):
+
+def _is_bare_file_name(file_name: str) -> bool:
+    """
+    True when file_name is a plain file name carrying no path component.
+
+    Anything that could steer a directory join away from its target folder is
+    not a name we accept: directory separators (both flavours, since the
+    consumer may run on either platform), a Windows drive prefix, and the
+    current/parent directory entries.
+    """
+    if file_name in (".", ".."):
+        return False
+    if ntpath.splitdrive(file_name)[0]:
+        return False
+    return "/" not in file_name and "\\" not in file_name
+
+
+class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
     class SourceCollectionStatus(models.TextChoices):
         """
         Status of SourceCollection
@@ -25,6 +55,15 @@ class SourceCollection(models.Model):
 
     collection_id = models.AutoField(primary_key=True)
     collection_name = models.CharField(max_length=255, blank=True)
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "LLM-facing context describing this collection's contents. Appended to "
+            "the description of every knowledge tool generated for this collection "
+            "so agents know when to use it. Blank means no extra context is added."
+        ),
+    )
     collection_origin = models.CharField(
         max_length=20,
         choices=SourceCollectionOrigin.choices,
@@ -42,12 +81,16 @@ class SourceCollection(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
-                fields=["user_id", "collection_name"],
-                name="unique_collection_name_per_user",
-            )
+                fields=["org", "collection_name"],
+                condition=models.Q(is_soft_deleted=False),
+                name="unique_collection_name_per_org",
+            ),
         ]
 
     def __str__(self):
@@ -55,7 +98,7 @@ class SourceCollection(models.Model):
 
     def _generate_unique_collection_name(self, base_name):
         existing_names = SourceCollection.objects.filter(
-            user_id=self.user_id, collection_name__startswith=base_name
+            org_id=self.org_id, collection_name__startswith=base_name
         ).values_list("collection_name", flat=True)
 
         if base_name not in existing_names:
@@ -87,8 +130,7 @@ class SourceCollection(models.Model):
         if not self.documents.exists():
             self.status = self.SourceCollectionStatus.EMPTY
         else:
-            # TODO: implement status aggregation logic
-            pass
+            self.status = self.SourceCollectionStatus.COMPLETED
         self.save(update_fields=["status", "updated_at"])
 
 
@@ -103,7 +145,7 @@ class DocumentContent(models.Model):
         return f"Content {self.content_id}"
 
 
-class DocumentMetadata(models.Model):
+class DocumentMetadata(SoftDeleteFields):
     """
     Model to store file metadata records
     """
@@ -138,9 +180,17 @@ class DocumentMetadata(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         indexes = [models.Index(fields=["source_collection"])]
 
     def save(self, *args, **kwargs):
+        if self.file_name and not _is_bare_file_name(self.file_name):
+            raise SuspiciousFileOperation(
+                f"file_name {self.file_name!r} must be a plain file name, not a path"
+            )
+
         res = super().save(*args, **kwargs)
         collection = self.source_collection
         if collection is None:
@@ -166,7 +216,7 @@ class DocumentMetadata(models.Model):
         return f"{self.file_name}"
 
 
-class BaseRagType(models.Model):
+class BaseRagType(SoftDeleteFields):
     """
     Purpose: Common interface for all RAG implementations
 
@@ -190,6 +240,9 @@ class BaseRagType(models.Model):
 
     class Meta:
         abstract = False  # This is a concrete model for polymorphism
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
         return f"{self.rag_type}"

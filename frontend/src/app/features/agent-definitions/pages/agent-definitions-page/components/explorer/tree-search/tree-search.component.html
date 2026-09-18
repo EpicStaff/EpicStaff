@@ -1,0 +1,27 @@
+<div class="search">
+    <app-svg-icon
+        icon="search"
+        size="1rem"
+        class="search__icon"
+    />
+    <input
+        type="text"
+        class="search__input"
+        placeholder="Search surfaces, agents, files..."
+        [ngModel]="value()"
+        (ngModelChange)="onInput($event)"
+    />
+    @if (value()) {
+        <button
+            type="button"
+            class="search__clear"
+            aria-label="Clear"
+            (click)="onClear()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="0.85rem"
+            />
+        </button>
+    }
+</div>

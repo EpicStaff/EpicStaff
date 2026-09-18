@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, output, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, Input, output, ViewChild } from '@angular/core';
 
 export interface PickerItem {
     tag: string;
@@ -11,8 +10,7 @@ export interface PickerItem {
 
 @Component({
     selector: 'app-var-picker-flat',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="vpf-container">
             <div class="vpf-search">
@@ -45,6 +43,7 @@ export interface PickerItem {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .vpf-container {
@@ -119,7 +118,7 @@ export interface PickerItem {
             .vpf-tag {
                 flex-shrink: 0;
                 font-size: 0.68rem;
-                font-weight: 600;
+                font-weight: 500;
                 padding: 1px 5px;
                 border-radius: 3px;
                 background: rgba(104, 95, 255, 0.25);
@@ -148,13 +147,17 @@ export interface PickerItem {
 export class VarPickerFlatComponent implements AfterViewInit {
     @ViewChild('searchInput') private searchInputRef!: ElementRef<HTMLInputElement>;
 
+    @Input() autofocusSearch = true;
+
     private allItems: PickerItem[] = [];
     filteredItems: PickerItem[] = [];
 
     pathSelected = output<string>();
 
     ngAfterViewInit(): void {
-        this.searchInputRef.nativeElement.focus();
+        if (this.autofocusSearch) {
+            this.searchInputRef.nativeElement.focus();
+        }
     }
 
     get hasFilteredItems(): boolean {
@@ -171,7 +174,23 @@ export class VarPickerFlatComponent implements AfterViewInit {
     }
 
     onSearchInput(event: Event): void {
-        const f = (event.target as HTMLInputElement).value.toLowerCase().trim();
+        const query = (event.target as HTMLInputElement).value;
+        this.applyFilter(query);
+    }
+
+    /**
+     * Applies a filter query coming from an external source (e.g. the input-map row's
+     * value input) and keeps the picker's own search field in sync with it.
+     */
+    setFilter(query: string): void {
+        if (this.searchInputRef) {
+            this.searchInputRef.nativeElement.value = query;
+        }
+        this.applyFilter(query);
+    }
+
+    private applyFilter(query: string): void {
+        const f = query.toLowerCase().trim();
         this.filteredItems = f
             ? this.allItems.filter((item) => item.fullPath.toLowerCase().includes(f))
             : this.allItems;

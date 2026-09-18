@@ -1,0 +1,67 @@
+<div [formGroup]="form()">
+    <div class="form-section">
+        <h3 class="section-title">VOICE SETTINGS</h3>
+        <div class="form-group">
+            <app-radio-button
+                label="Voice Provider"
+                tooltipText="Select which AI provider handles this agent's real-time voice calls."
+                [options]="providers"
+                [value]="activeProvider()"
+                (valueChange)="onProviderSelect($event)"
+            />
+        </div>
+
+        @if (activeProvider() === 'openai') {
+            <div class="form-group">
+                <app-select
+                    label="OpenAI Config"
+                    tooltipText="Select the OpenAI realtime configuration to use for this agent."
+                    formControlName="openai_config"
+                    [items]="openaiConfigItems()"
+                    placeholder="Select OpenAI config"
+                />
+            </div>
+        }
+        @if (activeProvider() === 'elevenlabs') {
+            <div class="form-group">
+                <app-select
+                    label="ElevenLabs Config"
+                    tooltipText="Select the ElevenLabs realtime configuration to use for this agent."
+                    formControlName="elevenlabs_config"
+                    [items]="elevenLabsConfigItems()"
+                    placeholder="Select ElevenLabs config"
+                />
+            </div>
+        }
+        @if (activeProvider() === 'gemini') {
+            <div class="form-group">
+                <app-select
+                    label="Gemini Config"
+                    tooltipText="Select the Gemini realtime configuration to use for this agent."
+                    formControlName="gemini_config"
+                    [items]="geminiConfigItems()"
+                    placeholder="Select Gemini config"
+                />
+            </div>
+        }
+
+        <div class="form-group">
+            @if (this.activeProvider() === 'elevenlabs') {
+                <app-custom-input
+                    label="Voice"
+                    tooltipText="Select the voice for the AI agent. For ElevenLabs enter your custom Voice ID."
+                    formControlName="voice"
+                    placeholder="ElevenLabs Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM)"
+                />
+            } @else {
+                <app-voice-selector
+                    label="Voice"
+                    tooltipText="Select the voice for the AI agent. For ElevenLabs enter your custom Voice ID."
+                    [voices]="availableVoices()"
+                    [selectedVoice]="form().get('voice')?.value ?? 'alloy'"
+                    (voiceChange)="onVoiceChange($event)"
+                ></app-voice-selector>
+            }
+        </div>
+    </div>
+</div>

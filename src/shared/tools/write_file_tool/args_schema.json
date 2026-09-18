@@ -1,0 +1,20 @@
+{
+  "title": "WriteFileToolArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "Path to the file to write, relative to the sandbox root."
+    },
+    "content": {
+      "type": "string",
+      "description": "Full content to write to the file."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Must be true to overwrite an existing file. Default false.",
+      "default": false
+    }
+  },
+  "required": ["file_path", "content"]
+}

@@ -1,0 +1,32 @@
+<div
+    class="summary-dialog"
+    role="dialog"
+    aria-label="Surface Summary"
+>
+    <header class="summary-dialog__header">
+        <h2 class="summary-dialog__title">{{ placeLabel }} — Permission Summary</h2>
+        <button
+            type="button"
+            class="summary-dialog__close"
+            aria-label="Close"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    <div class="summary-dialog__body">
+        <app-surface-card
+            [surface]="summarySurface()"
+            [readOnly]="true"
+            [hideHeader]="true"
+            [expanded]="true"
+            [hideInstructions]="hideInstructions"
+            [hideDescriptions]="hideDescriptions"
+            [flat]="true"
+        />
+    </div>
+</div>

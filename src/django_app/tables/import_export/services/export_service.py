@@ -10,9 +10,13 @@ class ExportService:
     def __init__(self, registry: EntityRegistry):
         self.registry = registry
 
-    def export_entities(self, entity_type: EntityType, entity_ids: List[int]) -> dict:
-        """Export multiple entities of the same type with all dependencies"""
-        collector = DependencyCollector(self.registry)
+    def export_entities(
+        self,
+        entity_type: EntityType,
+        entity_ids: List[int],
+        org_id: int | None = None,
+    ) -> dict:
+        collector = DependencyCollector(self.registry, org_id=org_id)
 
         for entity_id in entity_ids:
             collector.collect(entity_type, entity_id)
@@ -26,8 +30,9 @@ class ExportService:
 class DependencyCollector:
     """Recursively collects all dependencies for export"""
 
-    def __init__(self, registry: EntityRegistry):
+    def __init__(self, registry: EntityRegistry, org_id: int | None = None):
         self.registry = registry
+        self.org_id = org_id
         self.collected = defaultdict(dict)
 
     def collect(self, entity_type: str, entity_id: int):
@@ -42,13 +47,19 @@ class DependencyCollector:
         if not instance:
             return
 
-        dependencies = strategy.extract_dependencies_from_instance(instance)
+        dependencies = self._extract_dependencies(strategy, instance)
 
         for dep_type, dep_ids in dependencies.items():
             for dep_id in dep_ids:
                 self.collect(dep_type, dep_id)
 
         self.collected[entity_type][entity_id] = instance
+
+    def _extract_dependencies(self, strategy, instance) -> dict[str, list[int]]:
+        extractor = getattr(strategy, "extract_org_scoped_dependencies", None)
+        if extractor is not None and self.org_id is not None:
+            return extractor(instance, self.org_id)
+        return strategy.extract_dependencies_from_instance(instance)
 
     def to_dict(self) -> dict:
         """Convert collected entities to exportable dict"""
@@ -57,7 +68,14 @@ class DependencyCollector:
         for entity_type, instances in self.collected.items():
             strategy = self.registry.get_strategy(entity_type)
             result[entity_type] = [
-                strategy.export_entity(instance) for instance in instances.values()
+                self._export_entity(strategy, instance)
+                for instance in instances.values()
             ]
 
         return result
+
+    def _export_entity(self, strategy, instance) -> dict:
+        exporter = getattr(strategy, "export_entity_org_scoped", None)
+        if exporter is not None and self.org_id is not None:
+            return exporter(instance, self.org_id)
+        return strategy.export_entity(instance)

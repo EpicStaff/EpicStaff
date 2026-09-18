@@ -1,0 +1,9 @@
+@use '../_menu-panel' as *;
+
+.bulk-menu {
+    @include menu-panel();
+
+    .menu-item {
+        @include menu-item();
+    }
+}

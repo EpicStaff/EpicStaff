@@ -5,8 +5,10 @@ from io import BytesIO
 from unittest.mock import MagicMock
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.exceptions import ValidationError
 
+from tables.constants.upload_limits import UploadLimits
 from tables.validators.file_upload_validator import FileValidator
 
 
@@ -115,6 +117,7 @@ def test_scan_resets_file_position(validator):
 def _make_file(name, content=b"data"):
     f = MagicMock()
     f.name = name
+    f.size = len(content)
     f.read.return_value = content
     f.tell.return_value = 0
     f.seek = MagicMock()
@@ -135,15 +138,8 @@ def test_validate_rejects_archive_containing_executables(validator):
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("hack.sh", "#!/bin/bash")
-    content = buf.getvalue()
-
-    f = MagicMock()
-    f.name = "bundle.zip"
-    # scan_archive_for_executables reads from file_obj, so we need real BytesIO behavior
-    real_buf = BytesIO(content)
-    f.tell = real_buf.tell
-    f.read = real_buf.read
-    f.seek = real_buf.seek
+    # A real upload, so .size/.read/.seek behave as scan_archive_* expects
+    f = SimpleUploadedFile("bundle.zip", buf.getvalue())
 
     with pytest.raises(ValidationError, match="executable files"):
         validator.validate([f])
@@ -160,3 +156,144 @@ def test_validate_aggregates_multiple_violations(validator):
     error_msg = str(exc_info.value)
     assert "a.exe" in error_msg
     assert "not supported" in error_msg
+
+
+# --- size caps ---
+#
+# nginx caps a request body at 50M (nginx/templates/default.conf.template) but
+# nothing below it bounded a storage upload at all: no per-file cap, no batch
+# total. Both are enforced here so one 400 reports every violation at once.
+
+
+def _upload(name, content=b"data"):
+    """Build a real Django upload so .size/.read/.seek behave as in production."""
+    return SimpleUploadedFile(name, content)
+
+
+def _limited(**overrides):
+    """Build a validator whose caps are tiny, so fixtures stay small."""
+    limits = {
+        "max_file_bytes": 1_000,
+        "max_total_bytes": 10_000,
+        "max_archive_entries": 1_000,
+        "max_archive_uncompressed_bytes": 1_000_000,
+    }
+    limits.update(overrides)
+    return FileValidator(limits=UploadLimits(**limits))
+
+
+def test_validate_rejects_file_over_per_file_cap():
+    validator = _limited(max_file_bytes=100)
+
+    with pytest.raises(ValidationError, match="too large"):
+        validator.validate([_upload("big.txt", b"x" * 200)])
+
+
+def test_validate_allows_file_at_per_file_cap():
+    validator = _limited(max_file_bytes=100)
+
+    assert len(validator.validate([_upload("ok.txt", b"x" * 100)])) == 1
+
+
+def test_validate_rejects_batch_over_total_cap():
+    """Every file is individually legal; only the total is not."""
+    validator = _limited(max_file_bytes=1_000, max_total_bytes=300)
+    files = [_upload(f"f{i}.txt", b"x" * 150) for i in range(3)]
+
+    with pytest.raises(ValidationError, match="Total upload size"):
+        validator.validate(files)
+
+
+def test_validate_allows_batch_at_total_cap():
+    validator = _limited(max_file_bytes=1_000, max_total_bytes=300)
+    files = [_upload(f"f{i}.txt", b"x" * 150) for i in range(2)]
+
+    assert len(validator.validate(files)) == 2
+
+
+def test_total_size_message_names_the_limit():
+    validator = _limited(max_total_bytes=300)
+
+    with pytest.raises(ValidationError) as exc_info:
+        validator.validate([_upload("a.txt", b"x" * 400)])
+
+    assert "300" in str(exc_info.value)
+
+
+# --- archive expansion caps ---
+#
+# Reads the ZIP central directory / TAR headers only. Both modules bound a
+# member read by its declared size (verified: a size patched down truncates the
+# read and fails CRC), so declared totals are a sound basis for rejection and
+# nothing has to be decompressed to apply these caps.
+
+
+def _zip_of(entries, compression=zipfile.ZIP_DEFLATED):
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", compression) as zf:
+        for name, payload in entries:
+            zf.writestr(name, payload)
+    buf.seek(0)
+    return buf
+
+
+def test_validate_rejects_zip_with_too_many_entries():
+    validator = _limited(max_archive_entries=5)
+    buf = _zip_of([(f"f{i}.txt", b"tiny") for i in range(10)])
+
+    with pytest.raises(ValidationError, match="entries"):
+        validator.validate([_upload("many.zip", buf.getvalue())])
+
+
+def test_validate_rejects_zip_over_declared_uncompressed_total():
+    validator = _limited(
+        max_file_bytes=100_000,
+        max_archive_uncompressed_bytes=1_000,
+    )
+    buf = _zip_of([("a.txt", b"x" * 2_000)], compression=zipfile.ZIP_STORED)
+
+    with pytest.raises(ValidationError, match="expands to"):
+        validator.validate([_upload("total.zip", buf.getvalue())])
+
+
+def test_validate_allows_ordinary_zip():
+    validator = _limited(max_file_bytes=100_000)
+    buf = _zip_of([("readme.txt", b"hello"), ("data.csv", b"a,b,c")])
+
+    assert len(validator.validate([_upload("bundle.zip", buf.getvalue())])) == 1
+
+
+def test_expansion_scan_resets_file_position():
+    validator = _limited(max_file_bytes=100_000)
+    upload = _upload("bundle.zip", _zip_of([("a.txt", b"data")]).getvalue())
+
+    validator.validate([upload])
+
+    assert upload.tell() == 0
+
+
+def test_non_archive_upload_skips_expansion_checks():
+    validator = _limited(max_file_bytes=100_000)
+    assert len(validator.validate([_upload("notes.txt", b"just text")])) == 1
+
+
+def test_validate_rejects_compressed_tar_over_the_decompress_cap():
+    """A tar.gz must be inflated through a hard cap before its headers are readable.
+
+    Distinct from the ratio and declared-total cases: those return a reason from
+    header data, while this path aborts inside _bounded_decompress before any
+    header is parsed, and is the only caller of _ArchiveTooLarge.
+    """
+    validator = _limited(
+        max_file_bytes=10_000_000,
+        max_archive_uncompressed_bytes=1_000,
+    )
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        payload = b"\0" * 500_000
+        info = tarfile.TarInfo("zeros.bin")
+        info.size = len(payload)
+        tf.addfile(info, BytesIO(payload))
+
+    with pytest.raises(ValidationError, match="expands to more than"):
+        validator.validate([_upload("big.tar.gz", buf.getvalue())])

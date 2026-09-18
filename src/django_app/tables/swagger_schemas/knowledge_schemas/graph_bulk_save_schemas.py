@@ -19,12 +19,6 @@ SAVE_FLOW_SWAGGER = dict(
     request=inline_serializer(
         name="SaveFlowRequest",
         fields={
-            "code_agent_node_list": drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False
-            ),
-            "crew_node_list": drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False
-            ),
             "python_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
@@ -49,6 +43,9 @@ SAVE_FLOW_SWAGGER = dict(
             "graph_note_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
+            "knowledge_node_list": drf_serializers.ListField(
+                child=drf_serializers.DictField(), required=False
+            ),
             "webhook_trigger_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
@@ -67,8 +64,6 @@ SAVE_FLOW_SWAGGER = dict(
             "deleted": inline_serializer(
                 name="DeletedIds",
                 fields={
-                    "code_agent_node_ids": _id_list_field,
-                    "crew_node_ids": _id_list_field,
                     "python_node_ids": _id_list_field,
                     "file_extractor_node_ids": _id_list_field,
                     "audio_transcription_node_ids": _id_list_field,
@@ -77,6 +72,7 @@ SAVE_FLOW_SWAGGER = dict(
                     "subgraph_node_ids": _id_list_field,
                     "decision_table_node_ids": _id_list_field,
                     "graph_note_ids": _id_list_field,
+                    "knowledge_node_ids": _id_list_field,
                     "webhook_trigger_node_ids": _id_list_field,
                     "telegram_trigger_node_ids": _id_list_field,
                     "schedule_trigger_node_ids": _id_list_field,
@@ -91,25 +87,6 @@ SAVE_FLOW_SWAGGER = dict(
         OpenApiExample(
             name="Typical bulk save",
             value={
-                "crew_node_list": [
-                    {
-                        "id": 5,
-                        "graph": 12,
-                        "crew_id": 3,
-                        "node_name": "crewnode_5",
-                        "input_map": {},
-                        "output_variable_path": None,
-                        "metadata": {"position": {"x": 100, "y": 200}},
-                    },
-                    {
-                        "graph": 12,
-                        "crew_id": 7,
-                        "node_name": "crewnode_new",
-                        "input_map": {},
-                        "output_variable_path": None,
-                        "metadata": {"position": {"x": 400, "y": 200}},
-                    },
-                ],
                 "python_node_list": [
                     {
                         "id": 9,
@@ -173,7 +150,7 @@ SAVE_FLOW_SWAGGER = dict(
                 "graph_note_list": [
                     {
                         "graph": 12,
-                        "content": "This flow processes user text through a crew.",
+                        "content": "This flow processes user text with a Python node.",
                         "metadata": {"position": {"x": 100, "y": -100}},
                     }
                 ],
@@ -196,7 +173,7 @@ SAVE_FLOW_SWAGGER = dict(
                 ],
                 "conditional_edge_list": [],
                 "deleted": {
-                    "crew_node_ids": [8],
+                    "python_node_ids": [8],
                     "edge_ids": [14],
                 },
             },

@@ -1,19 +1,19 @@
 {
-  "title": "S3LineReadFileArgs",
+  "title": "S3FileLineReadArgs",
   "type": "object",
   "properties": {
     "file_path": {
       "type": "string",
       "description": "S3 file path to read."
     },
-    "line_number": {
+    "offset": {
       "type": "integer",
-      "description": "1-based line number to start reading from."
+      "description": "1-based line number to start reading from. Defaults to 1 (start of file)."
     },
-    "num_lines": {
+    "limit": {
       "type": "integer",
-      "description": "Number of lines to read. If omitted, reads to end of file."
+      "description": "Maximum number of lines to return. Defaults to 2000. Use with offset to page through large files."
     }
   },
-  "required": ["file_path", "line_number"]
+  "required": ["file_path"]
 }

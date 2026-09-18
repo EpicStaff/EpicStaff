@@ -1,86 +1,104 @@
 <div class="tab">
     <div class="tab__header">
         <div class="tab__header-left">
-            <h3 class="tab__title">Voice / Twilio Settings</h3>
-            <p class="tab__subtitle">Configure Twilio credentials and the default voice agent for inbound calls.</p>
+            <h3 class="tab__title">Voice Channels</h3>
+            <p class="tab__subtitle">Manage realtime voice channels and their Twilio configuration.</p>
         </div>
         <app-button
             type="primary"
-            [disabled]="saving()"
-            (click)="onSave()"
+            (click)="onAddChannel()"
+            >Add Channel</app-button
         >
-            {{ saving() ? 'Saving…' : 'Save' }}
-        </app-button>
     </div>
 
     @if (status() === 'loading') {
         <div class="tab__loading-state">
-            <p>Loading voice settings…</p>
+            <app-loading-spinner />
         </div>
     } @else if (status() === 'error') {
         <div class="tab__loading-state tab__loading-state--error">
-            <p>Failed to load voice settings.</p>
+            <p>Failed to load channels.</p>
+        </div>
+    } @else if (channels().length === 0) {
+        <div class="tab__empty-state">
+            <p>No channels configured. Click <strong>Add Channel</strong> to create one.</p>
         </div>
     } @else {
-        <form
-            [formGroup]="form"
-            class="tab__form"
-        >
-            <app-custom-input
-                label="Twilio Account SID"
-                formControlName="twilio_account_sid"
-                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                tooltipText="Your Twilio Account SID from the Twilio Console"
-            />
+        <div class="channel-list">
+            @for (channel of channels(); track channel.id) {
+                <div class="channel-card">
+                    <div class="channel-card__header">
+                        <div class="channel-card__name-row">
+                            <span class="channel-card__name">{{ channel.name }}</span>
+                            <span
+                                class="channel-card__badge"
+                                [class.channel-card__badge--active]="channel.is_enabled"
+                                [class.channel-card__badge--inactive]="!channel.is_enabled"
+                                >{{ channel.is_enabled ? 'Enabled' : 'Disabled' }}</span
+                            >
+                        </div>
+                        <div class="channel-card__actions">
+                            <button
+                                type="button"
+                                class="channel-card__action"
+                                title="Edit"
+                                (click)="onEditChannel(channel)"
+                            >
+                                <i
+                                    class="ti ti-pencil"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
+                            <button
+                                type="button"
+                                class="channel-card__action channel-card__action--delete"
+                                title="Delete"
+                                (click)="onDeleteChannel(channel)"
+                            >
+                                <i
+                                    class="ti ti-x"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
+                        </div>
+                    </div>
 
-            <app-custom-input
-                type="secret"
-                label="Twilio Auth Token"
-                formControlName="twilio_auth_token"
-                placeholder="••••••••••••••••••••••••••••••••"
-                tooltipText="Your Twilio Auth Token. Used to validate incoming webhook requests."
-            />
+                    <div class="channel-card__meta">
+                        @if (
+                            channel.realtime_agent_definition &&
+                            agentDefinitionMap().has(channel.realtime_agent_definition)
+                        ) {
+                            <div class="channel-card__meta-item">
+                                <span class="channel-card__meta-label">Agent</span>
+                                <span class="channel-card__meta-value">{{
+                                    agentDefinitionMap().get(channel.realtime_agent_definition)
+                                }}</span>
+                            </div>
+                        }
+                        @if (channel.twilio?.phone_number) {
+                            <div class="channel-card__meta-item">
+                                <span class="channel-card__meta-label">Phone</span>
+                                <span class="channel-card__meta-value">{{ channel.twilio!.phone_number }}</span>
+                            </div>
+                        }
+                        @if (channel.twilio?.webhook_trigger?.live_url) {
+                            <div class="channel-card__meta-item">
+                                <span class="channel-card__meta-label">Tunnel</span>
+                                <span class="channel-card__meta-value">{{
+                                    channel.twilio!.webhook_trigger!.live_url
+                                }}</span>
+                            </div>
+                        }
+                    </div>
 
-            <app-select
-                label="Default Voice Agent"
-                formControlName="voice_agent"
-                [items]="agentItems()"
-                placeholder="Select an agent"
-                tooltipText="Agent used for inbound calls. Only agents with a realtime configuration are shown."
-            />
-
-            <app-select
-                label="Webhook Tunnel"
-                formControlName="ngrok_config"
-                [items]="ngrokItems()"
-                placeholder="Select a tunnel"
-                tooltipText="Ngrok tunnel that exposes the voice endpoint to Twilio"
-            />
-
-            <div class="tab__section-title">Configure Phone Number Webhook</div>
-
-            <div (click)="onPhoneSelectOpen()">
-                <app-select
-                    label="Twilio Phone Number"
-                    [items]="phoneNumberItems()"
-                    [loading]="loadingPhoneNumbers()"
-                    (changed)="onPhoneNumberChange($event)"
-                    placeholder="Select a phone number"
-                    tooltipText="Select the Twilio number to point at this voice endpoint"
-                />
-            </div>
-
-            @if (!voiceStreamUrl()) {
-                <p class="tab__hint">Select and save a Webhook Tunnel above to enable webhook configuration.</p>
+                    @if (getStreamUrl(channel); as url) {
+                        <div class="channel-card__stream-url">
+                            <span class="channel-card__url-label">Stream URL</span>
+                            <code class="channel-card__url-code">{{ url }}</code>
+                        </div>
+                    }
+                </div>
             }
-
-            <app-button
-                type="primary"
-                [disabled]="configuringWebhook()"
-                (click)="onConfigureWebhook()"
-            >
-                {{ configuringWebhook() ? 'Configuring…' : 'Configure Webhook' }}
-            </app-button>
-        </form>
+        </div>
     }
 </div>

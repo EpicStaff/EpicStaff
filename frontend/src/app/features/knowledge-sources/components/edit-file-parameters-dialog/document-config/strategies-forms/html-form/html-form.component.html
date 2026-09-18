@@ -13,12 +13,17 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number
-                formControlName="chunk_size"
-                [alwaysShowSteps]="true"
-                [invalid]="!!getMainParamControl('chunk_size')?.invalid"
-            />
-            <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
+            @if (canUpdate()) {
+                <app-input-number
+                    formControlName="chunk_size"
+                    [alwaysShowSteps]="true"
+                    [stepSize]="DEFAULT_STEP_SIZE"
+                    [invalid]="!!getMainParamControl('chunk_size')?.invalid"
+                />
+                <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
+            } @else {
+                <span>{{ params().chunk_size }}</span>
+            }
         </div>
 
         <div class="config__grid-item">
@@ -31,12 +36,17 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number
-                formControlName="chunk_overlap"
-                [alwaysShowSteps]="true"
-                [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
-            />
-            <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
+            @if (canUpdate()) {
+                <app-input-number
+                    formControlName="chunk_overlap"
+                    [alwaysShowSteps]="true"
+                    [stepSize]="DEFAULT_STEP_SIZE"
+                    [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
+                />
+                <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
+            } @else {
+                <span>{{ params().chunk_overlap }}</span>
+            }
         </div>
     </div>
 
@@ -59,7 +69,11 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-toggle-switch formControlName="preserve_links" />
+            @if (canUpdate()) {
+                <app-toggle-switch formControlName="preserve_links" />
+            } @else {
+                <span>{{ !!params().preserve_links }}</span>
+            }
         </div>
         <div class="config__grid-item">
             <label>Normalize Text</label>
@@ -71,7 +85,11 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-toggle-switch formControlName="normalize_text" />
+            @if (canUpdate()) {
+                <app-toggle-switch formControlName="normalize_text" />
+            } @else {
+                <span>{{ !!params().normalize_text }}</span>
+            }
         </div>
         <div class="config__grid-item">
             <label>External Metadata</label>
@@ -88,6 +106,7 @@
                 [editorOptions]="editorOptions"
                 [jsonData]="jsonData"
                 [title]="'JSON'"
+                [readonly]="!canUpdate()"
                 [allowCopy]="true"
                 [fullHeight]="true"
                 (jsonChange)="onJsonChange($event)"
@@ -104,12 +123,16 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-custom-input
-                class="config__input"
-                formControlName="denylist_tags"
-                type="text"
-                placeholder="Enter tag (e.g. h1, p, div)"
-            />
+            @if (canUpdate()) {
+                <app-custom-input
+                    class="config__input"
+                    formControlName="denylist_tags"
+                    type="text"
+                    placeholder="Enter tag (e.g. h1, p, div)"
+                />
+            } @else {
+                <span>{{ params().denylist_tags }}</span>
+            }
         </div>
     </div>
 </form>

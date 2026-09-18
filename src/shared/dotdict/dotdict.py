@@ -118,7 +118,7 @@ class DotDict(dict):
                 values_schema=core_schema.any_schema(),
             ),
             serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda v: v.deep_dump(),
+                lambda v: v.deep_dump() if v is not None else None,
                 return_schema=core_schema.dict_schema(),
             ),
         )
@@ -183,7 +183,7 @@ class DotList(list):
             cls._validate,
             core_schema.list_schema(items_schema=core_schema.any_schema()),
             serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda v: v.deep_dump(),
+                lambda v: v.deep_dump() if v is not None else None,
                 return_schema=core_schema.list_schema(),
             ),
         )

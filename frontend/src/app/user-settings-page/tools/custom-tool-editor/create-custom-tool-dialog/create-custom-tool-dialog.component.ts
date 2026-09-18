@@ -1,20 +1,41 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    AbstractControl,
+    AsyncValidatorFn,
+    NonNullableFormBuilder,
+    ReactiveFormsModule,
+    ValidationErrors,
+    Validators,
+} from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { ValidationErrorsComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
-import { EMPTY } from 'rxjs';
-import { catchError, finalize, tap } from 'rxjs/operators';
+import { EMPTY, Observable, of, timer } from 'rxjs';
+import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
+import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import {
     CreatePythonCodeToolPayload,
     GetPythonCodeToolRequest,
 } from '../../../../features/tools/models/python-code-tool.model';
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
@@ -25,14 +46,19 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
+import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
-import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
 import {
     DrillStep,
     ParametersTableViewComponent,
 } from './components/parameters-table-view/parameters-table-view.component';
 import { toCreatePayload } from './models/create-custom-tool-form.model';
-import { isToolJsonSchemaValid, objectDefaultDataMarkers, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
+import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
+import {
+    isToolJsonSchemaValid,
+    objectDefaultDataMarkers,
+    TOOL_VARIABLES_JSON_SCHEMA,
+} from './schema/tool-variables-schema';
 
 enum ActiveEditor {
     None = 'none',
@@ -41,13 +67,41 @@ enum ActiveEditor {
 }
 
 interface CreateCustomToolDialogData {
-    pythonTools?: GetPythonCodeToolRequest[];
     selectedTool?: GetPythonCodeToolRequest;
 }
 
-const DEFAULT_PYTHON_CODE = `def main() -> dict:
-    return {"status": "ok"}
+/** `fork` is the built-in path: a POST that leaves the immutable original alone. */
+type SaveAction = 'create' | 'update' | 'fork';
+
+/** A fork is announced by {@link CreateCustomToolDialogComponent.adoptForkedCopy} instead, which names the copy. */
+const SAVE_SUCCESS_MESSAGES: Record<Exclude<SaveAction, 'fork'>, string> = {
+    create: 'Custom tool created successfully!',
+    update: 'Custom tool updated successfully!',
+};
+
+const SAVE_FAILURE_MESSAGES: Record<SaveAction, string> = {
+    create: 'Failed to create custom tool. Please try again.',
+    update: 'Failed to update custom tool. Please try again.',
+    fork: 'Failed to save your copy of this built-in tool. Please try again.',
+};
+
+const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
+#
+# Logic     : <how it should work - algorithm steps, external services/APIs it calls>
+# Inputs    : defined via this dialog's Parameters fields
+# Output    : <what the return value should contain>
+# Library   : list any pip packages this code needs in the Library field
+# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')
+#
+# Required signature:
+#   def main(<parameters matching this tool's Parameters>) -> ...:
+#       ...
+#       return ...  # value returned to the agent that called this tool
 `;
+
+/** Explains why the built-in header button offers "Create Editable Copy" instead of editing in place. */
+const BUILT_IN_SAVE_TOOLTIP =
+    'Built-in tools are read-only. Create an editable copy to make changes; the original stays untouched.';
 
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
@@ -55,7 +109,6 @@ const VARIABLES_SCHEMA_TOOLTIP =
 @Component({
     selector: 'app-create-custom-tool-dialog',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         MatTooltipModule,
         AppSvgIconComponent,
@@ -68,6 +121,9 @@ const VARIABLES_SCHEMA_TOOLTIP =
         TextareaComponent,
         ToggleSwitchComponent,
         ParametersTableViewComponent,
+        HasPermissionDirective,
+        NodeSecretsFieldComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -81,34 +137,82 @@ export class CreateCustomToolDialogComponent {
     private readonly toast = inject(ToastService);
     private readonly confirmDialog = inject(ConfirmationDialogService);
     private readonly toolsEvents = inject(ToolsEventsService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
-    public readonly selectedTool: GetPythonCodeToolRequest | null = this.dialogData?.selectedTool ?? null;
-    public readonly isEditMode = this.selectedTool !== null;
+    /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
+    public readonly selectedTool = signal<GetPythonCodeToolRequest | null>(this.dialogData?.selectedTool ?? null);
+    public readonly isEditMode = computed(() => this.selectedTool() !== null);
+    public readonly isBuiltIn = computed(() => this.selectedTool()?.built_in === true);
+    public readonly dialogTitle = computed(() => {
+        if (this.isBuiltIn()) {
+            return 'Built-in Tool';
+        }
+        return this.isEditMode() ? 'Edit Custom Tool' : 'Create Custom Tool';
+    });
+
+    private readonly baseJsonEditorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
+        theme: 'vs-dark',
+        language: 'json',
+        automaticLayout: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        wrappingIndent: 'indent',
+        wordWrapBreakAfterCharacters: ',',
+        wordWrapBreakBeforeCharacters: '}]',
+        formatOnPaste: true,
+        formatOnType: true,
+        tabSize: 2,
+    };
+
+    public readonly jsonEditorOptions = computed<MonacoEditor.IStandaloneEditorConstructionOptions>(() => ({
+        ...this.baseJsonEditorOptions,
+        readOnly: this.isBuiltIn(),
+    }));
 
     public readonly form = this.fb.group({
-        name: this.fb.control(this.selectedTool?.name ?? '', [Validators.required]),
-        description: this.fb.control(this.selectedTool?.description ?? '', [Validators.required]),
-        pythonCode: this.fb.control(this.selectedTool?.python_code?.code ?? DEFAULT_PYTHON_CODE, [Validators.required]),
-        variablesJson: this.fb.control(
-            this.selectedTool ? this.initialVariablesJsonFromTool(this.selectedTool) : '[]',
-            [Validators.required]
-        ),
-        libraries: this.fb.control<string[]>(this.selectedTool?.python_code?.libraries ?? []),
+        name: this.fb.control(this.selectedTool()?.name ?? '', {
+            validators: [Validators.required],
+            asyncValidators: [this.uniqueNameValidator()],
+        }),
+        description: this.fb.control(this.selectedTool()?.description ?? '', [Validators.required]),
+        pythonCode: this.fb.control(this.selectedTool()?.python_code?.code ?? DEFAULT_PYTHON_CODE, [
+            Validators.required,
+        ]),
+        variablesJson: this.fb.control(this.initialVariablesJson(), [Validators.required]),
+        libraries: this.fb.control<string[]>(this.selectedTool()?.python_code?.libraries ?? []),
+        useStorage: this.fb.control(this.selectedTool()?.use_storage ?? false),
     });
 
     public readonly ActiveEditor = ActiveEditor;
     public readonly variablesSchemaTooltip = VARIABLES_SCHEMA_TOOLTIP;
+    public readonly builtInSaveTooltip = BUILT_IN_SAVE_TOOLTIP;
 
     private readonly parametersTableView = viewChild(ParametersTableViewComponent);
 
     public readonly tableVariables = signal<ToolVariable[]>([]);
     public readonly tableDrillStack = signal<DrillStep[]>([]);
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Tools));
+    public readonly secretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this tool's code. You don't have permission to change which secrets are selected."
+    );
+    public readonly selectedSecretIds = signal<number[]>(toSecretIds(this.selectedTool()?.python_code?.secrets));
+    private readonly selectedSecretNames = signal<string[]>(toSecretNames(this.selectedTool()?.python_code?.secrets));
+    public readonly secretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
+            : this.selectedSecretNames()
+    );
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
     public readonly jsonSectionExpanded = signal(false);
     public readonly parametersTableMode = signal(true);
+    public readonly parametersSwitchOn = signal(true);
     public readonly isJsonValid = signal(true);
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
@@ -182,6 +286,8 @@ export class CreateCustomToolDialogComponent {
     }
 
     public setParametersTableMode(enabled: boolean): void {
+        this.parametersSwitchOn.set(enabled);
+
         if (this.parametersTableMode() === enabled) {
             return;
         }
@@ -204,7 +310,9 @@ export class CreateCustomToolDialogComponent {
                         if (result === false) {
                             this.applyEnableTableMode([]);
                             this.tableImportWasInvalid = true;
+                            return;
                         }
+                        this.revertParametersSwitch();
                     });
                 return;
             }
@@ -215,7 +323,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         const tableView = this.parametersTableView();
-        if (tableView && !tableView.isValid()) {
+        if (tableView && !this.isBuiltIn() && !tableView.isValid()) {
             tableView.validate();
             this.confirmDialog
                 .confirm({
@@ -230,7 +338,9 @@ export class CreateCustomToolDialogComponent {
                 .subscribe((result) => {
                     if (result === false) {
                         this.applyDisableTableMode();
+                        return;
                     }
+                    this.revertParametersSwitch();
                 });
             return;
         }
@@ -238,10 +348,19 @@ export class CreateCustomToolDialogComponent {
         this.applyDisableTableMode();
     }
 
+    private revertParametersSwitch(): void {
+        this.parametersSwitchOn.set(this.parametersTableMode());
+    }
+
     private applyDisableTableMode(): void {
         this.parametersTableMode.set(false);
-        this.form.controls.variablesJson.setValue(JSON.stringify(serializeVariables(this.tableVariables()), null, 2));
-        this.form.controls.variablesJson.markAsDirty();
+        this.parametersSwitchOn.set(false);
+        if (!this.isBuiltIn()) {
+            this.form.controls.variablesJson.setValue(
+                JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
+            );
+            this.form.controls.variablesJson.markAsDirty();
+        }
         this.isJsonValid.set(true);
         this.tableImportWasInvalid = false;
         this.jsonSectionExpanded.set(true);
@@ -254,6 +373,7 @@ export class CreateCustomToolDialogComponent {
     private applyEnableTableMode(variables: ToolVariable[]): void {
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
+        this.parametersSwitchOn.set(true);
         this.jsonSectionExpanded.set(false);
         this.jsonIssues.set([]);
         if (this.activeEditor() === ActiveEditor.Json) {
@@ -318,6 +438,10 @@ export class CreateCustomToolDialogComponent {
         this.tableDrillStack.set(stack);
     }
 
+    public onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
+    }
+
     public closeEditorPane(): void {
         this.activeEditor.set(ActiveEditor.None);
     }
@@ -354,27 +478,14 @@ export class CreateCustomToolDialogComponent {
     }
 
     public makeCopy(): void {
-        const original = this.selectedTool;
+        const original = this.selectedTool();
         if (!original || this.isCopying()) {
             return;
         }
 
-        const variables = Array.isArray(original.variables) ? original.variables : [];
-        const payload: CreatePythonCodeToolPayload = {
-            name: `Copy ${original.name}`,
-            description: original.description,
-            variables,
-            python_code: {
-                code: original.python_code?.code ?? '',
-                entrypoint: original.python_code?.entrypoint ?? 'main',
-                libraries: original.python_code?.libraries ?? [],
-                global_kwargs: {},
-            },
-        };
-
         this.isCopying.set(true);
         this.customToolsService
-            .createPythonCodeToolV2(payload)
+            .copyPythonCodeTool(original.id)
             .pipe(
                 tap((created) => {
                     this.toolsEvents.emitCustomToolCreated(created);
@@ -382,7 +493,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error('Error copying tool:', err);
-                    this.toast.error('Failed to copy custom tool. Please try again.');
+                    this.toast.error(this.nameConflictMessage(err) ?? 'Failed to copy custom tool. Please try again.');
                     return EMPTY;
                 }),
                 finalize(() => this.isCopying.set(false)),
@@ -403,7 +514,7 @@ export class CreateCustomToolDialogComponent {
             return;
         }
 
-        if (this.parametersTableMode()) {
+        if (this.parametersTableMode() && !this.isBuiltIn()) {
             this.parametersTableView()?.validate();
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
@@ -429,27 +540,31 @@ export class CreateCustomToolDialogComponent {
             return;
         }
 
+        const editingTool = this.selectedTool();
+        const action: SaveAction = editingTool === null ? 'create' : editingTool.built_in ? 'fork' : 'update';
+
         this.isSaving.set(true);
 
-        const editingTool = this.selectedTool;
-        const request$ = editingTool
-            ? this.customToolsService.updatePythonCodeToolV2(editingTool.id, payload)
-            : this.customToolsService.createPythonCodeToolV2(payload);
-
-        const successMessage = editingTool ? 'Custom tool updated successfully!' : 'Custom tool created successfully!';
-        const errorMessage = editingTool
-            ? 'Failed to update custom tool. Please try again.'
-            : 'Failed to create custom tool. Please try again.';
+        const request$ =
+            action === 'fork' && editingTool
+                ? this.customToolsService.copyPythonCodeTool(editingTool.id)
+                : editingTool
+                  ? this.customToolsService.updatePythonCodeToolV2(editingTool.id, payload)
+                  : this.customToolsService.createPythonCodeToolV2(payload);
 
         request$
             .pipe(
                 tap((result) => {
-                    this.toast.success(successMessage);
+                    if (action === 'fork') {
+                        this.adoptForkedCopy(result);
+                        return;
+                    }
+                    this.toast.success(SAVE_SUCCESS_MESSAGES[action]);
                     this.dialogRef.close(result);
                 }),
                 catchError((err: HttpErrorResponse) => {
-                    console.error(editingTool ? 'Error updating tool:' : 'Error creating tool:', err);
-                    this.toast.error(errorMessage);
+                    console.error(`Error on tool ${action}:`, err);
+                    this.toast.error(this.nameConflictMessage(err) ?? SAVE_FAILURE_MESSAGES[action]);
                     return EMPTY;
                 }),
                 finalize(() => this.isSaving.set(false)),
@@ -458,14 +573,57 @@ export class CreateCustomToolDialogComponent {
             .subscribe();
     }
 
+    private uniqueNameValidator(): AsyncValidatorFn {
+        return (control: AbstractControl): Observable<ValidationErrors | null> => {
+            const value = (control.value ?? '').trim();
+            if (!value) {
+                return of(null);
+            }
+
+            // If in edit mode and name hasn't changed, skip validation
+            if (this.isEditMode() && value === this.selectedTool()?.name) {
+                return of(null);
+            }
+
+            return timer(500).pipe(
+                switchMap(() =>
+                    this.customToolsService.getPythonCodeTools({ name: value }).pipe(
+                        map((tools) => (tools.some((tool) => tool.name === value) ? { uniqueName: true } : null)),
+                        catchError(() => of(null))
+                    )
+                )
+            );
+        };
+    }
+
+    private nameConflictMessage(err: HttpErrorResponse): string | null {
+        if (err.status !== 400) {
+            return null;
+        }
+        const body = err.error as { name?: string[] } | null;
+        const message = body?.name?.[0];
+        return typeof message === 'string' ? message : null;
+    }
+
+    private adoptForkedCopy(created: GetPythonCodeToolRequest): void {
+        this.selectedTool.set(created);
+        this.form.controls.name.setValue(created.name);
+        this.form.markAsPristine();
+        this.initialSnapshot = this.computeSnapshot();
+        this.toolsEvents.emitCustomToolCreated(created);
+        this.toast.success(`Editable copy "${created.name}" created`);
+    }
+
     private computeSnapshot(): string {
-        const { name, description, pythonCode, libraries } = this.form.getRawValue();
+        const { name, description, pythonCode, libraries, useStorage } = this.form.getRawValue();
         return JSON.stringify({
             name,
             description,
             pythonCode,
             libraries: [...libraries].sort(),
+            useStorage,
             variables: this.snapshotVariables(),
+            secretIds: [...this.selectedSecretIds()].sort(),
         });
     }
 
@@ -479,29 +637,34 @@ export class CreateCustomToolDialogComponent {
             : `invalid:${this.form.controls.variablesJson.value.trim()}`;
     }
 
-    private initialVariablesJsonFromTool(tool: GetPythonCodeToolRequest): string {
-        const v = tool.variables;
-        const list = Array.isArray(v) ? v : [];
-        return JSON.stringify(list, null, 2);
+    private initialVariablesJson(): string {
+        const variables = this.selectedTool()?.variables;
+        return JSON.stringify(Array.isArray(variables) ? variables : [], null, 2);
     }
 
     private getValidationError(): string | null {
         if (this.form.invalid) {
             return 'Please fill in all required fields';
         }
-        if (this.parametersTableMode() && !(this.parametersTableView()?.isValid() ?? true)) {
+        if (this.parametersTableMode() && !this.isBuiltIn() && !(this.parametersTableView()?.isValid() ?? true)) {
             return 'Please fix the parameter errors before saving';
         }
         if (!this.isJsonValid()) {
             return 'JSON Configuration is invalid';
         }
         if (this.pythonHasError()) {
-            return 'Fix Python code errors before saving';
+            return 'Fix Python syntax errors before saving';
         }
         return null;
     }
 
     private buildPayload(): CreatePythonCodeToolPayload {
-        return toCreatePayload(this.form.getRawValue());
+        const source = this.selectedTool();
+        return toCreatePayload(this.form.getRawValue(), this.selectedSecretIds(), {
+            entrypoint: source?.python_code?.entrypoint,
+        });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HelpTooltipComponent, InputNumberComponent, ValidationErrorsComponent } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
+import { DEFAULT_STEP_SIZE } from '@shared/constants';
 
 import { TokenStrategyModel } from '../../../../../models/strategy.model';
 import { StrategyForm } from '../strategy-config-form.abstract';
@@ -11,15 +11,11 @@ import { StrategyForm } from '../strategy-config-form.abstract';
     templateUrl: './token-form.component.html',
     styleUrls: ['../../document-config.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [
-        InputNumberComponent,
-        MATERIAL_FORMS,
-        ReactiveFormsModule,
-        ValidationErrorsComponent,
-        HelpTooltipComponent,
-    ],
+    imports: [InputNumberComponent, ReactiveFormsModule, ValidationErrorsComponent, HelpTooltipComponent],
 })
 export class TokenFormComponent extends StrategyForm<TokenStrategyModel> {
+    protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+
     initializeForm(config: TokenStrategyModel): FormGroup {
         return this.fb.group({
             mainParams: this.fb.group({

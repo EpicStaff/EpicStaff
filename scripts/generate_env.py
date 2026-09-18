@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate src/.dev.env, src/debug.env, src/.env.example from src/env.yaml.
+Generate src/.dev.env, src/.debug.env, src/.env.example from src/env.yaml.
 
 Usage (from repository root):
     python scripts/generate_env.py                   # regenerate all three
@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).parent.parent
 
 ENV_TARGETS: dict[str, Path] = {
     "dev": REPO_ROOT / "src" / ".dev.env",
-    "debug": REPO_ROOT / "src" / "debug.env",
+    "debug": REPO_ROOT / "src" / ".debug.env",
     "example": REPO_ROOT / "src" / ".env.example",
 }
 

@@ -19,18 +19,22 @@ class TranscriptionServerEventHandler:
         self.event_map: Dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
             "response": self.default_handler,
             "response.created": self.default_handler,
-            "session.created": self.default_handler,
-            "error": self.handle_error,
+            "session.created": self.transcription_session_created_handler,
             "session.updated": self.default_handler,
+            "error": self.handle_error,
+            "conversation.item.added": self.default_handler,
+            "conversation.item.done": self.default_handler,
+
             "conversation.item.created": self.default_handler,
             "rate_limits.updated": self.default_handler,
             "input_audio_buffer.speech_started": self.default_handler,
-            "input_audio_buffer.committed": self.default_handler,
-            "response.content_part.added": self.default_handler,
             "input_audio_buffer.speech_stopped": self.default_handler,
+            "input_audio_buffer.committed": self.default_handler,
+            "input_audio_buffer.cleared": self.default_handler,
+            "response.content_part.added": self.default_handler,
             "conversation.item.input_audio_transcription.delta": self.default_handler,
             "conversation.item.input_audio_transcription.completed": self.input_audio_transcription_completed_handler,
-            "transcription_session.created": self.transcription_session_created_handler,
+            "conversation.item.input_audio_transcription.failed": self.default_handler,
         }
 
     async def handle_event(self, data: Dict[str, Any]):
@@ -39,7 +43,10 @@ class TranscriptionServerEventHandler:
         handler = self.event_map.get(event_type, self.unknown_event_handler)
         await handler(data)
         await save_realtime_session_item_to_db(
-            data=data, connection_key=self.client.connection_key
+            data=data,
+            connection_key=self.client.connection_key,
+            org_id=self.client.org_id,
+            user_id=self.client.user_id,
         )
 
     async def default_handler(self, data: Dict[str, Any]) -> None:

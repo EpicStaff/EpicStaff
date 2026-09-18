@@ -1,0 +1,380 @@
+from __future__ import annotations
+
+from rest_framework import serializers
+
+from agents.exceptions import SurfaceValidationError
+from agents.models.surface_models import (
+    AgentInlineSurface,
+    AgentInlineSurfaceGraphBasicSearchConfig,
+    AgentInlineSurfaceGraphDriftSearchConfig,
+    AgentInlineSurfaceGraphGlobalSearchConfig,
+    AgentInlineSurfaceGraphLocalSearchConfig,
+    AgentInlineSurfaceKnowledge,
+    AgentInlineSurfaceMcpTool,
+    AgentInlineSurfaceNaiveSearchConfig,
+    AgentInlineSurfacePythonTool,
+    AgentInlineSurfaceStorageItem,
+    InlineSurface,
+    InlineSurfaceGraphBasicSearchConfig,
+    InlineSurfaceGraphDriftSearchConfig,
+    InlineSurfaceGraphGlobalSearchConfig,
+    InlineSurfaceGraphLocalSearchConfig,
+    InlineSurfaceKnowledge,
+    InlineSurfaceMcpTool,
+    InlineSurfaceNaiveSearchConfig,
+    InlineSurfacePythonTool,
+    InlineSurfaceStorageItem,
+)
+from agents.serializers.surface_serializers import (
+    SurfaceKnowledgeWriteSerializer,
+    SurfaceMcpToolWriteSerializer,
+    SurfacePythonToolWriteSerializer,
+    SurfaceStorageItemWriteSerializer,
+)
+from agents.validators.surface_validator import SurfaceValidator
+
+
+class InlineSurfacePythonToolReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfacePythonTool
+        fields = ["python_tool", "mode"]
+
+
+class InlineSurfaceMcpToolReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceMcpTool
+        fields = ["mcp_tool", "mode"]
+
+
+class InlineSurfaceStorageItemReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceStorageItem
+        fields = ["storage_file", "can_list", "can_view", "can_edit", "can_delete"]
+
+
+class InlineSurfaceNaiveSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceNaiveSearchConfig
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
+
+
+class InlineSurfaceGraphBasicSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceGraphBasicSearchConfig
+        fields = ["prompt", "k", "max_context_tokens", "is_suggested"]
+
+
+class InlineSurfaceGraphLocalSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceGraphLocalSearchConfig
+        fields = [
+            "prompt",
+            "text_unit_prop",
+            "community_prop",
+            "conversation_history_max_turns",
+            "top_k_entities",
+            "top_k_relationships",
+            "max_context_tokens",
+            "is_suggested",
+        ]
+
+
+class InlineSurfaceGraphGlobalSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceGraphGlobalSearchConfig
+        fields = [
+            "map_prompt",
+            "reduce_prompt",
+            "knowledge_prompt",
+            "max_context_tokens",
+            "data_max_tokens",
+            "map_max_length",
+            "reduce_max_length",
+            "dynamic_community_selection",
+            "dynamic_search_threshold",
+            "dynamic_search_keep_parent",
+            "dynamic_search_num_repeats",
+            "dynamic_search_use_summary",
+            "dynamic_search_max_level",
+            "is_suggested",
+        ]
+
+
+class InlineSurfaceGraphDriftSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceGraphDriftSearchConfig
+        fields = [
+            "prompt",
+            "reduce_prompt",
+            "data_max_tokens",
+            "reduce_max_tokens",
+            "reduce_temperature",
+            "reduce_max_completion_tokens",
+            "concurrency",
+            "drift_k_followups",
+            "primer_folds",
+            "primer_llm_max_tokens",
+            "n_depth",
+            "community_level",
+            "local_search_text_unit_prop",
+            "local_search_community_prop",
+            "local_search_top_k_mapped_entities",
+            "local_search_top_k_relationships",
+            "local_search_max_data_tokens",
+            "local_search_temperature",
+            "local_search_top_p",
+            "local_search_n",
+            "local_search_llm_max_gen_tokens",
+            "local_search_llm_max_gen_completion_tokens",
+            "is_suggested",
+        ]
+
+
+class InlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
+    naive_search_config = InlineSurfaceNaiveSearchConfigReadSerializer(read_only=True)
+    graph_basic_search_config = InlineSurfaceGraphBasicSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_local_search_config = InlineSurfaceGraphLocalSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_global_search_config = InlineSurfaceGraphGlobalSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_drift_search_config = InlineSurfaceGraphDriftSearchConfigReadSerializer(
+        read_only=True
+    )
+
+    class Meta:
+        model = InlineSurfaceKnowledge
+        fields = [
+            "collection",
+            "naive_search_config",
+            "graph_basic_search_config",
+            "graph_local_search_config",
+            "graph_global_search_config",
+            "graph_drift_search_config",
+        ]
+
+
+class InlineSurfaceReadSerializer(serializers.ModelSerializer):
+    python_tools = InlineSurfacePythonToolReadSerializer(many=True, read_only=True)
+    mcp_tools = InlineSurfaceMcpToolReadSerializer(many=True, read_only=True)
+    storage_items = InlineSurfaceStorageItemReadSerializer(many=True, read_only=True)
+    knowledge = InlineSurfaceKnowledgeReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InlineSurface
+        fields = [
+            "id",
+            "instructions",
+            "python_tools",
+            "mcp_tools",
+            "storage_items",
+            "knowledge",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class InlineSurfaceWriteSerializer(serializers.Serializer):
+    instructions = serializers.CharField(required=False, default="", allow_blank=True)
+    python_tools = SurfacePythonToolWriteSerializer(
+        many=True, required=False, default=list
+    )
+    mcp_tools = SurfaceMcpToolWriteSerializer(many=True, required=False, default=list)
+    storage_items = SurfaceStorageItemWriteSerializer(
+        many=True, required=False, default=list
+    )
+    knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
+
+    def validate(self, attrs):
+        try:
+            SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
+            SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
+            SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
+            SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
+        except SurfaceValidationError as exc:
+            raise SurfaceValidationError(detail={"inline_surface": exc.detail})
+
+        return attrs
+
+
+class AgentInlineSurfacePythonToolReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentInlineSurfacePythonTool
+        fields = ["python_tool", "mode"]
+
+
+class AgentInlineSurfaceMcpToolReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentInlineSurfaceMcpTool
+        fields = ["mcp_tool", "mode"]
+
+
+class AgentInlineSurfaceStorageItemReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentInlineSurfaceStorageItem
+        fields = ["storage_file", "can_list", "can_view", "can_edit", "can_delete"]
+
+
+class AgentInlineSurfaceNaiveSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentInlineSurfaceNaiveSearchConfig
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
+
+
+class AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = AgentInlineSurfaceGraphBasicSearchConfig
+        fields = ["prompt", "k", "max_context_tokens", "is_suggested"]
+
+
+class AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = AgentInlineSurfaceGraphLocalSearchConfig
+        fields = [
+            "prompt",
+            "text_unit_prop",
+            "community_prop",
+            "conversation_history_max_turns",
+            "top_k_entities",
+            "top_k_relationships",
+            "max_context_tokens",
+            "is_suggested",
+        ]
+
+
+class AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = AgentInlineSurfaceGraphGlobalSearchConfig
+        fields = [
+            "map_prompt",
+            "reduce_prompt",
+            "knowledge_prompt",
+            "max_context_tokens",
+            "data_max_tokens",
+            "map_max_length",
+            "reduce_max_length",
+            "dynamic_community_selection",
+            "dynamic_search_threshold",
+            "dynamic_search_keep_parent",
+            "dynamic_search_num_repeats",
+            "dynamic_search_use_summary",
+            "dynamic_search_max_level",
+            "is_suggested",
+        ]
+
+
+class AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = AgentInlineSurfaceGraphDriftSearchConfig
+        fields = [
+            "prompt",
+            "reduce_prompt",
+            "data_max_tokens",
+            "reduce_max_tokens",
+            "reduce_temperature",
+            "reduce_max_completion_tokens",
+            "concurrency",
+            "drift_k_followups",
+            "primer_folds",
+            "primer_llm_max_tokens",
+            "n_depth",
+            "community_level",
+            "local_search_text_unit_prop",
+            "local_search_community_prop",
+            "local_search_top_k_mapped_entities",
+            "local_search_top_k_relationships",
+            "local_search_max_data_tokens",
+            "local_search_temperature",
+            "local_search_top_p",
+            "local_search_n",
+            "local_search_llm_max_gen_tokens",
+            "local_search_llm_max_gen_completion_tokens",
+            "is_suggested",
+        ]
+
+
+class AgentInlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
+    naive_search_config = AgentInlineSurfaceNaiveSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_basic_search_config = AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_local_search_config = AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_global_search_config = (
+        AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(read_only=True)
+    )
+    graph_drift_search_config = AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
+        read_only=True
+    )
+
+    class Meta:
+        model = AgentInlineSurfaceKnowledge
+        fields = [
+            "collection",
+            "naive_search_config",
+            "graph_basic_search_config",
+            "graph_local_search_config",
+            "graph_global_search_config",
+            "graph_drift_search_config",
+        ]
+
+
+class AgentInlineSurfaceReadSerializer(serializers.ModelSerializer):
+    python_tools = AgentInlineSurfacePythonToolReadSerializer(many=True, read_only=True)
+    mcp_tools = AgentInlineSurfaceMcpToolReadSerializer(many=True, read_only=True)
+    storage_items = AgentInlineSurfaceStorageItemReadSerializer(
+        many=True, read_only=True
+    )
+    knowledge = AgentInlineSurfaceKnowledgeReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AgentInlineSurface
+        fields = [
+            "id",
+            "instructions",
+            "python_tools",
+            "mcp_tools",
+            "storage_items",
+            "knowledge",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class AgentInlineSurfaceWriteSerializer(serializers.Serializer):
+    instructions = serializers.CharField(required=False, default="", allow_blank=True)
+    python_tools = SurfacePythonToolWriteSerializer(
+        many=True, required=False, default=list
+    )
+    mcp_tools = SurfaceMcpToolWriteSerializer(many=True, required=False, default=list)
+    storage_items = SurfaceStorageItemWriteSerializer(
+        many=True, required=False, default=list
+    )
+    knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
+
+    def validate(self, attrs):
+        try:
+            SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
+            SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
+            SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
+            SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
+        except SurfaceValidationError as exc:
+            raise SurfaceValidationError(detail={"inline_surface": exc.detail})
+
+        return attrs

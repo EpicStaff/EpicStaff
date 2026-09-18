@@ -2,26 +2,41 @@ from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import NotFound, ValidationError
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from rest_framework import serializers as drf_serializers
 
-from tables.models import DocumentMetadata
+from rest_framework.permissions import IsAuthenticated
+
+from tables.models import DocumentMetadata, SourceCollection
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.knowledge_serializers import (
     DocumentMetadataSerializer,
     DocumentUploadSerializer,
     DocumentBulkDeleteSerializer,
+    CopyDocumentsSerializer,
     DocumentListSerializer,
     DocumentDetailSerializer,
 )
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
 )
+from tables.views.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+
 from tables.swagger_schemas.knowledge_schemas.document_management_schemas import (
     DOCUMENTS_LIST_GET,
     DOCUMENTS_RETRIEVE_GET,
     DOCUMENTS_DESTROY_DELETE,
     DOCUMENTS_UPLOAD_POST,
     DOCUMENTS_BULK_DELETE_POST,
+    DOCUMENTS_DOWNLOAD_GET,
+    DOCUMENTS_PREVIEW_GET,
+    DOCUMENTS_COPY_POST,
     COLLECTION_DOCUMENTS_LIST_GET,
 )
 from tables.exceptions import (
@@ -31,11 +46,20 @@ from tables.exceptions import (
     CollectionNotFoundException,
     NoFilesProvidedException,
     DocumentNotFoundException,
+    DocumentsNotFoundException,
     InvalidFieldType,
+)
+from tables.utils.document_serving import (
+    build_file_response,
+    build_preview_response,
+    build_archive_response,
 )
 
 
-class DocumentManagementViewSet(viewsets.GenericViewSet):
+_DOCUMENT_ORG_PATH = "source_collection__org_id"
+
+
+class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     """
     ViewSet for document upload operations within a collection.
 
@@ -43,6 +67,14 @@ class DocumentManagementViewSet(viewsets.GenericViewSet):
     - POST /source-collections/{collection_id}/documents/upload/ - Upload files
     - POST /documents/bulk-delete/ - Delete multiple documents
     """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "upload_documents": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+    }
 
     def get_serializer_class(self):
         if self.action == "upload_documents":
@@ -63,6 +95,9 @@ class DocumentManagementViewSet(viewsets.GenericViewSet):
             collection_id = int(collection_id)
         except (ValueError, TypeError):
             raise InvalidFieldType("collection_id", collection_id)
+
+        # The collection must live in the active org (404 otherwise).
+        self.get_in_active_org_or_404(SourceCollection, collection_id)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -113,6 +148,13 @@ class DocumentManagementViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         document_ids = serializer.validated_data["document_ids"]
+        # Narrow to documents the active org owns — other-org ids are ignored.
+        document_ids = list(
+            DocumentMetadata.objects.filter(
+                document_id__in=document_ids,
+                **{_DOCUMENT_ORG_PATH: self.get_active_org_id()},
+            ).values_list("document_id", flat=True)
+        )
 
         try:
             # Use service to handle deletion
@@ -138,6 +180,7 @@ class DocumentManagementViewSet(viewsets.GenericViewSet):
 
 
 class DocumentViewSet(
+    OrgScopedChildViewSetMixin,
     mixins.RetrieveModelMixin,
     mixins.DestroyModelMixin,
     mixins.ListModelMixin,
@@ -153,21 +196,33 @@ class DocumentViewSet(
     - GET /source-collections/{collection_id}/documents/ - List collection documents
     """
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    org_filter_path = _DOCUMENT_ORG_PATH
     queryset = DocumentMetadata.objects.select_related("source_collection")
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "preview": Permission.READ,
+        "download": Permission.EXPORT,
+        "copy": Permission.CREATE,
+    }
 
     def get_serializer_class(self):
         if self.action == "list":
             return DocumentListSerializer
         elif self.action == "retrieve":
             return DocumentDetailSerializer
+        elif self.action == "copy":
+            return CopyDocumentsSerializer
         return DocumentMetadataSerializer
 
     @extend_schema(**DOCUMENTS_LIST_GET)
     def list(self, request, *args, **kwargs):
+        # get_queryset() is org-scoped via OrgScopedChildViewSetMixin.
+        queryset = self.get_queryset()
         collection_id = request.query_params.get("collection_id")
-        queryset = DocumentManagementService.get_documents_list(
-            collection_id=collection_id
-        )
+        if collection_id:
+            queryset = queryset.filter(source_collection_id=collection_id)
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -180,6 +235,15 @@ class DocumentViewSet(
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    @extend_schema(**DOCUMENTS_PREVIEW_GET)
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        """Raw document content with ``Content-Disposition: inline`` so browsers
+        render supported formats (pdf, txt, md, json, html, csv) in place. DOCX
+        has no inline preview and is downloaded instead."""
+        document = self.get_object()
+        return build_preview_response(document)
 
     @extend_schema(**DOCUMENTS_DESTROY_DELETE)
     def destroy(self, request, *args, **kwargs):
@@ -211,18 +275,105 @@ class DocumentViewSet(
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(**DOCUMENTS_DOWNLOAD_GET)
+    @action(detail=False, methods=["get"], url_path="download")
+    def download(self, request):
+        """
+        Download one or multiple documents.
+        A single document is returned as-is; multiple are bundled into a zip.
+        """
+        document_ids = self._parse_document_ids(
+            request.query_params.get("document_ids", "")
+        )
+        if not document_ids:
+            raise ValidationError("document_ids query parameter is required")
 
-class CollectionDocumentsViewSet(viewsets.GenericViewSet):
+        try:
+            documents = DocumentManagementService.get_documents_with_content(
+                document_ids
+            )
+        except DocumentsNotFoundException as e:
+            raise NotFound(str(e))
+
+        if len(documents) == 1:
+            return build_file_response(documents[0])
+        return build_archive_response(documents)
+
+    @extend_schema(**DOCUMENTS_COPY_POST)
+    @action(detail=False, methods=["post"], url_path="copy")
+    def copy(self, request):
+        """
+        Copy documents into a target collection (shares binary content).
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            copied_documents, skipped_documents = (
+                DocumentManagementService.copy_documents_to_collection(
+                    collection_id=serializer.validated_data["collection_id"],
+                    document_ids=serializer.validated_data["document_ids"],
+                )
+            )
+
+            message = f"Successfully copied {len(copied_documents)} document(s)"
+            if skipped_documents:
+                message += (
+                    f", skipped {len(skipped_documents)} already present "
+                    "in the target collection"
+                )
+
+            return Response(
+                {
+                    "message": message,
+                    "documents": DocumentMetadataSerializer(
+                        copied_documents, many=True
+                    ).data,
+                    "skipped": DocumentMetadataSerializer(
+                        skipped_documents, many=True
+                    ).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except (CollectionNotFoundException, DocumentsNotFoundException) as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response(
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @staticmethod
+    def _parse_document_ids(raw_value: str) -> list:
+        """Parse a comma-separated ``document_ids`` query parameter into ints."""
+        ids = []
+        for chunk in raw_value.split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            try:
+                ids.append(int(chunk))
+            except ValueError:
+                raise InvalidFieldType("document_ids", chunk)
+        return ids
+
+
+class CollectionDocumentsViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     """
     ViewSet for accessing documents within a specific collection.
 
     Nested route: /source-collections/{collection_id}/documents/
     """
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+
     def get_queryset(self):
         collection_id = self.kwargs.get("collection_id")
         return DocumentMetadata.objects.filter(
-            source_collection_id=collection_id
+            source_collection_id=collection_id,
+            **{_DOCUMENT_ORG_PATH: self.get_active_org_id()},
         ).select_related("source_collection")
 
     def get_serializer_class(self):
@@ -235,11 +386,8 @@ class CollectionDocumentsViewSet(viewsets.GenericViewSet):
         except (ValueError, TypeError):
             raise InvalidFieldType("collection_id", collection_id)
 
-        # Verify collection exists
-        try:
-            collection = DocumentManagementService.get_collection(collection_id)
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        # Collection must be in the active org (404 otherwise).
+        collection = self.get_in_active_org_or_404(SourceCollection, collection_id)
 
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)

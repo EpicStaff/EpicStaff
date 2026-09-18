@@ -1,0 +1,7 @@
+tool-data:
+  name: "Exit Worktree Tool"
+  description: "Removes a git worktree created by the Enter Worktree Tool (or keeps it when asked), reporting whether uncommitted changes were discarded."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

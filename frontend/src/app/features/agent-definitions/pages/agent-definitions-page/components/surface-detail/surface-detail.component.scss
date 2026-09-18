@@ -1,0 +1,15 @@
+:host {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.detail__surface-card {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 1rem 1.875rem;
+}

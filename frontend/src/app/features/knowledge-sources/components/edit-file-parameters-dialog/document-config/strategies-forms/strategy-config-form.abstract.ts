@@ -1,9 +1,10 @@
-import { Component, inject, input, OnChanges, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, OnChanges, OnDestroy } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup } from '@angular/forms';
 
 import { StrategyModel } from '../../../../models/strategy.model';
 
 @Component({
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: '',
 })
 export abstract class StrategyForm<T extends StrategyModel> implements OnChanges, OnDestroy {
@@ -12,12 +13,15 @@ export abstract class StrategyForm<T extends StrategyModel> implements OnChanges
 
     parentForm = input.required<FormGroup>();
     params = input.required<T>();
+    canUpdate = input<boolean>(true);
 
     // Rebuild form on each document change
     ngOnChanges(): void {
         this.parentForm().removeControl('strategyParams');
         this.strategyForm = this.initializeForm(this.params());
-        this.parentForm().addControl('strategyParams', this.strategyForm);
+        if (this.canUpdate()) {
+            this.parentForm().addControl('strategyParams', this.strategyForm);
+        }
     }
 
     ngOnDestroy() {

@@ -1,0 +1,19 @@
+{
+  "title": "SchemaValidateToolArgs",
+  "type": "object",
+  "properties": {
+    "output": {
+      "description": "Your draft output to validate. Either a JSON string (e.g. '{\"a\": 1}') that will be parsed with json.loads, or an already-structured JSON value (object, array, string, number, boolean, null).",
+      "type": ["string", "object", "array", "number", "boolean", "null"]
+    },
+    "schema": {
+      "type": "object",
+      "description": "The JSON Schema (draft 7 or later) to validate 'output' against, e.g. {\"type\": \"object\", \"required\": [\"name\"], \"properties\": {\"name\": {\"type\": \"string\"}}}."
+    },
+    "max_attempts": {
+      "type": "integer",
+      "description": "Optional informational hint: how many retry attempts you intend to allow yourself. Echoed back on FAIL; the tool does not enforce or count attempts itself."
+    }
+  },
+  "required": ["output", "schema"]
+}

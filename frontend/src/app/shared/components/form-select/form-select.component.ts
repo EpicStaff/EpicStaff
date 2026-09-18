@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, forwardRef, Input, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, forwardRef, Input, OnDestroy, OnInit } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { Observable, Subscription } from 'rxjs';
 
@@ -8,21 +7,20 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-select',
-    standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent],
+    imports: [FormsModule, HelpTooltipComponent],
     template: `
         <div class="form-group">
-            <div
-                class="label-container"
-                *ngIf="label"
-            >
-                <label [for]="id">{{ label }}</label>
-                <app-help-tooltip
-                    *ngIf="tooltipText"
-                    position="right"
-                    [text]="tooltipText"
-                ></app-help-tooltip>
-            </div>
+            @if (label) {
+                <div class="label-container">
+                    <label [for]="id">{{ label }}</label>
+                    @if (tooltipText) {
+                        <app-help-tooltip
+                            position="right"
+                            [text]="tooltipText"
+                        ></app-help-tooltip>
+                    }
+                </div>
+            }
 
             <select
                 [id]="id"
@@ -35,20 +33,18 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 [style.--active-color]="activeColor"
             >
                 <option [ngValue]="null">{{ placeholder }}</option>
-                <option
-                    *ngFor="let opt of options"
-                    [ngValue]="opt[valueProperty]"
-                >
-                    {{ opt[displayProperty] || opt[valueProperty] }}
-                </option>
+                @for (opt of options; track opt) {
+                    <option [ngValue]="opt[valueProperty]">
+                        {{ opt[displayProperty] || opt[valueProperty] }}
+                    </option>
+                }
             </select>
 
-            <div
-                class="error-message"
-                *ngIf="errorMessage"
-            >
-                {{ errorMessage }}
-            </div>
+            @if (errorMessage) {
+                <div class="error-message">
+                    {{ errorMessage }}
+                </div>
+            }
         </div>
     `,
     styles: [
@@ -63,7 +59,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 label {
                     display: block;
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     color: rgba(255, 255, 255, 0.7);
                     margin: 0;
                 }
@@ -75,7 +71,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;
                     color: white;
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: border-color 0.2s ease;
 
                     &:focus {
@@ -90,13 +86,14 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 .error-message {
                     color: #ef4444;
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     margin-top: 4px;
                     line-height: 1.4;
                 }
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

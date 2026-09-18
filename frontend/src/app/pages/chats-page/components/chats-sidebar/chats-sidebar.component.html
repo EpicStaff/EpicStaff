@@ -1,13 +1,29 @@
 <aside class="chats-sidebar">
-    <div class="search-container">
+    <div class="chats-sidebar__search">
         <app-search
-            [(searchTerm)]="searchRole"
-            placeholder="Search by agent role..."
+            [(searchTerm)]="searchTerm"
+            placeholder="Search agents..."
         />
     </div>
-    <ul>
-        <li *ngFor="let agent of filteredAgents; trackBy: trackByAgentId">
-            <app-chats-sidebar-item [agent]="agent"></app-chats-sidebar-item>
-        </li>
-    </ul>
+
+    @if (filteredAgents.length === 0) {
+        <p class="chats-sidebar__empty">No agents with a realtime config.</p>
+    } @else {
+        <ul class="chats-sidebar__list">
+            @for (agent of filteredAgents; track trackByAgent($index, agent)) {
+                <li>
+                    <app-chats-sidebar-item
+                        [chatAgent]="agent"
+                        (agentUpdated)="agentUpdated.emit($event)"
+                    ></app-chats-sidebar-item>
+                </li>
+            }
+        </ul>
+    }
 </aside>
+
+<div
+    class="resizable-sidebar-handle"
+    [appResizableSidebar]="sidebarStorageKey"
+    [sidebarTarget]="hostElement"
+></div>

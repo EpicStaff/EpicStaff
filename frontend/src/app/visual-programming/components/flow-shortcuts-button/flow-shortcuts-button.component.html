@@ -1,6 +1,7 @@
 <button
     type="button"
     class="flow-shortcuts-btn"
+    [class.flow-shortcuts-btn--active]="active()"
     matTooltip="Keyboard shortcuts"
     matTooltipPosition="right"
     (click)="clicked.emit()"
@@ -12,5 +13,9 @@
         ></app-svg-icon>
     </span>
 
-    <span class="flow-shortcuts-btn__text">{{ label() }}</span>
+    <span
+        class="flow-shortcuts-btn__text"
+        [class.flow-shortcuts-btn__text--end]="textEnd()"
+        >{{ label() }}</span
+    >
 </button>

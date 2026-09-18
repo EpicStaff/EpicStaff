@@ -7,7 +7,11 @@
             matTooltipPosition="below"
         >
             @if (editor.resolvedAvatarUrl) {
-                <img class="avatar__img" [src]="editor.resolvedAvatarUrl" [alt]="getInitials(editor)" />
+                <img
+                    class="avatar__img"
+                    [src]="editor.resolvedAvatarUrl"
+                    [alt]="getInitials(editor)"
+                />
             } @else {
                 {{ getInitials(editor) }}
             }

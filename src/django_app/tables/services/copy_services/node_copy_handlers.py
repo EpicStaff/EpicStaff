@@ -1,64 +1,48 @@
 from typing import Callable
 
-from tables.constants.variables_constants import (
-    DOMAIN_ORGANIZATION_KEY,
-    DOMAIN_USER_KEY,
+from agents.models.surface_models import AgentInlineSurface, InlineSurface
+from agents.services.surface_content_service import (
+    AGENT_INLINE_SURFACE_CONTENT,
+    INLINE_SURFACE_CONTENT,
 )
 from tables.import_export.enums import NodeType
 from tables.models import Graph
+from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.models.graph_models import (
+    AgentNode,
     AudioTranscriptionNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     ConditionGroup,
     Condition,
-    CrewNode,
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
-    GraphOrganization,
-    GraphOrganizationUser,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
     SubGraphNode,
+    TaskNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
-    CodeAgentNode,
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
-from tables.services.persistent_variables_service import PersistentVariablesService
+from tables.services.copy_services.inline_surface_copy_helpers import (
+    copy_agent_node_tasks,
+    copy_node_inline_surface,
+)
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
-    new_node = StartNode.objects.create(
+    return StartNode.objects.create(
         graph=graph,
         variables=node.variables,
         metadata=node.metadata,
     )
-
-    source_org = GraphOrganization.objects.filter(graph=node.graph).first()
-    if source_org:
-        service = PersistentVariablesService()
-        GraphOrganization.objects.create(
-            graph=graph,
-            organization=source_org.organization,
-            persistent_variables=service.extract(
-                node.variables, DOMAIN_ORGANIZATION_KEY
-            ),
-            user_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-        )
-        for org_user in GraphOrganizationUser.objects.filter(graph=node.graph):
-            GraphOrganizationUser.objects.create(
-                graph=graph,
-                organization_user=org_user.organization_user,
-                persistent_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-            )
-
-    return new_node
 
 
 def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
@@ -89,14 +73,6 @@ def copy_audio_transcription_node(
 ) -> AudioTranscriptionNode:
     return AudioTranscriptionNode.objects.create(
         graph=graph,
-        **get_base_node_fields(node),
-    )
-
-
-def copy_crew_node(graph: Graph, node: CrewNode) -> CrewNode:
-    return CrewNode.objects.create(
-        graph=graph,
-        crew=node.crew,
         **get_base_node_fields(node),
     )
 
@@ -137,7 +113,7 @@ def copy_telegram_trigger_node(
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
         node_name=node.node_name,
-        telegram_bot_api_key=node.telegram_bot_api_key,
+        telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
         webhook_trigger=node.webhook_trigger,
         metadata=node.metadata,
     )
@@ -151,25 +127,29 @@ def copy_telegram_trigger_node(
     return new_node
 
 
-def copy_code_agent_node(graph: Graph, node: CodeAgentNode) -> CodeAgentNode:
-    return CodeAgentNode.objects.create(
+def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
+    new_node = KnowledgeNode.objects.create(
         graph=graph,
-        llm_config=node.llm_config,
-        agent_mode=node.agent_mode,
-        session_id=node.session_id,
-        system_prompt=node.system_prompt,
-        stream_handler_code=node.stream_handler_code,
-        libraries=node.libraries,
-        polling_interval_ms=node.polling_interval_ms,
-        silence_indicator_s=node.silence_indicator_s,
-        indicator_repeat_s=node.indicator_repeat_s,
-        chunk_timeout_s=node.chunk_timeout_s,
-        inactivity_timeout_s=node.inactivity_timeout_s,
-        max_wait_s=node.max_wait_s,
-        stream_config=node.stream_config,
-        output_schema=node.output_schema,
+        source_collection=node.source_collection,
+        rag_type=node.rag_type,
+        rag_id=node.rag_id,
+        query=node.query,
+        search_method=node.search_method,
         **get_base_node_fields(node),
     )
+    for relation in KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS:
+        # Reverse OneToOne raises RelatedObjectDoesNotExist (a subclass of
+        # AttributeError) when absent, so getattr default returns None.
+        config = getattr(node, relation, None)
+        if config is None:
+            continue
+        field_values = {
+            f.name: getattr(config, f.name)
+            for f in config._meta.fields
+            if f.name not in ("id", "knowledge_node")
+        }
+        type(config).objects.create(knowledge_node=new_node, **field_values)
+    return new_node
 
 
 def copy_schedule_trigger_node(
@@ -251,24 +231,7 @@ def copy_classification_decision_table_node(
         metadata=node.metadata,
     )
 
-    for group in node.condition_groups.all():
-        ClassificationConditionGroup.objects.create(
-            classification_decision_table_node=new_node,
-            group_name=group.group_name,
-            order=group.order,
-            expression=group.expression,
-            prompt_id=group.prompt_id,
-            manipulation=group.manipulation,
-            continue_flag=group.continue_flag,
-            next_node_id=group.next_node_id,
-            dock_visible=group.dock_visible,
-            field_expressions=group.field_expressions,
-            field_manipulations=group.field_manipulations,
-            route_code=group.route_code,
-            section=group.section,
-        )
-
-    ClassificationDecisionTablePrompt.objects.bulk_create(
+    new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
         [
             ClassificationDecisionTablePrompt(
                 cdt_node=new_node,
@@ -282,7 +245,54 @@ def copy_classification_decision_table_node(
             for pc in node.prompt_configs.all()
         ]
     )
+    new_prompt_map = {p.prompt_key: p for p in new_prompts}
 
+    for group in node.condition_groups.all():
+        ClassificationConditionGroup.objects.create(
+            classification_decision_table_node=new_node,
+            group_name=group.group_name,
+            order=group.order,
+            expression=group.expression,
+            prompt=new_prompt_map.get(group.prompt.prompt_key)
+            if group.prompt
+            else None,
+            manipulation=group.manipulation,
+            continue_flag=group.continue_flag,
+            dock_visible=group.dock_visible,
+            field_expressions=group.field_expressions,
+            field_manipulations=group.field_manipulations,
+        )
+
+    return new_node
+
+
+def copy_task_node(graph: Graph, node: TaskNode) -> TaskNode:
+    new_node = TaskNode.objects.create(
+        graph=graph,
+        agent_definition=node.agent_definition,
+        instructions=node.instructions,
+        output_schema=node.output_schema,
+        remember_output=node.remember_output,
+        **get_base_node_fields(node),
+    )
+    new_node.surface_list.set(node.surface_list.all())
+    copy_node_inline_surface(
+        node, new_node, InlineSurface, "task_node", INLINE_SURFACE_CONTENT
+    )
+    return new_node
+
+
+def copy_agent_node(graph: Graph, node: AgentNode) -> AgentNode:
+    new_node = AgentNode.objects.create(
+        graph=graph,
+        agent_definition=node.agent_definition,
+        **get_base_node_fields(node),
+    )
+    new_node.surface_list.set(node.surface_list.all())
+    copy_node_inline_surface(
+        node, new_node, AgentInlineSurface, "agent_node", AGENT_INLINE_SURFACE_CONTENT
+    )
+    copy_agent_node_tasks(node, new_node)
     return new_node
 
 
@@ -301,7 +311,6 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
         "audio_transcription_node_list",
         copy_audio_transcription_node,
     ),
-    NodeType.CREW_NODE: ("crew_node_list", copy_crew_node),
     NodeType.SUBGRAPH_NODE: ("subgraph_node_list", copy_subgraph_node),
     NodeType.PYTHON_NODE: ("python_node_list", copy_python_node),
     NodeType.WEBHOOK_TRIGGER_NODE: (
@@ -324,8 +333,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
         "classification_decision_table_node_list",
         copy_classification_decision_table_node,
     ),
-    NodeType.CODE_AGENT_NODE: (
-        "code_agent_node_list",
-        copy_code_agent_node,
+    NodeType.TASK_NODE: ("task_node_list", copy_task_node),
+    NodeType.AGENT_NODE: ("agent_node_list", copy_agent_node),
+    NodeType.KNOWLEDGE_NODE: (
+        "knowledge_node_list",
+        copy_knowledge_node,
     ),
 }

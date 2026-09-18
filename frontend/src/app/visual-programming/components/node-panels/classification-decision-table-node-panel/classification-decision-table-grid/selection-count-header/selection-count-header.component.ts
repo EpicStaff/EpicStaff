@@ -1,11 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
 
 @Component({
     selector: 'app-selection-count-header',
-    imports: [CommonModule],
+    imports: [],
     template: `
         @if (count > 0) {
             <span class="sel-count">({{ count }})</span>
@@ -23,7 +22,7 @@ import { IHeaderParams } from 'ag-grid-community';
             .sel-count {
                 color: var(--purple-primary);
                 font-weight: 500;
-                font-size: 13px;
+                font-size: 0.8125rem;
             }
         `,
     ],

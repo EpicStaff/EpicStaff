@@ -9,10 +9,13 @@ from tables.import_export.enums import NodeType
 class _MissingSets:
     """Dataclass that holds all missing deps"""
 
-    crews: set
     subgraphs: set
     llm_configs: set
     webhooks: set
+    agent_definitions: set
+    surfaces: set
+    python_code_tools: set
+    mcp_tools: set
 
 
 class MissingDependencyHandler(ABC):

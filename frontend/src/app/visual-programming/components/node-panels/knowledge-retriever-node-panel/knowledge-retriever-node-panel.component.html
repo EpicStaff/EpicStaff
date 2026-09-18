@@ -1,0 +1,299 @@
+<div class="panel-container">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            @if (isExpanded()) {
+                <div
+                    class="form-layout expanded"
+                    [class.form-collapsed]="isFormCollapsed()"
+                >
+                    <div
+                        #formColumn
+                        class="form-fields"
+                        [style.flex-basis.px]="leftColumnWidth.width()"
+                    >
+                        <div class="field-isolated">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="Unique identifier for this Knowledge Retriever node within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
+
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                        </div>
+
+                        <div class="inputs-list-section">
+                            <button
+                                type="button"
+                                class="inputs-list-toggle"
+                                (click)="toggleInputsList()"
+                            >
+                                <span
+                                    class="chevron"
+                                    [class.open]="inputsListOpen()"
+                                    >▶</span
+                                >
+                                Inputs You Can Use
+                            </button>
+                            @if (inputsListOpen()) {
+                                <div class="inputs-chip-list">
+                                    @for (name of availableInputs(); track name) {
+                                        <div
+                                            class="inputs-chip"
+                                            (click)="insertInputToQuery(name)"
+                                        >
+                                            {{ name }}
+                                        </div>
+                                    } @empty {
+                                        <span class="inputs-chip-empty">
+                                            Add entries to Input List to use them here.
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+
+                        <div class="form-group">
+                            <app-select
+                                label="Knowledge Collection"
+                                tooltipText="The source collection to search. RAG must belong to this collection."
+                                placeholder="Select knowledge collection"
+                                formControlName="knowledge_collection"
+                                [items]="collectionItems()"
+                                [loading]="loadingCollections()"
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <app-select
+                                label="RAG"
+                                tooltipText="The RAG type registered for the selected collection."
+                                placeholder="Select RAG"
+                                formControlName="rag"
+                                [items]="ragItems()"
+                                [loading]="loadingRags()"
+                            />
+                        </div>
+
+                        @if (selectedRagKind()) {
+                            <div class="search-config-section">
+                                <button
+                                    type="button"
+                                    class="search-config-toggle"
+                                    (click)="toggleSearchConfig()"
+                                >
+                                    <span
+                                        class="chevron"
+                                        [class.open]="searchConfigOpen()"
+                                        >▶</span
+                                    >
+                                    RAG Search Config
+                                </button>
+
+                                @if (searchConfigOpen()) {
+                                    <div class="search-config-body">
+                                        @for (f of ragTabFormList(); track f) {
+                                            <app-rag-tab
+                                                [form]="f"
+                                                [hideSourceSelectors]="true"
+                                                [allKnowledgeSources]="[]"
+                                                [agentRags]="[]"
+                                                [searchConfigs]="ragTabSearchConfigs()"
+                                                [llmConfigId]="null"
+                                            />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and query editor columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [minOppositeWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
+
+                    <div
+                        #editorColumn
+                        class="editor-panel-wrapper"
+                    >
+                        <div class="editor-panel">
+                            <app-copy-button [text]="form.get('query')?.getRawValue()" />
+                            <div class="editor-panel-header">
+                                <div class="left">
+                                    <app-svg-icon
+                                        class="icon"
+                                        icon="file"
+                                        size="14px"
+                                    />
+                                    Text Editor
+                                    <span class="tooltip"> Query </span>
+                                </div>
+                            </div>
+                            <div class="editor-panel-content">
+                                <app-template-textarea
+                                    #queryTextareaExpanded
+                                    class="code-editor-section"
+                                    formControlName="query"
+                                    placeholder="Enter query. Use {variable} to insert dynamic values..."
+                                    [stretch]="true"
+                                    [resizable]="false"
+                                    [showLineNumbers]="true"
+                                    [availableInputs]="availableInputs()"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            } @else {
+                <div class="form-layout collapsed">
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="Unique identifier for this Knowledge Retriever node within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
+
+                    <div class="input-map">
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                    </div>
+
+                    <div class="template-textarea-wrapper">
+                        <app-tooltip
+                            tooltipText="Query text sent to the knowledge base. Supports template variables like {name}."
+                            label="Query"
+                            [required]="true"
+                        />
+                        <app-template-textarea
+                            #queryTextareaCollapsed
+                            class="template-textarea-rounded"
+                            placeholder="Enter query. Use {variable} to insert dynamic values..."
+                            formControlName="query"
+                            [availableInputs]="availableInputs()"
+                        />
+                    </div>
+
+                    <div class="inputs-list-section">
+                        <button
+                            type="button"
+                            class="inputs-list-toggle"
+                            (click)="toggleInputsList()"
+                        >
+                            <span
+                                class="chevron"
+                                [class.open]="inputsListOpen()"
+                                >▶</span
+                            >
+                            Inputs You Can Use
+                        </button>
+                        @if (inputsListOpen()) {
+                            <div class="inputs-chip-list">
+                                @for (name of availableInputs(); track name) {
+                                    <div
+                                        class="inputs-chip"
+                                        (click)="insertInputToQuery(name)"
+                                    >
+                                        {{ name }}
+                                    </div>
+                                } @empty {
+                                    <span class="inputs-chip-empty"> Add entries to Input List to use them here. </span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <app-custom-input
+                        label="Output Variable Path"
+                        tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
+                        formControlName="output_variable_path"
+                        placeholder="Enter output variable path (leave empty for null)"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <div class="form-group">
+                        <app-select
+                            label="Knowledge Collection"
+                            tooltipText="The source collection to search. RAG must belong to this collection."
+                            placeholder="Select knowledge collection"
+                            formControlName="knowledge_collection"
+                            [items]="collectionItems()"
+                            [loading]="loadingCollections()"
+                        />
+                    </div>
+
+                    <div class="form-group">
+                        <app-select
+                            label="RAG"
+                            tooltipText="The RAG type registered for the selected collection."
+                            placeholder="Select RAG"
+                            formControlName="rag"
+                            [items]="ragItems()"
+                            [loading]="loadingRags()"
+                        />
+                    </div>
+
+                    @if (selectedRagKind()) {
+                        <div class="search-config-section">
+                            <button
+                                type="button"
+                                class="search-config-toggle"
+                                (click)="toggleSearchConfig()"
+                            >
+                                <span
+                                    class="chevron"
+                                    [class.open]="searchConfigOpen()"
+                                    >▶</span
+                                >
+                                RAG Search Config
+                            </button>
+
+                            @if (searchConfigOpen()) {
+                                <div class="search-config-body">
+                                    @for (f of ragTabFormList(); track f) {
+                                        <app-rag-tab
+                                            [form]="f"
+                                            [hideSourceSelectors]="true"
+                                            [allKnowledgeSources]="[]"
+                                            [agentRags]="[]"
+                                            [searchConfigs]="ragTabSearchConfigs()"
+                                            [llmConfigId]="null"
+                                        />
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </form>
+    </div>
+</div>

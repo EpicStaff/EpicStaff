@@ -20,7 +20,7 @@ View  ──▶  AuthValidationService.validate_*()  (shape + strength)
   └────▶  PasswordRecoveryService               (orchestrator)
              │
              ├── SmtpConfigService              (is SMTP configured?)
-             ├── PasswordResetTokenRepository   (token CRUD + active-ness)
+             ├── PasswordResetTokenRepository   (generate/hash, lookup, delete)
              ├── PasswordResetEmailSender       (render + send, fail-silent)
              ├── PasswordWriter                 (set_password + save)
              └── SessionInvalidationService     (blacklist refresh tokens)
@@ -61,9 +61,13 @@ Throttling: `PasswordResetRequestThrottle`, bucket `ip|email`, rate
 
 ### `POST /api/auth/password-reset/confirm/` — anonymous
 
-Body: `{ "token": "<uuid>", "new_password": "<pw>" }`.
+Body: `{ "token": "<opaque string>", "new_password": "<pw>" }`.
 
-* Looks up the token; if it is unknown, already used, or past
+* The token is the URL-safe value from the emailed link. It is opaque —
+  there is no format to validate, so a malformed value and an unknown
+  one are indistinguishable and produce the same generic error. Only a
+  blank/missing `token` is reported as a field error.
+* Looks the token up **by hash**; if it is unknown, already used, or past
   `PASSWORD_RESET_TOKEN_TTL` (default **900 s / 15 min**), returns a
   single generic **400**
   (`Reset token is invalid, expired, or already used.`) — the response
@@ -112,7 +116,11 @@ python manage.py reset_password <email> [--generate | --password <pw>]
   history).
 * `--generate` → generates a strong random password via
   `secrets.token_urlsafe(16)` and prints it once to stdout.
-* Runs the same validators as the HTTP surface.
+* The new password is validated against the same
+  `AUTH_PASSWORD_VALIDATORS` as every other password-setting entry point
+  (min length, not-too-common, not-all-numeric, not-too-similar-to-email).
+* Does **not** verify the account's current password or any token — shell
+  access to run `manage.py` is the authorization for this command.
 * Goes through `PasswordRecoveryService.cli_reset`, so the same
   post-conditions apply: password written, reset tokens invalidated,
   refresh tokens blacklisted.
@@ -127,7 +135,8 @@ All env vars land in `src/.env` and are forwarded through
 | Variable | Default | Meaning |
 |---|---|---|
 | `PASSWORD_RESET_TOKEN_TTL` | `900` | Token lifetime, seconds. |
-| `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` | DRF throttle rate. |
+| `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` | Throttle on the request endpoint, bucketed per `ip\|email`. |
+| `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Throttle on the confirm endpoint, bucketed per **IP only** — see Security invariants. |
 | `EMAIL_HOST` | *(empty)* | SMTP host. Empty → console backend. |
 | `EMAIL_PORT` | `587` | SMTP port. |
 | `EMAIL_HOST_USER` | *(empty)* | SMTP user. Leave blank for relays that do not require AUTH (mailpit, local Postfix). |
@@ -136,7 +145,7 @@ All env vars land in `src/.env` and are forwarded through
 | `EMAIL_USE_SSL` | `False` | |
 | `DEFAULT_FROM_EMAIL` | `no-reply@epicstaff.local` | `From:` header on reset emails. |
 | `FRONTEND_BASE_URL` | `http://localhost:4200` | Base of the reset link. |
-| `FRONTEND_PASSWORD_RESET_PATH` | `/reset-password` | Path segment; token appended as `?token=<uuid>`. |
+| `FRONTEND_PASSWORD_RESET_PATH` | `/reset-password` | Path segment; token appended as `?token=<opaque string>`. |
 
 `EMAIL_BACKEND` is resolved at import time: SMTP when `EMAIL_HOST` is
 set, else console. Whether Django authenticates against that host is
@@ -151,11 +160,29 @@ we tell the user an email is coming?" — inspect it, not `EMAIL_BACKEND`.
 
 * **No enumeration.** Request endpoint always returns 200. Confirm
   endpoint uses a single opaque 400 for unknown / used / expired.
-* **Single-use tokens.** Marked `is_used=True` on consumption.
-* **Only the latest link works.** Prior unused tokens for a user are
-  bulk-invalidated every time a new reset is requested.
+* **Single-use tokens.** Consuming a reset **deletes** the row. Single-use
+  therefore holds because the grant is gone, not because a flag says so —
+  a replayed token is the same lookup miss as an unknown one, and gets the
+  same generic answer. Nothing accumulates: the table holds only live
+  grants.
+* **Stored hashed, never in plaintext.** The token is
+  `secrets.token_urlsafe(32)`, and only its SHA-256 hash is persisted
+  (`rbac_password_reset_token.token_hash`). The raw value exists once, in
+  the emailed link. A read of the table — from a leaked backup, a
+  replica, or a query log — yields verifiers, not usable tokens, so it
+  cannot be replayed against the confirm endpoint. The model's `__str__`
+  omits the hash as well, to keep it out of logs.
+  Plain SHA-256 with no salt or pepper is deliberate: the input is 32
+  bytes of `secrets` entropy, so there is nothing to brute-force and
+  nothing to precompute, and staying independent of `SECRET_KEY` means
+  rotating that key does not invalidate in-flight links.
+* **Only the latest link works.** Prior grants for a user are deleted every
+  time a new reset is requested.
 * **Time-bound.** `PASSWORD_RESET_TOKEN_TTL` (default 15 min).
-* **Throttled.** `5/hour` per `ip|email`.
+* **Both endpoints throttled.** Request: `5/hour` per `ip|email`.
+  Confirm: `10/hour` per **IP alone** — the only caller-supplied value on
+  that request is the token itself, and keying on it would give an
+  attacker a fresh bucket per guess.
 * **Session kill on every password change.** Reset, admin reset, CLI
   reset (all here) and self-service change (via `UserProfileService`)
   all blacklist every outstanding refresh token for the user. Access

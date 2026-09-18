@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { GetFileExtractorNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapFileExtractorNodeToModel(n: GetFileExtractorNodeRequest): FileExtractorNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(n.metadata, NodeType.FILE_EXTRACTOR);
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: n.id,
         type: NodeType.FILE_EXTRACTOR,
         node_name: n.node_name,

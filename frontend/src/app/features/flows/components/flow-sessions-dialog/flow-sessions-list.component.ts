@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -24,6 +23,8 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
 import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
@@ -36,6 +37,7 @@ import {
     GraphSessionService,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    TriggerType,
 } from '../../services/flows-sessions.service';
 import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
@@ -44,15 +46,14 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
     selector: 'app-flow-sessions-list',
     templateUrl: './flow-sessions-list.component.html',
     styleUrls: ['./flow-sessions-list.component.scss'],
-    standalone: true,
     imports: [
-        CommonModule,
         FlowSessionsTableComponent,
         PaginationControlsComponent,
         FlowSessionNodeFilterDropdownComponent,
         IconButtonComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -69,6 +70,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     ];
     public statusFilter = signal<string[]>(['all']);
     public nodeFilter = signal<string | null>(null);
+    public triggerFilter = signal<TriggerType[]>([]);
+    public dateFilter = signal<DateRangeFilter | null>(null);
     public totalCount = 0;
     public availableNodes = signal<string[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
@@ -109,8 +112,10 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
             const status = this.statusFilter();
             const nodeName = this.nodeFilter();
             const isErrorCause = this.isErrorCauseFilter();
+            const triggerType = this.triggerFilter();
+            const dateFilter = this.dateFilter();
             this.reloadTrigger();
-            this.loadSessions(size, (page - 1) * size, status, nodeName, isErrorCause);
+            this.loadSessions(size, (page - 1) * size, status, nodeName, isErrorCause, triggerType, dateFilter);
         });
     }
 
@@ -120,12 +125,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
 
     private loadAvailableNodes(): void {
         const groups: NodeGroup[] = [
-            {
-                label: 'Crew Node',
-                icon: 'ti ti-users',
-                color: '#f0a500',
-                nodes: this.extractNodeNames(this.flow?.crew_node_list),
-            },
             {
                 label: 'Python Node',
                 icon: 'ti ti-brand-python',
@@ -169,12 +168,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                 nodes: this.extractNodeNames(this.flow?.subgraph_node_list),
             },
             {
-                label: 'Code Agent',
-                icon: 'ti ti-robot',
-                color: '#4ade80',
-                nodes: this.extractNodeNames(this.flow?.code_agent_node_list),
-            },
-            {
                 label: 'End',
                 icon: 'ti ti-square-rounded',
                 color: '#d3d3d3',
@@ -207,7 +200,9 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         offset: number,
         status: string[],
         nodeName: string | null = null,
-        isErrorCause: boolean = false
+        isErrorCause: boolean = false,
+        triggerType: TriggerType[] = [],
+        dateFilter: DateRangeFilter | null = null
     ): void {
         this.cancelLoad$.next();
         this.cancelPolling$.next();
@@ -215,7 +210,18 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         this.isLoaded.set(false);
         if (this.flow && this.flow.id) {
             this.graphSessionService
-                .getSessionsByGraphId(this.flow.id, false, limit, offset, status, nodeName, isErrorCause)
+                .getSessionsByGraphId(
+                    this.flow.id,
+                    false,
+                    limit,
+                    offset,
+                    status,
+                    nodeName,
+                    isErrorCause,
+                    null,
+                    triggerType,
+                    dateFilter
+                )
                 .pipe(takeUntil(this.cancelLoad$))
                 .subscribe({
                     next: (sessions) => {
@@ -398,6 +404,16 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         }
     }
 
+    onTriggerFilterChange(types: TriggerType[]) {
+        this.currentPage.set(1);
+        this.triggerFilter.set(types);
+    }
+
+    onDateFilterChange(filter: DateRangeFilter | null) {
+        this.currentPage.set(1);
+        this.dateFilter.set(filter);
+    }
+
     public onSelectedIdsChange(ids: Set<number>): void {
         this.selectedIds.set(ids);
     }
@@ -443,4 +459,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     public onExportItemSelected(item: ActionDropdownItem): void {
         this.onExport(item.value as ExportFormat);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -1,5 +1,7 @@
+import { RagStatusConfiguration } from './base-rag.model';
 import { CollectionDocument } from './document.model';
-import { CollectionNaiveRag } from './naive-rag.model';
+import { CollectionDetailsGraphRag } from './graph-rag.model';
+import { CollectionDetailsNaiveRag } from './naive-rag.model';
 
 export enum CreateCollectionStep {
     UPLOAD_FILES = 0,
@@ -9,6 +11,7 @@ export enum CreateCollectionStep {
 
 export interface CreateCollectionDtoRequest {
     collection_name: string;
+    description?: string;
 }
 
 export enum CollectionStatus {
@@ -19,13 +22,16 @@ export enum CollectionStatus {
     FAILED = 'failed',
 }
 
+type FullRagConfiguration = CollectionDetailsNaiveRag | CollectionDetailsGraphRag;
+
 export interface CreateCollectionDtoResponse {
     collection_id: number;
     collection_name: string;
+    description: string | null;
     user_id: string;
     status: CollectionStatus;
     document_count: number;
-    rag_configurations: CollectionNaiveRag[];
+    rag_configurations: FullRagConfiguration[];
     created_at: string;
     updated_at: string;
 }
@@ -33,9 +39,11 @@ export interface CreateCollectionDtoResponse {
 export interface GetCollectionRequest {
     collection_id: number;
     collection_name: string;
+    description: string | null;
     user_id: string;
     status: CollectionStatus;
     document_count: number;
+    rag_configurations: RagStatusConfiguration[];
     created_at: string;
     updated_at: string;
 }

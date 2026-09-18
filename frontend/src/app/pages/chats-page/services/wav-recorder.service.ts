@@ -1,90 +1,129 @@
-import { DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { WavRecorder } from 'wavtools';
 import { AudioAnalysisOutputType } from 'wavtools/dist/lib/analysis/audio_analysis';
+
+export const SELECTED_MICROPHONE_STORAGE_KEY = 'selected_microphone_id';
 
 @Injectable({
     providedIn: 'root',
 })
 export class WavRecorderService {
     private wavRecorder: WavRecorder;
-    private destroyRef = inject(DestroyRef);
+    private deviceListenerAttached = false;
+    private devicesReadyPromise: Promise<MediaDeviceInfo[]> | null = null;
 
-    // Essential signals
     public audioDevices = signal<MediaDeviceInfo[]>([]);
     public isRecording = signal<boolean>(false);
     public isPaused = signal<boolean>(false);
     public isInitialized = signal<boolean>(false);
+    public isLoadingDevices = signal<boolean>(false);
+    /** Last ensureDevicesReady failed because the browser blocked the mic. */
+    public permissionBlocked = signal<boolean>(false);
 
     constructor() {
-        // 1. Probe sampleRate on Firefox, otherwise default to 24000
         const isFirefox = navigator.userAgent.includes('Firefox');
-        let sampleRate: number;
-
+        let sampleRate = 24000;
         if (isFirefox) {
             const probeCtx = new AudioContext();
             sampleRate = probeCtx.sampleRate;
-            console.log('Detected audio sample rate (Firefox):', sampleRate);
-            probeCtx.close();
-        } else {
-            sampleRate = 24000;
-            console.log('Using default sample rate:', sampleRate);
+            void probeCtx.close();
         }
 
-        // 2. Instantiate recorder
         this.wavRecorder = new WavRecorder({ sampleRate });
-
-        // 3. Usual init
-        this.initialize();
+        // Intentionally no device/permission work here — only on user gesture.
     }
 
     /**
-     * Initialize the recorder and setup device detection
+     * Request mic + load devices. Must run from a click/tap.
+     * Safe to call repeatedly (retries after failure).
      */
-    private initialize(): void {
-        this.listAudioDevices();
+    public ensureDevicesReady(): Promise<MediaDeviceInfo[]> {
+        const existing = this.audioDevices().filter((d) => d.deviceId);
+        if (existing.length > 0) {
+            return Promise.resolve(existing);
+        }
 
-        this.wavRecorder.listenForDeviceChange((devices: MediaDeviceInfo[]) => {
-            this.audioDevices.set(devices);
-            console.log('Audio devices updated:', devices);
+        if (this.devicesReadyPromise) {
+            return this.devicesReadyPromise;
+        }
+
+        this.isLoadingDevices.set(true);
+        this.permissionBlocked.set(false);
+
+        this.devicesReadyPromise = this.loadDevicesFromUserGesture().finally(() => {
+            this.isLoadingDevices.set(false);
+            this.devicesReadyPromise = null;
+        });
+
+        return this.devicesReadyPromise;
+    }
+
+    private async loadDevicesFromUserGesture(): Promise<MediaDeviceInfo[]> {
+        if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices.enumerateDevices) {
+            this.isInitialized.set(true);
+            this.audioDevices.set([]);
+            return [];
+        }
+
+        let stream: MediaStream | null = null;
+        try {
+            // Always open a stream in this call (user gesture). Even when the site
+            // already has permission, Chrome often needs this before deviceIds appear.
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+
+            this.audioDevices.set(audioInputs);
+            this.isInitialized.set(true);
+            this.permissionBlocked.set(false);
+            this.attachDeviceListener();
+            return audioInputs;
+        } catch (error) {
+            console.error('Failed to access microphone / list devices:', error);
+            const blocked =
+                error instanceof DOMException &&
+                (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError');
+            this.permissionBlocked.set(blocked);
+            this.isInitialized.set(true);
+            this.audioDevices.set([]);
+            return [];
+        } finally {
+            stream?.getTracks().forEach((track) => track.stop());
+        }
+    }
+
+    private attachDeviceListener(): void {
+        if (this.deviceListenerAttached || !navigator.mediaDevices) return;
+        this.deviceListenerAttached = true;
+
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+            void navigator.mediaDevices.enumerateDevices().then((devices) => {
+                const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+                if (audioInputs.length > 0) {
+                    this.audioDevices.set(audioInputs);
+                }
+            });
         });
     }
-
-    /**
-     * List available audio input devices
-     * @returns Promise<MediaDeviceInfo[]>
-     */
-    public listAudioDevices(): Promise<MediaDeviceInfo[]> {
-        return this.wavRecorder
-            .listDevices()
-            .then((devices: MediaDeviceInfo[]) => {
-                this.audioDevices.set(devices);
-                this.isInitialized.set(true);
-                return devices;
-            })
-            .catch((error) => {
-                console.error('Error listing audio devices:', error);
-                return [];
-            });
-    }
-
-    /**
-     * Begin recording session with optional device ID
-     * @param deviceId Optional device ID to use for recording
-     * @returns Promise<boolean> True if recording was initialized successfully
-     */
 
     public async beginRecording(deviceId?: string): Promise<boolean> {
         const isFirefox = navigator.userAgent.includes('Firefox');
         if (isFirefox) {
-            // alert only when we actually begin
             window.alert(
                 '⚠️ Voice capture on Firefox can be unreliable—OpenAI’s voice recognition may perform poorly here.'
             );
         }
 
+        const resolvedDeviceId = deviceId ?? localStorage.getItem(SELECTED_MICROPHONE_STORAGE_KEY) ?? undefined;
+
         try {
-            const success = await this.wavRecorder.begin(deviceId);
-            console.log('Recording initialized:', success);
+            const success = await this.wavRecorder.begin(resolvedDeviceId);
+            if (!this.audioDevices().length) {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                this.audioDevices.set(devices.filter((d) => d.kind === 'audioinput'));
+                this.isInitialized.set(true);
+                this.attachDeviceListener();
+            }
             return success;
         } catch (error) {
             console.error('Error initializing recording:', error);
@@ -97,25 +136,17 @@ export class WavRecorderService {
         chunkSize: number = 8192
     ): Promise<boolean> {
         void chunkSize;
-        // Update state signals
         this.isRecording.set(true);
         this.isPaused.set(false);
 
         const status: 'ended' | 'paused' | 'recording' = this.wavRecorder.getStatus();
-
-        // Already recording
         if (status === 'recording') {
-            console.warn('Already recording.');
             return Promise.resolve(true);
         }
 
-        // Start or resume recording
         return this.wavRecorder
             .record(audioCallback || (() => {}), 8192)
-            .then((success) => {
-                console.log(`Recording ${status === 'paused' ? 'resumed' : 'started'}:`, success);
-                return success;
-            })
+            .then((success) => success)
             .catch((error) => {
                 console.error('Error starting recording:', error);
                 this.isRecording.set(false);
@@ -131,7 +162,6 @@ export class WavRecorderService {
                     if (success) {
                         this.isPaused.set(true);
                         this.isRecording.set(false);
-                        console.log('Recording paused');
                     }
                     return success;
                 })
@@ -139,22 +169,16 @@ export class WavRecorderService {
                     console.error('Error pausing recording:', error);
                     return false;
                 });
-        } else {
-            console.warn('Cannot pause because recorder is not recording.');
-            return Promise.resolve(false);
         }
+        return Promise.resolve(false);
     }
 
     public stopRecording(): Promise<boolean> {
         this.isRecording.set(false);
         this.isPaused.set(false);
-
         return this.wavRecorder
             .end()
-            .then(() => {
-                console.log('Recording stopped');
-                return true;
-            })
+            .then(() => true)
             .catch((error) => {
                 console.error('Error stopping recording:', error);
                 return false;
@@ -164,10 +188,7 @@ export class WavRecorderService {
     public clearRecording(): Promise<boolean> {
         return this.wavRecorder
             .clear()
-            .then((success) => {
-                console.log('Recording cleared');
-                return success;
-            })
+            .then((success) => success)
             .catch((error) => {
                 console.error('Error clearing recording:', error);
                 return false;

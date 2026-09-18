@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -19,7 +18,10 @@ import {
     PaginationControlsComponent,
     SelectComponent,
     SelectItem,
+    StopSessionButtonComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
@@ -34,13 +36,13 @@ import {
     GraphSessionLight,
     GraphSessionService,
     GraphSessionStatus,
+    isTerminalSessionStatus,
+    TriggerType,
 } from '../../services/flows-sessions.service';
 
 @Component({
     selector: 'app-global-sessions-list',
-    standalone: true,
     imports: [
-        CommonModule,
         FlowSessionsTableComponent,
         PaginationControlsComponent,
         AppSvgIconComponent,
@@ -48,6 +50,8 @@ import {
         GraphMessagesComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        HasPermissionDirective,
+        StopSessionButtonComponent,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
@@ -67,9 +71,11 @@ export class GlobalSessionsListComponent {
     ];
     public statusFilter = signal<string[]>(['all']);
     public sortOrder = signal<'asc' | 'desc'>('desc');
-    public flowFilter = signal<string | null>(null);
+    public flowFilter = signal<string[]>([]);
+    public triggerFilter = signal<TriggerType[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
     public durationFilter = signal<DurationFilter | null>(null);
+    public dateFilter = signal<DateRangeFilter | null>(null);
     public selectedIds = signal<Set<number>>(new Set());
     public availableFlows = signal<GetGraphLightRequest[]>([]);
     public totalCount = signal(0);
@@ -105,10 +111,22 @@ export class GlobalSessionsListComponent {
             const status = this.statusFilter();
             const sort = this.sortOrder();
             const flowName = this.flowFilter();
+            const triggerName = this.triggerFilter();
             const isErrorCause = this.isErrorCauseFilter();
             const durationFilter = this.durationFilter();
+            const dateFilter = this.dateFilter();
             this.reloadTrigger();
-            this.loadGlobalSessions(size, (page - 1) * size, status, sort, flowName, isErrorCause, durationFilter);
+            this.loadGlobalSessions(
+                size,
+                (page - 1) * size,
+                status,
+                sort,
+                flowName,
+                triggerName,
+                isErrorCause,
+                durationFilter,
+                dateFilter
+            );
         });
 
         this.flowsApiService
@@ -167,14 +185,18 @@ export class GlobalSessionsListComponent {
             this.router.navigate(['/graph', session.graph_id, 'session', sessionId]);
         }
     }
-
     public onIsErrorCauseChange(): void {
         this.isErrorCauseFilter.update((v) => !v);
         this.currentPage.set(1);
     }
 
-    public onFlowFilterChange(name: string | null): void {
-        this.flowFilter.set(name);
+    public onFlowFilterChange(names: string[]): void {
+        this.flowFilter.set(names);
+        this.currentPage.set(1);
+    }
+
+    public onTriggerFilterChange(types: TriggerType[]): void {
+        this.triggerFilter.set(types);
         this.currentPage.set(1);
     }
 
@@ -203,6 +225,10 @@ export class GlobalSessionsListComponent {
         if (session) {
             this.isPanelOpen.set(true);
         }
+    }
+
+    public canStopSession(status: GraphSessionStatus): boolean {
+        return !isTerminalSessionStatus(status);
     }
 
     public onStopSession(sessionId: number): void {
@@ -266,6 +292,11 @@ export class GlobalSessionsListComponent {
         this.currentPage.set(1);
     }
 
+    public onDateFilterChange(filter: DateRangeFilter | null): void {
+        this.dateFilter.set(filter);
+        this.currentPage.set(1);
+    }
+
     public onExport(format: ExportFormat): void {
         if (this.selectedIds().size === 0 && this.totalCount() === 0) {
             return;
@@ -277,9 +308,11 @@ export class GlobalSessionsListComponent {
             obs$ = this.importExportService.bulkExportSessions(Array.from(this.selectedIds()), format);
         } else {
             const activeStatuses = this.statusFilter().filter((s) => s !== 'all');
-            const selectedFlow = this.flowFilter()
-                ? this.availableFlows().find((f) => f.name === this.flowFilter())
-                : null;
+            const selectedFlowNames = this.flowFilter();
+            const selectedFlow =
+                selectedFlowNames.length === 1
+                    ? this.availableFlows().find((f) => f.name === selectedFlowNames[0])
+                    : null;
             obs$ = this.importExportService.exportAll(
                 {
                     graph: selectedFlow?.id,
@@ -313,20 +346,33 @@ export class GlobalSessionsListComponent {
         offset: number,
         status: string[],
         sort: 'asc' | 'desc' = 'desc',
-        graphName?: string | null,
+        graphName?: string[],
+        triggerType?: TriggerType[],
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        dateFilter?: DateRangeFilter | null
     ): void {
         this.cancelLoad$.next();
         this.cancelPolling$.next();
         this.isLoaded.set(false);
         const ordering = sort === 'asc' ? 'created_at' : '-created_at';
         this.graphSessionService
-            .getGlobalSessions(limit, offset, status, ordering, graphName, isErrorCause, durationFilter)
+            .getGlobalSessions(
+                limit,
+                offset,
+                status,
+                ordering,
+                graphName,
+                triggerType,
+                isErrorCause,
+                durationFilter,
+                dateFilter
+            )
             .pipe(takeUntil(this.cancelLoad$), takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (response) => {
                     this.sessions.set(response.results);
+                    this.syncPreviewSession(response.results);
                     this.totalCount.set(response.count);
                     this.isLoaded.set(true);
                     this.startBackgroundRefresh();
@@ -353,8 +399,10 @@ export class GlobalSessionsListComponent {
                             this.statusFilter(),
                             ordering,
                             this.flowFilter(),
+                            this.triggerFilter(),
                             this.isErrorCauseFilter(),
-                            this.durationFilter()
+                            this.durationFilter(),
+                            this.dateFilter()
                         )
                         .pipe(catchError(() => EMPTY));
                 }),
@@ -363,7 +411,20 @@ export class GlobalSessionsListComponent {
             )
             .subscribe((response) => {
                 this.sessions.set(response.results);
+                this.syncPreviewSession(response.results);
                 this.totalCount.set(response.count);
             });
     }
+
+    private syncPreviewSession(sessions: GraphSessionLight[]): void {
+        const current = this.previewSession();
+        if (!current) return;
+        const updated = sessions.find((s) => s.id === current.id);
+        if (updated) {
+            this.previewSession.set(updated);
+        }
+    }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

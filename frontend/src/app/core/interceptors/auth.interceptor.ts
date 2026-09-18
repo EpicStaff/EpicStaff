@@ -21,7 +21,7 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
             return authService.refreshToken().pipe(
                 switchMap((newAccess) => {
                     if (!newAccess) {
-                        authService.removeTokensAndNavToLogin();
+                        authService.removeTokenAndNavToLogin();
                         return throwError(() => err);
                     }
                     const retryReq = req.clone({

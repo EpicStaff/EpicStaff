@@ -19,17 +19,19 @@
             class="section__icon"
         />
         <span class="section__label">{{ config().label }}</span>
-        <button
-            type="button"
-            class="section__add-btn"
-            (click)="addRow()"
-            [title]="isArrayValuesMode() ? 'Add element' : 'Add row'"
-        >
-            <app-svg-icon
-                icon="plus"
-                size="1rem"
-            />
-        </button>
+        @if (!readOnly()) {
+            <button
+                type="button"
+                class="section__add-btn"
+                (click)="addRow()"
+                [title]="isArrayValuesMode() ? 'Add element' : 'Add row'"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="1rem"
+                />
+            </button>
+        }
     </div>
 
     <app-dynamic-table
@@ -40,8 +42,8 @@
         [columnDefs]="effectiveColumnDefs()"
         [initialRows]="rows()"
         [allowColumnDrag]="false"
-        [allowRowDrag]="true"
-        [allowRowRemove]="true"
+        [allowRowDrag]="!readOnly()"
+        [allowRowRemove]="!readOnly()"
         [rowNavigable]="isNavigableRow"
         [navigateCellKey]="'default_value'"
         [isCellDisabled]="isCellDisabled"

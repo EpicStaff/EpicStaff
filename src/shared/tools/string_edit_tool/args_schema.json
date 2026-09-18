@@ -1,0 +1,24 @@
+{
+  "title": "StringEditToolArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "Path to the file to edit, relative to the sandbox root."
+    },
+    "old_string": {
+      "type": "string",
+      "description": "Exact text to find. May be multi-line. Matched verbatim, no regex."
+    },
+    "new_string": {
+      "type": "string",
+      "description": "Replacement text. Must differ from old_string."
+    },
+    "replace_all": {
+      "type": "boolean",
+      "description": "Replace every occurrence of old_string instead of requiring exactly one match.",
+      "default": false
+    }
+  },
+  "required": ["file_path", "old_string", "new_string"]
+}

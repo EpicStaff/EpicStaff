@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { NODE_COLORS, NODE_ICONS } from '../../core/enums/node-config';
 import { NodeType } from '../../core/enums/node-type';
@@ -7,7 +7,7 @@ import { StartNodeModel } from '../../core/models/node.model';
 
 export function createStartNode(): StartNodeModel {
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: null,
         type: NodeType.START,
         node_name: '__start__',

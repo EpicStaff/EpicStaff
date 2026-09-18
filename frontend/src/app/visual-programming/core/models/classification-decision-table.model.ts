@@ -3,21 +3,23 @@ import { ConditionGroup } from './decision-table.model';
 export interface ComputationConfig {
     code: string;
     input_map?: Record<string, string>;
-    output_variable_path?: string;
+    output_variable_path?: string | null;
     libraries?: string[];
+    secret_ids?: number[];
+    secret_names?: string[];
 }
 
 export interface ClassificationDecisionTableData {
-    pre_computation_code: string;
+    pre_computation_code: string | null;
     pre_input_map?: Record<string, string>;
-    pre_output_variable_path?: string;
-    post_computation_code?: string;
+    pre_output_variable_path?: string | null;
+    post_computation_code?: string | null;
     post_input_map?: Record<string, string>;
-    post_output_variable_path?: string;
+    post_output_variable_path?: string | null;
     pre_computation?: ComputationConfig;
     post_computation?: ComputationConfig;
     condition_groups: ConditionGroup[];
-    route_variable_name: string;
+    route_variable_name?: string;
     default_next_node: string | null;
     next_error_node: string | null;
     default_llm_config?: number | null;
@@ -46,6 +48,7 @@ export interface OutputVariableMapping {
 }
 
 export interface PromptConfig {
+    backendId?: number;
     prompt_text: string;
     llm_config: number | null;
     output_schema: Record<string, unknown> | string | null;

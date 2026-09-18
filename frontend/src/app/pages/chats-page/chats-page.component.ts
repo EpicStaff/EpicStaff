@@ -1,74 +1,81 @@
-import { NgIf } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { FullRealtimeConfigService } from '@shared/services';
 import { finalize, forkJoin, Subject, takeUntil } from 'rxjs';
 
-import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
-import { PageHeaderComponent } from '../../shared/components/header/page-header.component';
+import { AgentDefinitionsApiService } from '../../features/agent-definitions/services/agent-definitions-api.service';
+import { RealtimeAgentDefinitionsApiService } from '../../features/agent-definitions/services/realtime-agent-definitions-api.service';
 import { SpinnerComponent } from '../../shared/components/spinner/spinner.component';
 import { ChatsContentComponent } from './components/chats-content/chats-content.component';
 import { ChatsSidebarComponent } from './components/chats-sidebar/chats-sidebar.component';
+import { ChatAgent, sameChatAgent } from './models/chat-agent.model';
 import { ChatsService } from './services/chats.service';
 import { ConsoleService } from './services/console.service';
 
 @Component({
     selector: 'app-chats-page',
-    standalone: true,
-    imports: [ChatsSidebarComponent, ChatsContentComponent, NgIf, SpinnerComponent, PageHeaderComponent],
+    imports: [ChatsSidebarComponent, ChatsContentComponent, SpinnerComponent, HideInlineSubtitleOnOverflowDirective],
     templateUrl: './chats-page.component.html',
     styleUrls: ['./chats-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChatsPageComponent implements OnInit, OnDestroy {
-    public agentsList = signal<FullAgent[]>([]);
-    public isLoading = signal<boolean>(true);
+    private readonly chatsService = inject(ChatsService);
+    private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
+    private readonly realtimeApi = inject(RealtimeAgentDefinitionsApiService);
+    private readonly fullRealtimeConfigService = inject(FullRealtimeConfigService);
+    private readonly consoleService = inject(ConsoleService);
+
+    public readonly agents = signal<ChatAgent[]>([]);
+    public readonly isLoading = signal<boolean>(true);
 
     private destroy$ = new Subject<void>();
-
-    constructor(
-        private readonly chatsService: ChatsService,
-        private readonly fullAgentService: FullAgentService,
-        private consoleService: ConsoleService
-    ) {}
 
     ngOnInit(): void {
         this.loadAgentsData();
     }
 
     private loadAgentsData(): void {
-        // Set a minimum loading time of 500ms
-        const loadStartTime = Date.now();
-
-        // Use forkJoin to fetch both full agents and realtime agents in parallel
         forkJoin({
-            fullAgents: this.fullAgentService.getFullAgents(),
+            definitions: this.agentDefinitionsApi.getAgentDefinitions(),
+            realtimeDefs: this.realtimeApi.list(),
+            realtimeConfigs: this.fullRealtimeConfigService.getFullRealtimeConfigs(),
         })
             .pipe(
                 takeUntil(this.destroy$),
-                finalize(() => {
-                    // Calculate remaining time to reach minimum 500ms loading time
-                    const loadTime = Date.now() - loadStartTime;
-                    const remainingTime = Math.max(0, 500 - loadTime);
-
-                    // Use setTimeout to ensure minimum loading time
-                    setTimeout(() => {
-                        this.isLoading.set(false);
-                    }, remainingTime);
-                })
+                finalize(() => this.isLoading.set(false))
             )
             .subscribe({
-                next: ({ fullAgents }) => {
-                    this.agentsList.set(fullAgents);
+                next: ({ definitions, realtimeDefs }) => {
+                    // Only definitions that can actually connect.
+                    const realtimeByDef = new Map(realtimeDefs.map((r) => [r.agent_definition, r]));
+                    const agents: ChatAgent[] = definitions
+                        .map((agent) => {
+                            const realtime = realtimeByDef.get(agent.id);
+                            return realtime &&
+                                (realtime.openai_config != null ||
+                                    realtime.elevenlabs_config != null ||
+                                    realtime.gemini_config != null)
+                                ? { agent, realtime }
+                                : null;
+                        })
+                        .filter((x): x is ChatAgent => x !== null);
 
-                    // Set the first agent as selected if available
-                    if (fullAgents.length > 0) {
-                        this.chatsService.setSelectedAgent(fullAgents[0]);
-                    }
+                    this.agents.set(agents);
+                    this.chatsService.setSelectedChatAgent(agents.length > 0 ? agents[0] : null);
                 },
                 error: (error) => {
                     console.error('Error loading agents data:', error);
                     this.isLoading.set(false);
                 },
             });
+    }
+
+    onAgentUpdated(updated: ChatAgent): void {
+        this.agents.update((list) => list.map((a) => (sameChatAgent(a, updated) ? updated : a)));
+        if (sameChatAgent(this.chatsService.selectedChatAgent$(), updated)) {
+            this.chatsService.setSelectedChatAgent(updated);
+        }
     }
 
     ngOnDestroy() {

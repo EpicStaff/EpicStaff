@@ -1,0 +1,92 @@
+.dialog-container {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-modals-background);
+    color: var(--color-text-primary);
+    border-radius: 12px;
+    overflow: hidden;
+    width: 590px;
+    max-width: 90vw;
+    height: min(720px, 90vh);
+    box-shadow:
+        0 12px 28px var(--black-alpha-40),
+        0 4px 8px var(--black-alpha-20);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    .dialog-title {
+        margin: 0;
+        padding: 0;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
+        letter-spacing: 0;
+        color: var(--color-text-primary, #d9d9de);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.tabs {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 1.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    .divider {
+        font-size: 1.5rem;
+        color: var(--color-divider-subtle);
+    }
+
+    app-tab-button ::ng-deep .tab-btn {
+        color: var(--accent-color);
+        font-weight: 500;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+
+        &.active {
+            color: var(--color-text-primary);
+            border-bottom-color: var(--color-text-primary);
+        }
+    }
+}
+
+.scrollable-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    min-height: 250px;
+
+    .tab-content {
+        display: block;
+        height: 0;
+        overflow: hidden;
+    }
+
+    .visible-tab {
+        height: auto;
+        overflow: visible;
+    }
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+    gap: 0.75rem;
+    border-top: 1px solid var(--color-divider-subtle);
+
+    app-button {
+        width: auto;
+    }
+}

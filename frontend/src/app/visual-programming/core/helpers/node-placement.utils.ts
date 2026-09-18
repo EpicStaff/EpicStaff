@@ -1,8 +1,8 @@
 import { IPoint } from '@foblex/2d';
 
 import { NodeType } from '../enums/node-type';
-import { DecisionTableNodeModel, NodeModel } from '../models/node.model';
-import { getDecisionTableVisualHeight } from './node-size.util';
+import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../models/node.model';
+import { getClassificationDecisionTableVisualHeight, getDecisionTableVisualHeight } from './node-size.util';
 
 export interface CollisionBounds {
     width: number;
@@ -36,6 +36,16 @@ export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data
             return {
                 width: node.size.width + 40,
                 height: getDecisionTableVisualHeight(conditionGroups) + 68,
+                offsetX: -20,
+                offsetY: -15,
+            };
+        }
+
+        case NodeType.CLASSIFICATION_TABLE: {
+            const conditionGroups = (node as ClassificationDecisionTableNodeModel).data.table?.condition_groups ?? [];
+            return {
+                width: node.size.width + 40,
+                height: getClassificationDecisionTableVisualHeight(conditionGroups) + 30,
                 offsetX: -20,
                 offsetY: -15,
             };
@@ -108,45 +118,47 @@ export function resolveOverlapsForNode(anchorId: string, allNodes: NodeModel[]):
     return movedNodes;
 }
 
-export function resolveDraggedNodePositions(
-    allNodes: NodeModel[],
-    draggedNodeIds: Set<string>,
-    runtimePositions: Map<string, IPoint>
-): NodeModel[] {
-    const updatedNodesById = new Map<string, NodeModel>();
-    const workingNodes = allNodes.map((node) => {
-        const runtimePosition = runtimePositions.get(node.id);
-        if (!runtimePosition || !draggedNodeIds.has(node.id)) {
-            return node;
-        }
+// TODO candidate to remove if nobody works on it
 
-        const updatedNode = { ...node, position: runtimePosition };
-        updatedNodesById.set(node.id, updatedNode);
-        return updatedNode;
-    });
+// export function resolveDraggedNodePositions(
+//     allNodes: NodeModel[],
+//     draggedNodeIds: Set<string>,
+//     runtimePositions: Map<string, IPoint>
+// ): NodeModel[] {
+//     const updatedNodesById = new Map<string, NodeModel>();
+//     const workingNodes = allNodes.map((node) => {
+//         const runtimePosition = runtimePositions.get(node.id);
+//         if (!runtimePosition || !draggedNodeIds.has(node.id)) {
+//             return node;
+//         }
 
-    for (const id of draggedNodeIds) {
-        const current = workingNodes.find((node) => node.id === id);
-        if (!current) continue;
+//         const updatedNode = { ...node, position: runtimePosition };
+//         updatedNodesById.set(node.id, updatedNode);
+//         return updatedNode;
+//     });
 
-        const freePos = findNearestFreePosition(
-            current.position,
-            getCollisionBounds(current),
-            workingNodes.filter((node) => node.id !== id)
-        );
+//     for (const id of draggedNodeIds) {
+//         const current = workingNodes.find((node) => node.id === id);
+//         if (!current) continue;
 
-        if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
-            const updatedNode = { ...current, position: freePos };
-            const index = workingNodes.findIndex((node) => node.id === id);
-            if (index >= 0) {
-                workingNodes[index] = updatedNode;
-            }
-            updatedNodesById.set(id, updatedNode);
-        }
-    }
+//         const freePos = findNearestFreePosition(
+//             current.position,
+//             getCollisionBounds(current),
+//             workingNodes.filter((node) => node.id !== id)
+//         );
 
-    return Array.from(updatedNodesById.values());
-}
+//         if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
+//             const updatedNode = { ...current, position: freePos };
+//             const index = workingNodes.findIndex((node) => node.id === id);
+//             if (index >= 0) {
+//                 workingNodes[index] = updatedNode;
+//             }
+//             updatedNodesById.set(id, updatedNode);
+//         }
+//     }
+
+//     return Array.from(updatedNodesById.values());
+// }
 
 function rectOverlaps(aPos: IPoint, aBounds: CollisionBounds, bPos: IPoint, bBounds: CollisionBounds): boolean {
     const aLeft = aPos.x + aBounds.offsetX;

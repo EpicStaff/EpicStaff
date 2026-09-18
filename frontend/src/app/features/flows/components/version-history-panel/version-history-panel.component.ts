@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     DestroyRef,
@@ -31,6 +32,7 @@ import { FlowsApiService } from '../../services/flows-api.service';
     selector: 'app-version-history-panel',
     imports: [IconButtonComponent, CommonModule, FormsModule, SpinnerComponent],
     templateUrl: './version-history-panel.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './version-history-panel.component.scss',
 })
 export class VersionHistoryPanelComponent implements OnInit {
@@ -260,7 +262,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                 next: (response) => {
                     if (response.warnings.length > 0) {
                         this.toastService.warning(
-                            `Version restored with ${response.warnings.length} warning(s): some nodes or edges were removed`
+                            `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
                         );
                     } else {
                         this.toastService.success('Version restored successfully');

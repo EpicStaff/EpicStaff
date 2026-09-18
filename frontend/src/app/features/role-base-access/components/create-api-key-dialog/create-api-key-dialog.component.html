@@ -1,0 +1,85 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">{{ step() === 'pending' ? 'Create API Key' : 'Key Created' }}</span>
+        <button
+            class="close"
+            type="button"
+            (click)="onClose()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="18px"
+            />
+        </button>
+    </div>
+
+    <div class="body">
+        @if (step() === 'pending') {
+            <form
+                class="form"
+                [formGroup]="form"
+            >
+                <div>
+                    <app-custom-input
+                        formControlName="name"
+                        label="Name"
+                        placeholder="e.g. Deploy Bot"
+                        [required]="true"
+                    />
+                    <app-validation-errors [control]="form.get('name')!" />
+                </div>
+
+                <app-select
+                    [selectedValue]="defaultExpirationValue"
+                    label="Expiration"
+                    placeholder="Enter value..."
+                    [items]="expirationSelectItems"
+                    (changed)="onExpirationChange($event)"
+                />
+
+                @if (showStepper()) {
+                    <app-input-number
+                        formControlName="expires_in_days"
+                        label="Number of day"
+                        placeholder="Enter value..."
+                        [stepSize]="10"
+                        [min]="1"
+                        [max]="3650"
+                    />
+                    <app-validation-errors [control]="form.get('expires_in_days')!" />
+                }
+            </form>
+        } @else {
+            <app-copy-field
+                label="Your new API key"
+                [value]="apiKey"
+                infoType="warning"
+                info="This is the only time the key is shown. Store it securely — you won't be able to see it again."
+                (onCopied)="copiedToClipboard.set(true)"
+            />
+        }
+    </div>
+
+    <div class="footer">
+        @if (step() === 'pending') {
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+                >Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                [disabled]="loading() || form.invalid"
+                (click)="onCreate()"
+                >Create Key
+            </app-button>
+        } @else {
+            <app-button
+                type="primary"
+                [disabled]="!copiedToClipboard()"
+                (click)="onClose()"
+                >Done
+            </app-button>
+        }
+    </div>
+</div>

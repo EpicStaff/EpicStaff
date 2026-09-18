@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { MatTooltipModule, TooltipPosition } from '@angular/material/tooltip';
 
@@ -6,8 +5,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-help-tooltip',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div class="help-tooltip-container">
             @if (iconClass) {
@@ -36,6 +34,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 display: flex;
                 align-items: center;
             }
+
             .help-icon-wrapper {
                 cursor: help;
                 display: flex;
@@ -43,16 +42,17 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 justify-content: center;
                 outline: none;
                 color: var(--accent-color, #685fff);
-                transition: color 0.2s ease;
-                width: 18px;
-                height: 18px;
+                transition: opacity 0.2s ease;
+                width: 16px;
+                height: 16px;
+                flex-shrink: 0;
 
                 &:hover {
                     opacity: 0.7;
                 }
 
                 &.class-icon {
-                    font-size: 18px;
+                    font-size: 1rem;
                     line-height: 1;
                 }
             }
@@ -65,7 +65,7 @@ export class HelpTooltipComponent {
     @Input() position: 'top' | 'bottom' | 'left' | 'right' = 'right';
     @Input() icon = 'help';
     @Input() iconClass = '';
-    @Input() size = '1rem';
+    @Input() size = '16px';
     @Input() tooltipClass = 'custom-tooltip';
 
     get tooltipPosition(): TooltipPosition {

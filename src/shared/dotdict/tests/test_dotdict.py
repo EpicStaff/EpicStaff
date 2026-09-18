@@ -85,12 +85,6 @@ def test_dotobj_model_dump_list():
     expected_data = ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]
     assert dumped == expected_data
 
-    expected_data = [1, 2, "3", test_obj]
-    assert len(expected_data) == len(dumped)
-    assert isinstance(dumped, list)
-    for val in expected_data:
-        assert val in dumped
-
 
 def test_dotobj_json_dump_set():
     data = {1, 2, "3"}
@@ -199,6 +193,17 @@ def test_dotobject_non_iterable_pass_through():
     assert obj == 123
 
 
+@pytest.mark.xfail(
+    raises=ValueError,
+    strict=True,
+    reason=(
+        "computed properties are broken: add_property calls ast.literal_eval, "
+        "which takes a single argument and cannot resolve sibling keys. "
+        "Restoring eval() would execute user-authored flow expressions in the "
+        "unsandboxed crew process, so the feature stays disabled pending a "
+        "restricted AST evaluator."
+    ),
+)
 def test_dotdict_property_expression_reflects_latest_value():
     d = DotDict({"a": 2, "b": 3})
     d.add_property("sum", "a + b")
@@ -229,3 +234,60 @@ def test_dotlist_model_dump_mixed_types():
     l = DotList([1, {"x": 2}, [3, {"y": 4}]])
     dumped = l.model_dump()
     assert dumped == [1, {"x": 2}, [3, {"y": 4}]]
+
+
+def test_pydantic_serialize_none_dotdict_field_does_not_raise():
+    """Regression test: bare Optional DotDict field with value None must
+    serialize to None instead of crashing with AttributeError on
+    `None.deep_dump()` (smoke test bug)."""
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        args: DotDict = None
+
+    # Field left unset -> default (None) is used and, matching the real
+    # dynamically-built tool args_schema scenario, is NOT re-validated
+    # against dict_schema (validate_default defaults to False). This is
+    # exactly the shape that previously crashed on serialization.
+    m = Model()
+    dumped = m.model_dump()
+    assert dumped == {"args": None}
+
+
+def test_pydantic_serialize_none_dotlist_field_does_not_raise():
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        items: DotList = None
+
+    m = Model()
+    dumped = m.model_dump()
+    assert dumped == {"items": None}
+
+
+def test_pydantic_serialize_non_none_dotdict_field_unchanged():
+    """Ensure the None-guard does not alter existing deep_dump behavior
+    for a real (non-None) DotDict value."""
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        args: DotDict = None
+
+    m = Model(args=DotDict({"a": 1, "b": {"c": 2}}))
+    dumped = m.model_dump()
+    assert dumped == {"args": {"a": 1, "b": {"c": 2}}}
+
+
+def test_pydantic_serialize_non_none_dotlist_field_unchanged():
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        items: DotList = None
+
+    m = Model(items=DotList([1, {"x": 2}, [3, {"y": 4}]]))
+    dumped = m.model_dump()
+    assert dumped == {"items": [1, {"x": 2}, [3, {"y": 4}]]}

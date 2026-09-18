@@ -5,4 +5,4 @@ from tables.models.label_models import Label
 class LabelImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Label
-        fields = ["id", "name", "parent", "metadata"]
+        fields = ["id", "name", "parent", "metadata", "scope"]

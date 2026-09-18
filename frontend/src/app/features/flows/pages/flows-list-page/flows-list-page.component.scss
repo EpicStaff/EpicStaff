@@ -8,14 +8,13 @@
     height: 100%;
     overflow: auto;
     box-sizing: border-box;
-    color: #fff;
+    color: var(--white);
 
     .sticky-header {
         position: sticky;
         top: 0;
         z-index: 5;
         width: 100%;
-        padding: 2rem 2.5rem 0;
         box-sizing: border-box;
         background-color: var(--color-background-body);
         border-bottom: 1px solid var(--color-divider-subtle);
@@ -24,7 +23,9 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 1rem;
+            padding: 1.75rem 3.75rem 1rem 2.5rem;
+            height: 80px;
+            border-bottom: 1px solid var(--color-divider-subtle);
 
             .header-titles {
                 display: flex;
@@ -32,16 +33,16 @@
                 justify-content: center;
 
                 .title {
-                    font-size: 1.8rem;
-                    font-weight: 400;
+                    font-size: var(--text-h1-size);
+                    font-weight: var(--text-h1-weight);
                     color: var(--color-text-primary);
                 }
 
                 .subtitle-inline {
                     margin-left: 0.7rem;
-                    font-size: 1.1rem;
-                    font-weight: 400;
-                    color: var(--color-text-secondary);
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    color: var(--text-secondary-60);
                     display: inline-block;
                     white-space: normal;
                 }
@@ -62,10 +63,22 @@
         justify-content: space-between;
         margin-bottom: 0;
         background: transparent;
+        padding: 0 3.75rem 0 2.75rem;
 
         .tabs-left {
             display: flex;
             align-items: center;
+            gap: 0.25rem;
+        }
+
+        .tab-sep {
+            text-align: center;
+            font-size: 1.625rem;
+            padding: 0 12px;
+            color: var(--transparent-white-16);
+            font-weight: 500;
+            opacity: 0.3;
+            user-select: none;
         }
 
         .tabs-right {
@@ -80,13 +93,13 @@
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        height: 2.2rem;
+        height: 28px;
         padding: 0 0.85rem;
-        background: var(--color-input-background);
+        background: transparent;
         border: 1px solid var(--color-input-border);
-        border-radius: 0.5rem;
+        border-radius: 4px;
         color: var(--color-text-primary);
-        font-size: 0.9rem;
+        font-size: 0.75rem;
         cursor: pointer;
         transition: border-color 0.15s ease;
 
@@ -109,8 +122,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 2rem;
-        height: 2rem;
+        width: 28px;
+        height: 28px;
         background: transparent;
         border: 1px solid var(--color-input-border);
         border-radius: 0.5rem;
@@ -175,7 +188,7 @@
                     &.active {
                         color: var(--accent-color);
                         border-color: var(--accent-color);
-                        background: rgba(88, 86, 214, 0.08);
+                        background: var(--iris-alpha-8);
                     }
                 }
 
@@ -202,15 +215,15 @@
                     }
 
                     .breadcrumb-sep {
-                        font-size: 14px;
-                        font-weight: 500;
+                        font-size: var(--text-body-medium-size);
+                        font-weight: var(--text-body-medium-weight);
                         color: var(--color-text-secondary);
                         opacity: 0.3;
                     }
 
                     .breadcrumb-label {
-                        font-size: 14px;
-                        font-weight: 400;
+                        font-size: var(--text-body-size);
+                        font-weight: var(--text-body-weight);
                         color: var(--color-text-primary);
                         overflow: hidden;
                         white-space: nowrap;
@@ -229,61 +242,8 @@
         }
     }
 
-    // Search input styles
-    .search-container {
-        position: relative;
+    .search {
         width: 20rem;
-        max-width: 100%;
-        flex: 0 1 20rem;
-        height: 2.2rem;
-
-        .search-icon {
-            position: absolute;
-            left: 0.8rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--color-text-secondary);
-        }
-
-        .search-input {
-            width: 100%;
-            height: 100%;
-            padding: 0 2.5rem 0 2.5rem;
-            border-radius: 0.5rem;
-            border: 1px solid var(--color-input-border);
-            background-color: var(--color-input-background);
-            color: var(--color-text-primary);
-            font-size: 0.9rem;
-            transition: border-color 0.2s ease;
-
-            &:focus {
-                outline: none;
-                border-color: var(--accent-color);
-            }
-
-            &::placeholder {
-                color: var(--color-input-text-placeholder);
-            }
-        }
-
-        .clear-btn {
-            position: absolute;
-            right: 0.5rem;
-            top: 50%;
-            transform: translateY(-50%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.25rem;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            color: var(--color-text-secondary);
-
-            &:hover {
-                color: var(--color-text-primary);
-            }
-        }
     }
 }
 
@@ -321,8 +281,8 @@
     &__main {
         gap: 0.5rem;
         padding: 0 1rem;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
     }
 
     &__cog {
@@ -364,8 +324,8 @@
         border: none;
         color: var(--accent-color);
         cursor: pointer;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         transition:
             background-color 0.15s ease,
             color 0.15s ease;

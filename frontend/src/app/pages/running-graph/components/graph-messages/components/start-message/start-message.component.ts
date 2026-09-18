@@ -1,32 +1,27 @@
-import { CommonModule } from '@angular/common';
-import { Component, Input, ViewEncapsulation } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
+import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage } from '../../../../models/graph-session-message.model';
+import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-start-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
-    animations: [expandCollapseAnimation],
     template: `
         <div class="start-container">
             <div
                 class="start-header"
                 (click)="toggleMessage()"
             >
-                <div
-                    class="play-arrow"
-                    *ngIf="hasInputs()"
-                >
-                    <app-svg-icon
-                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                        size="1.1rem"
-                    />
+                <div class="play-arrow">
+                    @if (hasInputs()) {
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
+                    }
                 </div>
                 <div class="icon-container">
                     <app-svg-icon
@@ -41,49 +36,51 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="start-content">
                     <!-- Input Parameters Section -->
-                    <div
-                        class="input-container"
-                        *ngIf="hasInputs()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleInputs($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Input Parameters
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="input-content">
-                                <app-copy-button [text]="startInputJson" />
-                                <ngx-json-viewer
-                                    [json]="getStartInput()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasInputs()) {
+                        <div class="input-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleInputs($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Input Parameters
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputsExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="input-content">
+                                        <app-copy-button [text]="startInputJson" />
+                                        <app-json-viewer
+                                            [json]="getStartInput()"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .start-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, 0.5rem 1rem);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #d29922;
             }
@@ -96,9 +93,12 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             }
 
             .play-arrow {
-                margin-right: 16px;
+                width: 1.1rem;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #d29922;
@@ -106,8 +106,8 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #d29922;
                 display: flex;
@@ -123,8 +123,9 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -139,21 +140,22 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 position: relative;
             }
 
-            .collapsible-content.ng-animating {
-                overflow: hidden;
-            }
-
             .start-content {
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
+                padding-left: 4.5rem;
+            }
+
+            .start-content > :first-child {
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -217,7 +219,7 @@ export class StartMessageComponent {
     getStartInput(): Record<string, unknown> {
         if (!this.message.message_data) return {};
 
-        if (this.message.message_data.message_type === 'start' && 'input' in this.message.message_data) {
+        if (this.message.message_data.message_type === MessageType.START && 'input' in this.message.message_data) {
             return this.message.message_data.input;
         }
 

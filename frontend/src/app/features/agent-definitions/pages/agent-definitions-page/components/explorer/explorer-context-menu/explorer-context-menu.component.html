@@ -1,0 +1,23 @@
+@if (open()) {
+    <div
+        class="explorer-menu__overlay"
+        (click)="close.emit()"
+    ></div>
+    <div
+        class="explorer-menu"
+        [style.left.px]="position().x"
+        [style.top.px]="position().y"
+    >
+        @for (item of items(); track item.id) {
+            <button
+                type="button"
+                class="explorer-menu__item"
+                [class.explorer-menu__item--disabled]="item.disabled"
+                [disabled]="item.disabled"
+                (click)="onAction(item.id, item.disabled)"
+            >
+                {{ item.label }}
+            </button>
+        }
+    </div>
+}

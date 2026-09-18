@@ -1,10 +1,11 @@
-import { Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl } from '@angular/forms';
 
 @Component({
     selector: 'app-validation-errors',
     templateUrl: './validation-errors.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./validation-errors.component.scss'],
 })
 export class ValidationErrorsComponent {
@@ -39,6 +40,13 @@ export class ValidationErrorsComponent {
         pattern: () => 'The value does not match the required pattern.',
         email: () => 'Invalid email address.',
         numericOnly: () => 'Password cannot be entirely numeric.',
+        whitespace: () => 'Value cannot be blank string.',
+        uniqueName: () => 'A tool with this name already exists.',
+        notUnique: (e) => (e as { message?: string })?.message || 'Node name must be unique.',
+        tasksRequired: () => 'Add at least one task.',
+        taskNameRequired: () => 'Every task needs a name.',
+        taskNameDuplicate: () => 'Task names must be unique.',
+        taskInstructionsRequired: () => 'Every task needs instructions.',
     };
 
     messagesList = computed<string[]>(() => {

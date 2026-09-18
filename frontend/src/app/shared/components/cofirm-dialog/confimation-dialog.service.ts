@@ -12,9 +12,9 @@ export type ConfirmationResult = boolean | 'close';
 export class ConfirmationDialogService {
     constructor(private dialog: Dialog) {}
 
-    confirm(options: ConfirmationDialogData): Observable<ConfirmationResult> {
+    confirm(options: ConfirmationDialogData, config?: { width?: string }): Observable<ConfirmationResult> {
         const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
-            width: '400px',
+            width: config?.width ?? '400px',
             data: options,
         });
 

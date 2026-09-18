@@ -1,0 +1,11 @@
+{
+  "title": "S3FileExistsArgs",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "S3 path (file or folder) to check for existence."
+    }
+  },
+  "required": ["path"]
+}

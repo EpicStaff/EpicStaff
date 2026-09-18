@@ -1,0 +1,413 @@
+"""Plan 5 — global singletons (superadmin write-lockdown) and reachable
+runtime models (RealtimeAgentChat)."""
+
+from unittest.mock import patch
+
+import pytest
+from rest_framework.test import APIClient
+
+from agents.models import AgentDefinition
+from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
+from tables.models.realtime_models import (
+    ConversationRecording,
+    RealtimeAgentChat,
+    RealtimeAgentDefinition,
+    RealtimeSessionItem,
+)
+from tables.models.rbac_models import Organization, OrganizationUser, Role
+from tables.models.rbac_models.rbac_enums import BuiltInRole
+
+
+@pytest.fixture
+def org_a(db):
+    return Organization.objects.create(name="Org A")
+
+
+@pytest.fixture
+def org_b(db):
+    return Organization.objects.create(name="Org B")
+
+
+def _member(django_user_model, org, email):
+    role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+def _org_admin(django_user_model, org, email):
+    role = Role.objects.get(
+        name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+def _client(user, org):
+    c = APIClient()
+    c.force_authenticate(user=user)
+    c.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return c
+
+
+@pytest.fixture
+def client_member(db, django_user_model, org_a):
+    return _client(_member(django_user_model, org_a, "gm@example.com"), org_a)
+
+
+@pytest.fixture
+def client_org_admin(db, django_user_model, org_a):
+    # VOICE is read-only for Member/Viewer (seeded bitmask=2, EST-3962) — the
+    # `conversation_recording_create_*` org-scoping tests below need CREATE,
+    # so they exercise an Org Admin (bitmask=15) rather than `client_member`.
+    return _client(_org_admin(django_user_model, org_a, "voice-admin@example.com"), org_a)
+
+
+@pytest.fixture
+def client_super(db, django_user_model, org_a):
+    root = django_user_model.objects.create_user(
+        email="groot@example.com", password="StrongPass123!", is_superadmin=True
+    )
+    return _client(root, org_a)
+
+
+# ---- default-* singletons: global read, superadmin write ----
+
+
+@pytest.mark.django_db
+def test_default_llm_config_read_allowed_for_member(client_member):
+    assert client_member.get("/api/default-llm-config/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_default_llm_config_write_denied_for_member(client_member):
+    assert (
+        client_member.put("/api/default-llm-config/", {}, format="json").status_code
+        == 403
+    )
+
+
+@pytest.mark.django_db
+def test_default_llm_config_write_permitted_for_superadmin(client_super):
+    # passes the permission gate (not 403); the body/singleton may yield 200/400/404
+    assert (
+        client_super.put("/api/default-llm-config/", {}, format="json").status_code
+        != 403
+    )
+
+
+@pytest.mark.django_db
+def test_default_models_write_denied_for_member(client_member):
+    assert (
+        client_member.put("/api/default-models/", {}, format="json").status_code == 403
+    )
+
+
+@pytest.mark.django_db
+def test_default_models_write_permitted_for_superadmin(client_super):
+    assert (
+        client_super.put("/api/default-models/", {}, format="json").status_code != 403
+    )
+
+
+# ---- RealtimeAgentChat: scoped via rt_agent -> agent -> org ----
+
+
+def _chat(org):
+    agent_definition = AgentDefinition.objects.create(organization=org, name="a")
+    rt_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=agent_definition
+    )
+    return RealtimeAgentChat.objects.create(
+        rt_agent_definition=rt_definition, connection_key="k"
+    )
+
+
+@pytest.mark.django_db
+def test_realtime_agent_chat_cross_org_404(client_member, org_b):
+    chat = _chat(org_b)
+    assert client_member.get(f"/api/realtime-agent-chats/{chat.id}/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_realtime_agent_chat_own_org_visible(client_member, org_a):
+    chat = _chat(org_a)
+    assert client_member.get(f"/api/realtime-agent-chats/{chat.id}/").status_code == 200
+
+
+# ---- ConversationRecording: scoped via rt_agent_chat -> rt_agent_definition -> agent_definition -> org ----
+
+
+def _recording(org):
+    chat = _chat(org)
+    return ConversationRecording.objects.create(
+        rt_agent_chat=chat,
+        recording_type=ConversationRecording.RecordingType.INBOUND,
+    )
+
+
+@pytest.mark.django_db
+def test_conversation_recording_cross_org_404(client_member, org_b):
+    recording = _recording(org_b)
+    assert (
+        client_member.get(f"/api/conversation-recordings/{recording.id}/").status_code
+        == 404
+    )
+
+
+@pytest.mark.django_db
+def test_conversation_recording_own_org_visible(client_member, org_a):
+    recording = _recording(org_a)
+    assert (
+        client_member.get(f"/api/conversation-recordings/{recording.id}/").status_code
+        == 200
+    )
+
+
+@pytest.mark.django_db
+def test_conversation_recording_cross_org_list_excludes_other_org(
+    client_member, org_a, org_b
+):
+    own = _recording(org_a)
+    _recording(org_b)
+    resp = client_member.get("/api/conversation-recordings/")
+    assert resp.status_code == 200
+    returned_ids = {row["id"] for row in resp.data["results"]}
+    assert returned_ids == {own.id}
+
+
+def _fake_audio_file():
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    return SimpleUploadedFile("clip.wav", b"fake-audio-bytes", content_type="audio/wav")
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
+    client_org_admin, org_b
+):
+    """A caller must not be able to attach a recording to another org's
+    RealtimeAgentChat by supplying its id directly as `rt_agent_chat`."""
+    other_chat = _chat(org_b)
+
+    resp = client_org_admin.post(
+        "/api/conversation-recordings/",
+        {
+            "rt_agent_chat": other_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 404
+    assert not ConversationRecording.objects.filter(rt_agent_chat=other_chat).exists()
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat(
+    client_org_admin, org_b
+):
+    """The connection_key resolution path (used by the realtime service)
+    must be subject to the same parent-org check as a direct FK reference."""
+    other_chat = _chat(org_b)
+
+    resp = client_org_admin.post(
+        "/api/conversation-recordings/",
+        {
+            "connection_key": other_chat.connection_key,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 404
+    assert not ConversationRecording.objects.filter(rt_agent_chat=other_chat).exists()
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_allowed_for_own_orgs_chat(
+    client_org_admin, org_a
+):
+    own_chat = _chat(org_a)
+
+    resp = client_org_admin.post(
+        "/api/conversation-recordings/",
+        {
+            "rt_agent_chat": own_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_denied_for_member(client_member, org_a):
+    """EST-3962: VOICE is read-only for Member (seeded bitmask=2) — a Member
+    must not be able to create a recording even for their own org's chat,
+    now that `ConversationRecordingViewSet` wires `HasOrgPermission`."""
+    own_chat = _chat(org_a)
+
+    resp = client_member.post(
+        "/api/conversation-recordings/",
+        {
+            "rt_agent_chat": own_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 403, resp.data
+    assert not ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
+
+
+def _viewer(django_user_model, org, email):
+    role = Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+# ---- python-code-result: list removed, detail superadmin-only ----
+
+
+@pytest.mark.django_db
+def test_python_code_result_list_removed(client_super):
+    # retrieve-only viewset: the router registers no collection route, so the
+    # list URL no longer exists (404) even for a superadmin.
+    assert client_super.get("/api/python-code-result/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_python_code_result_detail_denied_for_member(client_member):
+    PythonCodeResult.objects.create(execution_id="exec-1", stdout="secret output")
+    assert client_member.get("/api/python-code-result/exec-1/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_python_code_result_detail_allowed_for_superadmin(client_super):
+    PythonCodeResult.objects.create(execution_id="exec-1", stdout="ok")
+    assert client_super.get("/api/python-code-result/exec-1/").status_code == 200
+
+
+# ---- realtime-session-items: superadmin-only (holds base64 audio) ----
+
+
+@pytest.mark.django_db
+def test_realtime_session_items_denied_for_member(client_member):
+    RealtimeSessionItem.objects.create(connection_key="k", data={"audio": "b64"})
+    assert client_member.get("/api/realtime-session-items/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_realtime_session_items_allowed_for_superadmin(client_super):
+    RealtimeSessionItem.objects.create(connection_key="k", data={"audio": "b64"})
+    assert client_super.get("/api/realtime-session-items/").status_code == 200
+
+
+# NOTE: ngrok config is reachable only through the nested WebhookTrigger
+# payload, so its org-isolation coverage lives in webhook_trigger_api_test.py
+# (`TestWebhookTriggerOrgIsolation.test_non_superadmin_can_set_ngrok_config_on_own_org_trigger`
+# and `test_auth_token_absent_from_get_response`).
+
+
+# ---- run-python-code: org-visibility scope + TOOLS.UPDATE gate ----
+
+
+def _code_in_org(org):
+    """A PythonCode made visible to `org` via an org-owned custom tool."""
+    code = PythonCode.objects.create(code="x", entrypoint="main")
+    PythonCodeTool.objects.create(
+        name=f"tool-{org.id}",
+        description="",
+        python_code=code,
+        built_in=False,
+        org=org,
+    )
+    return code
+
+
+@pytest.mark.django_db
+def test_run_python_code_cross_org_rejected(client_member, org_b):
+    # Code visible only to org_b; an org_a member must not be able to run it.
+    code = _code_in_org(org_b)
+    resp = client_member.post(
+        "/api/run-python-code/",
+        {"python_code_id": code.id, "variables": {}},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "does not exist" in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_run_python_code_denied_without_tools_update(django_user_model, org_a):
+    # Viewer has TOOLS read only -> blocked before any execution.
+    viewer = _viewer(django_user_model, org_a, "viewer@example.com")
+    client = _client(viewer, org_a)
+    code = _code_in_org(org_a)
+    resp = client.post(
+        "/api/run-python-code/",
+        {"python_code_id": code.id, "variables": {}},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_run_python_code_allowed_for_member_own_org(client_member, org_a):
+    code = _code_in_org(org_a)
+    with patch(
+        "tables.views.views.run_python_code_service.run_code",
+        return_value="exec-123",
+    ) as run_code:
+        resp = client_member.post(
+            "/api/run-python-code/",
+            {"python_code_id": code.id, "variables": {}},
+            format="json",
+        )
+    assert resp.status_code == 200, resp.data
+    assert resp.data["execution_id"] == "exec-123"
+    run_code.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_run_python_code_of_builtin_tool_allowed(client_member):
+    # Built-in tools are global (org=None), so their code is visible to every
+    # org via the `pythoncodetool__built_in=True` branch of the filter.
+    code = PythonCode.objects.create(code="x", entrypoint="main")
+    PythonCodeTool.objects.create(
+        name="builtin-tool",
+        description="",
+        python_code=code,
+        built_in=True,
+        org=None,
+    )
+    with patch(
+        "tables.views.views.run_python_code_service.run_code",
+        return_value="exec-builtin",
+    ):
+        resp = client_member.post(
+            "/api/run-python-code/",
+            {"python_code_id": code.id, "variables": {}},
+            format="json",
+        )
+    assert resp.status_code == 200, resp.data
+
+
+@pytest.mark.django_db
+def test_run_python_code_unattached_rejected(client_member):
+    # A standalone PythonCode with no referencing tool/node/edge matches no
+    # branch of the filter, so it is visible to no org (accepted trade-off of
+    # PythonCode having no org column of its own).
+    orphan = PythonCode.objects.create(code="orphan", entrypoint="main")
+    resp = client_member.post(
+        "/api/run-python-code/",
+        {"python_code_id": orphan.id, "variables": {}},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "does not exist" in str(resp.data)
