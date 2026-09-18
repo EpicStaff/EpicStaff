@@ -1,14 +1,15 @@
 import asyncio
+import contextlib
 import json
 
 from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from src.shared.models import WebhookConfigData
 
 from app.controllers import webhook_routes
 from app.core.settings import settings
-from src.shared.models import WebhookConfigData
 from app.services.redis_service import (
     RedisService,
     close_redis_connection,
@@ -32,9 +33,7 @@ async def listen_redis(redis_service: RedisService, tunnel_registry: TunnelRegis
                     data = json.loads(message["data"])
                     webhook_config_data = WebhookConfigData(**data)
 
-                    await tunnel_registry.register_many(
-                        webhook_config_data=webhook_config_data
-                    )
+                    await tunnel_registry.register_many(webhook_config_data=webhook_config_data)
                 except Exception as e:
                     logger.error(f"Error processing message: {e}")
     except asyncio.CancelledError:
@@ -50,14 +49,10 @@ async def lifespan(app: FastAPI):
     redis_service = await get_redis_service()
     tunnel_registry = get_tunnel_registry(redis_service=redis_service)
 
-    redis_listener_task = asyncio.create_task(
-        listen_redis(redis_service, tunnel_registry)
-    )
+    redis_listener_task = asyncio.create_task(listen_redis(redis_service, tunnel_registry))
 
     while True:
-        n_received = await redis_service.client.publish(
-            settings.REQUEST_WEBHOOK_UPDATE_CHANNEL, ""
-        )
+        n_received = await redis_service.client.publish(settings.REQUEST_WEBHOOK_UPDATE_CHANNEL, "")
         if n_received >= 1:
             break
         logger.warning("No Django instance detected, retrying in 5 seconds...")
@@ -68,10 +63,8 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutting down...")
 
     redis_listener_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await redis_listener_task
-    except asyncio.CancelledError:
-        pass
 
     await close_redis_connection()
     logger.info("Cleanup complete.")

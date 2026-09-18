@@ -57,9 +57,7 @@ class SessionTabularProjection(TabularProjection):
             "msg__thought": d.get("thought"),
             "msg__tool": d.get("tool"),
             "msg__tool_input": d.get("tool_input"),
-            "msg__result": d.get("result")
-            if mtype in ("agent", "agent_finish")
-            else None,
+            "msg__result": d.get("result") if mtype in ("agent", "agent_finish") else None,
             "msg__task_raw": d.get("raw") if mtype == "task" else None,
             "msg__error": d.get("details") or d.get("error"),
             "msg__task_description": d.get("description"),

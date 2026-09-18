@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # agent root → resolves `app.*`
 _agent_root = os.path.dirname(os.path.abspath(__file__))

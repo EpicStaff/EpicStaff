@@ -1,24 +1,22 @@
-from typing import Optional
-
+from agents.models import InlineSurface, InlineSurfaceMcpTool, InlineSurfacePythonTool
 from django.core.exceptions import ObjectDoesNotExist
 
-from agents.models import InlineSurface, InlineSurfacePythonTool, InlineSurfaceMcpTool
-from tables.models import TaskNode
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.task_node import TaskNodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.strategies.nodes.inline_surface_helpers import (
     assign_node_surface_list,
     create_inline_surface,
 )
-from tables.import_export.serializers.task_node import TaskNodeImportSerializer
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
+from tables.models import TaskNode
 
 
 class TaskNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.TASK_NODE
     serializer_class = TaskNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[TaskNode]:
+    def get_instance(self, entity_id: int) -> TaskNode | None:
         return TaskNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: TaskNode) -> dict:
@@ -30,9 +28,7 @@ class TaskNodeStrategy(EntityImportExportStrategy):
         if instance.agent_definition_id:
             deps[EntityType.AGENT_DEFINITION] = [instance.agent_definition_id]
 
-        deps[EntityType.SURFACE] = list(
-            instance.surface_list.values_list("id", flat=True)
-        )
+        deps[EntityType.SURFACE] = list(instance.surface_list.values_list("id", flat=True))
 
         try:
             inline_surface = instance.inline_surface

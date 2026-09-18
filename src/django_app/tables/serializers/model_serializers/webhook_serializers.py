@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.webhook_models import WebhookTrigger
 
 
@@ -17,5 +16,5 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
         except serializers.ValidationError as e:
             raise serializers.ValidationError(
                 e.message_dict if hasattr(e, "message_dict") else e.messages
-            )
+            ) from e
         return attrs

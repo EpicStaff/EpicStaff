@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from agents.models.agent_models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -12,11 +10,7 @@ from agents.models.agent_models import (
 )
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
-from tables.models.graph_models import StorageFile
-from tables.models.knowledge_models.graphrag_models import GraphRag
-from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.python_models import PythonCodeTool
-from tables.services.rag_lookup_service import RagLookupService
+from loguru import logger
 from src.shared.models import (
     BaseToolData,
     GraphRagBasicSearchParams,
@@ -27,6 +21,11 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
+from tables.models.graph_models import StorageFile
+from tables.models.knowledge_models.graphrag_models import GraphRag
+from tables.models.knowledge_models.naive_rag_models import NaiveRag
+from tables.models.python_models import PythonCodeTool
+from tables.services.rag_lookup_service import RagLookupService
 
 if TYPE_CHECKING:
     from tables.services.converter_service import ConverterService
@@ -48,9 +47,7 @@ class RealtimeSurfaceService:
     def __init__(self, converter_service: ConverterService):
         self.converter_service = converter_service
 
-    def resolve(
-        self, agent_definition: AgentDefinition
-    ) -> RealtimeAgentSurfaceResolution:
+    def resolve(self, agent_definition: AgentDefinition) -> RealtimeAgentSurfaceResolution:
         combined_surface = self._build_combined_surface(agent_definition)
 
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_grants(
@@ -83,9 +80,9 @@ class RealtimeSurfaceService:
 
     def _build_combined_surface(self, agent_definition: AgentDefinition) -> dict:
         all_default_surfaces = list(
-            AgentDefaultSurface.objects.filter(
-                agent_definition=agent_definition
-            ).select_related("surface")
+            AgentDefaultSurface.objects.filter(agent_definition=agent_definition).select_related(
+                "surface"
+            )
         )
         # Any explicit row for a surface — regardless of place — opts it out of
         # the implicit-ALL fallback below, even if that row scopes it to chat/flow.
@@ -111,9 +108,7 @@ class RealtimeSurfaceService:
         org_id: int | None,
     ) -> list[BaseToolData]:
         allowed_tool_ids = [
-            entry["python_tool"]
-            for entry in python_tool_entries
-            if entry["mode"] == "allow"
+            entry["python_tool"] for entry in python_tool_entries if entry["mode"] == "allow"
         ]
         return [
             self.converter_service.convert_tool_to_base_tool_pydantic(
@@ -183,9 +178,7 @@ class RealtimeSurfaceService:
         collection_id = knowledge["collection"]
 
         if knowledge.get("naive_search_config") is not None:
-            return self._resolve_naive_rag(
-                collection_id, knowledge["naive_search_config"]
-            )
+            return self._resolve_naive_rag(collection_id, knowledge["naive_search_config"])
 
         if (
             knowledge.get("graph_basic_search_config") is not None
@@ -195,24 +188,15 @@ class RealtimeSurfaceService:
         ):
             return self._resolve_graph_rag(collection_id, knowledge)
 
-        logger.warning(
-            "Collection {} has no usable RAG search config, skipping.", collection_id
-        )
+        logger.warning("Collection {} has no usable RAG search config, skipping.", collection_id)
         return None, None, None, None, None
 
     def _resolve_naive_rag(
         self, collection_id: int, naive_config: dict
     ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None, int | None]:
-        naive_rag = RagLookupService.latest_rag(
-            NaiveRag, collection_id, pk_field="naive_rag_id"
-        )
-        if (
-            naive_rag is None
-            or naive_rag.rag_status != NaiveRag.NaiveRagStatus.COMPLETED
-        ):
-            logger.warning(
-                "No completed NaiveRag for collection {}, skipping.", collection_id
-            )
+        naive_rag = RagLookupService.latest_rag(NaiveRag, collection_id, pk_field="naive_rag_id")
+        if naive_rag is None or naive_rag.rag_status != NaiveRag.NaiveRagStatus.COMPLETED:
+            logger.warning("No completed NaiveRag for collection {}, skipping.", collection_id)
             return None, None, None, None, None
 
         rag_type_id = f"naive:{naive_rag.naive_rag_id}"
@@ -220,9 +204,7 @@ class RealtimeSurfaceService:
             search_limit=naive_config["search_limit"],
             similarity_threshold=float(naive_config["similarity_threshold"]),
         )
-        embedder_secret_id = (
-            naive_rag.embedder.api_key_secret_id if naive_rag.embedder else None
-        )
+        embedder_secret_id = naive_rag.embedder.api_key_secret_id if naive_rag.embedder else None
         # Naive RAG has no LLM call (no completion-model synthesis step) —
         # only graph RAG carries an `llm` FK. Leave the LLM secret id unset.
         return collection_id, rag_type_id, rag_search_config, embedder_secret_id, None
@@ -230,16 +212,9 @@ class RealtimeSurfaceService:
     def _resolve_graph_rag(
         self, collection_id: int, knowledge: dict
     ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None, int | None]:
-        graph_rag = RagLookupService.latest_rag(
-            GraphRag, collection_id, pk_field="graph_rag_id"
-        )
-        if (
-            graph_rag is None
-            or graph_rag.rag_status != GraphRag.GraphRagStatus.COMPLETED
-        ):
-            logger.warning(
-                "No completed GraphRag for collection {}, skipping.", collection_id
-            )
+        graph_rag = RagLookupService.latest_rag(GraphRag, collection_id, pk_field="graph_rag_id")
+        if graph_rag is None or graph_rag.rag_status != GraphRag.GraphRagStatus.COMPLETED:
+            logger.warning("No completed GraphRag for collection {}, skipping.", collection_id)
             return None, None, None, None, None
 
         rag_type_id = f"graph:{graph_rag.graph_rag_id}"
@@ -259,9 +234,7 @@ class RealtimeSurfaceService:
             search_params = GraphRagDriftSearchParams(**drift_config)
 
         rag_search_config = GraphRagSearchConfig(search_params=search_params)
-        embedder_secret_id = (
-            graph_rag.embedder.api_key_secret_id if graph_rag.embedder else None
-        )
+        embedder_secret_id = graph_rag.embedder.api_key_secret_id if graph_rag.embedder else None
         llm_secret_id = graph_rag.llm.api_key_secret_id if graph_rag.llm else None
         return (
             collection_id,

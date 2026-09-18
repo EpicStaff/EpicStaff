@@ -12,14 +12,14 @@ an auxiliary streaming failure never aborts the run.
 from __future__ import annotations
 
 from loguru import logger
+from shared.knowledge.target import KnowledgeSearchTarget
+from shared.models.agent_service import LoopResult, ToolResult
+from shared.models.knowledge_new import FoundChunk
+from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
 from app.usage import TokenUsageAccumulator
-from shared.models.agent_service import LoopResult, ToolResult
-from shared.models.knowledge_new import FoundChunk
-from shared.redis_streams import RedisStreamClient, StreamEnvelope
-from shared.knowledge.target import KnowledgeSearchTarget
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
 LIVE_CONTENT_MAX_CHARS = 2000
@@ -80,9 +80,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._current_task = {"name": task_name, "order": task_order}
         await self._publish_live("agent.task_start", {"task": self._current_task})
 
-    async def on_task_finish(
-        self, task_name: str, task_order: int, result: LoopResult
-    ) -> None:
+    async def on_task_finish(self, task_name: str, task_order: int, result: LoopResult) -> None:
         """Publish a live ``agent.task_finish`` envelope carrying the task's
         own result, then clear the current-task label and reset the live
         token-usage delta so it doesn't bleed into the next task."""
@@ -124,9 +122,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             await super().on_tool_call(call)
             return
 
-        arguments, truncated = _truncate(
-            call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS
-        )
+        arguments, truncated = _truncate(call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS)
         await self._publish_live(
             "agent.tool_call",
             {

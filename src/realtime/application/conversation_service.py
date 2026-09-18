@@ -1,9 +1,5 @@
 import asyncio
 import json
-from fastapi import WebSocket, WebSocketDisconnect
-from loguru import logger
-
-from src.shared.models import RealtimeAgentChatData
 
 from domain.models.chat_mode import ChatMode
 from domain.ports.i_chat_mode_controller import IChatModeController
@@ -13,10 +9,14 @@ from domain.ports.i_transcription_client import ITranscriptionClient
 from domain.ports.i_transcription_client_factory import ITranscriptionClientFactory
 from domain.services.chat_buffer import ChatSummarizedBuffer
 from domain.services.summarize_buffer import ChatSummarizedBufferClient
+from fastapi import WebSocket, WebSocketDisconnect
 from infrastructure.providers.factory import RealtimeAgentClientFactory
-from application.tool_manager_service import ToolManagerService
+from loguru import logger
+from src.shared.models import RealtimeAgentChatData
 from utils.shorten import shorten_dict
 from utils.tokenizer import Tokenizer
+
+from application.tool_manager_service import ToolManagerService
 
 
 class ConversationService(IChatModeController):
@@ -106,9 +106,7 @@ class ConversationService(IChatModeController):
                 rt_agent_client,
                 rt_transcription_client,
             )
-            rt_agent_client_task = asyncio.create_task(
-                rt_agent_client.handle_messages()
-            )
+            rt_agent_client_task = asyncio.create_task(rt_agent_client.handle_messages())
             if rt_transcription_client is not None:
                 rt_transcription_client_task = asyncio.create_task(
                     rt_transcription_client.handle_messages()
@@ -117,9 +115,7 @@ class ConversationService(IChatModeController):
             logger.info("WebSocket connection established")
 
             previous_input = ""
-            wake_words: list[str] = [
-                w.strip("!?., ") for w in self.wake_word.lower().split()
-            ]
+            wake_words: list[str] = [w.strip("!?., ") for w in self.wake_word.lower().split()]
 
             while True:
                 if (
@@ -134,9 +130,7 @@ class ConversationService(IChatModeController):
                         if any(trigger in last_input for trigger in wake_words):
                             final_buffer = buffer.get_final_buffer()
 
-                            await rt_agent_client.send_conversation_item_to_server(
-                                final_buffer
-                            )
+                            await rt_agent_client.send_conversation_item_to_server(final_buffer)
                             await rt_agent_client.request_response()
 
                             buffer.flush()
@@ -185,9 +179,7 @@ class ConversationService(IChatModeController):
 
                 except Exception as e:
                     logger.exception(f"Error processing message: {e}")
-                    await self.client_websocket.send_json(
-                        {"type": "error", "message": str(e)}
-                    )
+                    await self.client_websocket.send_json({"type": "error", "message": str(e)})
 
         except WebSocketDisconnect:
             logger.info("Client disconnected")
@@ -197,10 +189,7 @@ class ConversationService(IChatModeController):
             if rt_agent_client_task is not None and not rt_agent_client_task.done():
                 rt_agent_client_task.cancel()
 
-            if (
-                rt_transcription_client_task is not None
-                and not rt_transcription_client_task.done()
-            ):
+            if rt_transcription_client_task is not None and not rt_transcription_client_task.done():
                 rt_transcription_client_task.cancel()
 
             if self.client_websocket in self.connections:
@@ -216,9 +205,7 @@ class ConversationService(IChatModeController):
     ) -> tuple[ChatSummarizedBuffer, ChatSummarizedBufferClient]:
         tokenizer = Tokenizer(model)
         buffer = ChatSummarizedBuffer(tokenizer, max_buffer_tokens, max_chunks_tokens)
-        summ_buffer_client = ChatSummarizedBufferClient(
-            buffer=buffer, summ_client=self.summ_client
-        )
+        summ_buffer_client = ChatSummarizedBufferClient(buffer=buffer, summ_client=self.summ_client)
         return buffer, summ_buffer_client
 
     def _maybe_create_transcription_client(

@@ -10,7 +10,6 @@ from operator import or_
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 
-
 # Action metadata: ordered as the FE renders the matrix columns. View leads —
 # it is the permission every other one builds on, not bit order.
 ACTION_METADATA = [
@@ -225,7 +224,11 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "delete": (("surfaces", "read"),),
     },
     ResourceType.KNOWLEDGE_SOURCES.value: {
-        "create": (("knowledge_sources", "read"), ("knowledge_sources", "update"), ("llm_configs", "read")),
+        "create": (
+            ("knowledge_sources", "read"),
+            ("knowledge_sources", "update"),
+            ("llm_configs", "read"),
+        ),
         "update": (("knowledge_sources", "read"), ("llm_configs", "read")),
         "delete": (("knowledge_sources", "read"),),
         "export": (("knowledge_sources", "read"),),

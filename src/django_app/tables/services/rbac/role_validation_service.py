@@ -54,13 +54,9 @@ class RoleValidationService(BaseRBACValidator):
             desc_errors = self._validate_description(data.get("description"))
             errors.extend(desc_errors)
             if not desc_errors:
-                cleaned["description"] = self._clean_description(
-                    data.get("description")
-                )
+                cleaned["description"] = self._clean_description(data.get("description"))
         if "permissions" in data:
-            permissions, perm_errors = self._validate_permissions(
-                data.get("permissions")
-            )
+            permissions, perm_errors = self._validate_permissions(data.get("permissions"))
             errors.extend(perm_errors)
             if not perm_errors:
                 cleaned["permissions"] = permissions
@@ -77,13 +73,9 @@ class RoleValidationService(BaseRBACValidator):
         if len(trimmed) == 0:
             return [FieldError("name", value, "Must not be blank.")]
         if len(trimmed) > _MAX_NAME:
-            return [
-                FieldError("name", value, f"Must be {_MAX_NAME} characters or fewer.")
-            ]
+            return [FieldError("name", value, f"Must be {_MAX_NAME} characters or fewer.")]
         if trimmed.lower() in _RESERVED_NAMES:
-            return [
-                FieldError("name", value, "This name is reserved for built-in roles.")
-            ]
+            return [FieldError("name", value, "This name is reserved for built-in roles.")]
         return []
 
     def _validate_description(self, value: Any) -> list[FieldError]:
@@ -145,9 +137,7 @@ class RoleValidationService(BaseRBACValidator):
                 continue
             seen_resource_types.add(resource_type)
             if not isinstance(actions, list):
-                errors.append(
-                    FieldError(f"{field}.actions", actions, "Must be a list.")
-                )
+                errors.append(FieldError(f"{field}.actions", actions, "Must be a list."))
                 continue
             platform = platform_actions_for(resource_type)
             bad_platform = [a for a in actions if a in platform]

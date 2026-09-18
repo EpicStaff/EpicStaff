@@ -1,9 +1,9 @@
 import uuid
 from typing import Protocol
 
-from django.db import models, transaction
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
+from django.db import models, transaction
 
 from tables.models.base_models import (
     EnabledToggleFields,
@@ -46,9 +46,7 @@ class NgrokWebhookConfig(models.Model):
         related_name="ngrok_webhook_configs",
     )
 
-    domain = models.CharField(
-        max_length=255, blank=True, null=True, help_text="Your domain"
-    )
+    domain = models.CharField(max_length=255, blank=True, null=True, help_text="Your domain")
 
     region = models.CharField(max_length=2, choices=Region.choices, default=Region.EU)
 
@@ -119,9 +117,7 @@ class WebhookTriggerAuth(SoftDeleteFields):
         related_name="webhook_trigger_auths",
     )
     registered_webhook_url = models.CharField(max_length=500, null=True, blank=True)
-    registered_bot_api_key_secret_id = models.PositiveBigIntegerField(
-        null=True, blank=True
-    )
+    registered_bot_api_key_secret_id = models.PositiveBigIntegerField(null=True, blank=True)
     registered_secret_id = models.PositiveBigIntegerField(
         null=True,
         blank=True,
@@ -244,10 +240,7 @@ class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
     def clean(self):
         # A channel answers to exactly one destination — either a staff
         # RealtimeAgent or a RealtimeAgentDefinition — never both.
-        if (
-            self.realtime_agent_id is not None
-            and self.realtime_agent_definition_id is not None
-        ):
+        if self.realtime_agent_id is not None and self.realtime_agent_definition_id is not None:
             raise ValidationError(
                 "A RealtimeChannel may have at most one destination set "
                 "(realtime_agent or realtime_agent_definition)."

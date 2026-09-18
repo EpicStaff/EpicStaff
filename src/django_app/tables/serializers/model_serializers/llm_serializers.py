@@ -1,27 +1,24 @@
 from rest_framework import serializers
-
+from tables.models.llm_models import (
+    LLMConfig,
+    LLMModel,
+    RealtimeConfig,
+    RealtimeModel,
+    RealtimeTranscriptionConfig,
+    RealtimeTranscriptionModel,
+)
 from tables.models.secret_models import Secret
-
+from tables.models.tag_models import LLMConfigTag, LLMModelTag
 from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
-from tables.models.llm_models import (
-    LLMConfig,
-    LLMModel,
-    RealtimeModel,
-    RealtimeConfig,
-    RealtimeTranscriptionModel,
-    RealtimeTranscriptionConfig,
-)
-from tables.models.tag_models import LLMConfigTag, LLMModelTag
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
-    OrgVisiblePrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
 )
-
 
 from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
@@ -50,13 +47,9 @@ class RealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSeria
         required=False,
         allow_null=True,
     )
-    provider_name = serializers.CharField(
-        source="realtime_model.provider.name", read_only=True
-    )
+    provider_name = serializers.CharField(source="realtime_model.provider.name", read_only=True)
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
-    realtime_model = OrgVisiblePrimaryKeyRelatedField(
-        queryset=RealtimeModel.objects.all()
-    )
+    realtime_model = OrgVisiblePrimaryKeyRelatedField(queryset=RealtimeModel.objects.all())
 
     class Meta:
         model = RealtimeConfig
@@ -78,9 +71,7 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeTranscriptionConfigSerializer(
-    SecretReferenceGuardMixin, serializers.ModelSerializer
-):
+class RealtimeTranscriptionConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -100,9 +91,7 @@ class RealtimeTranscriptionConfigSerializer(
         read_only_fields = ["org", "created_by"]
 
 
-class LLMConfigSerializer(
-    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
-):
+class LLMConfigSerializer(SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(

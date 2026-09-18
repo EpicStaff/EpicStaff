@@ -3,14 +3,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from tables.serializers.api_key_serializers import ApiKeySerializer
-from tables.swagger_schemas.api_key_schema import (
-    PROFILE_API_KEY_DELETE,
-    PROFILE_API_KEY_REVOKE_POST,
-    PROFILE_API_KEYS_GET,
-    PROFILE_API_KEYS_POST,
-)
 from tables.services.rbac.api_key.service import ApiKeyService
 from tables.services.rbac.api_key.validation import ApiKeyValidationService
 from tables.services.rbac.authentication import (
@@ -18,6 +11,12 @@ from tables.services.rbac.authentication import (
     JwtAuthentication,
 )
 from tables.services.rbac.permissions import DenyApiKeyAuth
+from tables.swagger_schemas.api_key_schema import (
+    PROFILE_API_KEY_DELETE,
+    PROFILE_API_KEY_REVOKE_POST,
+    PROFILE_API_KEYS_GET,
+    PROFILE_API_KEYS_POST,
+)
 
 
 class ProfileApiKeysView(APIView):

@@ -1,12 +1,11 @@
 from rest_framework import serializers
-from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeTool
-from tables.models.python_models import PythonCodeToolConfig
-from tables.models import PythonCode
-from tables.models.session_models import Session
 from tables.import_export.services.partial_export_service import (
     LIST_KEY_TO_ENTITY_TYPE,
 )
+from tables.models import PythonCode
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
+from tables.models.session_models import Session
 
 
 class ToolUsageSerializer(serializers.Serializer):
@@ -60,15 +59,11 @@ class RunSessionSerializer(serializers.Serializer):
     # SessionManagerService.create_session_data) rather than a new typed
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
-    token_budget = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
-            raise serializers.ValidationError(
-                "Either 'graph_id' or 'graph_uuid' must be provided."
-            )
+            raise serializers.ValidationError("Either 'graph_id' or 'graph_uuid' must be provided.")
         return attrs
 
 
@@ -95,9 +90,9 @@ class BaseToolSerializer(serializers.Serializer):
 
     def to_representation(self, instance):  # instance is a Tool instance
         from tables.serializers.model_serializers import (
-            PythonCodeToolSerializer,
             McpToolSerializer,
             PythonCodeToolConfigSerializer,
+            PythonCodeToolSerializer,
         )
 
         repr = {}
@@ -111,9 +106,7 @@ class BaseToolSerializer(serializers.Serializer):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
             repr["data"] = PythonCodeToolConfigSerializer(instance).data
         else:
-            raise TypeError(
-                f"Unsupported tool type for serialization: {type(instance)}"
-            )
+            raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 
         return repr
 
@@ -219,9 +212,7 @@ class ImportRequestSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs.get("replace_existing") and not attrs.get("preserve_uuids"):
             raise serializers.ValidationError(
-                {
-                    "replace_existing": "replace_existing=True requires preserve_uuids=True."
-                }
+                {"replace_existing": "replace_existing=True requires preserve_uuids=True."}
             )
         return attrs
 

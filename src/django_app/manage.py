@@ -3,7 +3,9 @@
 
 import os
 import sys
+
 from loguru import logger
+
 
 def main():
     """Run administrative tasks."""
@@ -20,6 +22,7 @@ def main():
         execute_from_command_line(sys.argv)
     except Exception as e:
         logger.exception(e)
+
 
 if __name__ == "__main__":
     main()

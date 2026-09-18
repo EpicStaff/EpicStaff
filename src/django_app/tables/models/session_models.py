@@ -1,6 +1,6 @@
-from django.utils import timezone
-from django.db import models
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import models
+from django.utils import timezone
 
 from tables.models import CrewSessionMessage, GraphOrganizationUser
 
@@ -79,9 +79,7 @@ class UserSessionMessage(CrewSessionMessage):
 
 
 class AgentSessionMessage(CrewSessionMessage):
-    agent = models.ForeignKey(
-        "Agent", on_delete=models.SET_NULL, null=True, default=None
-    )
+    agent = models.ForeignKey("Agent", on_delete=models.SET_NULL, null=True, default=None)
     thought = models.TextField(blank=True, default="")
     tool = models.TextField(blank=True, default=None, null=True)
     tool_input = models.TextField(blank=True, default=None, null=True)
@@ -99,9 +97,7 @@ class TaskSessionMessage(CrewSessionMessage):
 
 
 class SessionWarningMessage(models.Model):
-    session = models.OneToOneField(
-        Session, on_delete=models.CASCADE, related_name="warnings"
-    )
+    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="warnings")
     messages = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -114,12 +110,8 @@ class SessionTrigger(models.Model):
         TELEGRAM = "telegram"
         PARENT_FLOW = "parent_flow"
 
-    session = models.OneToOneField(
-        Session, on_delete=models.CASCADE, related_name="trigger"
-    )
-    trigger_type = models.CharField(
-        max_length=32, choices=TriggerType.choices, db_index=True
-    )
+    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="trigger")
+    trigger_type = models.CharField(max_length=32, choices=TriggerType.choices, db_index=True)
 
     # snapshot — survives node/graph deletion, which the FKs do not
     node_name = models.CharField(max_length=255, null=True, default=None)

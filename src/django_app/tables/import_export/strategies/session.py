@@ -1,8 +1,8 @@
-from tables.models.session_models import Session
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.session import GraphSessionMessageExportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.session import GraphSessionMessageExportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models.session_models import Session
 
 
 class SessionStrategy(EntityImportExportStrategy):
@@ -26,5 +26,5 @@ class SessionStrategy(EntityImportExportStrategy):
             ).data
         )
 
-    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs):  # noqa: ARG002
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs):
         raise NotImplementedError("Session export is read-only")

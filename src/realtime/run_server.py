@@ -1,8 +1,8 @@
 import sys
 
 import uvicorn
-from loguru import logger
 from core import config
+from loguru import logger
 
 
 def main():

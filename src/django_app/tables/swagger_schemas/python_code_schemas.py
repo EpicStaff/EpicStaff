@@ -1,13 +1,13 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
 from tables.serializers.serializers import RunPythonCodeSerializer
 
-RUN_PYTHON_CODE_POST = dict(
-    summary="Run Python Code",
-    description="Executes a Python code node with the provided variables and returns an execution ID to track the run.",
-    request=RunPythonCodeSerializer,
-    responses={
+RUN_PYTHON_CODE_POST = {
+    "summary": "Run Python Code",
+    "description": "Executes a Python code node with the provided variables and returns an execution ID to track the run.",
+    "request": RunPythonCodeSerializer,
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Python code execution started successfully",
@@ -31,4 +31,4 @@ RUN_PYTHON_CODE_POST = dict(
             ],
         ),
     },
-)
+}
