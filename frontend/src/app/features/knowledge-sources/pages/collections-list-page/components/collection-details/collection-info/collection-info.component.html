@@ -52,6 +52,7 @@
                 <h3 class="info__meta-title">GUIDANCE FOR AGENTS</h3>
                 @if (!editingDescription()) {
                     <button
+                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                         type="button"
                         class="info__guidance-edit"
                         aria-label="Edit guidance"

@@ -84,6 +84,14 @@
         gap: 0.5rem;
         padding: 0.5rem 0.625rem;
         align-items: center;
+
+        &--readonly {
+            grid-template-columns: 1fr // file name
+                150px // chunk strategy
+                110px // chunk size
+                100px // overlap
+                60px; // tune chunks
+        }
     }
 
     &__row-message {
@@ -130,15 +138,11 @@
     &__col {
         display: flex;
         align-items: center;
+        color: var(--fog-alpha-80);
+        font-size: var(--text-body-small-size);
 
         &--center {
             justify-content: center;
-        }
-
-        &--unavailable {
-            justify-content: center;
-            font-size: 0.75rem;
-            color: var(--fog-alpha-80);
         }
     }
 

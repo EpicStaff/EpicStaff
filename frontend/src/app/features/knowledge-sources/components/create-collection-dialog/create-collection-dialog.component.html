@@ -28,14 +28,16 @@
                     Stop indexing
                 </app-button>
             } @else {
-                <app-button
-                    type="primary"
-                    [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
-                    [disabled]="nextDisabled()"
-                    (click)="nextStep()"
-                >
-                    {{ nextText() }}
-                </app-button>
+                @if (!nextHidden()) {
+                    <app-button
+                        type="primary"
+                        [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
+                        [disabled]="nextDisabled()"
+                        (click)="nextStep()"
+                    >
+                        {{ nextText() }}
+                    </app-button>
+                }
             }
 
             <app-svg-icon

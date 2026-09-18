@@ -35,18 +35,20 @@
             }
         </div>
         @if (item() && !readOnly()) {
-            <app-button
-                *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
-                class="storage-preview__add-to-flow"
-                type="outline-primary"
-                mod="small"
-                [leftIcon]="'add-to-flow'"
-                iconSize="12px"
-                ariaLabel="Add to flow"
-                (click)="onKebabMenuAction('add-to-flow')"
-            >
-                Add to flow
-            </app-button>
+            <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Create]">
+                <app-button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
+                    class="storage-preview__add-to-flow"
+                    type="outline-primary"
+                    mod="small"
+                    [leftIcon]="'add-to-flow'"
+                    iconSize="12px"
+                    ariaLabel="Add to flow"
+                    (click)="onKebabMenuAction('add-to-flow')"
+                >
+                    Add to flow
+                </app-button>
+            </ng-container>
             <button
                 class="storage-preview__kebab"
                 aria-label="More actions"

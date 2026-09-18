@@ -34,13 +34,15 @@ def seed_builtin_roles_and_permissions() -> None:
       0212  Org Admin api_keys = READ|DELETE
       0236  revoke secrets:USE from Member/Viewer (192 -> 128)
       0242  re-seed all three roles to the masks the code enforces
+      0245  grant Org Admin knowledge_sources:EXPORT (for document download)
 
     Order is load-bearing twice over. The rename must precede 0242, which
     writes `memberships` rows directly -- running it first would leave both a
     `users` and a `memberships` row per role and the rename would then trip
-    the (role, resource_type) unique constraint. And 0242 must be last: it is
-    the authoritative end state and drops bits the earlier seeds write
-    (flows:USE on Viewer, secrets:LIST, secrets:UPDATE).
+    the (role, resource_type) unique constraint. And 0242 must precede any
+    subsequent additive seed: 0242 is the authoritative baseline and drops
+    bits the earlier seeds write (flows:USE on Viewer, secrets:LIST,
+    secrets:UPDATE); a later seed layers additional grants on top.
 
     Skipping any step leaves tests on stale permissions -- e.g. without the
     voice seed every non-superadmin request to a VOICE-gated endpoint 403s in
@@ -77,6 +79,10 @@ def seed_builtin_roles_and_permissions() -> None:
         (
             "tables.migrations.0242_reseed_builtin_role_permissions",
             "reseed_builtin_role_permissions",
+        ),
+        (
+            "tables.migrations.0245_knowledge_sources_export_permission",
+            "grant_knowledge_sources_export",
         ),
     ]
     for module_path, func_name in steps:
