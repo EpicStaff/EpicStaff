@@ -666,11 +666,14 @@ class DynamicVenvExecutorChain:
         temp_access_key: str | None = None
         if use_storage:
             try:
+                if not storage_org_prefix:
+                    raise ValueError(
+                        "storage_org_prefix is required when use_storage is set"
+                    )
                 policy = self.storage_credential_manager.build_policy(
                     allowed_bucket=settings.STORAGE_BUCKET_NAME,
-                    allowed_folders=self._scoped_folders(
-                        storage_org_prefix, storage_allowed_paths
-                    ),
+                    org_prefix=storage_org_prefix,
+                    allowed_paths=storage_allowed_paths,
                 )
                 (
                     temp_access_key,
@@ -695,13 +698,3 @@ class DynamicVenvExecutorChain:
 
         logger.info(result)
         return result
-
-    @staticmethod
-    def _scoped_folders(
-        org_prefix: str | None, allowed_paths: list[str] | None
-    ) -> set[str]:
-        if not org_prefix:
-            raise ValueError("storage_org_prefix is required when use_storage is set")
-        if not allowed_paths:
-            return {f"{org_prefix}/"}  # whole org (folder)
-        return {f"{org_prefix}/{path.lstrip('/')}" for path in allowed_paths}

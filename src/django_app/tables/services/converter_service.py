@@ -309,6 +309,7 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id=surface_resolution.rag_type_id,
             rag_search_config=surface_resolution.rag_search_config,
             rag_embedder_api_key_secret_id=surface_resolution.rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,

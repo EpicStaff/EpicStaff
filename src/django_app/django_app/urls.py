@@ -32,12 +32,12 @@ from tables.views.auth_views import (
     WsTicketView,
 )
 from tables.views.api_key_views import (
-    ApiKeyManagementViewSet,
     ProfileApiKeyDetailView,
     ProfileApiKeyRevokeView,
     ProfileApiKeysView,
 )
 from tables.views.permission_views import (
+    MyOrgsPermissionsView,
     MyPermissionsView,
     PermissionCatalogView,
 )
@@ -116,21 +116,6 @@ urlpatterns = [
         name="profile_api_key_revoke",
     ),
     path(
-        "api/api-keys/",
-        ApiKeyManagementViewSet.as_view({"get": "list"}),
-        name="api_keys_management",
-    ),
-    path(
-        "api/api-keys/<int:pk>/",
-        ApiKeyManagementViewSet.as_view({"delete": "destroy"}),
-        name="api_keys_management_detail",
-    ),
-    path(
-        "api/api-keys/<int:pk>/revoke/",
-        ApiKeyManagementViewSet.as_view({"post": "revoke"}),
-        name="api_keys_management_revoke",
-    ),
-    path(
         "api/permissions/catalog/",
         PermissionCatalogView.as_view(),
         name="permissions_catalog",
@@ -139,6 +124,11 @@ urlpatterns = [
         "api/permissions/me/",
         MyPermissionsView.as_view(),
         name="permissions_me",
+    ),
+    path(
+        "api/permissions/me/orgs/",
+        MyOrgsPermissionsView.as_view(),
+        name="permissions_me_orgs",
     ),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),

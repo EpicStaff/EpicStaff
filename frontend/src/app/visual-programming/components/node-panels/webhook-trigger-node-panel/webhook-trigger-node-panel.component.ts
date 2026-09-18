@@ -5,6 +5,7 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
 import { ResourceCode } from '@shared/models';
@@ -27,6 +28,7 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         NodeSecretsFieldComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],

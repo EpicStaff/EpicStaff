@@ -96,12 +96,5 @@ def test_webhook_trigger_of_another_org_is_hidden(client_member, org_b):
     results = _results(client_member.get("/api/webhook-triggers/"))
     assert len(results) == 0
 
-# NOTE: the standalone /api/ngrok-config/ endpoint
-# (NgrokWebhookConfigViewSet) never had a live route registered in
-# tables/urls.py and NgrokWebhookConfig.trigger is a required OneToOneField,
-# so the two tests that used to live here (`test_ngrok_read_allowed_for_member`,
-# `test_ngrok_write_denied_for_member`) were already exercising a dead route
-# against an uncreatable row. They have been removed as part of formally
-# deleting NgrokWebhookConfigViewSet / NgrokWebhookConfigModelSerializer.
-# ngrok_config is now written only via the nested WebhookTrigger payload,
+# NOTE: ngrok_config is written only via the nested WebhookTrigger payload,
 # scoped by WebhookTrigger.org (see webhook_trigger_api_test.py).

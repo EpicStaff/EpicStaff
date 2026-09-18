@@ -8,6 +8,10 @@ Seams used:
   map entries is the only seam that actually runs our fake searchers.
 - monkeypatch.setattr(GraphSearchOrchestrator, '_resolve_files', ...) — avoids
   filesystem / graphrag storage entirely.
+- `bypass_grounding_guard` (autouse) — `apply_grounding_guard` judges answers with a
+  real LLM completion call and rejects anything backed by empty context; these tests
+  cover GraphSearchOrchestrator's own forwarding/propagation logic, not the guard's
+  verification behavior, so it is replaced with a pass-through for every test here.
 """
 
 import pandas
@@ -110,6 +114,20 @@ def uow(repo):
     return FakeUoW(repo)
 
 
+@pytest.fixture(autouse=True)
+def bypass_grounding_guard(monkeypatch):
+    """Replace the grounding guard with a pass-through so orchestrator tests don't
+    depend on a real LLM completion call to judge the fake searchers' answers."""
+
+    async def pass_through_guard(query, response, context, config, method):
+        return response
+
+    monkeypatch.setattr(
+        "application.orchestrators.searching.strategies.graph_search.apply_grounding_guard",
+        pass_through_guard,
+    )
+
+
 @pytest.mark.parametrize(
     "method, search_config, expected_result",
     [
@@ -139,7 +157,9 @@ async def test_happy_path_correct_searcher_invoked(
     method, search_config, expected_result, uow, monkeypatch
 ):
     fake = make_fake_searcher(expected_result)
-    monkeypatch.setitem(GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake))
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
+    )
 
     async def fake_resolve_files(config, required_files, optional_files=None):
         files = {}
@@ -154,7 +174,9 @@ async def test_happy_path_correct_searcher_invoked(
             files[name] = all_fakes[name]
         return files
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=42,
@@ -179,14 +201,20 @@ async def test_happy_path_correct_searcher_invoked(
         (GraphSearchMethodEnum.DRIFT, GraphDriftSearchConfig()),
     ],
 )
-async def test_query_and_config_are_forwarded_to_searcher(method, search_config, uow, monkeypatch):
+async def test_query_and_config_are_forwarded_to_searcher(
+    method, search_config, uow, monkeypatch
+):
     fake = make_fake_searcher("result")
-    monkeypatch.setitem(GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake))
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
+    )
 
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -212,15 +240,21 @@ async def test_query_and_config_are_forwarded_to_searcher(method, search_config,
         (GraphSearchMethodEnum.DRIFT, GraphDriftSearchConfig()),
     ],
 )
-async def test_extra_kwargs_forwarded_to_searcher(method, search_config, uow, monkeypatch):
+async def test_extra_kwargs_forwarded_to_searcher(
+    method, search_config, uow, monkeypatch
+):
     """extra_kwargs defined in the spec reach the searcher as keyword arguments."""
     fake = make_fake_searcher("result")
-    monkeypatch.setitem(GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake))
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
+    )
 
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test"
@@ -253,7 +287,9 @@ async def test_search_config_validated_and_set_on_graphrag_config(uow, monkeypat
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -269,7 +305,9 @@ async def test_search_config_validated_and_set_on_graphrag_config(uow, monkeypat
     assert config.basic_search.max_context_tokens == 1234
 
 
-async def test_search_config_validated_and_set_on_graphrag_config_local(uow, monkeypatch):
+async def test_search_config_validated_and_set_on_graphrag_config_local(
+    uow, monkeypatch
+):
     """LocalSearchConfig values are validated into LocalSearchConfig and set on the config."""
     received_configs = []
 
@@ -286,7 +324,9 @@ async def test_search_config_validated_and_set_on_graphrag_config_local(uow, mon
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -331,14 +371,21 @@ async def test_required_files_forwarded_as_searcher_kwargs(
     method, search_config, required_file_names, uow, monkeypatch
 ):
     fake = make_fake_searcher("result")
-    monkeypatch.setitem(GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake))
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
+    )
 
-    fake_dfs = {name: pandas.DataFrame({"id": [i]}) for i, name in enumerate(required_file_names)}
+    fake_dfs = {
+        name: pandas.DataFrame({"id": [i]})
+        for i, name in enumerate(required_file_names)
+    }
 
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: fake_dfs[n] for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test"
@@ -366,7 +413,9 @@ async def test_local_search_with_covariates_present(uow, monkeypatch):
                 files[name] = _FAKE_COVARIATES
         return files
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -392,7 +441,9 @@ async def test_local_search_without_covariates(uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -412,7 +463,9 @@ async def test_unsupported_method_raises_unsupported_error(uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     class FakeSearchConfig:
         method = "nonexistent_method"
@@ -442,7 +495,9 @@ async def test_result_propagation_string(uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -473,7 +528,9 @@ async def test_result_propagation_structured(uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -497,7 +554,9 @@ async def test_get_config_called_with_correct_rag_id(repo, uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=77,
@@ -567,7 +626,9 @@ async def test_api_keys_injected_into_graphrag_config(uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
@@ -580,8 +641,13 @@ async def test_api_keys_injected_into_graphrag_config(uow, monkeypatch):
 
     assert len(received_configs) == 1
     config = received_configs[0]
-    assert config.embedding_models["default_embedding_model"].api_key == "sk-emb-injected"
-    assert config.completion_models["default_completion_model"].api_key == "sk-llm-injected"
+    assert (
+        config.embedding_models["default_embedding_model"].api_key == "sk-emb-injected"
+    )
+    assert (
+        config.completion_models["default_completion_model"].api_key
+        == "sk-llm-injected"
+    )
 
 
 async def test_none_llm_api_key_sets_none_on_completion_model(uow, monkeypatch):
@@ -600,7 +666,9 @@ async def test_none_llm_api_key_sets_none_on_completion_model(uow, monkeypatch):
     async def fake_resolve_files(config, required_files, optional_files=None):
         return {n: pandas.DataFrame() for n in required_files}
 
-    monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
 
     request = RunSearch(
         rag_id=1,
