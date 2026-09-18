@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, Observable, tap } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 import {
@@ -27,7 +29,17 @@ export class AgentDefinitionsApiService {
 
     getAgentDefinitions(): Observable<AgentDefinition[]> {
         const params = new HttpParams().set('limit', '1000');
-        return this.http.get<ApiGetRequest<AgentDefinition>>(this.baseUrl, { params }).pipe(map((res) => res.results));
+        return this.http
+            .get<ApiGetRequest<AgentDefinition>>(this.baseUrl, {
+                params,
+                context: withPermission<ApiGetRequest<AgentDefinition>>(ResourceCode.Agents, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((res) => res.results));
     }
 
     /** Fetches agent definitions fresh and publishes them into the shared `definitions` signal. */

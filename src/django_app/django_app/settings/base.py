@@ -9,6 +9,8 @@ SECRET_KEY = env.str("DJANGO_SECRET_KEY")
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 INSTALLED_APPS = [
     "health_check",
     "django.contrib.auth",
@@ -100,3 +102,7 @@ MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
 # Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
 SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
+
+REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
+
+DJANGO_API_KEY = env.str("DJANGO_API_KEY")

@@ -11,6 +11,7 @@ import {
     SelectItem,
     TemplateTextareaComponent,
     TooltipComponent,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
 import { Subject } from 'rxjs';
@@ -27,6 +28,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 
 type RagKind = 'naive' | 'graph';
 
@@ -48,6 +50,8 @@ interface RagChoice {
         CopyButtonComponent,
         ColumnResizeDividerComponent,
         RagTabComponent,
+        InputsYouCanUseComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
@@ -68,7 +72,6 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     readonly isFormCollapsed = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('knowledge-retriever-node', 406);
     readonly availableInputs = signal<string[]>([]);
-    readonly inputsListOpen = signal<boolean>(true);
 
     private readonly queryTextareaCollapsed = viewChild<TemplateTextareaComponent>('queryTextareaCollapsed');
     private readonly queryTextareaExpanded = viewChild<TemplateTextareaComponent>('queryTextareaExpanded');
@@ -206,10 +209,6 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
     toggleSearchConfig(): void {
         this.searchConfigOpen.update((v) => !v);
-    }
-
-    toggleInputsList(): void {
-        this.inputsListOpen.update((v) => !v);
     }
 
     insertInputToQuery(name: string): void {

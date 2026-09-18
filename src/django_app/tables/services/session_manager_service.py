@@ -39,7 +39,11 @@ from src.shared.models import (
     SubGraphNodeData,
     TaskNodeData,
 )
-from tables.models.session_models import SessionTrigger, SessionWarningMessage
+from tables.models.session_models import (
+    SessionTrigger,
+    SessionWarningMessage,
+    SessionPrincipal,
+)
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
@@ -54,6 +58,7 @@ from tables.services.surface_knowledge_warning_service import (
 )
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.task_node_payload_service import TaskNodePayloadService
+from tables.services.rbac.api_key.principals import SystemServicePrincipal
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
@@ -128,6 +133,8 @@ class SessionManagerService(metaclass=SingletonMeta):
         entrypoint: str | None = None,
         parent_session_id: int | None = None,
         token_budget: int | None = None,
+        user=None,
+        api_key=None,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -171,6 +178,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 status_data=status_data,
             )
             SessionTrigger.objects.create(session=session, **trigger.to_fields())
+            SessionPrincipal.objects.create(
+                session=session, **self._resolve_principal_fields(user, api_key)
+            )
         return session
 
     def create_session_data(
@@ -207,6 +217,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         entrypoint: str | None = None,
         parent_session_id: int | None = None,
         token_budget: int | None = None,
+        api_key=None,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info("'run_session' got variables: {}", variables)
@@ -227,6 +238,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             entrypoint=entrypoint,
             parent_session_id=parent_session_id,
             token_budget=token_budget,
+            user=user,
+            api_key=api_key,
         )
         try:
             violations = secret_declaration_validator.violations(graph_id=graph_id)
@@ -661,3 +674,24 @@ class SessionManagerService(metaclass=SingletonMeta):
             schedule_trigger_node_data_list=schedule_trigger_node_data_list,
             classification_decision_table_node_list=classification_dt_node_data_list,
         )
+
+    def _resolve_principal_fields(self, user, api_key) -> dict:
+        if user is None:
+            return {"kind": SessionPrincipal.ActionKind.TRIGGER}
+        if isinstance(user, SystemServicePrincipal):
+            return {
+                "kind": SessionPrincipal.ActionKind.API_KEY_SYSTEM,
+                "api_key": api_key,
+            }
+        if api_key is not None:
+            return {
+                "kind": SessionPrincipal.ActionKind.API_KEY_USER,
+                "api_key": api_key,
+                "user": user,
+                "email": user.email,
+            }
+        return {
+            "kind": SessionPrincipal.ActionKind.USER,
+            "user": user,
+            "email": user.email,
+        }

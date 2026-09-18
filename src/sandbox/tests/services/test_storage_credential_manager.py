@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from unittest.mock import AsyncMock
 
@@ -7,6 +8,11 @@ import pytest
 from services.storage_credential_manager import (
     CredentialManagerError,
     StorageCredentialManager,
+)
+
+_reopen_while_open_posix_only = pytest.mark.skipif(
+    os.name != "posix",
+    reason="POSIX-only: NamedTemporaryFile cannot be reopened while open on Windows",
 )
 
 
@@ -173,6 +179,7 @@ def test_split_host_http():
     assert endpoint == "localhost:9000"
 
 
+@_reopen_while_open_posix_only
 @pytest.mark.asyncio
 async def test_create_returns_credentials():
     manager = make_manager()
@@ -195,6 +202,7 @@ async def test_create_returns_credentials():
     assert secret_key == "SK"
 
 
+@_reopen_while_open_posix_only
 @pytest.mark.asyncio
 async def test_create_writes_policy_to_temp_file():
     manager = make_manager()
@@ -216,6 +224,7 @@ async def test_create_writes_policy_to_temp_file():
     assert recorded["policy"] == policy
 
 
+@_reopen_while_open_posix_only
 @pytest.mark.asyncio
 async def test_create_temp_file_has_json_suffix():
     manager = make_manager()
@@ -237,6 +246,7 @@ async def test_create_temp_file_has_json_suffix():
     assert recorded["policy_file"].endswith(".json")
 
 
+@_reopen_while_open_posix_only
 @pytest.mark.asyncio
 async def test_create_expiration_rfc3339_utc_format():
     manager = make_manager()

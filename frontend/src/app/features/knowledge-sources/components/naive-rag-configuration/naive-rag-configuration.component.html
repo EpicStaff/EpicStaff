@@ -13,6 +13,7 @@
             />
 
             <app-button
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                 mod="small"
                 type="outline-primary"
                 (click)="initDocuments()"
@@ -20,6 +21,7 @@
                 Re-include Files
             </app-button>
             <app-button
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                 mod="small"
                 [type]="bulkBtnActive() ? 'primary' : 'outline-primary'"
                 [disabled]="!filteredAndCheckedDocIds().length"
@@ -28,6 +30,7 @@
                 Bulk configuration
             </app-button>
             <app-svg-icon
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                 icon="trash"
                 class="configure__bulk-delete"
                 [class.configure__bulk-delete--disabled]="!filteredAndCheckedDocIds().length"

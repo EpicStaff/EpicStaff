@@ -23,7 +23,10 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
     imports: [FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="nodes-search-container">
+        <div
+            class="nodes-search-container"
+            [class.nodes-search-container--expanded]="isSearchVisible()"
+        >
             <div class="search-header">
                 <!-- Search button with icon -->
                 <button
@@ -95,8 +98,11 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 display: flex;
                 flex-direction: column;
                 align-items: flex-start;
-                width: 100%;
-                width: 350px;
+                width: fit-content;
+
+                &--expanded {
+                    width: 350px;
+                }
             }
 
             .search-header {

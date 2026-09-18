@@ -9,6 +9,7 @@ import {
     input,
     signal,
     untracked,
+    viewChild,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -25,6 +26,7 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
     SelectItem,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
@@ -44,7 +46,6 @@ import { SurfacesApiService } from '../../../../features/agent-definitions/servi
 import { AgentNodeTaskUi } from '../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
-import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { NodeType } from '../../../core/enums/node-type';
 import { AgentNodeModel } from '../../../core/models/node.model';
@@ -52,12 +53,19 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import {
+    computeApplyLocalSurfaceResult,
+    computeAutoSelectResult,
+    computeSurfacesChangeResult,
+    surfaceReplacedMessage,
+} from '../../../utils/surface/surface-collection-conflict.util';
+import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
     InstructionsViewToggleComponent,
@@ -88,6 +96,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         InstructionsViewToggleComponent,
         MarkdownComponent,
         ColumnResizeDividerComponent,
+        InputsYouCanUseComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -98,6 +107,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     public readonly agentDefinitions = signal<AgentDefinition[]>([]);
     public readonly surfaces = signal<Surface[]>([]);
+    private readonly surfacesById = computed(() => new Map(this.surfaces().map((s) => [s.id, s])));
     public readonly agentDefinitionId = signal<number | null>(null);
     public readonly selectedSurfaceIds = signal<number[]>([]);
     public readonly inlineSurface = signal<InlineSurface | null>(null);
@@ -111,6 +121,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
      *  dropdown — used to force-close whichever is open after the local-surface dialog
      *  resolves, so reopening re-seeds `tempSelected` from the up-to-date `selectedValues`. */
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
+
+    private readonly rightInstructionsTextarea =
+        viewChild<VariableHighlightTextareaComponent>('rightInstructionsTextarea');
 
     public readonly rightPane = signal<RightPaneSelection | null>(null);
 
@@ -318,14 +331,36 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     }
 
     onSurfacesChange(values: unknown[]): void {
-        const realIds = values.filter((v): v is number => v !== LOCAL_SURFACE_VALUE) as number[];
-        this.selectedSurfaceIds.set(realIds);
+        const result = computeSurfacesChangeResult(
+            values,
+            LOCAL_SURFACE_VALUE,
+            this.selectedSurfaceIds(),
+            this.surfacesById(),
+            this.inlineSurface(),
+            this.hasLocalSurface()
+        );
+
+        result.conflictMessages.forEach((m) => this.toastService.error(m));
+        this.selectedSurfaceIds.set(result.selectedSurfaceIds);
 
         // Unchecking the local item removes it. Creation only happens via the "+" dialog.
-        if (this.hasLocalSurface() && !values.includes(LOCAL_SURFACE_VALUE)) {
+        if (result.clearInline) {
             this.inlineSurface.set(null);
         }
 
+        this.sidePanelService.triggerAutosave();
+        this.notifyExternalChange();
+    }
+
+    private applyLocalSurface(inline: InlineSurface): void {
+        const result = computeApplyLocalSurfaceResult(inline, this.selectedSurfaceIds(), this.surfacesById());
+
+        if (result.removedNames.length > 0) {
+            this.selectedSurfaceIds.set(result.selectedSurfaceIds);
+            this.toastService.error(surfaceReplacedMessage(result.removedNames));
+        }
+
+        this.inlineSurface.set(inline);
         this.sidePanelService.triggerAutosave();
         this.notifyExternalChange();
     }
@@ -336,9 +371,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
-                    this.inlineSurface.set(result);
-                    this.sidePanelService.triggerAutosave();
-                    this.notifyExternalChange();
+                    this.applyLocalSurface(result);
                 }
                 this.surfaceMultiSelects().forEach((ms) => ms.close());
             });
@@ -350,9 +383,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
-                    this.inlineSurface.set(result);
-                    this.sidePanelService.triggerAutosave();
-                    this.notifyExternalChange();
+                    this.applyLocalSurface(result);
                 }
                 this.surfaceMultiSelects().forEach((ms) => ms.close());
             });
@@ -435,6 +466,29 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.updateSelectedTaskField(task.tempId, { instructions: value });
     }
 
+    insertInputToInstructions(name: string): void {
+        if (!this.isExpanded()) {
+            // No instructions editor exists in the collapsed layout — append straight to the
+            // selected task's data instead of expanding the panel.
+            const task = this.selectedTask();
+            if (!task) return;
+            const current = task.instructions ?? '';
+            const needsLeadingSpace = current !== '' && !/\s$/.test(current);
+            this.updateSelectedTaskField(task.tempId, {
+                instructions: `${current}${needsLeadingSpace ? ' ' : ''}{${name}}`,
+            });
+            return;
+        }
+
+        if (this.effectiveRightPane()?.field === 'schema') {
+            this.toggleRightPaneField();
+        }
+        if (this.instructionsView() === 'preview') {
+            this.setInstructionsView('edit');
+        }
+        setTimeout(() => this.rightInstructionsTextarea()?.insertAtCursor(name));
+    }
+
     copyRightInstructions(): void {
         this.copyToClipboard(this.selectedTask()?.instructions ?? '');
     }
@@ -502,16 +556,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             contextRefs: [],
         };
         this.onTasksChange([...this.tasks(), newTask]);
-    }
-
-    getTasksErrorMessage(): string {
-        const errors: ValidationErrors | null | undefined = this.form?.get('tasksValidity')?.errors;
-        if (!errors) return '';
-        if (errors['tasksRequired']) return 'Add at least one task.';
-        if (errors['taskNameRequired']) return 'Every task needs a name.';
-        if (errors['taskNameDuplicate']) return 'Task names must be unique.';
-        if (errors['taskInstructionsRequired']) return 'Every task needs instructions.';
-        return '';
     }
 
     initializeForm(): FormGroup {
@@ -716,17 +760,24 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     }
 
     private autoSelectAgentSurfaces(agentId: number): void {
-        const validSurfaceIds = new Set(this.surfaces().map((surface) => surface.id));
-
         const flowContextSurfaceIds = (
             this.agentDefinitions().find((agent) => agent.id === agentId)?.default_surfaces ?? []
         )
             .filter((defaultSurface) => FLOW_CONTEXT_PLACES.includes(defaultSurface.place))
             .map((defaultSurface) => defaultSurface.surface)
-            .filter((surfaceId) => validSurfaceIds.has(surfaceId));
+            .filter((surfaceId) => this.surfacesById().has(surfaceId));
 
         if (flowContextSurfaceIds.length === 0) return;
-        this.selectedSurfaceIds.update((current) => Array.from(new Set([...current, ...flowContextSurfaceIds])));
+
+        const result = computeAutoSelectResult(
+            flowContextSurfaceIds,
+            this.selectedSurfaceIds(),
+            this.surfacesById(),
+            this.inlineSurface()
+        );
+
+        if (result.accepted.length === 0) return;
+        this.selectedSurfaceIds.update((curr) => Array.from(new Set([...curr, ...result.accepted])));
     }
 
     private applyPendingAgentSurfaceAutoSelect(): void {

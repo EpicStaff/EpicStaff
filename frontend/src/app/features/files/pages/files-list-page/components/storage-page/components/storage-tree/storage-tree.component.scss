@@ -398,5 +398,10 @@
         height: 1px;
         margin: 0.25rem 0;
         background-color: var(--color-divider-subtle);
+
+        &:last-child,
+        &:first-child {
+            display: none;
+        }
     }
 }

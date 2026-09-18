@@ -2,6 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import {
     ChangeDetectionStrategy,
     Component,
+    computed,
     DestroyRef,
     effect,
     inject,
@@ -87,6 +88,8 @@ export class CollectionDetailsComponent implements OnInit {
     private lastInitializedCollectionId: number | null = null;
 
     private readonly nameSave$ = new Subject<{ id: number; collection_name: string }>();
+
+    canEditKnowledge = computed(() => this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update));
 
     constructor() {
         this.nameSave$
@@ -254,7 +257,7 @@ export class CollectionDetailsComponent implements OnInit {
     }
 
     onFilesDropped(files: FileList) {
-        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update)) return;
+        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Create)) return;
         const collectionId = this.fullCollection()?.collection_id;
         if (!collectionId) return;
         // 1: filter duplicates by file name

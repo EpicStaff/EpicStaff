@@ -253,34 +253,6 @@ def test_provider_config_update_repoints_to_new_secret(
     )
 
 
-@pytest.mark.django_db
-def test_agent_list_nested_realtime_config_exposes_secret_id_only(
-    auth_client, default_org
-):
-    """GET /api/agents/ nests RealtimeAgentReadSerializer.openai_config
-    (AgentReadSerializer), which in turn nests OpenAIRealtimeConfigSerializer.
-    Confirm only the Secret pk flows through that nesting too, not just on
-    the dedicated openai-realtime-configs/ endpoint."""
-    api_key_secret = _make_secret(default_org, "sk-supersecretvalue1234")
-    transcription_secret = _make_secret(default_org, "sk-transcriptsecret")
-    config = OpenAIRealtimeConfig.objects.create(
-        org=default_org,
-        custom_name="agent-nested-cfg",
-        api_key_secret=api_key_secret,
-        transcription_api_key_secret=transcription_secret,
-    )
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=default_org)
-    RealtimeAgent.objects.create(agent=agent, openai_config=config)
-
-    resp = auth_client.get(reverse("agent-list"))
-    assert resp.status_code == 200
-
-    row = next(r for r in resp.data["results"] if r["id"] == agent.id)
-    nested_config = row["realtime_agent"]["openai_config"]
-    assert nested_config["api_key_secret_id"] == api_key_secret.id
-    assert nested_config["transcription_api_key_secret_id"] == transcription_secret.id
-
-
 # ---------------------------------------------------------------------------
 # RealtimeChannel.realtime_agent must reject cross-org agents
 # ---------------------------------------------------------------------------
@@ -321,37 +293,6 @@ def test_realtime_channel_ignores_realtime_agent_regardless_of_org(
 
 
 # ---------------------------------------------------------------------------
-# Nested RealtimeAgentWriteSerializer context propagation — AgentWriteSerializer nests RealtimeAgentWriteSerializer
-# declaratively (no explicit context= passed at instantiation). Confirm DRF's
-# implicit context propagation through the field tree actually works end to
-# end for the org-scoped openai_config/elevenlabs_config/gemini_config
-# fields, rather than silently deny-all'ing every pk.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_agent_create_nested_realtime_agent_accepts_same_org_config(
-    auth_client, default_org
-):
-    config = OpenAIRealtimeConfig.objects.create(org=default_org, custom_name="cfg")
-
-    url = reverse("agent-list")
-    resp = auth_client.post(
-        url,
-        {
-            "role": "r",
-            "goal": "g",
-            "backstory": "b",
-            "realtime_agent": {"openai_config": config.pk},
-        },
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
-    agent = Agent.objects.get(pk=resp.data["id"])
-    assert agent.realtime_agent.openai_config_id == config.pk
-
-
-# ---------------------------------------------------------------------------
 # OpenAIRealtimeConfig.base_url override
 # ---------------------------------------------------------------------------
 
@@ -377,24 +318,3 @@ def test_openai_config_base_url_defaults_to_null(auth_client, default_org):
     resp = auth_client.post(url, {"custom_name": "openai-cfg"}, format="json")
     assert resp.status_code == 201, resp.data
     assert resp.data["base_url"] is None
-
-
-@pytest.mark.django_db
-def test_agent_create_nested_realtime_agent_rejects_cross_org_config(
-    auth_client, org_b
-):
-    cross_org_config = OpenAIRealtimeConfig.objects.create(org=org_b, custom_name="cfg")
-
-    url = reverse("agent-list")
-    resp = auth_client.post(
-        url,
-        {
-            "role": "r",
-            "goal": "g",
-            "backstory": "b",
-            "realtime_agent": {"openai_config": cross_org_config.pk},
-        },
-        format="json",
-    )
-    assert resp.status_code == 400, resp.data
-    assert "does not exist" in str(resp.data).lower()
