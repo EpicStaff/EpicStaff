@@ -249,11 +249,13 @@ export class MultiSelectComponent implements OnInit {
 
     onGroupAction(event: Event, group: string): void {
         event.stopPropagation();
+        this.commitPendingSelection();
         this.groupAction.emit(group);
     }
 
     onItemAction(event: Event, value: unknown): void {
         event.stopPropagation();
+        this.commitPendingSelection();
         this.itemAction.emit(value);
     }
 
@@ -267,8 +269,16 @@ export class MultiSelectComponent implements OnInit {
     }
 
     save() {
-        this.selectionChange.emit(this.tempSelected());
-        this.selectedValues.set(this.tempSelected());
+        this.commitPendingSelection();
         this.close();
+    }
+
+    private commitPendingSelection(): void {
+        const pending = this.tempSelected();
+        const current = this.selectedValues();
+        if (pending.length === current.length && pending.every((v) => current.includes(v))) return;
+
+        this.selectionChange.emit(pending);
+        this.selectedValues.set(pending);
     }
 }
