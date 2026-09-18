@@ -117,7 +117,9 @@ import {
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isPromptExpanded"
                             >
-                                <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
+                                <div class="collapsible-inner">
+                                    <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
+                                </div>
                             </div>
                         </div>
 
@@ -137,7 +139,9 @@ import {
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isResponseExpanded"
                             >
-                                <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
+                                <div class="collapsible-inner">
+                                    <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
+                                </div>
                             </div>
                         </div>
 
@@ -201,7 +205,7 @@ import {
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
+                padding: 0.5rem 1rem;
                 box-shadow: 0 4px 12px var(--black-alpha-15);
                 border-left: 4px solid var(--violet-400);
             }
@@ -233,7 +237,7 @@ import {
 
             .play-arrow {
                 width: 1.1rem;
-                margin-right: 16px;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -253,8 +257,8 @@ import {
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: var(--violet-400);
                 display: flex;
@@ -293,8 +297,9 @@ import {
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -326,9 +331,12 @@ import {
             }
 
             .dt-content {
-                padding-left: 5.5rem;
-                margin-top: 1rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .dt-content > :first-child {
+                margin-top: 1rem;
             }
 
             .detail-row {
@@ -340,7 +348,7 @@ import {
 
             .detail-label {
                 color: var(--gray-400);
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 font-weight: 500;
                 min-width: 120px;
                 flex-shrink: 0;
@@ -348,7 +356,7 @@ import {
 
             .detail-value {
                 color: var(--gray-200);
-                font-size: 0.9rem;
+                font-size: 0.875rem;
             }
 
             .detail-value.code {
@@ -369,7 +377,9 @@ import {
             }
 
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -393,7 +403,7 @@ import {
                 white-space: pre-wrap;
                 word-break: break-word;
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 margin: 0 0 0 23px;
                 max-height: 300px;
                 overflow-y: auto;

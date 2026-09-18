@@ -53,7 +53,7 @@ class Settings:
     CORS_ALLOWED_ORIGINS: str = env.str("DJANGO_CORS_ALLOWED_ORIGINS")
 
     # --- Soft config list (optional — default empty string preserves original behaviour) ---
-    WEBHOOK_EMPTY_JSON_PATHS: str = env.str("WEBHOOK_EMPTY_JSON_PATHS", "")
+    WEBHOOK_EMPTY_JSON_PATHS: str | None = env.str("WEBHOOK_EMPTY_JSON_PATHS")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
@@ -61,7 +61,7 @@ class Settings:
 
     @property
     def webhook_empty_json_paths_set(self) -> set[str]:
-        return {p.strip() for p in self.WEBHOOK_EMPTY_JSON_PATHS.split(",") if p.strip()}
+        return {p.strip() for p in (self.WEBHOOK_EMPTY_JSON_PATHS or "").split(",") if p.strip()}
 
 
 try:

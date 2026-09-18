@@ -16,6 +16,10 @@ export interface ConfirmationDialogData {
     caution?: string;
     cautionTitle?: string;
     isShownBorder?: boolean;
+    /** Hide the confirm button entirely -- for informational dialogs the caller
+     *  cannot actually proceed with (e.g. blocked by a missing permission).
+     *  The cancel button then acts as a plain close. */
+    hideConfirm?: boolean;
 }
 
 @Component({

@@ -19,8 +19,8 @@
     &__files-searchbar {
         display: grid;
         grid-template-columns: 1fr // search
-            145px // select
-            100px // reinclude files
+            150px // select
+            110px // reinclude files
             120px // bulk config
             60px; // bulk delete
         gap: 0.5rem;
