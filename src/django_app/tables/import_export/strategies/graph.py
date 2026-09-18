@@ -496,22 +496,37 @@ class GraphStrategy(EntityImportExportStrategy):
 
         nodes = metadata_copy.get("nodes", [])
         for node in nodes:
-            if node["type"] == "webhook-trigger":
-                old_id = node["data"]["webhook_trigger"]
+            if node.get("type") == "webhook-trigger":
+                old_id = (node.get("data") or {}).get("webhook_trigger")
 
                 node["data"]["webhook_trigger"] = id_mapper.get_or_none(
                     EntityType.WEBHOOK_TRIGGER, old_id
                 )
-            if node["type"] == "subgraph":
-                old_id = node["data"]["id"]
-                new_id = id_mapper.get_or_none(EntityType.GRAPH, old_id)
+            if node.get("type") == "subgraph":
+                old_id = (node.get("data") or {}).get("id")
+                if old_id is None:
+                    logger.warning("Skipping subgraph node with missing id in metadata")
+                    continue
 
-                subgraph = Graph.objects.get(id=new_id)
+                new_id = id_mapper.get_or_none(EntityType.GRAPH, old_id)
+                if new_id is None:
+                    logger.warning(
+                        "Skipping subgraph node, no mapping found for old id {}", old_id
+                    )
+                    continue
+
+                subgraph = Graph.objects.filter(id=new_id).first()
+                if subgraph is None:
+                    logger.warning(
+                        "Skipping subgraph node, referenced graph {} does not exist",
+                        new_id,
+                    )
+                    continue
 
                 node["data"]["id"] = new_id
                 node["data"]["name"] = subgraph.name
                 node["data"]["description"] = subgraph.description
-            if node["type"] == "telegram-trigger":
+            if node.get("type") == "telegram-trigger":
                 node["data"]["telegram_bot_api_key"] = None
 
         return metadata_copy
