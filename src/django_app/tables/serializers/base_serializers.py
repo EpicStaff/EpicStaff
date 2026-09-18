@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from rest_framework import serializers
 
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
@@ -14,8 +15,10 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
-from rest_framework import serializers
+from tables.serializers.utils.secret_reference_guard_mixin import (
+    SecretReferenceGuardMixin,
+)
+from tables.services.webhook_trigger_service import validate_path_uniqueness
 from utils.logger import logger
 
 
@@ -127,7 +130,11 @@ class WebhookTriggerNestedSerializer(
         existing = getattr(trigger, "auth", None)
         kind = validated_data.get("auth_kind")
         if kind is None:
-            kind = existing.kind if existing is not None else WebhookTriggerAuthKind.WEBHOOK
+            kind = (
+                existing.kind
+                if existing is not None
+                else WebhookTriggerAuthKind.WEBHOOK
+            )
 
         try:
             WebhookTriggerService().set_trigger_auth_secret(
@@ -152,7 +159,9 @@ class WebhookTriggerNestedSerializer(
         registration_failures: list[str] = []
         for node in trigger.telegram_trigger_nodes.all():
             try:
-                telegram_service.register_telegram_trigger(telegram_trigger_instance=node)
+                telegram_service.register_telegram_trigger(
+                    telegram_trigger_instance=node
+                )
             except Exception as e:
                 detail = getattr(e, "detail", None)
                 message = str(detail) if detail is not None else str(e)
@@ -263,8 +272,6 @@ class WebhookTriggerNestedSerializer(
         return existing.secret if existing is not None else None
 
     def validate(self, data):
-        from tables.services.webhook_trigger_service import validate_path_uniqueness
-
         data = super().validate(data)
 
         provider_type = data.get("provider_type")
@@ -278,9 +285,7 @@ class WebhookTriggerNestedSerializer(
                 exclude_pk=self.instance.pk if self.instance else None,
             )
         except DjangoValidationError as e:
-            raise serializers.ValidationError(
-                e.messages[0] if e.messages else str(e)
-            )
+            raise serializers.ValidationError(e.messages[0] if e.messages else str(e))
 
         if ngrok and localhost:
             raise serializers.ValidationError(
