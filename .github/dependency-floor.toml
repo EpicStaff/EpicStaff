@@ -38,7 +38,7 @@ zipp = "4.1.0"
 
 [[exception]]
 package = "certifi"
-services = ["sandbox"]
+services = ["sandbox", "knowledge_new"]
 blocked_at = "2025.11.12"
 reason = "miniopy-async 1.23.5 requires certifi >=2025.1.31,<2026.0.0. Needs a miniopy-async upgrade."
 

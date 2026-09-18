@@ -13,13 +13,17 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number
-                formControlName="chunk_size"
-                [alwaysShowSteps]="true"
-                [stepSize]="DEFAULT_STEP_SIZE"
-                [invalid]="!!getMainParamControl('chunk_size')?.invalid"
-            />
-            <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
+            @if (canUpdate()) {
+                <app-input-number
+                    formControlName="chunk_size"
+                    [alwaysShowSteps]="true"
+                    [stepSize]="DEFAULT_STEP_SIZE"
+                    [invalid]="!!getMainParamControl('chunk_size')?.invalid"
+                />
+                <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
+            } @else {
+                <span>{{ params().chunk_size }}</span>
+            }
         </div>
 
         <div class="config__grid-item">
@@ -32,13 +36,17 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number
-                formControlName="chunk_overlap"
-                [alwaysShowSteps]="true"
-                [stepSize]="DEFAULT_STEP_SIZE"
-                [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
-            />
-            <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
+            @if (canUpdate()) {
+                <app-input-number
+                    formControlName="chunk_overlap"
+                    [alwaysShowSteps]="true"
+                    [stepSize]="DEFAULT_STEP_SIZE"
+                    [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
+                />
+                <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
+            } @else {
+                <span>{{ params().chunk_overlap }}</span>
+            }
         </div>
     </div>
 
@@ -61,12 +69,16 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-custom-input
-                class="config__input"
-                formControlName="regex"
-                type="text"
-                placeholder="Enter tag (e.g. ( ? : \r \n | \n ) { 2, } )"
-            />
+            @if (canUpdate()) {
+                <app-custom-input
+                    class="config__input"
+                    formControlName="regex"
+                    type="text"
+                    placeholder="Enter tag (e.g. ( ? : \r \n | \n ) { 2, } )"
+                />
+            } @else {
+                <span>{{ params().regex }}</span>
+            }
         </div>
     </div>
 </form>

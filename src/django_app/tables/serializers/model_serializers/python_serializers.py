@@ -22,6 +22,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueTogetherValidator,
     resolve_active_org_id,
 )
+from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
@@ -207,6 +208,10 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "built_in", "created_at", "updated_at"]
+
+    def validate_description(self, value: str) -> str:
+        """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
+        return sanitize_description(value)
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.

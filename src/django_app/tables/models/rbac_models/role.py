@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import UniqueConstraint
+from django.db.models.functions import Lower
 
 from tables.models.rbac_models.rbac_enums import ResourceType
 
@@ -19,6 +21,13 @@ class Role(models.Model):
 
     class Meta:
         db_table = "rbac_role"
+        constraints = [
+            UniqueConstraint(
+                "org",
+                Lower("name"),
+                name="rbac_role_org_name_ci_uniq",
+            ),
+        ]
 
     def __str__(self) -> str:
         scope = "built-in" if self.is_built_in else f"org={self.org_id}"
