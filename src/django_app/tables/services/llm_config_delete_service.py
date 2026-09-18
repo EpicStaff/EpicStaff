@@ -119,10 +119,10 @@ def _knowledge_sources_items(config_ids, org_id):
 
 def get_usage(config_ids, org_id, effective):
     """{config_id: {blocked, by_resource_type: [...]}} across the four
-    referencing buckets for LLMConfig. See graph_delete_service.py/
-    crew_delete_service.py for the shared shape/visibility rationale
-    (one-hop, visible-only, org-wide all-or-nothing until instance-level ACL
-    lands). `TemplateAgent.*` and the global `DefaultModels`/
+    referencing buckets for LLMConfig. See graph_delete_service.py for the
+    shared shape/visibility rationale (one-hop, visible-only, org-wide
+    all-or-nothing until instance-level ACL lands). `TemplateAgent.*` and
+    the global `DefaultModels`/
     `DefaultCrewConfig`/`DefaultAgentConfig` singleton fields are
     deliberately excluded -- no independent ViewSet/resource_type to check
     visibility against.

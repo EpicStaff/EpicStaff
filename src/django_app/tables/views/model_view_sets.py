@@ -82,7 +82,6 @@ from tables.models import (
     Secret,
     StartNode,
     SubGraphNode,
-    TaskContext,
     TaskNode,
 )
 from tables.models.llm_models import (
@@ -155,7 +154,6 @@ from tables.models.llm_models import (
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
 )
-from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.python_models import PythonCodeToolConfig
@@ -276,11 +274,10 @@ from tables.serializers.serializers import (
     ImportRequestSerializer,
 )
 from tables.services import (
-    agent_delete_service,
-    crew_delete_service,
     embedding_config_delete_service,
     embedding_model_delete_service,
     graph_delete_service,
+    graph_version_delete_service,
     llm_config_delete_service,
     llm_model_delete_service,
 )
@@ -590,372 +587,6 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
             else status.HTTP_207_MULTI_STATUS
         )
         return Response(result, status=status_code)
-
-
-class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
-    """
-    DEPRECATED: AgentViewSet is deprecated. Use agents.AgentDefinition +
-    AgentNode endpoints instead. Exists only for backward compatibility with
-    existing Agent rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.AGENTS
-    rbac_action_map = {
-        **DEFAULT_ACTION_MAP,
-        "copy": Permission.CREATE,
-        "export": Permission.EXPORT,
-        "import_entity": Permission.CREATE,
-        "bulk_delete": Permission.DELETE,
-    }
-    copy_service_class = AgentCopyService
-    copy_serializer_class = AgentReadSerializer
-
-    queryset = Agent.objects.select_related(
-        "realtime_agent",
-        "naive_search_config",
-    ).prefetch_related(
-        Prefetch(
-            "python_code_tools",
-            queryset=AgentPythonCodeTools.objects.select_related(
-                "pythoncodetool__python_code"
-            ),
-            to_attr="prefetched_python_code_tools",
-        ),
-        Prefetch(
-            "python_code_tool_configs",
-            queryset=AgentPythonCodeToolConfigs.objects.select_related(
-                "pythoncodetoolconfig__tool__python_code"
-            ),
-            to_attr="prefetched_python_code_tool_configs",
-        ),
-        Prefetch(
-            "mcp_tools",
-            queryset=AgentMcpTools.objects.select_related("mcptool"),
-            to_attr="prefetched_mcp_tools",
-        ),
-        Prefetch(
-            "agent_naive_rags",
-            queryset=AgentNaiveRag.objects.select_related("naive_rag"),
-            to_attr="prefetched_agent_naive_rags",
-        ),
-    )
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = [
-        "memory",
-        "allow_delegation",
-        "cache",
-        "allow_code_execution",
-    ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.AGENT, export_prefix="agent", filename_attr="role"
-        )
-
-    def get_serializer_class(self):
-        if self.action in ["list", "retrieve"]:
-            return AgentReadSerializer
-        return AgentWriteSerializer
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        crew_id = self.request.query_params.get("crew_id")
-
-        if crew_id is not None:
-            queryset = queryset.filter(crew__id=crew_id)
-
-        if self.request.query_params.get("has_realtime_config") == "true":
-            from django.db.models import Q
-
-            queryset = queryset.filter(
-                realtime_agent__isnull=False,
-            ).filter(
-                Q(realtime_agent__openai_config__isnull=False)
-                | Q(realtime_agent__elevenlabs_config__isnull=False)
-                | Q(realtime_agent__gemini_config__isnull=False)
-            )
-
-        return queryset
-
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        """Create agent and return response with AgentReadSerializer."""
-        write_serializer = self.get_serializer(data=request.data)
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_create(write_serializer)
-
-        # Return response using read serializer to include rag and search_configs
-        read_serializer = AgentReadSerializer(
-            write_serializer.instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
-
-    @transaction.atomic
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise AgentSerializerError(detail="Use tool_ids instead of tools")
-        write_serializer = self.get_serializer(
-            instance, data=request.data, partial=False
-        )
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-
-        instance.refresh_from_db()
-        read_serializer = AgentReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-    @transaction.atomic
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise AgentSerializerError(detail="Use tool_ids instead of tools")
-
-        write_serializer = self.get_serializer(
-            instance, data=request.data, partial=True
-        )
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-
-        instance.refresh_from_db()
-        read_serializer = AgentReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
-
-    @extend_schema(
-        request={"multipart/form-data": ImportRequestSerializer},
-        responses={
-            200: OpenApiResponse(
-                description="Import summary with created/skipped entity counts"
-            )
-        },
-    )
-    @action(detail=False, methods=["post"], url_path="import")
-    def import_entity(self, request):
-        file_serializer = ImportRequestSerializer(data=request.data)
-        file_serializer.is_valid(raise_exception=True)
-
-        data = self.import_export_service.import_entity(
-            file_serializer.validated_data["file"],
-            user=request.user,
-            org_id=self.get_active_org_id(),
-        )
-        return Response(data, status=status.HTTP_200_OK)
-
-    def perform_destroy(self, instance):
-        org_id = self.get_active_org_id()
-        effective = PermissionResolver().resolve(self.request.user, org_id)
-        agent_delete_service.assert_agent_deletable(instance, org_id, effective)
-        instance.delete()
-
-    @action(detail=False, methods=["post"], url_path="bulk-delete")
-    def bulk_delete(self, request):
-        serializer = BulkDeleteRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
-        dry_run = serializer.validated_data["dry_run"]
-
-        org_id = self.get_active_org_id()
-        effective = PermissionResolver().resolve(request.user, org_id)
-        result = agent_delete_service.bulk_delete_agents(
-            ids, org_id, effective, dry_run=dry_run
-        )
-
-        status_code = (
-            status.HTTP_200_OK
-            if not result["not_found_ids"] and not result["skipped_ids"]
-            else status.HTTP_207_MULTI_STATUS
-        )
-        return Response(result, status=status_code)
-
-
-class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
-    """
-    DEPRECATED: CrewReadWriteViewSet is deprecated. Use the new Agent/Task
-    graph node endpoints (AgentNode, TaskNode) instead. Exists only for
-    backward compatibility with existing Crew rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.PROJECTS
-    rbac_action_map = {
-        **DEFAULT_ACTION_MAP,
-        "copy": Permission.CREATE,
-        "export": Permission.EXPORT,
-        "import_entity": Permission.CREATE,
-        "bulk_delete": Permission.DELETE,
-    }
-    copy_service_class = CrewCopyService
-    copy_serializer_class = CrewSerializer
-
-    queryset = Crew.objects.prefetch_related("task_set", "agents", "tags")
-    serializer_class = CrewSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = [
-        "description",
-        "name",
-        "process",
-        "memory",
-        "embedding_config",
-        "manager_llm_config",
-        "cache",
-        "full_output",
-        "planning",
-        "planning_llm_config",
-    ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.CREW, export_prefix="crew", filename_attr="name"
-        )
-
-    def perform_destroy(self, instance):
-        org_id = self.get_active_org_id()
-        effective = PermissionResolver().resolve(self.request.user, org_id)
-        crew_delete_service.assert_crew_deletable(instance, org_id, effective)
-        instance.delete()
-
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
-
-    @extend_schema(
-        request={"multipart/form-data": ImportRequestSerializer},
-        responses={
-            200: OpenApiResponse(
-                description="Import summary with created/skipped entity counts"
-            )
-        },
-    )
-    @action(detail=False, methods=["post"], url_path="import")
-    def import_entity(self, request):
-        file_serializer = ImportRequestSerializer(data=request.data)
-        file_serializer.is_valid(raise_exception=True)
-
-        data = self.import_export_service.import_entity(
-            file_serializer.validated_data["file"],
-            user=request.user,
-            org_id=self.get_active_org_id(),
-        )
-        return Response(data, status=status.HTTP_200_OK)
-
-    @action(detail=False, methods=["post"], url_path="bulk-delete")
-    def bulk_delete(self, request):
-        serializer = BulkDeleteRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
-        dry_run = serializer.validated_data["dry_run"]
-
-        org_id = self.get_active_org_id()
-        effective = PermissionResolver().resolve(request.user, org_id)
-        result = crew_delete_service.bulk_delete_crews(
-            ids, org_id, effective, dry_run=dry_run
-        )
-
-        status_code = (
-            status.HTTP_200_OK
-            if not result["not_found_ids"] and not result["skipped_ids"]
-            else status.HTTP_207_MULTI_STATUS
-        )
-        return Response(result, status=status_code)
-
-
-class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
-    """
-    DEPRECATED: TaskReadWriteViewSet is deprecated. Use TaskNode/AgentNodeTask
-    endpoints instead. Exists only for backward compatibility with existing
-    Task rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.PROJECTS
-    org_filter_path = "crew__org_id"
-    queryset = Task.objects.prefetch_related(
-        Prefetch(
-            "task_python_code_tool_list",
-            queryset=TaskPythonCodeTools.objects.select_related("tool__python_code"),
-        ),
-        Prefetch(
-            "task_python_code_tool_config_list",
-            queryset=TaskPythonCodeToolConfigs.objects.select_related(
-                "tool__tool__python_code"
-            ),
-        ),
-        Prefetch(
-            "task_context_list",
-            queryset=TaskContext.objects.select_related("context"),
-        ),
-        Prefetch(
-            "task_mcp_tool_list",
-            queryset=TaskMcpTools.objects.select_related("tool"),
-        ),
-    )
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = [
-        "crew",
-        "name",
-        "agent",
-        "order",
-        "async_execution",
-        "task_context_list",
-    ]
-
-    def get_serializer_class(self):
-        if self.action in ["list", "retrieve"]:
-            return TaskReadSerializer
-        return TaskWriteSerializer
-
-    def create(self, request, *args, **kwargs):
-        write_serializer = self.get_serializer(data=request.data)
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_create(write_serializer)
-
-        read_serializer = TaskReadSerializer(
-            write_serializer.instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
-
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise TaskSerializerError(detail="Use tool_ids instead of tools")
-
-        write_serializer = self.get_serializer(instance, data=request.data)
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-        instance.refresh_from_db()
-
-        read_serializer = TaskReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if "tools" in request.data:
-            raise TaskSerializerError(detail="Use tool_ids instead of tools")
-
-        write_serializer = self.get_serializer(
-            instance, data=request.data, partial=True
-        )
-        write_serializer.is_valid(raise_exception=True)
-        self.perform_update(write_serializer)
-        instance.refresh_from_db()
-
-        read_serializer = TaskReadSerializer(
-            instance, context=self.get_serializer_context()
-        )
-        return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 
 class ContentHashPreconditionMixin:
@@ -1626,6 +1257,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         "all": Permission.READ,
         "restore": Permission.UPDATE,
         "create_graph": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph_id"]
@@ -1704,6 +1336,25 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         version = self.get_object()
         result = GraphVersioningService().create_graph_from_version(version)
         return Response(result, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        result = graph_version_delete_service.bulk_delete_graph_versions(
+            ids, org_id, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
 
 
 class IdempotentNodeCreateMixin:
