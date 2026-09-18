@@ -762,16 +762,16 @@ class TestWebhookTriggerTwilioOnlyVisibility:
 
 @pytest.mark.django_db
 class TestWebhookTriggerDuplicatePathValidation:
-    """PUT/PATCH to /api/webhook-triggers/<id>/ with a (path,
-    provider_type) pair that collides with another existing WebhookTrigger
+    """PUT/PATCH to /api/webhook-triggers/<id>/ with a `path` that collides
+    with another existing WebhookTrigger (regardless of `provider_type`)
     must fail cleanly with a serializer ValidationError (-> 400), not blow
-    up with a raw IntegrityError from the DB's unique_together constraint at
-    save time."""
+    up with a raw IntegrityError from the DB's `unique=True` constraint on
+    `path` at save time."""
 
     def test_full_update_colliding_path_and_provider_is_rejected(self, default_org):
         """Full PUT-style call (all fields present) with a path that
-        collides with another trigger's (path, provider_type) is rejected
-        by validate() before hitting the DB."""
+        collides with another trigger's `path` is rejected by validate()
+        before hitting the DB."""
         WebhookTrigger.objects.create(
             path="taken-path", provider_type=ProviderType.NGROK, org=default_org
         )
@@ -909,14 +909,14 @@ class TestWebhookTriggerCreateDoesNotMerge:
         assert ngrok_config.name == "original-ngrok"
         assert ngrok_config.auth_token_secret_id == original_secret.id
 
-    def test_same_path_different_provider_type_creates_separate_row(
+    def test_same_path_different_provider_type_is_rejected(
         self, auth_client, default_org
     ):
-        """The model's actual constraint is unique_together(path,
-        provider_type) — two different providers ARE allowed to share a
-        path as separate rows. POSTing a new provider_type for an existing
-        path must create a sibling row, not hijack/mutate the existing one
-        (the old get_or_create looked up by `path` alone)."""
+        """Behavior change: the model's constraint is now `unique=True` on
+        `path` alone — two different providers are NO LONGER allowed to
+        share a path. POSTing a new provider_type for an existing path must
+        be rejected, not create a sibling row or hijack/mutate the existing
+        one."""
         existing = WebhookTrigger.objects.create(
             path="shared-path-diff-provider",
             provider_type=ProviderType.LOCALHOST,
@@ -941,12 +941,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
             format="json",
         )
 
-        assert response.status_code == 201, response.json()
-        new_trigger_id = response.json()["id"]
-        assert new_trigger_id != existing.id
-
-        rows = WebhookTrigger.objects.filter(path="shared-path-diff-provider")
-        assert rows.count() == 2
+        assert response.status_code == 400, response.json()
 
         # the original row must be untouched — same provider, config intact
         existing.refresh_from_db()
@@ -955,10 +950,11 @@ class TestWebhookTriggerCreateDoesNotMerge:
         local_cfg = LocalhostWebhookConfig.objects.get(trigger=existing)
         assert local_cfg.name == "local-cfg"
 
-        # the new row is a genuinely separate WebhookTrigger with its own config
-        new_trigger = WebhookTrigger.objects.get(id=new_trigger_id)
-        assert new_trigger.provider_type == ProviderType.NGROK
-        assert NgrokWebhookConfig.objects.filter(trigger=new_trigger).exists()
+        # no sibling row was created
+        assert (
+            WebhookTrigger.objects.filter(path="shared-path-diff-provider").count()
+            == 1
+        )
 
     def test_fresh_unique_path_creates_normally(self, auth_client, default_org):
         """No-regression sanity check: a normal POST with a fresh, unique
