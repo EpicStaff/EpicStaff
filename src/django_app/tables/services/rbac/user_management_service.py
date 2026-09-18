@@ -11,6 +11,7 @@ from tables.services.rbac.rbac_exceptions import (
     OrganizationNotFoundError,
     RoleNotFoundError,
     UserNotFoundError,
+    LastSuperadminError,
 )
 from tables.services.rbac.user_management_guards import UserManagementGuards
 
@@ -170,43 +171,61 @@ class UserManagementService(CrossOrgResourceService):
         """Sets is_superadmin=False on target_user_id. Last-active-superadmin
         guard. Idempotent if already False."""
         UserModel = get_user_model()
-        try:
-            target = UserModel.objects.select_for_update().get(pk=target_user_id)
-        except UserModel.DoesNotExist as exc:
-            raise UserNotFoundError() from exc
+        superadmins = (
+            UserModel.objects
+            .filter(is_superadmin=True, is_active=True)
+            .order_by("pk")
+            .select_for_update()
+        )  # fmt: skip
+        superadmins_map = {sa.pk: sa for sa in superadmins}
 
-        if not target.is_superadmin:
-            return target  # no-op
+        if target_user_id in superadmins_map:
+            if len(superadmins_map) <= 1:
+                raise LastSuperadminError()
+            target = superadmins_map[target_user_id]
+        else:
+            target = UserModel.objects.select_for_update().filter(pk=target_user_id).first()
+            if target is None:
+                raise UserNotFoundError()
 
-        UserManagementGuards.assert_not_last_active_superadmin(target)
-
-        target.is_superadmin = False
-        target.save(update_fields=["is_superadmin", "updated_at"])
-        target.refresh_from_db()
+        if target.is_superadmin:
+            target.is_superadmin = False
+            target.save(update_fields=["is_superadmin", "updated_at"])
+            target.refresh_from_db()
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t}",
             a=getattr(actor, "email", "system"),
             t=target.email,
         )
+
         return target
 
     @transaction.atomic
-    def set_user_active(self, actor, target_user_id, is_active):
+    def set_user_active(self, actor, target_user_id, value):
         """Set is_active on a user account (superadmin-only, gated at the
         view). Idempotent. Deactivating the last active superadmin is
         refused (reuses the last-active-superadmin guard)."""
         UserModel = get_user_model()
-        try:
-            target = UserModel.objects.select_for_update().get(pk=target_user_id)
-        except UserModel.DoesNotExist as exc:
-            raise UserNotFoundError() from exc
+        superadmins = (
+            UserModel.objects
+            .filter(is_superadmin=True, is_active=True)
+            .order_by("pk")
+            .select_for_update()
+        )  # fmt: skip
+        superadmins_map = {sa.pk: sa for sa in superadmins}
 
-        if not is_active:
-            UserManagementGuards.assert_not_last_active_superadmin(target)
+        if target_user_id in superadmins_map:
+            target = superadmins_map[target_user_id]
+            if value is False and len(superadmins_map) <= 1:
+                raise LastSuperadminError()
+        else:
+            target = UserModel.objects.select_for_update().filter(pk=target_user_id).first()
+            if target is None:
+                raise UserNotFoundError()
 
-        if target.is_active != is_active:
-            target.is_active = is_active
+        if target.is_active != value:
+            target.is_active = value
             target.save(update_fields=["is_active", "updated_at"])
             target.refresh_from_db()
 
@@ -214,8 +233,9 @@ class UserManagementService(CrossOrgResourceService):
             "UserManagementService.set_user_active actor={a} target={t} active={v}",
             a=getattr(actor, "email", "system"),
             t=target.email,
-            v=is_active,
+            v=value,
         )
+
         return target
 
     # ---- internal helpers ----

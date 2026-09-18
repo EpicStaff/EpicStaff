@@ -39,6 +39,24 @@ class RealtimeAgentSurfaceResolution:
     rag_type_id: str | None
     rag_search_config: RagSearchConfig | None
     rag_embedder_api_key_secret_id: int | None = None
+    rag_llm_api_key_secret_id: int | None = None
+
+
+@dataclass
+class RealtimeKnowledgeResolution:
+    knowledge_collection_id: int | None = None
+    rag_type_id: str | None = None
+    rag_search_config: RagSearchConfig | None = None
+    rag_embedder_api_key_secret_id: int | None = None
+    rag_llm_api_key_secret_id: int | None = None
+
+
+GRAPH_SEARCH_CONFIG_FIELDS: tuple[tuple[str, type], ...] = (
+    ("graph_basic_search_config", GraphRagBasicSearchParams),
+    ("graph_local_search_config", GraphRagLocalSearchParams),
+    ("graph_global_search_config", GraphRagGlobalSearchParams),
+    ("graph_drift_search_config", GraphRagDriftSearchParams),
+)
 
 
 class RealtimeSurfaceService:
@@ -63,19 +81,11 @@ class RealtimeSurfaceService:
         )
         self._warn_on_mcp_tools(combined_surface["mcp_tools"])
 
-        (
-            knowledge_collection_id,
-            rag_type_id,
-            rag_search_config,
-            rag_embedder_api_key_secret_id,
-        ) = self._resolve_knowledge(combined_surface["knowledge"])
+        knowledge_res = self._resolve_knowledge(combined_surface["knowledge"])
 
         return RealtimeAgentSurfaceResolution(
             tools=tools,
-            knowledge_collection_id=knowledge_collection_id,
-            rag_type_id=rag_type_id,
-            rag_search_config=rag_search_config,
-            rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
+            **vars(knowledge_res),
         )
 
     def _build_combined_surface(self, agent_definition: AgentDefinition) -> dict:
@@ -166,9 +176,9 @@ class RealtimeSurfaceService:
 
     def _resolve_knowledge(
         self, knowledge_entries: list[dict]
-    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
+    ) -> RealtimeKnowledgeResolution:
         if not knowledge_entries:
-            return None, None, None, None
+            return RealtimeKnowledgeResolution()
 
         if len(knowledge_entries) > 1:
             logger.warning(
@@ -184,33 +194,37 @@ class RealtimeSurfaceService:
                 collection_id, knowledge["naive_search_config"]
             )
 
-        if (
-            knowledge.get("graph_basic_search_config") is not None
-            or knowledge.get("graph_local_search_config") is not None
-            or knowledge.get("graph_global_search_config") is not None
-            or knowledge.get("graph_drift_search_config") is not None
-        ):
+        if any(knowledge.get(key) is not None for key, _ in GRAPH_SEARCH_CONFIG_FIELDS):
             return self._resolve_graph_rag(collection_id, knowledge)
 
         logger.warning(
             "Collection {} has no usable RAG search config, skipping.", collection_id
         )
-        return None, None, None, None
+        return RealtimeKnowledgeResolution()
+
+    def _rag_lookup_latest(
+        self, rag: NaiveRag | GraphRag, rag_cls, rag_status_cls, collection_id: int
+    ) -> bool:
+        if rag is None or rag.rag_status != rag_status_cls.COMPLETED:
+            logger.warning(
+                "No completed {} for collection {}, skipping.",
+                rag_cls.__name__,
+                collection_id,
+            )
+            return False
+        return True
 
     def _resolve_naive_rag(
         self, collection_id: int, naive_config: dict
-    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
+    ) -> RealtimeKnowledgeResolution:
         naive_rag = RagLookupService.latest_rag(
             NaiveRag, collection_id, pk_field="naive_rag_id"
         )
-        if (
-            naive_rag is None
-            or naive_rag.rag_status != NaiveRag.NaiveRagStatus.COMPLETED
-        ):
-            logger.warning(
-                "No completed NaiveRag for collection {}, skipping.", collection_id
-            )
-            return None, None, None, None
+        is_valid = self._rag_lookup_latest(
+            naive_rag, NaiveRag, NaiveRag.NaiveRagStatus, collection_id
+        )
+        if not is_valid:
+            return RealtimeKnowledgeResolution()
 
         rag_type_id = f"naive:{naive_rag.naive_rag_id}"
         rag_search_config = NaiveRagSearchConfig(
@@ -220,41 +234,42 @@ class RealtimeSurfaceService:
         embedder_secret_id = (
             naive_rag.embedder.api_key_secret_id if naive_rag.embedder else None
         )
-        return collection_id, rag_type_id, rag_search_config, embedder_secret_id
+        # Naive RAG has no LLM call (no completion-model synthesis step) —
+        # only graph RAG carries an `llm` FK. Leave the LLM secret id unset.
+        return RealtimeKnowledgeResolution(
+            collection_id, rag_type_id, rag_search_config, embedder_secret_id, None
+        )
 
     def _resolve_graph_rag(
         self, collection_id: int, knowledge: dict
-    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
+    ) -> RealtimeKnowledgeResolution:
         graph_rag = RagLookupService.latest_rag(
             GraphRag, collection_id, pk_field="graph_rag_id"
         )
-        if (
-            graph_rag is None
-            or graph_rag.rag_status != GraphRag.GraphRagStatus.COMPLETED
-        ):
-            logger.warning(
-                "No completed GraphRag for collection {}, skipping.", collection_id
-            )
-            return None, None, None, None
+        is_valid = self._rag_lookup_latest(
+            graph_rag, GraphRag, GraphRag.GraphRagStatus, collection_id
+        )
+        if not is_valid:
+            return RealtimeKnowledgeResolution()
 
         rag_type_id = f"graph:{graph_rag.graph_rag_id}"
 
-        basic_config = knowledge.get("graph_basic_search_config")
-        local_config = knowledge.get("graph_local_search_config")
-        global_config = knowledge.get("graph_global_search_config")
-        drift_config = knowledge.get("graph_drift_search_config")
-
-        if basic_config is not None:
-            search_params = GraphRagBasicSearchParams(**basic_config)
-        elif local_config is not None:
-            search_params = GraphRagLocalSearchParams(**local_config)
-        elif global_config is not None:
-            search_params = GraphRagGlobalSearchParams(**global_config)
-        else:
-            search_params = GraphRagDriftSearchParams(**drift_config)
+        search_params = None
+        for key, params_cls in GRAPH_SEARCH_CONFIG_FIELDS:
+            config = knowledge.get(key)
+            if config is not None:
+                search_params = params_cls(**config)
+                break
 
         rag_search_config = GraphRagSearchConfig(search_params=search_params)
         embedder_secret_id = (
             graph_rag.embedder.api_key_secret_id if graph_rag.embedder else None
         )
-        return collection_id, rag_type_id, rag_search_config, embedder_secret_id
+        llm_secret_id = graph_rag.llm.api_key_secret_id if graph_rag.llm else None
+        return RealtimeKnowledgeResolution(
+            collection_id,
+            rag_type_id,
+            rag_search_config,
+            embedder_secret_id,
+            llm_secret_id,
+        )

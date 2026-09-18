@@ -327,25 +327,28 @@ def client(django_user_model, org):
 
 
 @pytest.fixture
-def py_tool_a(db):
+def py_tool_a(db, org):
     code = PythonCode.objects.create(code="def main(): pass")
     return PythonCodeTool.objects.create(
-        name="combine-py-tool-a", description="test", python_code=code
+        org=org, name="combine-py-tool-a", description="test", python_code=code
     )
 
 
 @pytest.fixture
-def py_tool_b(db):
+def py_tool_b(db, org):
     code = PythonCode.objects.create(code="def main(): pass")
     return PythonCodeTool.objects.create(
-        name="combine-py-tool-b", description="test", python_code=code
+        org=org, name="combine-py-tool-b", description="test", python_code=code
     )
 
 
 @pytest.fixture
-def mcp_tool_a(db):
+def mcp_tool_a(db, org):
     return McpTool.objects.create(
-        name="combine-mcp-a", transport="http://localhost/sse", tool_name="tool_a"
+        org=org,
+        name="combine-mcp-a",
+        transport="http://localhost/sse",
+        tool_name="tool_a",
     )
 
 
@@ -357,8 +360,10 @@ def storage_file_a(db, org):
 
 
 @pytest.fixture
-def naive_collection(db):
-    coll = SourceCollection.objects.create(collection_name="combine-naive-coll")
+def naive_collection(db, org):
+    coll = SourceCollection.objects.create(
+        collection_name="combine-naive-coll", org=org
+    )
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.NAIVE, source_collection=coll
     )
@@ -430,7 +435,7 @@ def test_combine_happy_path_returns_merged_result(
 
     code = PythonCode.objects.create(code="def main(): pass")
     tool = PythonCodeTool.objects.create(
-        name="api-combine-tool", description="t", python_code=code
+        org=org, name="api-combine-tool", description="t", python_code=code
     )
     SurfacePythonTool.objects.create(surface=s_a, python_tool=tool, mode=ToolMode.ALLOW)
     SurfacePythonTool.objects.create(surface=s_b, python_tool=tool, mode=ToolMode.DENY)
@@ -470,7 +475,7 @@ def test_combine_unknown_surface_id_returns_400(client, org):
 
 @pytest.mark.django_db
 def test_combine_conflicting_knowledge_returns_400(client, org):
-    coll = SourceCollection.objects.create(collection_name="api-conflict-coll")
+    coll = SourceCollection.objects.create(collection_name="api-conflict-coll", org=org)
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.NAIVE, source_collection=coll
     )

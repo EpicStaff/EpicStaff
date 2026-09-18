@@ -38,6 +38,7 @@ from utils.instructions_concatenator import generate_instruction
 from core import config
 from utils.auth import introspect_token
 from utils.twilio_signature import validate_twilio_signature
+from src.shared.knowledge.client import KnowledgeClient
 
 
 from infrastructure.persistence.database import get_db, engine
@@ -51,11 +52,10 @@ redis_service = RedisService(
     host=config.REDIS_HOST, port=config.REDIS_PORT, password=config.REDIS_PASSWORD
 )
 python_code_executor_service = PythonCodeExecutorService(redis_service=redis_service)
+knowledge_client = KnowledgeClient(base_url=config.KNOWLEDGE_BASE_URL)
 tool_manager_service = ToolManagerService(
-    redis_service=redis_service,
     python_code_executor_service=python_code_executor_service,
-    knowledge_search_get_channel=config.KNOWLEDGE_SEARCH_GET_CHANNEL,
-    knowledge_search_response_channel=config.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
+    knowledge_client=knowledge_client,
 )
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
 factory = RealtimeAgentClientFactory(
@@ -195,9 +195,7 @@ async def redis_listener():
     await redis_service.connect()
     logger.info("redis_listener: connected to Redis")
 
-    pubsub = await redis_service.async_subscribe(
-        config.REALTIME_AGENTS_SCHEMA_CHANNEL
-    )
+    pubsub = await redis_service.async_subscribe(config.REALTIME_AGENTS_SCHEMA_CHANNEL)
     await pubsub.subscribe(config.REALTIME_CHANNELS_INVALIDATE_CHANNEL)
     logger.info(
         f"Subscribed to channels '{config.REALTIME_AGENTS_SCHEMA_CHANNEL}', "
@@ -223,8 +221,15 @@ async def init_db():
 async def startup_event():
     """Start Redis listener and init DB on FastAPI startup."""
     await init_db()
+    await knowledge_client.start()
 
     asyncio.create_task(_run_forever(redis_listener, "redis_listener"))
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close the knowledge_new HTTP client on FastAPI shutdown."""
+    await knowledge_client.stop()
 
 
 # Store active connections and their handlers

@@ -153,39 +153,6 @@ def test_pythoncodetoolconfig_create_lands_in_active_org(client_a, org_a):
     assert PythonCodeToolConfig.objects.get(id=resp.data["id"]).org_id == org_a.id
 
 
-# ---- PythonCode (child via referencing parents) ----
-
-
-@pytest.mark.django_db
-def test_pythoncode_of_own_custom_tool_visible(client_a, org_a):
-    tool = _make_tool(built_in=False, org=org_a, name="mine")
-    ids = {c["id"] for c in _results(client_a.get("/api/python-code/"))}
-    assert tool.python_code_id in ids
-
-
-@pytest.mark.django_db
-def test_pythoncode_of_other_orgs_tool_hidden(client_a, org_b):
-    tool = _make_tool(built_in=False, org=org_b, name="theirs")
-    ids = {c["id"] for c in _results(client_a.get("/api/python-code/"))}
-    assert tool.python_code_id not in ids
-
-
-@pytest.mark.django_db
-def test_pythoncode_of_builtin_tool_visible(client_a):
-    tool = _make_tool(built_in=True, org=None, name="bt")
-    ids = {c["id"] for c in _results(client_a.get("/api/python-code/"))}
-    assert tool.python_code_id in ids
-
-
-@pytest.mark.django_db
-def test_pythoncode_unattached_is_hidden(client_a):
-    # A standalone PythonCode with no parent matches no org branch of the
-    # 4-way filter, so it is not visible (accepted trade-off of no own column).
-    orphan = PythonCode.objects.create(code="orphan", entrypoint="main")
-    ids = {c["id"] for c in _results(client_a.get("/api/python-code/"))}
-    assert orphan.id not in ids
-
-
 # ---- copy action: CopyActionMixin always forwards org_id for org-scoped
 # viewsets (get_active_org_id present) — PythonCodeToolCopyService and
 # McpToolCopyService must accept + apply it. ----

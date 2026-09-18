@@ -15,6 +15,7 @@ a schema that fails jsonschema meta-validation.
 from __future__ import annotations
 
 import pytest
+from rest_framework.test import APIRequestFactory
 
 from tables.models.graph_models import AgentNode, AgentNodeTask, Graph
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
@@ -39,13 +40,25 @@ META_INVALID_SCHEMA = {"type": "object", "properties": "garbage"}
 
 
 @pytest.fixture
-def graph(db):
-    return Graph.objects.create(name="output-schema-validation-graph")
+def graph(db, default_org):
+    return Graph.objects.create(name="output-schema-validation-graph", org=default_org)
 
 
 @pytest.fixture
 def agent_node(db, graph):
     return AgentNode.objects.create(graph=graph, node_name="output-schema-agent-node")
+
+
+@pytest.fixture
+def org_request(default_org, superadmin_user):
+    """Authenticated request scoped to `default_org`, for serializers built
+    directly (not through a view). `TaskNodeSerializer`/`AgentNodeSerializer`
+    resolve their `graph` field's org scope from `request` via
+    `OrgContextService` (see `tables/serializers/org_scoped_fields.py`) —
+    without a request they deny every pk."""
+    request = APIRequestFactory().post("/", HTTP_X_ORGANIZATION_ID=str(default_org.pk))
+    request.user = superadmin_user
+    return request
 
 
 # ---------------------------------------------------------------------------
@@ -55,22 +68,24 @@ def agent_node(db, graph):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("output_schema", [{}, OBJECT_SCHEMA, SCALAR_SCHEMA])
-def test_task_node_accepts_valid_output_schema(graph, output_schema):
+def test_task_node_accepts_valid_output_schema(graph, output_schema, org_request):
     serializer = TaskNodeSerializer(
         data={
             "graph": graph.pk,
             "node_name": "task-valid-schema",
             "output_schema": output_schema,
-        }
+        },
+        context={"organization": graph.org, "request": org_request},
     )
 
     assert serializer.is_valid(), serializer.errors
 
 
 @pytest.mark.django_db
-def test_task_node_accepts_missing_output_schema(graph):
+def test_task_node_accepts_missing_output_schema(graph, org_request):
     serializer = TaskNodeSerializer(
-        data={"graph": graph.pk, "node_name": "task-no-schema"}
+        data={"graph": graph.pk, "node_name": "task-no-schema"},
+        context={"organization": graph.org, "request": org_request},
     )
 
     assert serializer.is_valid(), serializer.errors
@@ -144,7 +159,7 @@ def test_task_node_rejects_meta_invalid_output_schema(graph):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("output_schema", [{}, OBJECT_SCHEMA, SCALAR_SCHEMA])
-def test_agent_node_task_accepts_valid_output_schema(graph, output_schema):
+def test_agent_node_task_accepts_valid_output_schema(graph, output_schema, org_request):
     serializer = AgentNodeSerializer(
         data={
             "graph": graph.pk,
@@ -156,7 +171,8 @@ def test_agent_node_task_accepts_valid_output_schema(graph, output_schema):
                     "output_schema": output_schema,
                 }
             ],
-        }
+        },
+        context={"organization": graph.org, "request": org_request},
     )
 
     assert serializer.is_valid(), serializer.errors

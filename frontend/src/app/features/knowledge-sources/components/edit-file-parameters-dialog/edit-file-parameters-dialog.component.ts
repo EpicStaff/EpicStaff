@@ -14,7 +14,9 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
@@ -39,6 +41,7 @@ export class EditFileParametersDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef);
     private destroyRef = inject(DestroyRef);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
+    private permissionService = inject(PermissionsService);
     private toast = inject(ToastService);
     readonly data: { ragId: number; collectionId: number; ragDocumentId: number; allDocumentIds: number[] } =
         inject(DIALOG_DATA);
@@ -64,6 +67,9 @@ export class EditFileParametersDialogComponent implements AfterViewInit {
     isPrevDisabled = computed(() => this.currentIndex() <= 0);
     isNextDisabled = computed(
         () => this.currentIndex() === -1 || this.currentIndex() >= this.data.allDocumentIds.length - 1
+    );
+    canRunChunking = computed<boolean>(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update)
     );
 
     constructor() {

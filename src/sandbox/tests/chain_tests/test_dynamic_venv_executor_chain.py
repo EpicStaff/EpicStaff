@@ -31,6 +31,11 @@ from unittest.mock import Mock
 
 import pytest
 
+pytest.importorskip(
+    "pwd",
+    reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
+)
+
 import dynamic_venv_executor_chain
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 
@@ -64,7 +69,9 @@ def _make_fake_shell(recorded_shell_calls: list):
     return _fake_shell
 
 
-def _make_fake_exec(result_file_path: Path, expected_result: object, recorded_exec_calls: list):
+def _make_fake_exec(
+    result_file_path: Path, expected_result: object, recorded_exec_calls: list
+):
     """Return an async fake for asyncio.create_subprocess_exec.
 
     Distinguishes the "run user code" call from pip calls by checking whether
@@ -141,11 +148,17 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
         use_storage=False,
     )
 
-    assert result.returncode == 0, f"Expected returncode 0, got {result.returncode!r} (stderr={result.stderr!r})"
+    assert (
+        result.returncode == 0
+    ), f"Expected returncode 0, got {result.returncode!r} (stderr={result.stderr!r})"
     assert result.execution_id == execution_id
     assert result.result_data == json.dumps(expected_result)
-    assert len(recorded_shell_calls) >= 1, "Expected at least one create_subprocess_shell call (venv creation)"
-    assert len(recorded_exec_calls) >= 1, "Expected at least one create_subprocess_exec call (code execution)"
+    assert (
+        len(recorded_shell_calls) >= 1
+    ), "Expected at least one create_subprocess_shell call (venv creation)"
+    assert (
+        len(recorded_exec_calls) >= 1
+    ), "Expected at least one create_subprocess_exec call (code execution)"
     storage_credential_manager.build_policy.assert_not_called()
     storage_credential_manager.create.assert_not_called()
     storage_credential_manager.revoke.assert_not_called()

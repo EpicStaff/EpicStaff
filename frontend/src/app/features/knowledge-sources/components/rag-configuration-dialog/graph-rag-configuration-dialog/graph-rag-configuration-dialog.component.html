@@ -12,6 +12,7 @@
 
             @if (isIndexing()) {
                 <app-button
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                     type="primary"
                     (click)="stopIndexing(processingDocIds())"
                 >
@@ -19,6 +20,7 @@
                 </app-button>
             } @else {
                 <app-button
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                     type="primary"
                     [disabled]="indexingDisabled()"
                     (click)="runIndexing()"

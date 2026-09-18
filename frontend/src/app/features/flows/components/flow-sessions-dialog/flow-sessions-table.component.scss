@@ -52,14 +52,14 @@
 
 table {
     width: 100%;
-    min-width: 935px;
+    min-width: 990px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
 
     th,
     td {
-        padding: 12px 15px;
+        padding: 12px 18px;
         text-align: left;
         border-bottom: 1px solid var(--color-divider-subtle);
     }
@@ -102,21 +102,20 @@ table {
 
     th.col-created,
     td.col-created {
-        width: 190px;
         min-width: 190px;
     }
 
     th.col-duration,
     td.col-duration {
-        min-width: 120px;
-        width: 120px;
+        min-width: 160px;
+        width: 160px;
     }
 
     th.col-actions,
     td.col-actions {
-        min-width: 175px;
-        width: 175px;
-        padding: 12px 8px;
+        min-width: 190px;
+        width: 190px;
+        padding: 12px 10px;
     }
 
     th.col-actions {
@@ -124,7 +123,7 @@ table {
     }
 
     td.col-actions {
-        text-align: center;
+        text-align: left;
     }
 
     td[colspan='6'],
