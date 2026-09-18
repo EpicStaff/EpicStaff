@@ -35,7 +35,6 @@ from tables.views.model_view_sets import (
     PythonCodeToolViewSet,
     PythonCodeResultReadViewSet,
     GraphSessionMessageReadOnlyViewSet,
-    MemoryViewSet,
     RealtimeModelViewSet,
     RealtimeAgentDefinitionViewSet,
     RealtimeAgentChatViewSet,
@@ -119,15 +118,11 @@ from tables.views.flow_assistant_views import (
     FlowAssistantStreamView,
 )
 
+from tables.views.api_key_admin_views import ApiKeyAdminViewSet
 from tables.views.organization_admin_views import OrganizationAdminViewSet
-from tables.views.role_admin_views import (
-    OrgScopedRoleAdminViewSet,
-    RoleAdminViewSet,
-)
-from tables.views.user_management_views import (
-    OrganizationMembershipAdminViewSet,
-    UserAdminViewSet,
-)
+from tables.views.role_admin_views import RoleAdminViewSet
+from tables.views.membership_admin_views import MembershipAdminViewSet
+from tables.views.user_management_views import UserAdminViewSet
 
 router = DefaultRouter()
 router.register(r"providers", ProviderReadWriteViewSet)
@@ -164,7 +159,6 @@ router.register(r"agentnodetasks", AgentNodeTaskViewSet)
 router.register(r"edges", EdgeViewSet)
 router.register(r"conditionaledges", ConditionalEdgeViewSet)
 router.register(r"graph-session-messages", GraphSessionMessageReadOnlyViewSet)
-router.register(r"memory", MemoryViewSet)
 
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
 router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions")
@@ -213,6 +207,7 @@ admin_router.register(
 )
 admin_router.register(r"users", UserAdminViewSet, basename="admin-user")
 admin_router.register(r"roles", RoleAdminViewSet, basename="admin-role")
+admin_router.register(r"api-keys", ApiKeyAdminViewSet, basename="admin-api-key")
 
 urlpatterns = [
     path(
@@ -221,26 +216,21 @@ urlpatterns = [
         name="document-bulk-delete",
     ),
     path(
-        "admin/organizations/<int:org_id>/users/",
-        OrganizationMembershipAdminViewSet.as_view({"get": "list", "post": "create"}),
-        name="admin-org-users-list",
+        "admin/memberships/",
+        MembershipAdminViewSet.as_view({"get": "list", "post": "create"}),
+        name="admin-memberships",
     ),
     path(
-        "admin/organizations/<int:org_id>/users/<int:user_id>/",
-        OrganizationMembershipAdminViewSet.as_view(
+        "admin/memberships/assignable-users/",
+        MembershipAdminViewSet.as_view({"get": "assignable_users"}),
+        name="admin-memberships-assignable-users",
+    ),
+    path(
+        "admin/memberships/<int:pk>/",
+        MembershipAdminViewSet.as_view(
             {"patch": "partial_update", "delete": "destroy"}
         ),
-        name="admin-org-users-detail",
-    ),
-    path(
-        "admin/organizations/<int:org_id>/assign-users/",
-        OrganizationMembershipAdminViewSet.as_view({"post": "assign_users"}),
-        name="admin-org-users-assign",
-    ),
-    path(
-        "admin/organizations/<int:org_id>/roles/",
-        OrgScopedRoleAdminViewSet.as_view({"get": "list"}),
-        name="admin-org-roles-list",
+        name="admin-membership-detail",
     ),
     path("admin/", include(admin_router.urls)),
     path("", include(router.urls)),

@@ -39,6 +39,8 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
@@ -128,6 +130,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -1729,4 +1732,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

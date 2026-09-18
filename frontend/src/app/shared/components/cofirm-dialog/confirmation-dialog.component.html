@@ -63,13 +63,15 @@
         >
             {{ data.cancelText || 'Cancel' }}
         </button>
-        <button
-            type="button"
-            class="button confirm-button"
-            [ngClass]="data.type || 'info'"
-            (click)="onConfirm()"
-        >
-            {{ data.confirmText || 'Confirm' }}
-        </button>
+        @if (!data.hideConfirm) {
+            <button
+                type="button"
+                class="button confirm-button"
+                [ngClass]="data.type || 'info'"
+                (click)="onConfirm()"
+            >
+                {{ data.confirmText || 'Confirm' }}
+            </button>
+        }
     </div>
 </div>

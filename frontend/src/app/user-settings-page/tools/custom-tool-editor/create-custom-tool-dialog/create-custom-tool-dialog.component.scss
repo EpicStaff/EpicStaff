@@ -173,8 +173,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 1.75rem;
+            height: 1.75rem;
             padding: 0;
             background: transparent;
             border: 1px solid transparent;
@@ -240,7 +240,11 @@
     }
 
     .description-textarea {
-        --color-ks-text: var(--white);
+        --color-ks-text: var(--color-text-primary);
+
+        ::ng-deep .textarea-field.disabled {
+            opacity: 1;
+        }
     }
 
     .parameters-section {
@@ -274,8 +278,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: 1.75rem;
+        height: 1.75rem;
         padding: 0;
         border: 1px solid var(--accent-color);
         border-radius: 8px;
@@ -368,8 +372,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 1.75rem;
+            height: 1.75rem;
             padding: 0;
             border: 1px solid transparent;
             border-radius: 6px;

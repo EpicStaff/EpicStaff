@@ -35,17 +35,20 @@
             }
         </div>
         @if (item() && !readOnly()) {
-            <app-button
-                class="storage-preview__add-to-flow"
-                type="outline-primary"
-                mod="small"
-                [leftIcon]="'add-to-flow'"
-                iconSize="12px"
-                ariaLabel="Add to flow"
-                (click)="onKebabMenuAction('add-to-flow')"
-            >
-                Add to flow
-            </app-button>
+            <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Create]">
+                <app-button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
+                    class="storage-preview__add-to-flow"
+                    type="outline-primary"
+                    mod="small"
+                    [leftIcon]="'add-to-flow'"
+                    iconSize="12px"
+                    ariaLabel="Add to flow"
+                    (click)="onKebabMenuAction('add-to-flow')"
+                >
+                    Add to flow
+                </app-button>
+            </ng-container>
             <button
                 class="storage-preview__kebab"
                 aria-label="More actions"
@@ -73,7 +76,7 @@
                 [style.top.px]="kebabMenuPosition().top"
             >
                 <button
-                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('download')"
                 >
@@ -131,7 +134,7 @@
                 ></app-svg-icon>
                 <p>{{ previewError() }}</p>
                 <app-button
-                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
                     type="ghost"
                     (click)="onDownload()"
                     >Download file</app-button

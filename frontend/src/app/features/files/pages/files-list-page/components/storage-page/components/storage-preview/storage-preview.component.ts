@@ -56,7 +56,7 @@ export class StoragePreviewComponent {
     }
 
     get canDownload(): boolean {
-        return this.permissionsService.can(ResourceCode.Files, ActionCode.Download);
+        return this.permissionsService.can(ResourceCode.Files, ActionCode.Export);
     }
 
     onDownload(): void {

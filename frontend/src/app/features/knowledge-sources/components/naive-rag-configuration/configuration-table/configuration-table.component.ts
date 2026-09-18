@@ -1,4 +1,4 @@
-import { KeyValuePipe } from '@angular/common';
+import { KeyValuePipe, NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -20,8 +20,11 @@ import {
     SelectItem,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { HasPermissionDirective } from '@shared/directives';
 import { MATERIAL_FORMS } from '@shared/material-forms';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
 import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
 import { RunNaiveRagDocumentChunkingRequest } from '../../../models/naive-rag-document.model';
@@ -42,6 +45,8 @@ import { DocumentStatusFilter, TableDocument } from './configuration-table.inter
         MultiSelectComponent,
         KeyValuePipe,
         MATERIAL_FORMS,
+        HasPermissionDirective,
+        NgClass,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -53,6 +58,7 @@ export class ConfigurationTableComponent {
 
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private collectionsStorage = inject(CollectionsStorageService);
+    private permissionService = inject(PermissionsService);
 
     searchTerm = input<string>('');
     showBulkRow = input<boolean>(false);
@@ -72,6 +78,10 @@ export class ConfigurationTableComponent {
     // markRagAsProcessing() in the same tick a document can first become 'processing'.
     private ragIsProcessing = computed(
         () => this.collectionsStorage.getRagStatus(this.ragId(), 'naive') === 'processing'
+    );
+
+    canUpdateKnowledges = computed<boolean>(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update)
     );
 
     docsCheckChange = output<number[]>();
@@ -228,4 +238,6 @@ export class ConfigurationTableComponent {
     }
 
     // ================= FILTER LOGIC END =================
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

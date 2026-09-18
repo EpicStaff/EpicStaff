@@ -88,7 +88,7 @@ FIRST_SETUP_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid",
-                        "message": "FormValidationError: Validation failed",
+                        "message": "Validation failed",
                         "errors": [
                             {
                                 "field": "email",
@@ -110,7 +110,7 @@ FIRST_SETUP_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid",
-                        "message": "FormValidationError: Validation failed",
+                        "message": "Validation failed",
                         "errors": [
                             {
                                 "field": "email",
@@ -145,7 +145,7 @@ FIRST_SETUP_POST = dict(
                     value={
                         "status_code": 409,
                         "code": "setup_already_completed",
-                        "message": "SetupAlreadyCompletedError: Setup has already been completed",
+                        "message": "Setup has already been completed",
                     },
                     response_only=True,
                     status_codes=["409"],
@@ -177,7 +177,7 @@ TOKEN_INTROSPECT_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid",
-                        "message": "ValidationError: {'token': [ErrorDetail(string='This field is required.', code='required')]}",
+                        "message": "token: This field is required.",
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -225,7 +225,7 @@ LOGIN_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid",
-                        "message": "FormValidationError: Validation failed",
+                        "message": "Validation failed",
                         "errors": [
                             {
                                 "field": "email",
@@ -273,7 +273,7 @@ LOGOUT_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid_or_expired_refresh",
-                        "message": "InvalidRefreshTokenError: Refresh token is invalid, expired, or already revoked.",
+                        "message": "Refresh token is invalid, expired, or already revoked.",
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -336,7 +336,7 @@ RESET_USER_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "invalid",
-                        "message": "FormValidationError: Validation failed",
+                        "message": "Validation failed",
                         "errors": [
                             {
                                 "field": "email",

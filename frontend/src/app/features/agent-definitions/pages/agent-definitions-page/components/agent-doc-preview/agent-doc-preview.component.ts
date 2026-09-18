@@ -1,10 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AppSvgIconComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { MarkdownComponent } from 'ngx-markdown';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { DetailCrumb, DetailHeaderComponent } from '../detail-header/detail-header.component';
 
@@ -12,12 +15,21 @@ type DocMode = 'preview' | 'markdown';
 
 @Component({
     selector: 'app-agent-doc-preview',
-    imports: [FormsModule, AppSvgIconComponent, MarkdownComponent, MonacoEditorModule, DetailHeaderComponent],
+    imports: [
+        FormsModule,
+        AppSvgIconComponent,
+        MarkdownComponent,
+        MonacoEditorModule,
+        DetailHeaderComponent,
+        HasPermissionDirective,
+    ],
     templateUrl: './agent-doc-preview.component.html',
     styleUrls: ['./agent-doc-preview.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentDocPreviewComponent {
+    private readonly permissionService = inject(PermissionsService);
+
     agent = input.required<AgentDefinition>();
     showSidebar = input<boolean>(true);
     initialEditMode = input<boolean>(false);
@@ -37,7 +49,8 @@ export class AgentDocPreviewComponent {
             const edit = this.initialEditMode();
             if (!this.initialModeApplied) {
                 this.initialModeApplied = true;
-                if (edit) this.mode.set('markdown');
+                const canEdit = this.permissionService.can(ResourceCode.Agents, ActionCode.Update);
+                if (edit && canEdit) this.mode.set('markdown');
             }
         });
     }
@@ -73,4 +86,7 @@ export class AgentDocPreviewComponent {
         if (value === (this.agent().instructions ?? '')) return;
         this.save.emit(value);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
