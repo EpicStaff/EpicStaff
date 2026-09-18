@@ -35,6 +35,10 @@ class SessionTabularProjection(TabularProjection):
         "msg__expression",
         "msg__input_json",
         "msg__output_json",
+        "principal_kind",
+        "principal_email",
+        "principal_user_id",
+        "principal_api_key_id",
     ]
 
     def project(self, row: dict) -> dict:
@@ -76,4 +80,18 @@ class SessionTabularProjection(TabularProjection):
             "msg__expression": d.get("expression"),
             "msg__input_json": _json(d.get("input")),
             "msg__output_json": _json(d.get("output")),
+            "principal_kind": row.get("principal_kind"),
+            "principal_email": row.get("principal_email"),
+            "principal_user_id": row.get("principal_user_id"),
+            "principal_api_key_id": row.get("principal_api_key_id"),
         }
+
+    def expand(self, item: dict) -> list[dict]:
+        principal = (item.get("session", {}) or {}).get("principal", {}) or {}
+        context = {
+            "principal_kind": principal.get("kind"),
+            "principal_email": principal.get("email"),
+            "principal_user_id": principal.get("user"),
+            "principal_api_key_id": principal.get("api_key"),
+        }
+        return [{**msg, **context} for msg in item.get("messages", [])]
