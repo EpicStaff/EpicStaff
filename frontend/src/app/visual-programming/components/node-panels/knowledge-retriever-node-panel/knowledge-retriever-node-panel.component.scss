@@ -70,6 +70,8 @@
     @include mixins.resize-divider-bleed;
 }
 
+@include mixins.field-isolated-spacing;
+
 .form-group {
     display: flex;
     flex-direction: column;

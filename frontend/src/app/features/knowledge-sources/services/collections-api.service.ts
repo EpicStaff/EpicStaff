@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config/config.service';
 import {
     CreateCollectionDtoRequest,
@@ -36,7 +38,9 @@ export class CollectionsApiService {
     }
 
     getCollections(): Observable<GetCollectionRequest[]> {
-        return this.http.get<GetCollectionRequest[]>(this.apiUrl);
+        return this.http.get<GetCollectionRequest[]>(this.apiUrl, {
+            context: withPermission<GetCollectionRequest[]>(ResourceCode.KnowledgeSources, ActionCode.Read, []),
+        });
     }
 
     getCollectionById(id: number): Observable<CreateCollectionDtoResponse> {
@@ -44,7 +48,9 @@ export class CollectionsApiService {
     }
 
     getRagsByCollectionId(id: number): Observable<GetCollectionRagsResponse[]> {
-        return this.http.get<GetCollectionRagsResponse[]>(`${this.apiUrl}${id}/available-rags/`);
+        return this.http.get<GetCollectionRagsResponse[]>(`${this.apiUrl}${id}/available-rags/`, {
+            context: withPermission<GetCollectionRagsResponse[]>(ResourceCode.KnowledgeSources, ActionCode.Read, []),
+        });
     }
 
     getDocumentsByCollectionId(id: number): Observable<GetCollectionDocumentsResponse> {

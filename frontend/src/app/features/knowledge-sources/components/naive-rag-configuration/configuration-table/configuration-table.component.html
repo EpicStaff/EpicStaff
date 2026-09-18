@@ -4,10 +4,14 @@
             <!-- HEADER ROW -->
             <div
                 class="table__row table__header"
+                [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
                 [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
             >
                 <!-- 1. Checkbox -->
-                <div class="table__col">
+                <div
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    class="table__col"
+                >
                     <app-checkbox
                         color="secondary"
                         [checked]="allChecked()"
@@ -39,10 +43,20 @@
                 </div>
 
                 <!-- 4. Chunk Size -->
-                <div class="table__col table__col--center">CHUNK SIZE</div>
+                <div
+                    class="table__col"
+                    [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                >
+                    CHUNK SIZE
+                </div>
 
                 <!-- 5. Overlap -->
-                <div class="table__col table__col--center">OVERLAP</div>
+                <div
+                    class="table__col"
+                    [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                >
+                    OVERLAP
+                </div>
 
                 <!-- 6. Empty space -->
                 <div class="table__col"></div>
@@ -65,10 +79,10 @@
 
                     @if (bulkChunkStrategy() === 'csv') {
                         <!-- chunk size -->
-                        <div class="table__col table__col--unavailable">Unavailable</div>
+                        <div class="table__col table__col--center">Unavailable</div>
 
                         <!-- overlap -->
-                        <div class="table__col table__col--unavailable">Unavailable</div>
+                        <div class="table__col table__col--center">Unavailable</div>
                     } @else {
                         <!-- chunk size -->
                         <div class="table__col">
@@ -99,7 +113,7 @@
                             class="table__col-btn"
                             type="outline-primary"
                             mod="small"
-                            [disabled]="!checkedDocumentIds().length"
+                            [disabled]="!checkedDocumentIds().length || !canUpdateKnowledges()"
                             (click)="onApplyBulkEdit()"
                         >
                             Apply
@@ -159,9 +173,15 @@
                             }
                         }
                     }
-                    <li class="table__row">
+                    <li
+                        class="table__row"
+                        [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
+                    >
                         <!-- checkbox -->
-                        <div class="table__col">
+                        <div
+                            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                            class="table__col"
+                        >
                             <app-checkbox
                                 color="secondary"
                                 [checked]="d.checked"
@@ -180,7 +200,11 @@
                                 class="table__file-icon"
                                 size="0.75rem"
                             />
-                            <span class="table__file-name">
+                            <span
+                                class="table__file-name"
+                                [matTooltip]="parseFullFileName(d.file_name).name"
+                                matTooltipPosition="above"
+                            >
                                 {{ parseFullFileName(d.file_name).name }}
                             </span>
                             <span>
@@ -190,46 +214,77 @@
 
                         <!-- strategy select -->
                         <div class="table__col">
-                            <app-select
-                                mod="small"
-                                [items]="chunkStrategySelectItems"
-                                [selectedValue]="d.chunk_strategy"
-                                [invalid]="!!d.errors?.chunk_strategy"
-                                (changed)="onChunkStrategyChange(d, $event)"
-                            />
+                            @if (canUpdateKnowledges()) {
+                                <app-select
+                                    [disabled]="!canUpdateKnowledges()"
+                                    mod="small"
+                                    [items]="chunkStrategySelectItems"
+                                    [selectedValue]="d.chunk_strategy"
+                                    [invalid]="!!d.errors?.chunk_strategy"
+                                    (changed)="onChunkStrategyChange(d, $event)"
+                                />
+                            } @else {
+                                <span>
+                                    {{ d.chunk_strategy }}
+                                </span>
+                            }
                         </div>
 
                         @if (d.chunk_strategy === 'csv') {
                             <!-- chunk size -->
-                            <div class="table__col table__col--unavailable">Unavailable</div>
+                            <div
+                                class="table__col"
+                                [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                            >
+                                Unavailable
+                            </div>
 
                             <!-- overlap -->
-                            <div class="table__col table__col--unavailable">Unavailable</div>
+                            <div
+                                class="table__col"
+                                [ngClass]="{ 'table__col--center': canUpdateKnowledges() }"
+                            >
+                                Unavailable
+                            </div>
                         } @else {
                             <!-- chunk size -->
                             <div class="table__col">
-                                <app-input-number
-                                    mod="small"
-                                    [min]="20"
-                                    [max]="8000"
-                                    [stepSize]="DEFAULT_STEP_SIZE"
-                                    [value]="d.chunk_size"
-                                    [invalid]="!!d.errors?.chunk_size"
-                                    (changed)="onDocFieldChange(d, 'chunk_size', $event)"
-                                />
+                                @if (canUpdateKnowledges()) {
+                                    <app-input-number
+                                        [disabled]="!canUpdateKnowledges()"
+                                        mod="small"
+                                        [min]="20"
+                                        [max]="8000"
+                                        [stepSize]="DEFAULT_STEP_SIZE"
+                                        [value]="d.chunk_size"
+                                        [invalid]="!!d.errors?.chunk_size"
+                                        (changed)="onDocFieldChange(d, 'chunk_size', $event)"
+                                    />
+                                } @else {
+                                    <span>
+                                        {{ d.chunk_size }}
+                                    </span>
+                                }
                             </div>
 
                             <!-- overlap -->
                             <div class="table__col">
-                                <app-input-number
-                                    mod="small"
-                                    [min]="0"
-                                    [max]="1000"
-                                    [stepSize]="DEFAULT_STEP_SIZE"
-                                    [value]="d.chunk_overlap"
-                                    [invalid]="!!d.errors?.chunk_overlap"
-                                    (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"
-                                />
+                                @if (canUpdateKnowledges()) {
+                                    <app-input-number
+                                        [disabled]="!canUpdateKnowledges()"
+                                        mod="small"
+                                        [min]="0"
+                                        [max]="1000"
+                                        [stepSize]="DEFAULT_STEP_SIZE"
+                                        [value]="d.chunk_overlap"
+                                        [invalid]="!!d.errors?.chunk_overlap"
+                                        (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"
+                                    />
+                                } @else {
+                                    <span>
+                                        {{ d.chunk_overlap }}
+                                    </span>
+                                }
                             </div>
                         }
 

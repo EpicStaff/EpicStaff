@@ -14,11 +14,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
-from app.knowledge.target import KnowledgeSearchTarget
 from app.llm.client import LLMChunk
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
 from shared.models.knowledge import NaiveRagSearchConfig
 from shared.models.knowledge_new import FoundChunk
+from shared.knowledge.target import KnowledgeSearchTarget
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +666,42 @@ async def test_on_knowledge_search_graph_answer_shape():
     assert payload["chunks"] == []
     assert payload["retrieved_chunks"] == 0
     assert payload["answer"] == "the synthesised answer"
+
+
+async def test_on_knowledge_search_error_payload_shape():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(
+        _make_knowledge_target(),
+        "what is epicstaff",
+        [],
+        error="connection refused",
+    )
+
+    assert len(published) == 1
+    assert published[0]["type"] == "agent.knowledge_search"
+    payload = _decode_payload(published[0])
+    assert payload == {
+        "collection_id": 10,
+        "rag_id": 2,
+        "rag_type": "naive",
+        "retrieved_chunks": 0,
+        "knowledge_query": "what is epicstaff",
+        "rag_search_config": NaiveRagSearchConfig().model_dump(),
+        "chunks": [],
+        "answer": None,
+        "token_usage": {},
+        "error": "connection refused",
+    }
+
+
+async def test_on_knowledge_search_success_payload_omits_error_key():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(_make_knowledge_target(), "q", [])
+
+    payload = _decode_payload(published[0])
+    assert "error" not in payload
 
 
 async def test_on_knowledge_search_publish_failure_does_not_propagate():

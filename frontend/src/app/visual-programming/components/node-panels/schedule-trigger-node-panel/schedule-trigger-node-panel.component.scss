@@ -60,6 +60,8 @@
     }
 }
 
+@include mixins.field-isolated-spacing;
+
 .repeat-fields {
     display: flex;
     flex-direction: column;

@@ -1,96 +1,87 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
 
 from tables.models.rbac_models import OrganizationUser, Organization, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
+from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import (
-    CannotSelfAssignError,
     EmailAlreadyExistsError,
-    MembershipAlreadyExistsError,
     OrganizationNotFoundError,
     RoleNotFoundError,
     UserNotFoundError,
+    LastSuperadminError,
 )
 from tables.services.rbac.user_management_guards import UserManagementGuards
 
 
-class UserManagementService:
-    """Single orchestrator for every Story 5 read/write.
+class UserManagementService(CrossOrgResourceService):
+    """Superadmin-only management of the global User account entity
+    (list / create / grant-revoke superadmin / activate-deactivate).
 
-    Views call this; it does the work. Defense-in-depth permission re-checks
-    live here too — the permission class on the view is the gate; the
-    service is the safety net (matches Story 4's PasswordRecoveryService.admin_reset
-    pattern).
+    Membership management (add/change-role/remove within an org) is a
+    separate, permission-driven surface — see MembershipManagementService.
 
-    Every write method:
-      - Wraps in transaction.atomic().
-      - Acquires SELECT FOR UPDATE on the contested row before any guard.
-      - Translates IntegrityError to typed domain exceptions.
-      - Logs INFO via loguru on success.
-      - Returns query-optimized objects so view serializers don't N+1.
+    A User owns no organization; its org dimension is the set its memberships
+    span, which is why the list scopes through MEMBERSHIPS on the cross-org
+    skeleton rather than an `org` column.
+
+    Every write method wraps in transaction.atomic(), acquires
+    SELECT FOR UPDATE on the contested row before any guard, translates
+    IntegrityError to typed domain exceptions, and logs INFO via loguru.
     """
+
+    rbac_resource_type = ResourceType.MEMBERSHIPS
+    not_found_exception = UserNotFoundError
 
     # ---- read ----
 
     def list_users(
         self,
         actor,
-        email=None,
+        search=None,
         is_superadmin=None,
-        organization_id=None,
+        org_ids=None,
+        status_value=None,
+        role_id=None,
+        scopes=None,
     ) -> QuerySet:
-        """Cross-org user list. Caller is expected to be superadmin
-        (enforced by the view permission class). The actor argument is
-        accepted for symmetry and future audit logging — currently unused
-        in the read path.
+        """Cross-org user list, optionally scoped to `org_ids` through the
+        accounts' memberships. Filtering by `search` (email/display_name),
+        `is_superadmin`, `status` (active/inactive account) and `role_id`
+        (held in any in-scope org). Ordering is applied by the view.
+
+        `org_ids` and `role_id` both traverse a multi-valued join, so the
+        result is DISTINCT.
         """
         UserModel = get_user_model()
-        qs = (
-            UserModel.objects.all()
-            .order_by("-created_at", "email")
-            .prefetch_related(
-                Prefetch(
-                    "organization_memberships",
-                    queryset=OrganizationUser.objects.select_related("org", "role"),
-                )
+        base_qs = UserModel.objects.all().prefetch_related(
+            Prefetch(
+                "organization_memberships",
+                queryset=OrganizationUser.objects.select_related("org", "role"),
             )
         )
-        if email:
-            qs = qs.filter(email__icontains=email)
+        qs = self.apply_org_scope(
+            actor=actor,
+            org_ids=org_ids,
+            base_qs=base_qs,
+            org_field="organization_memberships__org_id",
+            scopes=scopes,
+        )
+        if search:
+            qs = qs.filter(
+                Q(email__icontains=search) | Q(display_name__icontains=search)
+            )
         if is_superadmin is not None:
             qs = qs.filter(is_superadmin=is_superadmin)
-        if organization_id is not None:
-            qs = qs.filter(organization_memberships__org_id=organization_id).distinct()
-        return qs
-
-    def list_org_members(
-        self,
-        actor,
-        org_id,
-        email=None,
-        role_name=None,
-    ) -> QuerySet:
-        """Members of a single org. Each row in the result has its
-        `_membership_for_org` attribute populated (set in the loop in the
-        view) — the queryset itself returns User rows filtered through
-        OrganizationUser.
-
-        Returns a queryset of OrganizationUser rows (one per member of
-        org_id) with `select_related('user', 'role', 'org')` so the
-        serializer can read `.user`, `.role`, and `.org` without N+1.
-        """
-        qs = (
-            OrganizationUser.objects.filter(org_id=org_id)
-            .select_related("user", "role", "org")
-            .order_by("role__name", "user__email")
-        )
-        if email:
-            qs = qs.filter(user__email__icontains=email)
-        if role_name:
-            qs = qs.filter(role__name=role_name)
-        return qs
+        if status_value == "active":
+            qs = qs.filter(is_active=True)
+        elif status_value == "inactive":
+            qs = qs.filter(is_active=False)
+        if role_id is not None:
+            qs = qs.filter(organization_memberships__role_id=role_id)
+        return qs.distinct()
 
     # ---- create ----
 
@@ -145,264 +136,6 @@ class UserManagementService:
         )
         return user
 
-    @transaction.atomic
-    def add_membership(
-        self,
-        actor,
-        org_id,
-        email,
-        password,
-        role_id=None,
-    ):
-        """Creates a new User and links them to org_id in one transaction.
-        Linking existing users is handled by the batch assign-users
-        endpoint.
-
-        role_id is optional; defaults to built-in Member if absent (D9).
-
-        Returns the OrganizationUser row, with select_related('user',
-        'org', 'role') populated.
-        """
-        UserModel = get_user_model()
-
-        try:
-            org = Organization.objects.select_for_update().get(pk=org_id)
-        except Organization.DoesNotExist as exc:
-            raise OrganizationNotFoundError() from exc
-
-        role = self._resolve_role(role_id, default_org_id=org_id)
-        UserManagementGuards.assert_role_is_assignable(role, org_id=org_id)
-
-        try:
-            target_user = UserModel.objects.create_user(email=email, password=password)
-        except IntegrityError as exc:
-            raise EmailAlreadyExistsError() from exc
-
-        try:
-            membership = OrganizationUser.objects.create(
-                user=target_user, org=org, role=role
-            )
-        except IntegrityError as exc:
-            raise MembershipAlreadyExistsError() from exc
-
-        logger.info(
-            "UserManagementService.add_membership actor={actor} "
-            "user={u} org={o} role={r}",
-            actor=getattr(actor, "email", "system"),
-            u=target_user.email,
-            o=org.name,
-            r=role.name,
-        )
-
-        # Re-fetch with select_related so the view serializer doesn't
-        # trigger extra queries.
-        return OrganizationUser.objects.select_related("user", "org", "role").get(
-            pk=membership.pk
-        )
-
-    @transaction.atomic
-    def assign_users(self, actor, org_id, assignments):
-        """Batch-upsert memberships for org_id with explicit roles.
-
-        `assignments` is a list of {"user_id": int, "role_id": int} dicts
-        in submission order, pre-validated by UserValidationService
-        (non-empty, deduplicated, types coerced).
-
-        Behavior:
-          - All-or-nothing inside one transaction.
-          - Locks the Org row, then bulk-resolves roles and target users.
-          - For each row:
-              * No existing (user_id, org_id) row → create.
-              * Existing row, role differs → update role.
-              * Existing row, same role → no-op.
-          - Self-assignment by a non-superadmin caller is rejected with
-            CannotSelfAssignError. Superadmin bypasses this rule
-            (caller-relationship UX safety, not a system invariant).
-          - Net-effect last-Org-Admin guard: rejects the whole batch if
-            applying it would leave the org with zero Org Admins.
-          - Unknown user_id / role_id → UserNotFoundError / RoleNotFoundError.
-          - Non-assignable role → InvalidRoleAssignmentError.
-
-        Returns a tuple (created, updated) of OrganizationUser row lists,
-        each ordered by submission order. `updated` includes pre-existing
-        memberships regardless of whether the role actually changed.
-        """
-        if not getattr(actor, "is_superadmin", False):
-            actor_id = getattr(actor, "id", None)
-            if actor_id is not None and any(
-                item["user_id"] == actor_id for item in assignments
-            ):
-                raise CannotSelfAssignError()
-
-        UserModel = get_user_model()
-
-        try:
-            org = Organization.objects.select_for_update().get(pk=org_id)
-        except Organization.DoesNotExist as exc:
-            raise OrganizationNotFoundError() from exc
-
-        role_ids = {item["role_id"] for item in assignments}
-        roles_by_id = Role.objects.in_bulk(role_ids)
-        if len(roles_by_id) != len(role_ids):
-            raise RoleNotFoundError()
-        for role in roles_by_id.values():
-            UserManagementGuards.assert_role_is_assignable(role, org_id=org_id)
-
-        user_ids = [item["user_id"] for item in assignments]
-        users_by_id = UserModel.objects.select_for_update().in_bulk(user_ids)
-        if len(users_by_id) != len(set(user_ids)):
-            raise UserNotFoundError()
-
-        existing_by_user_id = {
-            m.user_id: m
-            for m in (
-                OrganizationUser.objects.select_for_update()
-                .filter(org_id=org_id, user_id__in=user_ids)
-                .select_related("role")
-            )
-        }
-
-        current_org_admin_user_ids = set(
-            OrganizationUser.objects.filter(
-                org_id=org_id, role__name=BuiltInRole.ORG_ADMIN
-            ).values_list("user_id", flat=True)
-        )
-        UserManagementGuards.assert_batch_preserves_org_admin(
-            current_org_admin_user_ids=current_org_admin_user_ids,
-            batch=[
-                (item["user_id"], roles_by_id[item["role_id"]].name)
-                for item in assignments
-            ],
-        )
-
-        created_user_ids: list = []
-        updated_user_ids: list = []
-        new_rows: list = []
-
-        for item in assignments:
-            user_id = item["user_id"]
-            new_role = roles_by_id[item["role_id"]]
-            existing = existing_by_user_id.get(user_id)
-            if existing is None:
-                new_rows.append(
-                    OrganizationUser(user=users_by_id[user_id], org=org, role=new_role)
-                )
-                created_user_ids.append(user_id)
-            else:
-                if existing.role_id != new_role.pk:
-                    existing.role = new_role
-                    existing.save(update_fields=["role"])
-                updated_user_ids.append(user_id)
-
-        if new_rows:
-            try:
-                OrganizationUser.objects.bulk_create(new_rows)
-            except IntegrityError as exc:
-                # Race: a parallel writer inserted a (user, org) row between
-                # our SELECT FOR UPDATE pre-check and this bulk_create.
-                raise MembershipAlreadyExistsError() from exc
-
-        logger.info(
-            "UserManagementService.assign_users actor={a} org={o} "
-            "created={c} updated={u}",
-            a=getattr(actor, "email", "system"),
-            o=org.name,
-            c=len(created_user_ids),
-            u=len(updated_user_ids),
-        )
-
-        # Re-fetch with select_related so the view serializer is N+1-free.
-        # `user_id` is unique only in combination with `org_id` (composite
-        # UniqueConstraint on OrganizationUser), so in_bulk(field_name='user_id')
-        # is rejected by Django. Build the lookup dict manually — within the
-        # org_id filter, user_id is unique by construction.
-        memberships_by_user_id = {
-            m.user_id: m
-            for m in OrganizationUser.objects.filter(
-                org_id=org_id, user_id__in=user_ids
-            ).select_related("user", "org", "role")
-        }
-        created = [memberships_by_user_id[uid] for uid in created_user_ids]
-        updated = [memberships_by_user_id[uid] for uid in updated_user_ids]
-        return created, updated
-
-    # ---- update ----
-
-    @transaction.atomic
-    def change_role(self, actor, org_id, user_id, role_id):
-        """Changes the role on the (user_id, org_id) membership.
-
-        Locks the OrganizationUser row first, then resolves the new role,
-        validates assignability, applies the last-Org-Admin guard if the
-        change would demote an Org Admin.
-        """
-        try:
-            membership = (
-                OrganizationUser.objects.select_for_update()
-                .select_related("user", "org", "role")
-                .get(org_id=org_id, user_id=user_id)
-            )
-        except OrganizationUser.DoesNotExist as exc:
-            raise UserNotFoundError() from exc
-
-        new_role = self._resolve_role(role_id, default_org_id=org_id)
-        UserManagementGuards.assert_role_is_assignable(new_role, org_id=org_id)
-
-        if membership.role_id == new_role.pk:
-            return membership  # no-op; idempotent
-
-        was_org_admin = membership.role.name == BuiltInRole.ORG_ADMIN
-        becoming_org_admin = new_role.name == BuiltInRole.ORG_ADMIN
-        if was_org_admin and not becoming_org_admin:
-            UserManagementGuards.assert_not_last_org_admin(
-                org_id=org_id, excluding_user_id=user_id
-            )
-
-        membership.role = new_role
-        membership.save(update_fields=["role"])
-        membership.refresh_from_db()
-
-        logger.info(
-            "UserManagementService.change_role actor={a} target={t} "
-            "org={o} role={r}",
-            a=getattr(actor, "email", "system"),
-            t=membership.user.email,
-            o=membership.org.name,
-            r=new_role.name,
-        )
-        return membership
-
-    # ---- delete ----
-
-    @transaction.atomic
-    def remove_membership(self, actor, org_id, user_id):
-        """Deletes the (user_id, org_id) membership. Last-Org-Admin guard
-        applies if the target's current role is Org Admin."""
-        try:
-            membership = (
-                OrganizationUser.objects.select_for_update()
-                .select_related("user", "org", "role")
-                .get(org_id=org_id, user_id=user_id)
-            )
-        except OrganizationUser.DoesNotExist as exc:
-            raise UserNotFoundError() from exc
-
-        if membership.role.name == BuiltInRole.ORG_ADMIN:
-            UserManagementGuards.assert_not_last_org_admin(
-                org_id=org_id, excluding_user_id=user_id
-            )
-
-        target_email = membership.user.email
-        org_name = membership.org.name
-        membership.delete()
-
-        logger.info(
-            "UserManagementService.remove_membership actor={a} target={t} org={o}",
-            a=getattr(actor, "email", "system"),
-            t=target_email,
-            o=org_name,
-        )
-
     # ---- superadmin flag ----
 
     @transaction.atomic
@@ -422,10 +155,14 @@ class UserManagementService:
         target.save(update_fields=["is_superadmin", "updated_at"])
         target.refresh_from_db()
 
+        purged = self._purge_memberships(target)
+
         logger.info(
-            "UserManagementService.grant_superadmin actor={a} target={t}",
+            "UserManagementService.grant_superadmin actor={a} target={t} "
+            "memberships_purged={p}",
             a=getattr(actor, "email", "system"),
             t=target.email,
+            p=purged,
         )
         return target
 
@@ -434,28 +171,83 @@ class UserManagementService:
         """Sets is_superadmin=False on target_user_id. Last-active-superadmin
         guard. Idempotent if already False."""
         UserModel = get_user_model()
-        try:
-            target = UserModel.objects.select_for_update().get(pk=target_user_id)
-        except UserModel.DoesNotExist as exc:
-            raise UserNotFoundError() from exc
+        superadmins = (
+            UserModel.objects
+            .filter(is_superadmin=True, is_active=True)
+            .order_by("pk")
+            .select_for_update()
+        )  # fmt: skip
+        superadmins_map = {sa.pk: sa for sa in superadmins}
 
-        if not target.is_superadmin:
-            return target  # no-op
+        if target_user_id in superadmins_map:
+            if len(superadmins_map) <= 1:
+                raise LastSuperadminError()
+            target = superadmins_map[target_user_id]
+        else:
+            target = UserModel.objects.select_for_update().filter(pk=target_user_id).first()
+            if target is None:
+                raise UserNotFoundError()
 
-        UserManagementGuards.assert_not_last_active_superadmin(target)
-
-        target.is_superadmin = False
-        target.save(update_fields=["is_superadmin", "updated_at"])
-        target.refresh_from_db()
+        if target.is_superadmin:
+            target.is_superadmin = False
+            target.save(update_fields=["is_superadmin", "updated_at"])
+            target.refresh_from_db()
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t}",
             a=getattr(actor, "email", "system"),
             t=target.email,
         )
+
+        return target
+
+    @transaction.atomic
+    def set_user_active(self, actor, target_user_id, value):
+        """Set is_active on a user account (superadmin-only, gated at the
+        view). Idempotent. Deactivating the last active superadmin is
+        refused (reuses the last-active-superadmin guard)."""
+        UserModel = get_user_model()
+        superadmins = (
+            UserModel.objects
+            .filter(is_superadmin=True, is_active=True)
+            .order_by("pk")
+            .select_for_update()
+        )  # fmt: skip
+        superadmins_map = {sa.pk: sa for sa in superadmins}
+
+        if target_user_id in superadmins_map:
+            target = superadmins_map[target_user_id]
+            if value is False and len(superadmins_map) <= 1:
+                raise LastSuperadminError()
+        else:
+            target = UserModel.objects.select_for_update().filter(pk=target_user_id).first()
+            if target is None:
+                raise UserNotFoundError()
+
+        if target.is_active != value:
+            target.is_active = value
+            target.save(update_fields=["is_active", "updated_at"])
+            target.refresh_from_db()
+
+        logger.info(
+            "UserManagementService.set_user_active actor={a} target={t} active={v}",
+            a=getattr(actor, "email", "system"),
+            t=target.email,
+            v=value,
+        )
+
         return target
 
     # ---- internal helpers ----
+
+    @staticmethod
+    def _purge_memberships(target) -> int:
+        """A superadmin reaches every organization through the permission
+        bypass, so a membership row grants nothing and its role is never read.
+        Dropping them keeps the table honest. Revoking superadmin does not
+        restore them — the account lands with no organizations."""
+        _, per_model = OrganizationUser.objects.filter(user=target).delete()
+        return per_model.get("tables.OrganizationUser", 0)
 
     def _resolve_role(self, role_id, default_org_id):
         """If role_id is None, returns the built-in Member role. Otherwise

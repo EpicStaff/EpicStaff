@@ -27,7 +27,7 @@ def org(db):
 
 @pytest.fixture
 def graph(db, org):
-    return Graph.objects.create(name="task-node-payload-graph")
+    return Graph.objects.create(name="task-node-payload-graph", org=org)
 
 
 @pytest.fixture

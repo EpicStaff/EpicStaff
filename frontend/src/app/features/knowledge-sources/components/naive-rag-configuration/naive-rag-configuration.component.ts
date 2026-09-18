@@ -22,6 +22,8 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
 import { catchError, defaultIfEmpty, switchMap } from 'rxjs/operators';
 
@@ -53,6 +55,7 @@ import { DocumentStatusFilter } from './configuration-table/configuration-table.
         DocumentChunksSectionComponent,
         AppSvgIconComponent,
         SelectComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -255,4 +258,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
         this.selectedRagDocId.set(params.documentId);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

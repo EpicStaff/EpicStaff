@@ -3,6 +3,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { DragHoverDirective, TooltipOnOverflowDirective } from '@shared/directives';
 
+import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
 import { ExplorerSelection } from '../../../../../models/explorer.model';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
@@ -36,6 +37,7 @@ export interface ExplorerTreeAttachSurfaceEvent {
 export class TreeNodeComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly permissionService = inject(PermissionsService);
 
     node = input.required<BranchTreeNode>();
     depth = input(0);
@@ -124,7 +126,9 @@ export class TreeNodeComponent implements OnInit {
 
     readonly childIndent = computed(() => this.depth() + 1);
 
-    private readonly hoverMenuItems = computed(() => treeNodeMenuItems(this.node()));
+    private readonly hoverMenuItems = computed(() =>
+        treeNodeMenuItems(this.node()).filter((i) => this.permissionService.can(i.resource, i.action))
+    );
 
     readonly showHoverMenu = computed(() => this.hoverMenuItems().length > 0);
 

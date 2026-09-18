@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ValidationErrorsComponent } from '@shared/components';
 
 import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
@@ -26,118 +27,10 @@ interface InputMapPair {
         GoToButtonComponent,
         HelpTooltipComponent,
         SelectComponent,
+        ValidationErrorsComponent,
     ],
-    template: `
-        <div class="panel-container">
-            <div class="panel-content">
-                <form
-                    [formGroup]="form"
-                    class="form-container"
-                >
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this subgraph node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
-
-                    <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
-                    </div>
-
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
-
-                    <div class="field">
-                        <label>
-                            Selected Flow
-                            <app-help-tooltip
-                                text="Select the flow that this node will execute"
-                                size="1rem"
-                            />
-                        </label>
-                        <div class="selected-flow-row">
-                            <app-select
-                                class="select-field"
-                                formControlName="selectedFlowId"
-                                placeholder="Select a flow"
-                                [items]="flowItems()"
-                            />
-                            <app-go-to-button
-                                variant="full"
-                                label="Go to flow"
-                                [href]="getSelectedFlowUrl()"
-                                target="_blank"
-                                [disabled]="!selectedFlowExists()"
-                            ></app-go-to-button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `,
-    styles: [
-        `
-            @use '../../../styles/node-panel-mixins.scss' as mixins;
-
-            .panel-container {
-                display: flex;
-                flex-direction: column;
-                height: 100%;
-                min-height: 0;
-            }
-
-            .panel-content {
-                @include mixins.panel-content;
-            }
-
-            .form-container {
-                @include mixins.form-container;
-            }
-
-            .field {
-                display: flex;
-                flex-direction: column;
-            }
-
-            .field label {
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                font-size: var(--text-body-medium-size);
-                color: rgba(255, 255, 255, 0.7);
-                font-weight: var(--text-body-medium-weight);
-                margin-bottom: 0.5rem;
-            }
-
-            .select-field {
-                flex: 1;
-                min-width: 0;
-            }
-
-            .selected-flow-row {
-                display: flex;
-                gap: 10px;
-                align-items: center;
-            }
-
-            .selected-flow-row app-go-to-button {
-                flex: 0 0 auto;
-            }
-
-            app-go-to-button.is-disabled {
-                pointer-events: none;
-                opacity: 0.5;
-            }
-        `,
-    ],
+    templateUrl: './subgraph-node-panel.component.html',
+    styleUrls: ['./subgraph-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel> implements OnInit {

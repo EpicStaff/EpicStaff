@@ -16,61 +16,99 @@ from .fixtures import *  # noqa: F401,F403
 
 
 def seed_builtin_roles_and_permissions() -> None:
-    """Re-run the data-migration seed functions that `flush` wipes (built-in
-    Roles/RolePermissions). In production these are seeded once by migration
-    0171 and never touched; `flush` doesn't discriminate, so we have to
-    re-apply. Shared by `flush_test_db_once` below and by any test that
-    truncates tables directly (`django_db(transaction=True)`) and needs to
-    restore them for later tests in the session.
+    """Re-run every data migration that seeds built-in Roles/RolePermissions.
 
-    Migration module names start with digits and cannot be imported via
-    `from ... import`; use importlib. Delegating to the migrations' own
-    seed functions keeps the role/permission definitions in one place.
-    Replay ALL seeds in migration order: 0171 seeds roles + initial
-    permission bitmasks, 0183 overrides them with the authoritative
-    bitmasks (e.g. Org Admin export on agents/projects), then 0210 adds
-    the `voice` resource_type bitmasks and the EXPORT bit on the `tools`
-    resource (EST-3207), and 0205 adds the surfaces grants. Re-seeding only
-    a subset would leave tests on stale permissions -- e.g. skipping the
-    voice seed would leave `voice` missing entirely, so every non-superadmin
-    request to a VOICE-gated endpoint would 403 in tests even though the
-    migration seeds it correctly in production. 0209 seeds the `audit`
-    resource_type bitmasks - skipping it
-    leaves every AUDIT-gated endpoint (including AuditFilterPresetViewSet)
-    403ing in tests regardless of the RBAC logic under test. Finally 0236
-    revokes secrets:USE from Member/Viewer (192 -> 128); skipping it would
-    leave those roles at the pre-flip 192 for the rest of the test session.
+    `flush` wipes them; in production they are written once by the migrations
+    and never touched. This is the single authoritative chain -- both the
+    session flush below and `heal_builtin_roles` call it, so there is one
+    definition of the seeded end state and no way for the two to disagree.
+
+    Replayed in migration order, because later ones override earlier ones:
+
+      0171  roles + initial bitmasks
+      0183  authoritative bitmasks (e.g. Org Admin export on agents/projects)
+      0205  surfaces grants
+      0209  audit bitmasks (EST-3207)
+      0209  Org Admin organizations = READ|UPDATE
+      0210  rename resource_type `users` -> `memberships`
+      0210  voice bitmasks, and the EXPORT bit on tools
+      0212  Org Admin api_keys = READ|DELETE
+      0236  revoke secrets:USE from Member/Viewer (192 -> 128)
+      0242  re-seed all three roles to the masks the code enforces
+      0245  grant Org Admin knowledge_sources:EXPORT (for document download)
+
+    Order is load-bearing twice over. The rename must precede 0242, which
+    writes `memberships` rows directly -- running it first would leave both a
+    `users` and a `memberships` row per role and the rename would then trip
+    the (role, resource_type) unique constraint. And 0242 must precede any
+    subsequent additive seed: 0242 is the authoritative baseline and drops
+    bits the earlier seeds write (flows:USE on Viewer, secrets:LIST,
+    secrets:UPDATE); a later seed layers additional grants on top. 0242 never
+    touches the `audit` resource type, so the audit seed's position relative
+    to it doesn't affect correctness -- placed here to match migration order.
+
+    Skipping any step leaves tests on stale permissions -- e.g. without the
+    voice seed every non-superadmin request to a VOICE-gated endpoint 403s in
+    tests although the migration seeds it correctly in production; skipping
+    the audit seed leaves every AUDIT-gated endpoint (including
+    AuditFilterPresetViewSet) 403ing in tests regardless of the RBAC logic
+    under test.
+
+    Migration module names start with digits and cannot be imported with
+    `from ... import`; use importlib.
     """
-    roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
-    roles_module.seed_builtin_roles(django_apps, None)
-    perms_module = import_module("tables.migrations.0183_seed_builtin_role_permissions")
-    perms_module.seed_role_permissions(django_apps, None)
-    voice_perms_module = import_module(
-        "tables.migrations.0210_seed_voice_role_permissions"
-    )
-    voice_perms_module.seed_voice_permissions(django_apps, None)
-    tools_export_module = import_module(
-        "tables.migrations.0210_seed_tools_export_permission"
-    )
-    tools_export_module.grant_tools_export(django_apps, None)
-    surface_perms_module = import_module(
-        "tables.migrations.0205_seed_surface_permissions"
-    )
-    surface_perms_module.seed(django_apps, None)
-    audit_perms_module = import_module(
-        "tables.migrations.0209_seed_audit_role_permissions"
-    )
-    audit_perms_module.seed_audit_permissions(django_apps, None)
-    secrets_use_module = import_module("tables.migrations.0236_secrets_use_permission")
-    secrets_use_module.revoke_builtin_use(django_apps, None)
+    steps = [
+        ("tables.migrations.0171_seed_builtin_roles", "seed_builtin_roles"),
+        (
+            "tables.migrations.0183_seed_builtin_role_permissions",
+            "seed_role_permissions",
+        ),
+        ("tables.migrations.0205_seed_surface_permissions", "seed"),
+        (
+            "tables.migrations.0209_seed_audit_role_permissions",
+            "seed_audit_permissions",
+        ),
+        (
+            "tables.migrations.0209_seed_org_admin_organizations_perm",
+            "seed_org_admin_organizations_perm",
+        ),
+        (
+            "tables.migrations.0210_alter_rolepermission_resource_type",
+            "rename_users_to_memberships",
+        ),
+        (
+            "tables.migrations.0210_seed_voice_role_permissions",
+            "seed_voice_permissions",
+        ),
+        ("tables.migrations.0210_seed_tools_export_permission", "grant_tools_export"),
+        (
+            "tables.migrations.0212_alter_rolepermission_resource_type",
+            "seed_org_admin_api_keys_perm",
+        ),
+        ("tables.migrations.0236_secrets_use_permission", "revoke_builtin_use"),
+        (
+            "tables.migrations.0242_reseed_builtin_role_permissions",
+            "reseed_builtin_role_permissions",
+        ),
+        (
+            "tables.migrations.0245_knowledge_sources_export_permission",
+            "grant_knowledge_sources_export",
+        ),
+    ]
+    for module_path, func_name in steps:
+        getattr(import_module(module_path), func_name)(django_apps, None)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def flush_test_db_once(django_db_setup, django_db_blocker):
     """Flush the test DB once per session to remove stale data from previous
-    runs, then re-run the data-migration seed functions that `flush` wipes
-    (built-in Roles). In production these are seeded once by migration 0171
-    and never touched; `flush` doesn't discriminate, so we have to re-apply."""
+    runs, then replay the seeds that `flush` wipes.
+
+    The replay is `seed_builtin_roles_and_permissions()` and nothing else --
+    it is the single authoritative chain. This fixture used to re-run a subset
+    of the migrations after it, which both duplicated the definition and, once
+    0242 landed, would have re-written the bits 0242 exists to remove.
+    """
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
         seed_builtin_roles_and_permissions()
@@ -191,6 +229,27 @@ def superadmin_jwt_tokens(superadmin_user):
 def superadmin_client(api_client, superadmin_jwt_tokens) -> APIClient:
     api_client.credentials(
         HTTP_AUTHORIZATION=f"Bearer {superadmin_jwt_tokens['access']}"
+    )
+    return api_client
+
+
+@pytest.fixture
+def superadmin_client_with_org(
+    api_client, superadmin_jwt_tokens, default_org
+) -> APIClient:
+    """Superadmin client with an active-org header set.
+
+    `OrgContextService` requires the `X-Organization-Id` header on every
+    request even for a superadmin caller — it only skips the *membership*
+    check for superadmins, not the header itself. Endpoints that call
+    `get_active_org_id()`/`OrgContextService.resolve()` unconditionally
+    (e.g. cross-org storage transfers, which resolve an active org even
+    though the actual source/destination orgs come from the payload) need
+    this over plain `superadmin_client`.
+    """
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {superadmin_jwt_tokens['access']}",
+        HTTP_X_ORGANIZATION_ID=str(default_org.id),
     )
     return api_client
 

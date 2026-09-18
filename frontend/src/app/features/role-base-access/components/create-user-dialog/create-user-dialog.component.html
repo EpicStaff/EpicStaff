@@ -21,7 +21,6 @@
 
     <div class="body">
         <app-step-user-details
-            [canToggleSuperadmin]="isSuperAdmin()"
             [editMode]="editMode()"
             [userData]="editUser()"
         />
@@ -33,8 +32,10 @@
             />
         } @else {
             <app-step-assign-to-org
+                [isEditMode]="editMode()"
                 [organizations]="availableOrganizations()"
                 [existingMemberships]="existingMemberships()"
+                [disabled]="superadminActive()"
             />
         }
     </div>

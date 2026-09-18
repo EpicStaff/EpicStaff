@@ -1,4 +1,5 @@
 import { inject, Injectable, signal } from '@angular/core';
+import { Subscription } from 'rxjs';
 
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
 import { SseTicketService } from '../../../services/auth/sse-ticket.service';
@@ -16,6 +17,8 @@ export class RunSessionSSEService {
     private eventSource: EventSource | null = null;
     private currentSessionId: string | null = null;
     private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    private connectEpoch = 0;
+    private ticketSubscription: Subscription | null = null;
 
     // Signals
     private messagesSignal = signal<GraphMessage[]>([]);
@@ -91,8 +94,18 @@ export class RunSessionSSEService {
         this.connectionStatusSignal.set('manually_disconnected');
     }
 
+    /**
+     * Full reset of the stream and its buffered messages/memories. Used when the displayed
+     * session changes: stopStream() alone leaves currentSessionId and the signals populated
+     * from the previous session. The status signal is deliberately preserved —
+     * loadData() sets the incoming session's real status, and forcing RUNNING here would
+     * briefly advertise a completed session as running (Stop button).
+     */
+    public reset(): void {
+        this.cleanup(false);
+    }
+
     private connect(sessionId: string): void {
-        void sessionId;
         if (this.eventSource) {
             console.warn('SSE already started');
             return;
@@ -100,9 +113,20 @@ export class RunSessionSSEService {
 
         this.connectionStatusSignal.set('connecting');
 
-        this.sseTicketService.fetchTicket().subscribe({
-            next: (ticket) => this.openEventSource(ticket),
+        const epoch = ++this.connectEpoch;
+        this.ticketSubscription?.unsubscribe();
+        this.ticketSubscription = this.sseTicketService.fetchTicket().subscribe({
+            next: (ticket) => {
+                // A ticket that resolves after stopStream() or a session switch must not
+                // open a stream — apiUrl is built from currentSessionId, so it would target the
+                // previous (still running) session and keep streaming it into the new session's view.
+                if (epoch !== this.connectEpoch || this.isManualDisconnect || this.currentSessionId !== sessionId) {
+                    return;
+                }
+                this.openEventSource(ticket);
+            },
             error: (err) => {
+                if (epoch !== this.connectEpoch) return;
                 console.error('Failed to fetch SSE ticket:', err);
                 this.handleConnectionLoss();
             },
@@ -110,24 +134,32 @@ export class RunSessionSSEService {
     }
 
     private openEventSource(ticket: string): void {
+        const streamSessionId = this.currentSessionId;
         const eventSourceUrl = `${this.apiUrl}?ticket=${encodeURIComponent(ticket)}`;
         this.eventSource = new EventSource(eventSourceUrl);
 
         this.eventSource.onopen = () => {
+            if (streamSessionId !== this.currentSessionId) return;
             this.reconnectAttempts = 0;
             this.streamOpen.set(true);
             this.connectionStatusSignal.set('connected');
         };
 
         this.eventSource.onmessage = (event) => {
+            if (streamSessionId !== this.currentSessionId) return;
             console.warn('Unnamed event received:', event.data);
         };
 
         this.eventSource.addEventListener('messages', (event: MessageEvent) => {
+            if (streamSessionId !== this.currentSessionId) return;
             const raw = JSON.parse(event.data);
 
             const activeFilter = this.nodeNameFilterSignal();
             if (activeFilter && raw.name !== activeFilter) {
+                return;
+            }
+
+            if (raw.session_id != null && String(raw.session_id) !== String(streamSessionId)) {
                 return;
             }
 
@@ -152,11 +184,13 @@ export class RunSessionSSEService {
         });
 
         this.eventSource.addEventListener('status', (event: MessageEvent) => {
+            if (streamSessionId !== this.currentSessionId) return;
             const statusData = JSON.parse(event.data);
             this.setStatus(statusData.status as GraphSessionStatus);
         });
 
         this.eventSource.addEventListener('memory', (event: MessageEvent) => {
+            if (streamSessionId !== this.currentSessionId) return;
             const memory = JSON.parse(event.data) as Memory;
             const memoriesList = this.memories();
             const existingIndex = memoriesList.findIndex((m) => m.id === memory.id);
@@ -173,6 +207,7 @@ export class RunSessionSSEService {
         });
 
         this.eventSource.addEventListener('memory-delete', (event: MessageEvent) => {
+            if (streamSessionId !== this.currentSessionId) return;
             const memory = JSON.parse(event.data);
             const memoriesList = this.memories();
             const existingIndex = memoriesList.findIndex((m) => m.id === memory);
@@ -185,6 +220,7 @@ export class RunSessionSSEService {
         });
 
         this.eventSource.addEventListener('fatal-error', () => {
+            if (streamSessionId !== this.currentSessionId) return;
             console.error('Fatal SSE error received');
             if (this.eventSource) {
                 this.eventSource.close();
@@ -194,6 +230,7 @@ export class RunSessionSSEService {
         });
 
         this.eventSource.onerror = (err) => {
+            if (streamSessionId !== this.currentSessionId) return;
             console.error('SSE error:', err);
             if (this.eventSource) {
                 this.eventSource.close();
@@ -242,6 +279,10 @@ export class RunSessionSSEService {
     }
 
     private disconnect(): void {
+        this.connectEpoch++;
+        this.ticketSubscription?.unsubscribe();
+        this.ticketSubscription = null;
+
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
@@ -256,7 +297,11 @@ export class RunSessionSSEService {
         this.connectionStatusSignal.set('disconnected');
     }
 
-    private cleanup(): void {
+    private cleanup(resetStatus = true): void {
+        this.connectEpoch++;
+        this.ticketSubscription?.unsubscribe();
+        this.ticketSubscription = null;
+
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
@@ -273,7 +318,9 @@ export class RunSessionSSEService {
 
         this.messagesSignal.set([]);
         this.memoriesSignal.set([]);
-        this.statusSignal.set(GraphSessionStatus.RUNNING);
+        if (resetStatus) {
+            this.statusSignal.set(GraphSessionStatus.RUNNING);
+        }
         this.streamOpen.set(false);
         this.connectionStatusSignal.set('disconnected');
     }

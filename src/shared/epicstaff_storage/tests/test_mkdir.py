@@ -1,6 +1,6 @@
 import pytest
 
-from storage import StoragePermissionError, get_mutations
+from epicstaff_storage import StoragePermissionError, get_mutations
 
 from conftest import allow_paths
 

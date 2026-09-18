@@ -6,7 +6,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from agents.models import AgentDefinition
-from tables.models.rbac_models import Organization
 from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.views.mixins import OrgScopedResolverMixin
@@ -25,24 +24,16 @@ class AgentDefinitionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["llm_config", "fcm_llm_config"]
 
-    def _get_organization(self):
-        return Organization.objects.get(id=self.get_active_org_id())
-
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
             return AgentDefinitionReadSerializer
         return AgentDefinitionWriteSerializer
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = self._get_organization()
-        return context
-
     def get_queryset(self):
-        return super().get_queryset().filter(organization=self._get_organization())
+        return super().get_queryset().filter(organization_id=self.get_active_org_id())
 
     def perform_create(self, serializer):
-        serializer.save(organization=self._get_organization())
+        serializer.save(organization_id=self.get_active_org_id())
 
     @extend_schema(
         request=AgentDefinitionWriteSerializer, responses=AgentDefinitionReadSerializer

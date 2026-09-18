@@ -24,7 +24,6 @@ from app.exceptions import (
     UnknownS3RefError,
     UnknownToolRefError,
 )
-from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
 from app.loop.context import AgentContext
 from app.resources.s3_manifest import build_s3_manifest
@@ -40,6 +39,7 @@ from shared.models.agent_service import (
     S3FileSpec,
 )
 from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
+from shared.knowledge.client import KnowledgeClient
 
 
 @dataclass

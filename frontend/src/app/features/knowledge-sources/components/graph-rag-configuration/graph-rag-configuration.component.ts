@@ -20,7 +20,8 @@ import {
     RadioButtonComponent,
     SelectItem,
 } from '@shared/components';
-import { ApiErrorItem } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ApiErrorItem, ResourceCode } from '@shared/models';
 import { EMPTY, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -56,6 +57,7 @@ const INDEX_MODE_OPTIONS: SelectItem<GraphRagIndexMode>[] = [
         AppSvgIconComponent,
         HelpTooltipComponent,
         LoadingSpinnerComponent,
+        HasPermissionDirective,
     ],
 })
 export class GraphRagConfigurationComponent implements OnInit, RagConfiguration {
@@ -256,4 +258,7 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
             return mutated ? next : prev;
         });
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }
