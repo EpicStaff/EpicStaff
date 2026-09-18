@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0243_merge_graph_rag_and_tools_usage_migrations'),
+        ('tables', '0246_merge_knowledge_permission_migrations'),
     ]
 
     operations = [
