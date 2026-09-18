@@ -242,7 +242,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .input-map-header label {
                 font-size: var(--text-body-size);
                 font-weight: var(--text-body-weight);
-                color: var(--color-text-primary);
+                color: var(--color-text-secondary);
                 margin: 0;
             }
 
@@ -305,7 +305,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: 0.5rem 0.75rem;
                 background-color: var(--color-input-background);
                 border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
+                border-radius: 4px;
                 color: #fff;
                 font-size: 0.875rem;
                 outline: none;
