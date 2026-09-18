@@ -33,7 +33,7 @@ def _fake_audio_file():
 @pytest.mark.django_db
 class TestConversationRecordingCreateSystemKey:
     """Bug fix: `create` (POST /conversation-recordings/) is the only caller
-    for the realtime/voice_app services' `voice_call_service._post_recording`,
+    for the realtime service' `voice_call_service._post_recording`,
     which authenticates with the env-seeded SYSTEM API key and never sends
     `X-Organization-Id` (it has no logged-in user/org context — it only knows
     the opaque `connection_key`). Before the fix, `perform_create`

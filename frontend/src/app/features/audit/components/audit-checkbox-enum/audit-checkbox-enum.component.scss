@@ -1,0 +1,26 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.checkbox-enum__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.checkbox-enum__option.is-disabled {
+    color: var(--color-input-text-placeholder);
+    cursor: not-allowed;
+}
+
+.checkbox-enum__box {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent-color);
+    cursor: inherit;
+}

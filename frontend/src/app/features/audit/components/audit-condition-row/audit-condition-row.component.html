@@ -1,0 +1,52 @@
+<div class="condition-row">
+    @if (showJoin()) {
+        <select
+            class="condition-row__join"
+            (change)="setJoin($event)"
+        >
+            @for (option of joinOptions; track option.value) {
+                <option
+                    [value]="option.value"
+                    [selected]="option.value === condition().join"
+                >
+                    {{ option.label }}
+                </option>
+            }
+        </select>
+    }
+
+    @if (showKey()) {
+        <input
+            class="condition-row__key"
+            type="text"
+            placeholder="Key, e.g. message_type"
+            [value]="condition().key"
+            (change)="setKey($event)"
+        />
+    }
+
+    <app-audit-operator-select
+        [operators]="operators()"
+        [selectedOperator]="condition().op"
+        (selectedOperatorChange)="setOp($event)"
+    />
+
+    <button
+        class="condition-row__remove"
+        type="button"
+        aria-label="Remove condition"
+        (click)="removed.emit()"
+    >
+        ✕
+    </button>
+</div>
+
+@if (needsValue()) {
+    <input
+        class="condition-row__value"
+        type="text"
+        placeholder="Enter a value..."
+        [value]="condition().value"
+        (change)="setValue($event)"
+    />
+}

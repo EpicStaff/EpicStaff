@@ -9,6 +9,7 @@ from .session_serializers import *
 from .graph_serializers import *
 from .webhook_serializers import *
 from .label_serializers import *
+from .audit_filter_preset_serializers import *
 from .rbac_serializers import *
 from .secret_serializers import *
 

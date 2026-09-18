@@ -1,0 +1,195 @@
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
+
+import { FlowsApiService } from '../flows/services/flows-api.service';
+import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
+import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
+import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
+import { AuditSessionEvent } from './models/audit-session.models';
+import { AuditApiService } from './services/audit-api.service';
+import { buildAuditRows } from './utils/build-audit-rows.util';
+import { compileAuditFilter } from './utils/compile-audit-filter.util';
+import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+@Component({
+    selector: 'app-audit-sessions-browser',
+    standalone: true,
+    imports: [CommonModule, RouterLink, AuditFiltersPanelComponent, AuditFilterChipsComponent],
+    templateUrl: './audit-sessions-browser.component.html',
+    styleUrls: ['./audit-sessions-browser.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class AuditSessionsBrowserComponent implements OnInit {
+    private auditApiService = inject(AuditApiService);
+    private flowApiService = inject(FlowsApiService);
+    private destroyRef = inject(DestroyRef);
+    public readonly timeZoneLabel = buildTimeZoneLabel();
+
+    public isLoading = signal<boolean>(false);
+    public loadError = signal<boolean>(false);
+    public isPartial = signal<boolean>(false);
+    public pageSize = signal<number>(20);
+    public areColumnsExpanded = signal<boolean>(false);
+    public isFiltersPanelOpen = signal<boolean>(false);
+    private rawEvents = signal<AuditSessionEvent[]>([]);
+    private cursorStack = signal<(string | null)[]>([null]);
+    private nextCursor = signal<string | null>(null);
+    protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    public flowNames = signal<string[]>([]);
+
+    public rows = computed(() => buildAuditRows(this.rawEvents()));
+    public appliedChips = computed(() => describeAuditFilter(this.appliedFilter()));
+    public activeFilterCount = computed(() => this.appliedChips().length);
+    public canGoNewer = computed(() => this.cursorStack().length > 1);
+    public canGoOlder = computed(() => this.nextCursor() !== null);
+
+    public counts = computed(() => {
+        const events = this.rawEvents();
+        return {
+            sessions: events.filter((event) => event.kind === 'session').length,
+            nodes: events.filter((event) => event.kind === 'node').length,
+            events: events.filter((event) => event.kind === 'event').length,
+        };
+    });
+
+    public canDecreasePageSize = computed(() => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) > 0);
+    public canIncreasePageSize = computed(
+        () => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) < PAGE_SIZE_OPTIONS.length - 1
+    );
+
+    public ngOnInit(): void {
+        this.loadSessions();
+        this.loadFlowNames();
+    }
+
+    public stepPageSize(delta: number): void {
+        const next = PAGE_SIZE_OPTIONS[PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) + delta];
+        if (next === undefined) {
+            return;
+        }
+        this.pageSize.set(next);
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public goToFirstPage(): void {
+        if (!this.canGoNewer()) {
+            return;
+        }
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public goToNewerPage(): void {
+        if (!this.canGoNewer()) {
+            return;
+        }
+        this.cursorStack.update((stack) => stack.slice(0, -1));
+        this.loadSessions();
+    }
+
+    public goToOlderPage(): void {
+        const cursor = this.nextCursor();
+        if (cursor === null) {
+            return;
+        }
+        this.cursorStack.update((stack) => [...stack, cursor]);
+        this.loadSessions();
+    }
+
+    public setColumnsExpanded(expanded: boolean): void {
+        this.areColumnsExpanded.set(expanded);
+    }
+
+    public toggleFiltersPanel(): void {
+        this.isFiltersPanelOpen.update((isOpen) => !isOpen);
+    }
+
+    public closeFiltersPanel(): void {
+        this.draftFilter.set(this.appliedFilter());
+        this.isFiltersPanelOpen.set(false);
+    }
+
+    public applyFilters(): void {
+        this.appliedFilter.set(this.draftFilter());
+        this.cursorStack.set([null]);
+        this.isFiltersPanelOpen.set(false);
+        this.loadSessions();
+    }
+
+    public removeFilter(key: string): void {
+        const next = clearAuditFilterField(this.appliedFilter(), key);
+        this.appliedFilter.set(next);
+        this.draftFilter.set(next);
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public clearFilters(): void {
+        this.draftFilter.set(EMPTY_AUDIT_FILTER);
+        this.appliedFilter.set(EMPTY_AUDIT_FILTER);
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public loadSessions(): void {
+        const stack = this.cursorStack();
+        const { filters, matchScope } = compileAuditFilter(this.appliedFilter());
+        this.isLoading.set(true);
+        this.loadError.set(false);
+
+        this.auditApiService
+            .searchSessions({
+                filters,
+                match_scope: matchScope,
+                cursor: stack[stack.length - 1],
+                size: this.pageSize(),
+            })
+            .subscribe({
+                next: (response) => {
+                    this.rawEvents.set(response.items);
+                    this.nextCursor.set(response.next_cursor);
+                    this.isPartial.set(response.partial);
+                    this.isLoading.set(false);
+                },
+                error: () => {
+                    this.rawEvents.set([]);
+                    this.nextCursor.set(null);
+                    this.isPartial.set(false);
+                    this.loadError.set(true);
+                    this.isLoading.set(false);
+                },
+            });
+    }
+
+    public loadFlowNames(): void {
+        this.flowApiService
+            .getGraphsLight()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (flows) => {
+                    const uniqueNames = new Set(flows.map((flow) => flow.name));
+                    const sortedNames = Array.from(uniqueNames).sort((a, b) => a.localeCompare(b));
+                    this.flowNames.set(sortedNames);
+                },
+                error: () => {
+                    this.flowNames.set([]);
+                },
+            });
+    }
+}
+
+function buildTimeZoneLabel(): string {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const sign = offsetMinutes < 0 ? '-' : '+';
+    const absolute = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
+    const minutes = String(absolute % 60).padStart(2, '0');
+    return `${sign}${hours}:${minutes} ${zone}`;
+}

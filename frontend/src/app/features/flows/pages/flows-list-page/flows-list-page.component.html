@@ -34,6 +34,15 @@
                         Export {{ selectedFlowIds().length }} flows
                     </app-button>
                 } @else {
+                    <ng-container *appHasPermission="[ResourceCode.Audit, ActionCode.Read]">
+                        <app-button
+                            type="ghost"
+                            [leftIcon]="'audit'"
+                            (click)="navigateToAudit()"
+                        >
+                            Audit
+                        </app-button>
+                    </ng-container>
                     <app-button
                         type="ghost"
                         [leftIcon]="'union'"

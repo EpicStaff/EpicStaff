@@ -1,7 +1,8 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.organization_serializers import (
@@ -9,13 +10,18 @@ from tables.serializers.organization_serializers import (
     OrganizationListResponseSerializer,
     OrganizationRenameRequestSerializer,
     OrganizationResponseSerializer,
+    OrganizationSettingsUpdateSerializer,
 )
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )
 from tables.services.rbac.organization_validation_service import (
     OrganizationValidationService,
 )
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.swagger_schemas.organization_schemas import ORGANIZATION_SETTINGS_UPDATE
 from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 
 _ORG_ORDERING_WHITELIST = {
@@ -172,3 +178,31 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
         if normalized in ("false", "0"):
             return False
         return None
+
+
+class OrganizationSelfServiceViewSet(viewsets.ViewSet):
+    """Active-context self-service settings for the caller's own organization.
+
+    PATCH /api/organizations/me/settings/ (X-Organization-Id header) — an
+    Org Admin managing their own org's settings, distinct from
+    OrganizationAdminViewSet's superadmin-only org CRUD above.
+    """
+
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    rbac_resource_type = ResourceType.ORGANIZATIONS
+
+    _service = OrganizationManagementService()
+    _org_context = OrgContextService()
+
+    @extend_schema(**ORGANIZATION_SETTINGS_UPDATE)
+    def partial_update(self, request):
+        org_id = self._org_context.resolve(request=request, view_kwargs={})
+        serializer = OrganizationSettingsUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        org = self._service.update_audit_retention(
+            org_id=org_id,
+            audit_retention_days=serializer.validated_data["audit_retention_days"],
+        )
+        return Response(OrganizationResponseSerializer(org).data)
