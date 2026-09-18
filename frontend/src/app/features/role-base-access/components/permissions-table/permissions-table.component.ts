@@ -47,6 +47,7 @@ export class PermissionsTableComponent {
     /** Resource codes whose recommendation banner the user dismissed within this dialog session.
      *  Only hides the banner UI — yellow borders on recommended checkboxes remain visible. */
     dismissedResources = signal<Set<ResourceCode>>(new Set());
+    lastToggledResources = signal<Set<ResourceCode>>(new Set());
 
     totalSelected = computed(() => this.selectedPermissions().size);
 
@@ -142,15 +143,54 @@ export class PermissionsTableComponent {
         return set;
     });
 
+    private readonly consolidationWinners = computed<Set<ResourceCode>>(() => {
+        const lastToggled = this.lastToggledResources();
+        const bySignature = new Map<string, ResourceCode>();
+        for (const [resourceCode, entry] of this.recommendedByResource()) {
+            const signature = [...entry.missingKeys].sort().join('|');
+            const existing = bySignature.get(signature);
+            if (!existing || lastToggled.has(resourceCode)) {
+                bySignature.set(signature, resourceCode);
+            }
+        }
+        return new Set(bySignature.values());
+    });
+
+    readonly consolidatedRecommendations = computed<{ resourceCode: ResourceCode; missingKeys: string[] }[]>(() => {
+        const winners = this.consolidationWinners();
+        const result: { resourceCode: ResourceCode; missingKeys: string[] }[] = [];
+        for (const [resourceCode, entry] of this.recommendedByResource()) {
+            if (!winners.has(resourceCode)) continue;
+            if (this.isBannerDismissed(resourceCode)) continue;
+            result.push({ resourceCode, missingKeys: entry.missingKeys });
+        }
+        return result;
+    });
+
+    private readonly visibleRecommendationByResource = computed<Map<ResourceCode, { missingKeys: string[] }>>(() => {
+        const map = new Map<ResourceCode, { missingKeys: string[] }>();
+        for (const entry of this.consolidatedRecommendations()) map.set(entry.resourceCode, entry);
+        return map;
+    });
+
+    recommendationFor(resourceCode: ResourceCode): { missingKeys: string[] } | undefined {
+        return this.visibleRecommendationByResource().get(resourceCode);
+    }
+
     readonly globalPendingCount = computed(() => this.recommendedSet().size);
 
-    /** Next resource (in catalog order) that has pending recommendations. Dismiss does not affect this. */
     readonly nextPendingResourceCode = computed<ResourceCode | null>(() => {
-        const byResource = this.recommendedByResource();
+        const winners = this.consolidationWinners();
         for (const rt of this.catalog().resource_types) {
-            if (byResource.has(rt.code)) return rt.code;
+            if (winners.has(rt.code)) return rt.code;
         }
         return null;
+    });
+
+    private readonly resourceToGroupMap = computed<Map<ResourceCode, string>>(() => {
+        const map = new Map<ResourceCode, string>();
+        for (const rt of this.catalog().resource_types) map.set(rt.code, rt.group);
+        return map;
     });
 
     /** Whether the recommendation banner for this resource has been dismissed. */
@@ -166,12 +206,6 @@ export class PermissionsTableComponent {
             }
         }
         return set;
-    });
-
-    private readonly resourceToGroupMap = computed<Map<ResourceCode, string>>(() => {
-        const map = new Map<ResourceCode, string>();
-        for (const rt of this.catalog().resource_types) map.set(rt.code, rt.group);
-        return map;
     });
 
     isGroupCollapsed(groupKey: string): boolean {
@@ -295,6 +329,16 @@ export class PermissionsTableComponent {
     onGroupActionToggleClick(group: CatalogGroup, actionCode: ActionCode): void {
         if (this.readonly()) return;
         const select = this.groupActionState(group, actionCode) !== 'checked';
+        const disabled = this.disabledPermissions();
+        this.lastToggledResources.set(
+            new Set(
+                group.resources
+                    .filter(
+                        (rt) => rt.applicable_actions.includes(actionCode) && !disabled.has(`${rt.code}:${actionCode}`)
+                    )
+                    .map((rt) => rt.code)
+            )
+        );
         this.groupActionToggle.emit({ groupKey: group.key, actionCode, select });
     }
 
@@ -302,6 +346,7 @@ export class PermissionsTableComponent {
     onResourceRowToggle(resource: CatalogResourceType): void {
         if (this.readonly()) return;
         const select = this.resourceState(resource) !== 'checked';
+        this.lastToggledResources.set(new Set([resource.code]));
         this.resourceToggle.emit({ resourceCode: resource.code, select });
     }
 
@@ -309,7 +354,13 @@ export class PermissionsTableComponent {
     onGroupBulkToggle(group: CatalogGroup): void {
         if (this.readonly()) return;
         const select = this.groupState(group) !== 'checked';
+        this.lastToggledResources.set(new Set(group.resources.map((rt) => rt.code)));
         this.groupToggle.emit({ groupKey: group.key, select });
+    }
+
+    onPermissionCellToggle(resourceType: ResourceCode, action: ActionCode): void {
+        this.lastToggledResources.set(new Set([resourceType]));
+        this.permissionToggle.emit({ resourceType, action });
     }
 
     actionLabel(action: CatalogAction): string {
@@ -347,6 +398,7 @@ export class PermissionsTableComponent {
     onShowNextPending(): void {
         const resourceCode = this.nextPendingResourceCode();
         if (!resourceCode) return;
+        this.lastToggledResources.set(new Set([resourceCode]));
         const groupKey = this.resourceToGroupMap().get(resourceCode);
         if (groupKey) {
             this.collapsedGroups.update((set) => {
