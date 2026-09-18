@@ -170,6 +170,19 @@
     gap: 1.5rem;
 }
 
+// Reusable wrapper: isolates a control + its validation-errors from the
+// parent's gap, fixing input-to-error spacing at 4px.
+@mixin field-isolated-spacing {
+    .field-isolated {
+        display: flex;
+        flex-direction: column;
+    }
+
+    ::ng-deep .field-isolated .validation-errors {
+        margin: 4px 0 0 !important;
+    }
+}
+
 .panel-footer {
     @include panel-footer;
 }

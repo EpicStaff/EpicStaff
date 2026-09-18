@@ -257,7 +257,7 @@ export class CollectionDetailsComponent implements OnInit {
     }
 
     onFilesDropped(files: FileList) {
-        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update)) return;
+        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Create)) return;
         const collectionId = this.fullCollection()?.collection_id;
         if (!collectionId) return;
         // 1: filter duplicates by file name

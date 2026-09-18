@@ -1,4 +1,4 @@
-import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { ConnectedPosition, Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
     ChangeDetectionStrategy,
@@ -55,6 +55,7 @@ export class MultiSelectComponent implements OnInit {
     panelWidth = input<string>('338px');
     panelHeight = input<string>('475px');
     emptyText = input<string>('No items available');
+    allowFlip = input<boolean>(false);
 
     /** When true the default trigger button is not rendered.
      *  Use openAt(element) to open the dropdown anchored to an external element. */
@@ -184,15 +185,21 @@ export class MultiSelectComponent implements OnInit {
 
     openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
         if (this.disabled()) return;
+        const positions: ConnectedPosition[] = [
+            // Below, left-aligned with trigger
+            { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+            // Below, right-aligned with trigger (when right edge would clip)
+            { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        ];
+        if (this.allowFlip()) {
+            positions.push(
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
+            );
+        }
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
-            .withPositions([
-                // Below, left-aligned with trigger
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                // Below, right-aligned with trigger (when right edge would clip) — always below,
-                // never flips above, so the panel doesn't jump on top of the trigger/other controls.
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-            ])
+            .withPositions(positions)
             .withPush(false)
             .withFlexibleDimensions(true)
             .withViewportMargin(8);
@@ -249,11 +256,13 @@ export class MultiSelectComponent implements OnInit {
 
     onGroupAction(event: Event, group: string): void {
         event.stopPropagation();
+        this.commitPendingSelection();
         this.groupAction.emit(group);
     }
 
     onItemAction(event: Event, value: unknown): void {
         event.stopPropagation();
+        this.commitPendingSelection();
         this.itemAction.emit(value);
     }
 
@@ -267,8 +276,16 @@ export class MultiSelectComponent implements OnInit {
     }
 
     save() {
-        this.selectionChange.emit(this.tempSelected());
-        this.selectedValues.set(this.tempSelected());
+        this.commitPendingSelection();
         this.close();
+    }
+
+    private commitPendingSelection(): void {
+        const pending = this.tempSelected();
+        const current = this.selectedValues();
+        if (pending.length === current.length && pending.every((v) => current.includes(v))) return;
+
+        this.selectionChange.emit(pending);
+        this.selectedValues.set(pending);
     }
 }

@@ -367,7 +367,11 @@ SESSION_STATUSES_GET = dict(
 
 SESSION_BULK_DELETE_POST = dict(
     summary="Bulk delete sessions",
-    description="Deletes multiple sessions in a single atomic transaction. Returns the count and IDs of deleted sessions.",
+    description=(
+        "Deletes the given sessions within the active organization in a single atomic transaction. "
+        "`ids` echoes the requested IDs verbatim, while `deleted` counts only the sessions actually removed — "
+        "requested IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`."
+    ),
     request=inline_serializer(
         name="SessionBulkDeleteRequest",
         fields={
@@ -382,6 +386,12 @@ SESSION_BULK_DELETE_POST = dict(
                 OpenApiExample(
                     "Deleted",
                     value={"deleted": 3, "ids": [1, 2, 3]},
+                    response_only=True,
+                    status_codes=["200"],
+                ),
+                OpenApiExample(
+                    "Partially deleted",
+                    value={"deleted": 2, "ids": [1, 2, 99]},
                     response_only=True,
                     status_codes=["200"],
                 ),

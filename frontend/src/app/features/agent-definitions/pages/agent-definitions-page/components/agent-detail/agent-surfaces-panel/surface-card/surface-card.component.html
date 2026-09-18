@@ -289,7 +289,7 @@
                 </button>
             </nav>
 
-            @if (activeTab() === 'tools') {
+            @if (activeTab() === 'tools' && canViewTools()) {
                 @if (!readOnly()) {
                     <app-select-dropdown
                         mode="list"
@@ -382,7 +382,7 @@
                 }
             }
 
-            @if (activeTab() === 'files') {
+            @if (activeTab() === 'files' && canViewFiles()) {
                 @if (!readOnly()) {
                     <app-select-dropdown
                         mode="tree"
@@ -634,7 +634,7 @@
                 </div>
             }
 
-            @if (activeTab() === ResourceCode.KnowledgeSources) {
+            @if (activeTab() === ResourceCode.KnowledgeSources && canViewKnowledge()) {
                 @if (!readOnly()) {
                     <app-select-dropdown
                         mode="list"

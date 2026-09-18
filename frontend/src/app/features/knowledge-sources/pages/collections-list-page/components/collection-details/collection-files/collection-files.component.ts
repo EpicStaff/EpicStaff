@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, model, output }
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, switchMap } from 'rxjs';
 
 import { ListComponent } from '../../../../../../../shared/components/list/list.component';
@@ -22,6 +24,7 @@ import { DocumentsStorageService } from '../../../../../services/documents-stora
         ListComponent,
         ListRowComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -59,4 +62,7 @@ export class CollectionFilesComponent {
                 this.documents.update((docs) => docs.filter((d) => d.document_id !== document_id));
             });
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }
