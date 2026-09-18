@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from tables.models.rbac_models import OrganizationConfig
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_resolver import PermissionResolver
@@ -45,8 +45,13 @@ class AuditTokenView(APIView):
         if not actions:
             raise PermissionDenied("You do not have permission to perform this action.")
 
-        # Restrictionless pass superadmin user
-        if effective.is_superadmin:
+        # Restrictionless pass for superadmin and this org's Org Admin
+        is_org_admin = (
+            effective.role is not None
+            and effective.role.is_built_in
+            and effective.role.name == BuiltInRole.ORG_ADMIN
+        )
+        if effective.is_superadmin or is_org_admin:
             retention_days = 0
         else:
             try:
