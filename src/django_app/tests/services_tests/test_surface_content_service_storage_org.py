@@ -1,14 +1,3 @@
-"""
-EST-4077 regression coverage: the write paths that create/replace surface
-storage items (`SurfaceService`, `InlineSurfaceService`, `AgentInlineSurfaceService`)
-must reject a `StorageFile` from a different org than the surface's own org
-*before* any `SurfaceStorageItem`/`InlineSurfaceStorageItem`/
-`AgentInlineSurfaceStorageItem` row is written -- raising
-`SurfaceValidationError` and leaving no row behind (the whole call is wrapped
-in `transaction.atomic`, so a raise mid-way rolls back everything, including
-the parent surface/inline-surface row itself where applicable).
-"""
-
 from __future__ import annotations
 
 import pytest

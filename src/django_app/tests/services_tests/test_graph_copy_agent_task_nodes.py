@@ -183,12 +183,6 @@ class TestGraphCopyTaskNode:
     def test_cross_org_inline_storage_item_skipped_not_raised_on_copy(
         self, source_graph, storage_file_other_org
     ):
-        """EST-4077 regression: an InlineSurfaceStorageItem pointing at a
-        StorageFile from a different org than the (new) node's graph org must
-        be silently skipped during copy -- never raise, and never appear on
-        the copied inline surface. The row is constructed directly via the
-        ORM (bypassing the serializer-level org check) because this defense
-        belongs to `copy_node_inline_surface` itself, not the write path."""
         task_node = TaskNode.objects.create(graph=source_graph, node_name="task-node-cross-org")
         inline_surface = InlineSurface.objects.create(task_node=task_node)
         InlineSurfaceStorageItem.objects.create(
