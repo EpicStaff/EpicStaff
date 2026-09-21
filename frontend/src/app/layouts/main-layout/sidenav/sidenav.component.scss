@@ -30,7 +30,6 @@
         justify-content: center;
         padding: 0.5rem;
         width: 100%;
-        cursor: pointer;
         position: relative;
         margin: 0 auto;
         text-decoration: none;
@@ -80,6 +79,48 @@
     &.bottom-nav {
         flex-shrink: 0;
         padding-bottom: 0.75rem;
+    }
+
+    .org-menu-container {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        padding: 16px 0;
+        border-top: 1px solid var(--color-divider-subtle);
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        .org-menu-wrapper {
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+
+        .org-menu-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease-out;
+
+            .workspace-icon {
+                color: var(--accent-color);
+            }
+
+            &:hover {
+                background-color: var(--white-alpha-5);
+            }
+
+            &.opened {
+                background-color: var(--graphite-750);
+            }
+
+            &.active {
+                background-color: var(--purple-alpha-15);
+            }
+        }
     }
 
     .sidenav-nav-item {
@@ -156,8 +197,8 @@
         background-color: var(--white-alpha-5);
     }
 
-    &.active {
-        background-color: var(--purple-alpha-15);
+    &.opened {
+        background-color: var(--graphite-750);
     }
 }
 
