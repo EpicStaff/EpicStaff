@@ -20,7 +20,7 @@ jobs:
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
-      django_app: ${{ steps.filter.outputs.be_django_app }}
+      sandbox: ${{ steps.filter.outputs.be_sandbox }}
       py_services: ${{ steps.filter.outputs.py_services }}
     steps:
       - name: Checkout
@@ -73,12 +73,13 @@ jobs:
           #   this file    -- same self-testing rule as the filters above
           backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew, agent and sandbox need no database, so one matrix job covers
-          # them and this picks its legs. `filter` leaves $result set, so the
-          # array is built from the same regex that writes each output rather
-          # than from a second copy of it.
+          # crew and agent need no database and nothing from the filesystem
+          # beyond an interpreter, so one matrix job covers them both and this
+          # picks its legs. `filter` leaves $result set, so the array is built
+          # from the same regex that writes each output rather than from a
+          # second copy of it.
           nodb=''
-          for svc in crew agent sandbox; do
+          for svc in crew agent; do
             filter "be_$svc" "^(src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
               nodb="$nodb${nodb:+,}\"$svc\""
@@ -87,8 +88,10 @@ jobs:
           echo "py_services=[$nodb]" >> "$GITHUB_OUTPUT"
           echo "py_services=[$nodb]"
 
-          # django_app gets its own output: it is the one suite needing Postgres.
-          filter be_django_app "^(src/django_app/|$backend_wide)"
+          # sandbox gets its own output: its job runs inside a container image
+          # instead of on the runner, so its steps cannot be a leg of the
+          # matrix above.
+          filter be_sandbox "^(src/sandbox/|$backend_wide)"
 
   # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
   # toggle controls signature enforcement; this is repo hygiene. An edit to
@@ -222,10 +225,11 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew, agent and sandbox: no database, no service containers, well under a
-  # minute for all three. One matrix job whose legs are decided at runtime, so a
-  # pull request touching only src/agent/ runs one leg and a pull request
-  # touching no Python service skips the job outright.
+  # crew and agent: no database, no service containers, well under a minute for
+  # both. One matrix job whose legs are decided at runtime, so a pull request
+  # touching only src/agent/ runs one leg and a pull request touching neither
+  # service skips the job outright. sandbox was a third leg until it needed a
+  # container of its own; it has a separate job below.
   #
   # An empty `py_services` array would make `fromJSON` produce a matrix with no
   # legs, which GitHub treats as a workflow error rather than a skip -- hence the
@@ -280,120 +284,96 @@ jobs:
       - name: Unit tests
         run: make ${{ matrix.service }}-tests
 
-  # The one backend suite that needs a database. Migration 0048 enables the
-  # pgvector extension, so a stock postgres image will not do.
-  django-tests:
+  # Sandbox is the one suite that cares what the filesystem around it looks
+  # like. Its tests build a real Landlock jail, and jail.py's read_exec
+  # allowlist is the venv directory plus /usr, /lib, /lib64 and /bin -- the
+  # layout of the image the service ships in. actions/setup-python installs its
+  # interpreter under /opt/hostedtoolcache and the venv's bin/python is a
+  # symlink to it, so launcher.py's os.execv lands outside every allowed path
+  # and the kernel denies it: `PermissionError: [Errno 13] Permission denied`,
+  # fifteen failures across the two chain test files. Running the suite in an
+  # image whose interpreter sits in /usr/local reproduces the shipped layout, so
+  # no test has to be taught that it is in CI.
+  sandbox-tests:
     needs: changes
-    if: needs.changes.outputs.django_app == 'true'
+    if: needs.changes.outputs.sandbox == 'true'
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        # Same image src/crewdb/Dockerfile.crewdb builds on, pinned to its
-        # multi-arch index digest the way that Dockerfile pins its own base.
-        # crewdb itself only adds role provisioning for the other services
-        # (manager, knowledge, realtime), which this suite never connects as.
-        image: ankane/pgvector:v0.5.1@sha256:d3a9d8ac27bb7e05e333ef25b634d2625adaa85336ab729954b9e94859bf6fa7
-        env:
-          POSTGRES_USER: root_user
-          POSTGRES_PASSWORD: root_password
-          POSTGRES_DB: epicstaff_db
-        ports:
-          - 5432:5432
-        # Without a healthcheck the first connection races Postgres' own
-        # init, which restarts the server partway through startup.
-        options: >-
-          --health-cmd "pg_isready -U root_user -d epicstaff_db"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-      # Not optional, and not only for cache tests: tests/conftest.py has a
-      # session-scoped autouse `flush_test_db_once` fixture whose `flush` call
-      # clears the django_redis cache backend, so every single Django test
-      # fails at setup without a reachable Redis.
-      #
-      # Runs without auth on purpose. Compose applies --requirepass through the
-      # container command, which GitHub service containers cannot override, so
-      # the credentials are dropped here instead (see REDIS_USER/REDIS_PASSWORD
-      # below) rather than reaching for an image that takes a password by env.
-      redis:
-        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    container:
+      # Same interpreter version and the same /usr/local prefix as
+      # Dockerfile.sandbox's python:3.12.10-slim base, but the full Debian
+      # variant: this job cannot install anything system-wide (see the uid
+      # below), and -slim ships neither make -- which every backend suite is
+      # invoked through -- nor git, without which actions/checkout quietly falls
+      # back to downloading a REST tarball. Pinned to its multi-arch index
+      # digest, like the service containers further down.
+      image: python:3.12.10@sha256:45d13f5cba9b0f9bdfaed658d3e4fcfb1694ce49a6d70ec07c9f3980a7dc8b26
+      # Container jobs run as root by default, and root is the one uid this
+      # suite cannot use: whenever the chain is root it drops the executing
+      # child to sandboxuser (uid 1000, which a stock image does not have),
+      # while pytest's tmp_path directories are 0700 and root-owned, so the
+      # dropped child cannot read the job files it was handed.
+      # DynamicVenvExecutorChain.run() chowns those directories, but these tests
+      # drive ExecuteCodeHandler directly and never reach that code. Measured in
+      # this image: root gives 15 failed / 106 passed, uid 1001 gives 121
+      # passed. 1001 is also the runner user's own uid, which is what keeps the
+      # mounted workspace and /github/home writable.
+      options: --user 1001:1001
     env:
+      # Matches the service Dockerfiles, and here it also guarantees uv uses the
+      # image's interpreter rather than fetching one into a path the jail denies.
       UV_PYTHON_DOWNLOADS: never
-      # envtool.py writes src/.env with DB_HOST=crewdb, the compose network
-      # name, which does not resolve on a runner. Env.read_env defaults to
-      # override=False (src/shared/envtools.py), so real environment variables
-      # win -- these point Django at the service container without editing the
-      # generated file. The rest of the values match env.yaml's dev defaults.
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USER: root_user
-      DB_PASSWORD: root_password
-      DB_NAME: epicstaff_db
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-      # Deliberately blank, to match the unauthenticated service container
-      # above. settings/caches.py hands these to django_redis as OPTIONS
-      # USER/PASSWORD, and redis-py skips AUTH entirely when they are falsy.
-      # They still have to be *defined*: env.str() raises on an absent variable,
-      # and an empty value is not an absent one.
-      REDIS_USER: ''
-      REDIS_PASSWORD: ''
+      # A uid injected with --user has no /etc/passwd entry, so `~` is not a
+      # dependable prefix. Both directories are therefore named outright, under
+      # the workspace, which is the mount this uid is guaranteed to own.
+      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      PYTHONUSERBASE: ${{ github.workspace }}/.py-user
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12.10'
-
+      # No actions/setup-python step, unlike the jobs above: the image's own
+      # interpreter is the entire point, and a second one from the tool cache
+      # would put back exactly the exec denial this job exists to avoid.
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
-
-      # django_app pins psycopg2 (not psycopg2-binary), which publishes no Linux
-      # wheel and so is compiled here. Same build dependencies Dockerfile.dj
-      # installs for it; the runner image is not guaranteed to carry them.
-      - name: Install psycopg2 build dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev gcc
+        run: |
+          # --user because /usr/local is root-owned and this job is not root,
+          # and GITHUB_PATH because nothing else puts that prefix's bin
+          # directory on PATH, while the Makefile calls `uv` by name.
+          python -m pip install --no-cache-dir --user uv==0.11.21
+          echo "$PYTHONUSERBASE/bin" >> "$GITHUB_PATH"
 
       - name: Cache uv downloads
         uses: actions/cache@v4
         with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-django_app-${{ hashFiles('src/django_app/uv.lock') }}
-          restore-keys: uv-${{ runner.os }}-django_app-
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-sandbox-${{ hashFiles('src/sandbox/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-sandbox-
 
-      # Django settings read every DB/secret value through env.str() with no
-      # default, so the suite cannot import without a generated env file.
+      # Same reason as the matrix job: settings.py calls env.read_env() at
+      # import time and raises `ValueError: Not found file in .../src/.env` when
+      # the file is absent, so the suite cannot even be collected without this.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --user pyyaml
           python scripts/envtool.py --dev
 
-      - name: Install django_app dependencies
-        run: make uv-sync svc=django_app
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install sandbox dependencies
+        run: make uv-sync svc=sandbox
 
-      # pytest-django builds the test database and runs migrations itself, so
-      # there is no separate migrate step.
-      #
-      # tests/api_tests is excluded on cost, not because it is broken. Measured
-      # on 2026-09-18: it is 1704 of the suite's 3460 tests and 95 minutes of its
-      # ~100, so everything else together runs in about twenty. Running it here
-      # would quintuple the wait on every django_app pull request to cover half
-      # the tests.
-      #
-      # This is meant to be temporary. Once django_app is split into separate
-      # apps, the api tests can be selected per app and the ones relevant to a
-      # change brought back in, rather than the directory being all-or-nothing.
       - name: Unit tests
-        run: make django-tests ARGS="--ignore=tests/api_tests"
+        run: make sandbox-tests
+
+  # There is deliberately no django-tests job here. The suite takes about twenty
+  # minutes -- measured on 2026-09-18, and that is already with tests/api_tests
+  # left out as too slow to run here -- and that is a wait every django_app pull
+  # request was paying. The consequence is that src/django_app now has no
+  # automated test coverage in CI at all. That cost is not hypothetical: on
+  # 2026-09-21 three separate circular-import bugs reached main and left the
+  # Django app unable to start, and the build job below stayed green through all
+  # three, because it only builds the images and never imports the application.
+  # This is meant to be temporary.
 
   build:
     needs: [changes, check-cla, check-external-urls, frontend-checks]
