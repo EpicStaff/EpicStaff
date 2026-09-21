@@ -181,6 +181,24 @@ class S3StorageBackend(AbstractStorageBackend):
                     "Deleted {} S3 objects under prefix {}", len(objects), prefix
                 )
 
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
+        full_prefix = self._full_path(prefix)
+        if full_prefix and not full_prefix.endswith("/"):
+            full_prefix += "/"
+
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if objects:
+                self.client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={"Objects": objects},
+                )
+                logger.info(
+                    "Deleted {} S3 objects under prefix {}", len(objects), full_prefix
+                )
+
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)
         if not full_path.endswith("/"):
