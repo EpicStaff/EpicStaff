@@ -7,6 +7,8 @@ Non-streaming endpoints: DRF APIView.
 Streaming endpoint: SSEMixin (Django View) with ticket auth.
 """
 
+import contextlib
+
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db.models import Count
 from django.http import Http404
@@ -17,7 +19,6 @@ from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from tables.models.flow_assistant_models import FlowAssistantConversation
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -51,8 +52,8 @@ def _get_graph_in_org_or_404(graph_id: int, org_id: int):
     """Return the Graph only if it belongs to org_id; else 404."""
     try:
         return Graph.objects.get(pk=graph_id, org_id=org_id)
-    except Graph.DoesNotExist:
-        raise Http404(f"Graph {graph_id} not found.")
+    except Graph.DoesNotExist as e:
+        raise Http404(f"Graph {graph_id} not found.") from e
 
 
 def _get_conversation_or_404(
@@ -77,14 +78,12 @@ def _get_conversation_or_404(
                 flow_assistant__graph_id=graph_id,
             )
         )
-    except FlowAssistantConversation.DoesNotExist:
-        raise Http404(f"Conversation {conversation_id} not found.")
+    except FlowAssistantConversation.DoesNotExist as e:
+        raise Http404(f"Conversation {conversation_id} not found.") from e
 
     if organization_user is not None:
         if conv.organization_user_id != organization_user.pk:
-            raise PermissionDenied(
-                "You do not have permission to access this conversation."
-            )
+            raise PermissionDenied("You do not have permission to access this conversation.")
         if conv.deleted_at is not None:
             raise Http404(f"Conversation {conversation_id} not found.")
 
@@ -115,9 +114,7 @@ class FlowAssistantConfigView(APIView):
         service = FlowAssistantService()
         assistant = service.get_or_create(graph_id)
 
-        serializer = FlowAssistantSerializer(
-            instance=assistant, context={"request": request}
-        )
+        serializer = FlowAssistantSerializer(instance=assistant, context={"request": request})
         return Response(serializer.data)
 
     def patch(self, request, graph_id: int):
@@ -219,9 +216,7 @@ class FlowAssistantConversationView(APIView):
             action=Permission.READ,
         )
         _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
-        conversation = _get_conversation_or_404(
-            graph_id, conversation_id, organization_user
-        )
+        conversation = _get_conversation_or_404(graph_id, conversation_id, organization_user)
         serializer = FlowAssistantConversationSerializer(conversation)
         return Response(serializer.data)
 
@@ -234,9 +229,7 @@ class FlowAssistantConversationView(APIView):
             action=Permission.READ,
         )
         _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
-        conversation = _get_conversation_or_404(
-            graph_id, conversation_id, organization_user
-        )
+        conversation = _get_conversation_or_404(graph_id, conversation_id, organization_user)
         conversation.deleted_at = timezone.now()
         conversation.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -259,9 +252,7 @@ class FlowAssistantSendMessageView(APIView):
             action=Permission.READ,
         )
         _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
-        conversation = _get_conversation_or_404(
-            graph_id, conversation_id, organization_user
-        )
+        conversation = _get_conversation_or_404(graph_id, conversation_id, organization_user)
 
         serializer = SendMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -339,11 +330,7 @@ class FlowAssistantStreamView(SSEMixin):
 
         # Find the last user message to use as the prompt for this turn.
         last_user_row = await sync_to_async(
-            lambda: (
-                conversation.message_rows.filter(role="user")
-                .order_by("-message_index")
-                .first()
-            )
+            lambda: conversation.message_rows.filter(role="user").order_by("-message_index").first()
         )()
         last_user_message = last_user_row.content if last_user_row else ""
 
@@ -376,9 +363,7 @@ class FlowAssistantStreamView(SSEMixin):
                     return
 
         except LLMConfigMissingError as exc:
-            logger.warning(
-                "FlowAssistant stream error (LLMConfigMissingError): {}", exc
-            )
+            logger.warning("FlowAssistant stream error (LLMConfigMissingError): {}", exc)
             yield {
                 "event": "error",
                 "data": {
@@ -387,17 +372,13 @@ class FlowAssistantStreamView(SSEMixin):
                 },
             }
         except LLMConfigInvalidError as exc:
-            logger.warning(
-                "FlowAssistant stream error (LLMConfigInvalidError): {}", exc
-            )
+            logger.warning("FlowAssistant stream error (LLMConfigInvalidError): {}", exc)
             yield {
                 "event": "error",
                 "data": {"type": "error", "detail": str(exc)},
             }
         except SecretResolutionError as exc:
-            logger.warning(
-                "FlowAssistant stream error (SecretResolutionError): {}", exc
-            )
+            logger.warning("FlowAssistant stream error (SecretResolutionError): {}", exc)
             yield {
                 "event": "error",
                 "data": {"type": "error", "detail": str(exc)},
@@ -445,17 +426,13 @@ class FlowAssistantAuditView(APIView):
 
         org_id = request.query_params.get("organization_id")
         if org_id is not None:
-            try:
+            with contextlib.suppress(ValueError):
                 queryset = queryset.filter(organization_user__org_id=int(org_id))
-            except ValueError:
-                pass
 
         org_user_id = request.query_params.get("organization_user_id")
         if org_user_id is not None:
-            try:
+            with contextlib.suppress(ValueError):
                 queryset = queryset.filter(organization_user_id=int(org_user_id))
-            except ValueError:
-                pass
 
         from_param = request.query_params.get("from")
         if from_param:

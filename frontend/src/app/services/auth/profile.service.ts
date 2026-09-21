@@ -118,6 +118,7 @@ export class ProfileService {
         this.appStorageService.clearAll();
         this.activeOrgService.set(orgId);
         return forkJoin({
+            user: this.getCurrentUser(),
             active: this.permissionsService.loadActivePermissions(),
             orgs: this.permissionsService.loadOrgPermissions(),
         }).pipe(map(() => undefined));

@@ -1,48 +1,40 @@
 from django.db.models import Count
-from rest_framework import viewsets, status
 from drf_spectacular.utils import (
     extend_schema,
-    OpenApiResponse,
-    OpenApiParameter,
-    inline_serializer,
 )
-from rest_framework import serializers as drf_serializers
-from utils.logger import logger
-from rest_framework.response import Response
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
-
-from tables.models.knowledge_models.collection_models import SourceCollection
-
-from tables.serializers.knowledge_serializers import (
-    SourceCollectionListSerializer,
-    SourceCollectionDetailSerializer,
-    SourceCollectionCreateSerializer,
-    SourceCollectionUpdateSerializer,
-    CopySourceCollectionSerializer,
-)
-
 from rest_framework.permissions import IsAuthenticated
-
-from tables.services.redis_service import RedisService
+from rest_framework.response import Response
+from tables.exceptions import CollectionNotFoundException
+from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.serializers.knowledge_serializers import (
+    CopySourceCollectionSerializer,
+    SourceCollectionCreateSerializer,
+    SourceCollectionDetailSerializer,
+    SourceCollectionListSerializer,
+    SourceCollectionUpdateSerializer,
+)
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
-from tables.views.mixins import OrgScopedResolverMixin
-from tables.services.rbac.permissions import HasOrgPermission
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.services.redis_service import RedisService
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
-    SOURCE_COLLECTIONS_GET,
-    SOURCE_COLLECTION_GET,
-    SOURCE_COLLECTION_POST,
-    SOURCE_COLLECTION_PATCH,
-    SOURCE_COLLECTION_PUT,
-    SOURCE_COLLECTION_DELETE,
+    SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
     SOURCE_COLLECTION_BULK_DELETE_POST,
     SOURCE_COLLECTION_COPY_POST,
-    SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
+    SOURCE_COLLECTION_DELETE,
+    SOURCE_COLLECTION_GET,
+    SOURCE_COLLECTION_PATCH,
+    SOURCE_COLLECTION_POST,
+    SOURCE_COLLECTION_PUT,
+    SOURCE_COLLECTIONS_GET,
 )
-from tables.exceptions import CollectionNotFoundException
+from tables.views.mixins import OrgScopedResolverMixin
+from utils.logger import logger
 
 redis_service = RedisService()
 
@@ -80,7 +72,9 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         queryset = SourceCollection.objects.filter(org_id=self.get_active_org_id())
 
         if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents").annotate(document_count=Count("documents"))
+            queryset = queryset.prefetch_related("documents").annotate(
+                document_count=Count("documents")
+            )
 
         return queryset
 
@@ -130,7 +124,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         except Exception as e:
             return Response(
-                {"error": f"Failed to create collection: {str(e)}"},
+                {"error": f"Failed to create collection: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -158,7 +152,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response(
-                {"error": f"Failed to update collection: {str(e)}"},
+                {"error": f"Failed to update collection: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -180,7 +174,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response(
-                {"error": f"Failed to delete collection: {str(e)}"},
+                {"error": f"Failed to delete collection: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -222,7 +216,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         except Exception as e:
             return Response(
-                {"error": f"Failed to delete collections: {str(e)}"},
+                {"error": f"Failed to delete collections: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -237,9 +231,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         try:
             new_collection = CollectionManagementService.copy_collection(
                 source_collection_id=collection.collection_id,
-                new_collection_name=serializer.validated_data.get(
-                    "new_collection_name"
-                ),
+                new_collection_name=serializer.validated_data.get("new_collection_name"),
                 org_id=self.get_active_org_id(),
             )
 
@@ -257,7 +249,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response(
-                {"error": f"Failed to copy collection: {str(e)}"},
+                {"error": f"Failed to copy collection: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -274,15 +266,11 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
             # Get status filter from query params (default to completed,new)
             status_filter = request.query_params.get("status", "completed,new")
-            allowed_statuses = [
-                s.strip() for s in status_filter.split(",") if s.strip()
-            ]
+            allowed_statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
 
             # Filter by status
             filtered_configs = [
-                config
-                for config in rag_configs
-                if config.get("status") in allowed_statuses
+                config for config in rag_configs if config.get("status") in allowed_statuses
             ]
 
             response_data = []
@@ -303,8 +291,8 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error(f"Error fetching available RAGs for collection {pk}: {str(e)}")
+            logger.error(f"Error fetching available RAGs for collection {pk}: {e!s}")
             return Response(
-                {"error": f"Failed to fetch available RAGs: {str(e)}"},
+                {"error": f"Failed to fetch available RAGs: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

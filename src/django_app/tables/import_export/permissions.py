@@ -8,7 +8,6 @@ Tags map to their parent resource; provider models map to LLM_CONFIGS.
 from tables.import_export.enums import EntityType
 from tables.models.rbac_models.rbac_enums import ResourceType
 
-
 ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.AGENT: ResourceType.AGENTS,
     EntityType.AGENT_TAG: ResourceType.AGENTS,
@@ -16,7 +15,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.CREW_TAG: ResourceType.PROJECTS,
     EntityType.GRAPH: ResourceType.FLOWS,
     EntityType.GRAPH_TAG: ResourceType.FLOWS,
-    EntityType.WEBHOOK_TRIGGER: ResourceType.FLOWS,
+    EntityType.WEBHOOK_TRIGGER: ResourceType.WEBHOOKS,
     EntityType.LABEL: ResourceType.FLOWS,
     EntityType.LLM_CONFIG: ResourceType.LLM_CONFIGS,
     EntityType.EMBEDDING_CONFIG: ResourceType.LLM_CONFIGS,

@@ -47,9 +47,7 @@ DJANGO_API_BASE_URL = f"http://{DJANGO_HOST}:{DJANGO_PORT}/api"
 
 INIT_API_URL = f"{DJANGO_API_BASE_URL}/init-realtime/"
 
-DATABASE_URL = (
-    f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST_NAME}:{DB_PORT}/{DB_NAME}"
-)
+DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST_NAME}:{DB_PORT}/{DB_NAME}"
 
 KNOWLEDGE_HOST = env.str("KNOWLEDGE_HOST")
 KNOWLEDGE_PORT = env.int("KNOWLEDGE_PORT")

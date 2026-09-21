@@ -15,9 +15,7 @@ class TicketAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
         query_string = scope.get("query_string", b"").decode()
         ticket = self._extract_ticket(query_string)
-        scope["user"] = (
-            await sync_to_async(ws_ticket_service.consume)(ticket) or AnonymousUser()
-        )
+        scope["user"] = await sync_to_async(ws_ticket_service.consume)(ticket) or AnonymousUser()
         await super().__call__(scope, receive, send)
 
     @staticmethod

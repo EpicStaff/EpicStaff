@@ -16,9 +16,7 @@ class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):
 
 class TelegramTriggerNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     fields = TelegramTriggerNodeFieldImportSerializer(many=True, read_only=True)
     webhook_trigger_id = serializers.PrimaryKeyRelatedField(
         queryset=WebhookTrigger.objects.all(),

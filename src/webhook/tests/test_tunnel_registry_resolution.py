@@ -1,15 +1,17 @@
 """Tests for `TunnelRegistry.resolve_by_path`.
 
 Rewritten for the path-primary routing model plus the org-aware
-`unique_id` fix: `BaseTunnelConfigData.name`
-is the raw `WebhookTrigger.path`, which the DB only guarantees unique
-per-org (`unique_together(org, path, provider_type)`), not globally. Two
-different orgs -- or two different providers -- can legitimately register the
-identical path string. The inbound request carries nothing but that path, so
-when more than one pool entry matches, there is no legitimate way to pick a
-winner: `resolve_by_path` must fail closed via `AmbiguousWebhookPathError`
-rather than silently returning an arbitrary match (which could route one
-org's webhook event into another org's graph).
+`unique_id` fix: `BaseTunnelConfigData.name` is the raw `WebhookTrigger.
+path`, which the Django-side DB now guarantees is globally unique
+(`WebhookTrigger.path` is `unique=True` -- see the `0246` migration), so
+this FastAPI service's own in-memory tunnel pool can no longer legitimately
+end up with two entries sharing the same path in normal operation. The
+`AmbiguousWebhookPathError` fail-closed behavior below remains as
+defense-in-depth for this pool regardless -- the inbound request carries
+nothing but the bare path, so if more than one pool entry were ever found
+to match (e.g. transient/stale pool state), there is no legitimate way to
+pick a winner, and silently returning an arbitrary match could route one
+org's webhook event into another org's graph.
 
 Covers:
   - Basic single-match resolution (unchanged behavior).

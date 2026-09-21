@@ -1,8 +1,8 @@
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
+from utils.logger import logger
 
-from tables.graph_collab.utils import build_editor_info
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     ErrorMessage,
@@ -10,7 +10,7 @@ from tables.graph_collab.protocol import (
     UserJoinedMessage,
     UserLeftMessage,
 )
-from utils.logger import logger
+from tables.graph_collab.utils import build_editor_info
 
 
 def _group_name(graph_id: int) -> str:
@@ -48,9 +48,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         self.group = _group_name(self.graph_id)
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
-        logger.info(
-            "User {} connected to graph {} edit channel", user.pk, self.graph_id
-        )
+        logger.info("User {} connected to graph {} edit channel", user.pk, self.graph_id)
 
         editor = build_editor_info(user)
         already_present = presence_service.has_user(self.graph_id, user.pk)
@@ -75,12 +73,15 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             user = self.scope.get("user")
             if graph_id is not None:
                 presence_service.remove(graph_id, self.channel_name)
-                if user and not isinstance(user, AnonymousUser):
-                    if not presence_service.has_user(graph_id, user.pk):
-                        await self.channel_layer.group_send(
-                            group,
-                            UserLeftMessage(user_id=user.pk).model_dump(),
-                        )
+                if (
+                    user
+                    and not isinstance(user, AnonymousUser)
+                    and not presence_service.has_user(graph_id, user.pk)
+                ):
+                    await self.channel_layer.group_send(
+                        group,
+                        UserLeftMessage(user_id=user.pk).model_dump(),
+                    )
             await self.channel_layer.group_discard(group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):

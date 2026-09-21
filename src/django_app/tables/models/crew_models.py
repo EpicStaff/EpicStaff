@@ -1,12 +1,13 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import CheckConstraint
-from tables.models import DefaultBaseModel, AbstractDefaultFillableModel, Process
+
+from tables.models import AbstractDefaultFillableModel, DefaultBaseModel, Process
 from tables.models.base_models import (
     SoftDeleteFields,
     soft_delete_consistency_constraint,
 )
 from tables.models.rbac_models.org_scoped import OrgScopedModel
-from django.core.exceptions import ValidationError
 
 
 class DefaultCrewConfig(DefaultBaseModel):
@@ -25,9 +26,7 @@ class DefaultCrewConfig(DefaultBaseModel):
         default=None,
         related_name="default_manager_crews",
     )
-    process = models.CharField(
-        max_length=255, choices=Process.choices, default=Process.SEQUENTIAL
-    )
+    process = models.CharField(max_length=255, choices=Process.choices, default=Process.SEQUENTIAL)
     memory = models.BooleanField(default=False)
     max_rpm = models.IntegerField(null=True, default=100)
     cache = models.BooleanField(default=False)
@@ -120,31 +119,23 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
             return crew_temperature
         return None
 
-    def fill_with_defaults(
-        self, crew_id: int | None, crew_temperature: float | None = None
-    ):
+    def fill_with_defaults(self, crew_id: int | None, crew_temperature: float | None = None):
         if self.llm_config is not None and self.llm_config.temperature is None:
             fallback = self.default_temperature
             if fallback is None:
-                fallback = crew_temperature or self.get_crew_temperature(
-                    crew_id=crew_id
-                )
+                fallback = crew_temperature or self.get_crew_temperature(crew_id=crew_id)
             if fallback is not None:
                 self.llm_config.temperature = fallback
 
         super().fill_with_defaults()
 
-        if self.fcm_llm_config is not None:
-            if self.fcm_llm_config.temperature is None:
-                self.fcm_llm_config.temperature = self.default_temperature
+        if self.fcm_llm_config is not None and self.fcm_llm_config.temperature is None:
+            self.fcm_llm_config.temperature = self.default_temperature
 
         return self
 
     def get_default_temperature(self) -> int:
-        return (
-            self.default_temperature
-            or DefaultAgentConfig.load().get_default_temperature()
-        )
+        return self.default_temperature or DefaultAgentConfig.load().get_default_temperature()
 
     def get_rag_type_and_id(self) -> str | None:
         """
@@ -162,15 +153,11 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
 
     def get_rag_embedder_secret_id(self) -> int | None:
         """Get the assigned RAG embedder's Secret id, or None if there is none."""
-        agent_naive_rag = self.agent_naive_rags.select_related(
-            "naive_rag__embedder"
-        ).first()
+        agent_naive_rag = self.agent_naive_rags.select_related("naive_rag__embedder").first()
         if agent_naive_rag:
             return self._embedder_secret_id(rag=agent_naive_rag.naive_rag)
 
-        agent_graph_rag = self.agent_graph_rags.select_related(
-            "graph_rag__embedder"
-        ).first()
+        agent_graph_rag = self.agent_graph_rags.select_related("graph_rag__embedder").first()
         if agent_graph_rag:
             return self._embedder_secret_id(rag=agent_graph_rag.graph_rag)
 
@@ -226,9 +213,7 @@ class AgentPythonCodeToolConfigs(SoftDeleteFields, models.Model):
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="python_code_tool_configs"
     )
-    pythoncodetoolconfig = models.ForeignKey(
-        "PythonCodeToolConfig", on_delete=models.CASCADE
-    )
+    pythoncodetoolconfig = models.ForeignKey("PythonCodeToolConfig", on_delete=models.CASCADE)
 
     class Meta:
         unique_together = (
@@ -247,9 +232,7 @@ class AgentMcpTools(models.Model):
     Agent rows.
     """
 
-    agent = models.ForeignKey(
-        "Agent", on_delete=models.CASCADE, related_name="mcp_tools"
-    )
+    agent = models.ForeignKey("Agent", on_delete=models.CASCADE, related_name="mcp_tools")
     mcptool = models.ForeignKey("McpTool", on_delete=models.CASCADE)
 
     class Meta:
@@ -269,9 +252,7 @@ class Crew(OrgScopedModel, AbstractDefaultFillableModel):
     description = models.TextField(null=True, blank=True)
     name = models.TextField()
     agents = models.ManyToManyField(Agent, blank=True)
-    process = models.CharField(
-        max_length=255, choices=Process.choices, default=Process.SEQUENTIAL
-    )
+    process = models.CharField(max_length=255, choices=Process.choices, default=Process.SEQUENTIAL)
     memory = models.BooleanField(null=True, default=None)
     memory_llm_config = models.ForeignKey(
         "LLMConfig",
@@ -318,13 +299,11 @@ class Crew(OrgScopedModel, AbstractDefaultFillableModel):
         super().fill_with_defaults()
         self.default_temperature = self.get_default_temperature()
 
-        if self.manager_llm_config is not None:
-            if self.manager_llm_config.temperature is None:
-                self.manager_llm_config.temperature = self.default_temperature
+        if self.manager_llm_config is not None and self.manager_llm_config.temperature is None:
+            self.manager_llm_config.temperature = self.default_temperature
 
-        if self.planning_llm_config is not None:
-            if self.planning_llm_config.temperature is None:
-                self.planning_llm_config.temperature = self.default_temperature
+        if self.planning_llm_config is not None and self.planning_llm_config.temperature is None:
+            self.planning_llm_config.temperature = self.default_temperature
 
         return self
 
@@ -387,9 +366,7 @@ class Task(models.Model):
 
     crew = models.ForeignKey("Crew", on_delete=models.SET_NULL, null=True, default=None)
     name = models.TextField()
-    agent = models.ForeignKey(
-        "Agent", on_delete=models.SET_NULL, null=True, default=None
-    )
+    agent = models.ForeignKey("Agent", on_delete=models.SET_NULL, null=True, default=None)
     instructions = models.TextField()
     knowledge_query = models.TextField(null=True, blank=True)
     expected_output = models.TextField()
@@ -447,9 +424,7 @@ class TaskMcpTools(models.Model):
     Exists only for backward compatibility with existing Task rows.
     """
 
-    task = models.ForeignKey(
-        "Task", on_delete=models.CASCADE, related_name="task_mcp_tool_list"
-    )
+    task = models.ForeignKey("Task", on_delete=models.CASCADE, related_name="task_mcp_tool_list")
     tool = models.ForeignKey("McpTool", on_delete=models.CASCADE)
 
     class Meta:
@@ -463,12 +438,8 @@ class TaskContext(models.Model):
     instead. Exists only for backward compatibility with existing Task rows.
     """
 
-    task = models.ForeignKey(
-        "Task", on_delete=models.CASCADE, related_name="task_context_list"
-    )
-    context = models.ForeignKey(
-        "Task", on_delete=models.CASCADE, related_name="context_task_list"
-    )
+    task = models.ForeignKey("Task", on_delete=models.CASCADE, related_name="task_context_list")
+    context = models.ForeignKey("Task", on_delete=models.CASCADE, related_name="context_task_list")
 
     class Meta:
         unique_together = ("task", "context")
@@ -480,11 +451,12 @@ class TaskContext(models.Model):
 
     def clean(self):
         super().clean()
-        if self.task.order is not None and self.context.order is not None:
-            if self.context.order >= self.task.order:
-                raise ValidationError(
-                    "Context task order must be lower than the main task order"
-                )
+        if (
+            self.task.order is not None
+            and self.context.order is not None
+            and self.context.order >= self.task.order
+        ):
+            raise ValidationError("Context task order must be lower than the main task order")
 
         if self.task_id == self.context_id:
             raise ValidationError("A task cannot be assigned as its own context.")

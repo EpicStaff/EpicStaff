@@ -1,20 +1,18 @@
 import itertools
 
-from rest_framework import serializers
-from loguru import logger
 from django.db.models import Count, F
-
+from loguru import logger
+from rest_framework import serializers
 from tables.models.knowledge_models import (
-    SourceCollection,
-    DocumentMetadata,
     BaseRagType,
-    NaiveRag,
+    DocumentMetadata,
     GraphRag,
+    NaiveRag,
+    SourceCollection,
 )
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
-
 
 COLLECTION_DESCRIPTION_MAX_LENGTH = 2000
 
@@ -87,12 +85,8 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
         allow_null=True,
         help_text="Outdated reasons for this RAG configuration.",
     )
-    created_at = serializers.DateTimeField(
-        help_text="When this RAG configuration was created"
-    )
-    updated_at = serializers.DateTimeField(
-        help_text="When this RAG configuration was last updated"
-    )
+    created_at = serializers.DateTimeField(help_text="When this RAG configuration was created")
+    updated_at = serializers.DateTimeField(help_text="When this RAG configuration was last updated")
 
 
 class RagConfigurationBriefSerializer(serializers.Serializer):
@@ -197,9 +191,7 @@ class DocumentBulkDeleteSerializer(serializers.Serializer):
         Validate document IDs list.
         """
         if not value:
-            raise serializers.ValidationError(
-                "At least one document ID must be provided."
-            )
+            raise serializers.ValidationError("At least one document ID must be provided.")
 
         # Remove duplicates
         unique_ids = list(set(value))
@@ -351,9 +343,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
                 .annotate(
                     document_configs_count=Count("naive_rag_configs", distinct=True),
                     chunks_count=Count("naive_rag_configs__chunks", distinct=True),
-                    embeddings_count=Count(
-                        "naive_rag_configs__embeddings", distinct=True
-                    ),
+                    embeddings_count=Count("naive_rag_configs__embeddings", distinct=True),
                 )
             )
             graph_rags = (
@@ -362,14 +352,8 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
                 .annotate(documents_count=Count("graph_rag_documents"))
             )
             rag_configs = [
-                *(
-                    CollectionManagementService._get_naive_rag_summary(r)
-                    for r in naive_rags
-                ),
-                *(
-                    CollectionManagementService._get_graph_rag_summary(r)
-                    for r in graph_rags
-                ),
+                *(CollectionManagementService._get_naive_rag_summary(r) for r in naive_rags),
+                *(CollectionManagementService._get_graph_rag_summary(r) for r in graph_rags),
             ]
             return RagConfigurationSummarySerializer(rag_configs, many=True).data
         except Exception as e:
@@ -410,9 +394,7 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
 
     def validate_collection_name(self, value):
         if value and len(value) > 255:
-            raise serializers.ValidationError(
-                "Collection name must be 255 characters or less."
-            )
+            raise serializers.ValidationError("Collection name must be 255 characters or less.")
         return value
 
     def validate_description(self, value):
@@ -436,9 +418,7 @@ class SourceCollectionUpdateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Collection name cannot be empty.")
         if len(value) > 255:
-            raise serializers.ValidationError(
-                "Collection name must be 255 characters or less."
-            )
+            raise serializers.ValidationError("Collection name must be 255 characters or less.")
         return value
 
     def validate_description(self, value):
@@ -483,11 +463,11 @@ class NestedSearchConfigSerializer(serializers.Serializer):
     """
 
     def get_fields(self):
-        from tables.serializers.naive_rag_serializers import (
-            NaiveSearchConfigInputSerializer,
-        )
         from tables.serializers.graph_rag_serializers import (
             GraphSearchConfigInputSerializer,
+        )
+        from tables.serializers.naive_rag_serializers import (
+            NaiveSearchConfigInputSerializer,
         )
 
         fields = super().get_fields()

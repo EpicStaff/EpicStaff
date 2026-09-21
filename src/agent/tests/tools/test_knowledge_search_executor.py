@@ -4,18 +4,15 @@ Tests for KnowledgeSearchExecutor and GraphKnowledgeSearchExecutor.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 import settings
-from shared.knowledge.target import KnowledgeSearchTarget
 from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
     KnowledgeSearchExecutor,
 )
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagLocalSearchParams,
@@ -201,7 +198,7 @@ async def test_client_raises_returns_error():
 
 
 async def test_timeout_returns_error():
-    client = _fake_client(raises=asyncio.TimeoutError())
+    client = _fake_client(raises=TimeoutError())
     executor = KnowledgeSearchExecutor(client, _make_target())
 
     result = await executor({"query": "test"})
@@ -360,9 +357,7 @@ async def test_sink_receives_target_query_result_on_success():
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(
-        target, "test", chunks, error=None
-    )
+    sink.on_knowledge_search.assert_awaited_once_with(target, "test", chunks, error=None)
 
 
 async def test_sink_receives_result_even_with_no_chunks():
@@ -441,24 +436,18 @@ async def test_graph_executor_sink_receives_dispatched_target():
     response = _make_response([])
     client = _fake_client(response)
     sink = _fake_sink()
-    executor = GraphKnowledgeSearchExecutor(
-        client, targets, default_method="basic", sink=sink
-    )
+    executor = GraphKnowledgeSearchExecutor(client, targets, default_method="basic", sink=sink)
 
     await executor({"query": "test", "search_method": "local"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(
-        targets["local"], "test", [], error=None
-    )
+    sink.on_knowledge_search.assert_awaited_once_with(targets["local"], "test", [], error=None)
 
 
 async def test_graph_executor_sink_notified_with_error_when_client_raises():
     targets = _make_graph_targets()
     client = _fake_client(raises=RuntimeError("graph down"))
     sink = _fake_sink()
-    executor = GraphKnowledgeSearchExecutor(
-        client, targets, default_method="basic", sink=sink
-    )
+    executor = GraphKnowledgeSearchExecutor(client, targets, default_method="basic", sink=sink)
 
     result = await executor({"query": "test", "search_method": "local"})
 
