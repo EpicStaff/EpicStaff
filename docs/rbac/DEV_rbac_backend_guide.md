@@ -54,8 +54,8 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 
 | Model | Table | Purpose |
 |---|---|---|
-| `User` | `rbac_user` | Custom `AUTH_USER_MODEL` (`tables.User`). Email login, `display_name`, `avatar`, global `is_superadmin`, `is_active`. No username/is_staff; Django admin is removed. |
-| `Organization` | `rbac_organization` | Tenant. `name` (case-insensitive unique via `LOWER(name)` index), `is_active` (soft deactivation), `is_default` (partial unique constraint — at most one default org). |
+| `User` | `rbac_user` | Custom `AUTH_USER_MODEL` (`tables.User`). Email login, `display_name`, `avatar`, global `is_superadmin`, `value`. No username/is_staff; Django admin is removed. |
+| `Organization` | `rbac_organization` | Tenant. `name` (case-insensitive unique via `LOWER(name)` index), `value` (soft deactivation), `is_default` (partial unique constraint — at most one default org). |
 | `OrganizationUser` | `rbac_organization_user` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
 | `Role` | `rbac_role` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | One row per (role, resource_type) with an integer permission **bitmask**. |
@@ -309,7 +309,7 @@ list, since the superadmin's own request already reaches them without it.
 Structural invariants are enforced inside services regardless of who the caller is, in
 transactions with `SELECT FOR UPDATE`:
 
-- `assert_not_last_active_superadmin` / `assert_not_last_org_admin` /
+- `assert_not_last_org_admin` /
   `assert_role_is_assignable` / `assert_batch_preserves_org_admin`
   (`user_management_guards.py`). `role_is_assignable` is the same rule as a
   predicate, for the assignable-roles filter.
@@ -324,6 +324,7 @@ transactions with `SELECT FOR UPDATE`:
   the catalog's grantable action bits (`GRANTABLE_ACTION_BITS`) so ungranted
   `use`/`list` seed data cannot block a legitimate grant. Superadmin bypasses
   inside `covers`.
+- last-active-superadmin guard (`user_management_service.py`)
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.

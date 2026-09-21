@@ -102,7 +102,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Knowledge Sources",
         "group": "workspace",
         "description": "RAG collections and embeddings",
-        "applicable_actions": ["create", "read", "update", "delete"],
+        "applicable_actions": ["create", "read", "update", "delete", "export"],
         "platform_actions": [],
     },
     {
@@ -233,12 +233,13 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "delete": (("surfaces", "read"),),
     },
     ResourceType.KNOWLEDGE_SOURCES.value: {
-        "create": (("knowledge_sources", "read"), ("llm_configs", "read")),
+        "create": (("knowledge_sources", "read"), ("knowledge_sources", "update"), ("llm_configs", "read")),
         "update": (("knowledge_sources", "read"), ("llm_configs", "read")),
         "delete": (("knowledge_sources", "read"),),
+        "export": (("knowledge_sources", "read"),),
     },
     ResourceType.FILES.value: {
-        "create": (("files", "read"),),
+        "create": (("files", "read"), ("flows", "read")),
         "update": (("files", "read"),),
         "delete": (("files", "read"),),
         "export": (("files", "read"),),

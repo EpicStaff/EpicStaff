@@ -75,19 +75,13 @@ def test_graph_rag_resolves_both_embedder_and_llm_secret_ids(resolver, org, coll
         rag_status=GraphRag.GraphRagStatus.COMPLETED,
     )
 
-    (
-        _collection_id,
-        rag_type_id,
-        _rag_search_config,
-        embedder_secret_id,
-        llm_api_key_secret_id,
-    ) = resolver._resolve_graph_rag(
+    result = resolver._resolve_graph_rag(
         collection.pk, {"graph_basic_search_config": {}}
     )
 
-    assert rag_type_id.startswith("graph:")
-    assert embedder_secret_id == embedder_secret.pk
-    assert llm_api_key_secret_id == llm_secret.pk
+    assert result.rag_type_id.startswith("graph:")
+    assert result.rag_embedder_api_key_secret_id == embedder_secret.pk
+    assert result.rag_llm_api_key_secret_id == llm_secret.pk
 
 
 @pytest.mark.django_db
@@ -104,11 +98,11 @@ def test_graph_rag_without_llm_config_reports_none(resolver, org, collection):
         rag_status=GraphRag.GraphRagStatus.COMPLETED,
     )
 
-    *_rest, llm_api_key_secret_id = resolver._resolve_graph_rag(
+    result = resolver._resolve_graph_rag(
         collection.pk, {"graph_basic_search_config": {}}
     )
 
-    assert llm_api_key_secret_id is None
+    assert result.rag_llm_api_key_secret_id is None
 
 
 @pytest.mark.django_db
@@ -126,16 +120,10 @@ def test_naive_rag_never_reports_an_llm_secret_id(resolver, org, collection):
         rag_status=NaiveRag.NaiveRagStatus.COMPLETED,
     )
 
-    (
-        _collection_id,
-        rag_type_id,
-        _rag_search_config,
-        embedder_secret_id,
-        llm_api_key_secret_id,
-    ) = resolver._resolve_naive_rag(
+    result = resolver._resolve_naive_rag(
         collection.pk, {"search_limit": 5, "similarity_threshold": 0.5}
     )
 
-    assert rag_type_id.startswith("naive:")
-    assert embedder_secret_id == embedder_secret.pk
-    assert llm_api_key_secret_id is None
+    assert result.rag_type_id.startswith("naive:")
+    assert result.rag_embedder_api_key_secret_id == embedder_secret.pk
+    assert result.rag_llm_api_key_secret_id is None

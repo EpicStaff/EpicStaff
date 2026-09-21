@@ -157,7 +157,7 @@ class UserAdminViewSet(viewsets.ViewSet):
     )
     def deactivate(self, request, pk=None):
         user = self._service.set_user_active(
-            actor=request.user, target_user_id=int(pk), is_active=False
+            actor=request.user, target_user_id=int(pk), value=False
         )
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
@@ -172,7 +172,7 @@ class UserAdminViewSet(viewsets.ViewSet):
     )
     def reactivate(self, request, pk=None):
         user = self._service.set_user_active(
-            actor=request.user, target_user_id=int(pk), is_active=True
+            actor=request.user, target_user_id=int(pk), value=True
         )
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
