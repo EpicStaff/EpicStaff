@@ -33,7 +33,10 @@ from tables.import_export.serializers.graph import (
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.constants import NODE_MAPPING_KEY
+from tables.import_export.constants import (
+    METADATA_TYPES_WITH_NON_NODE_DATA_ID,
+    NODE_MAPPING_KEY,
+)
 from tables.import_export.utils import ensure_unique_identifier
 
 
@@ -467,6 +470,9 @@ class GraphStrategy(EntityImportExportStrategy):
         changed = False
 
         for node in nodes:
+            if node.get("type") in METADATA_TYPES_WITH_NON_NODE_DATA_ID:
+                continue
+
             data = node.get("data") or {}
             node_id = data.get("id")
             if node_id is not None:

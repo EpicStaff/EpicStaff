@@ -5,6 +5,11 @@ IMPORT_VERSION = 3
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"
 
+# Metadata node types whose `data["id"]` refers to a different entity's PK
+# (Graph, LLMConfig, ToolConfig, ConditionalEdge, ...) rather than a node PK.
+# `_update_metadata_node_ids` must not remap these through NODE_MAPPING_KEY.
+METADATA_TYPES_WITH_NON_NODE_DATA_ID = frozenset({"subgraph", "llm", "tool", "edge"})
+
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (
     EntityType.LABEL,

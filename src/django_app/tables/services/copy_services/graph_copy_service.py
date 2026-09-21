@@ -1,3 +1,4 @@
+from tables.import_export.constants import METADATA_TYPES_WITH_NON_NODE_DATA_ID
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
@@ -142,6 +143,9 @@ class GraphCopyService(BaseCopyService):
         changed = False
 
         for node in nodes:
+            if node.get("type") in METADATA_TYPES_WITH_NON_NODE_DATA_ID:
+                continue
+
             data = node.get("data") or {}
             node_id = data.get("id")
             if node_id is not None and node_id in node_id_map:
