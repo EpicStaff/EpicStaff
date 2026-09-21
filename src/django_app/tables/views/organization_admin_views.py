@@ -1,20 +1,30 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.organization_serializers import (
-    OrganizationCreateRequestSerializer,
     OrganizationListResponseSerializer,
-    OrganizationRenameRequestSerializer,
     OrganizationResponseSerializer,
 )
+from tables.services.rbac.delete.dry_run import parse_dry_run
+from tables.services.rbac.delete.service import DeleteService
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )
 from tables.services.rbac.organization_validation_service import (
     OrganizationValidationService,
+)
+from tables.services.rbac.permissions import DenyApiKeyAuth
+from tables.swagger_schemas.organization_admin_schema import (
+    ORGANIZATIONS_CREATE_POST,
+    ORGANIZATIONS_DEACTIVATE_POST,
+    ORGANIZATIONS_DESTROY_DELETE,
+    ORGANIZATIONS_LIST_GET,
+    ORGANIZATIONS_REACTIVATE_POST,
+    ORGANIZATIONS_RETRIEVE_GET,
+    ORGANIZATIONS_UPDATE_PATCH,
 )
 from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 
@@ -38,7 +48,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     does not catch or translate them.
     """
 
-    superadmin_actions = frozenset({"create", "deactivate", "reactivate"})
+    superadmin_actions = frozenset({"create", "deactivate", "reactivate", "destroy"})
     pagination_class = CrossOrgAdminPagination
     rbac_resource_type = ResourceType.ORGANIZATIONS
     rbac_action_map = {
@@ -49,11 +59,16 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
 
     _service = OrganizationManagementService()
     _validator = OrganizationValidationService()
+    _delete_service = DeleteService()
 
-    @extend_schema(
-        summary="List organizations (permission-aware)",
-        responses={200: OrganizationListResponseSerializer(many=True)},
-    )
+    def get_permissions(self):
+        """Permanent deletion is JWT-only; a leaked key must not erase a tenant."""
+        permissions = super().get_permissions()
+        if getattr(self, "action", None) == "destroy":
+            return permissions + [DenyApiKeyAuth()]
+        return permissions
+
+    @extend_schema(**ORGANIZATIONS_LIST_GET)
     def list(self, request):
         is_active = self._parse_is_active(request.query_params.get("is_active"))
         org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
@@ -78,27 +93,12 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
             ).data
         )
 
-    @extend_schema(
-        summary="Get one organization (settings surface)",
-        responses={
-            200: OrganizationResponseSerializer,
-            404: OpenApiResponse(
-                description="Organization not found or not accessible"
-            ),
-        },
-    )
+    @extend_schema(**ORGANIZATIONS_RETRIEVE_GET)
     def retrieve(self, request, pk=None):
         org = self._service.get_for_read(actor=request.user, org_id=int(pk))
         return Response(OrganizationResponseSerializer(org).data)
 
-    @extend_schema(
-        summary="Create an organization (superadmin)",
-        request=OrganizationCreateRequestSerializer,
-        responses={
-            201: OrganizationResponseSerializer,
-            400: OpenApiResponse(description="Validation error or duplicate name"),
-        },
-    )
+    @extend_schema(**ORGANIZATIONS_CREATE_POST)
     def create(self, request):
         cleaned = self._validator.validate_create(request.data)
         org = self._service.create_organization(name=cleaned["name"])
@@ -107,17 +107,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @extend_schema(
-        summary="Rename an organization (ORGANIZATIONS.UPDATE or superadmin)",
-        request=OrganizationRenameRequestSerializer,
-        responses={
-            200: OrganizationResponseSerializer,
-            400: OpenApiResponse(description="Validation error or duplicate name"),
-            404: OpenApiResponse(
-                description="Organization not found or not accessible"
-            ),
-        },
-    )
+    @extend_schema(**ORGANIZATIONS_UPDATE_PATCH)
     def partial_update(self, request, pk=None):
         cleaned = self._validator.validate_rename(request.data)
         org = self._service.rename_organization(
@@ -126,31 +116,28 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
         return Response(OrganizationResponseSerializer(org).data)
 
     @action(detail=True, methods=["post"], url_path="deactivate")
-    @extend_schema(
-        summary="Deactivate an organization (superadmin)",
-        responses={
-            200: OrganizationResponseSerializer,
-            400: OpenApiResponse(
-                description="Cannot deactivate the last active organization"
-            ),
-            404: OpenApiResponse(description="Organization not found"),
-        },
-    )
+    @extend_schema(**ORGANIZATIONS_DEACTIVATE_POST)
     def deactivate(self, request, pk=None):
         org = self._service.deactivate_organization(org_id=int(pk))
         return Response(OrganizationResponseSerializer(org).data)
 
     @action(detail=True, methods=["post"], url_path="reactivate")
-    @extend_schema(
-        summary="Reactivate an organization (superadmin)",
-        responses={
-            200: OrganizationResponseSerializer,
-            404: OpenApiResponse(description="Organization not found"),
-        },
-    )
+    @extend_schema(**ORGANIZATIONS_REACTIVATE_POST)
     def reactivate(self, request, pk=None):
         org = self._service.reactivate_organization(org_id=int(pk))
         return Response(OrganizationResponseSerializer(org).data)
+
+    @extend_schema(**ORGANIZATIONS_DESTROY_DELETE)
+    def destroy(self, request, pk=None):
+        """Permanently delete an organization and everything it owns."""
+        dry_run = parse_dry_run(request.query_params.get("dry_run"))
+        report = self._delete_service.delete(
+            target_type="organization",
+            target_id=int(pk),
+            actor=request.user,
+            dry_run=dry_run,
+        )
+        return Response(report)
 
     def _apply_ordering(self, qs, raw):
         if not raw:
