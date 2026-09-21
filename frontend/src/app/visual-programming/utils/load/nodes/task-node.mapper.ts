@@ -1,7 +1,7 @@
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { TaskNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
-import { NodeType } from '../../../core/enums/node-type';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 

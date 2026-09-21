@@ -9,6 +9,7 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { NodeType } from '@shared/models';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -24,7 +25,6 @@ import {
 
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
-import { NodeType } from '../../../../core/enums/node-type';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';

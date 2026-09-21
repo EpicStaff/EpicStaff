@@ -5,8 +5,7 @@ import {
     SecretUsageResourceType,
     SecretUsageResponse,
 } from '@shared/models';
-
-import { NodeType } from '../../../visual-programming/core/enums/node-type';
+import { NodeType } from '@shared/models';
 
 export type SecretUsageCategoryIcon =
     | { kind: 'entity'; value: string }

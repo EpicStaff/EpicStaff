@@ -1,7 +1,7 @@
 import { IPoint } from '@foblex/2d';
+import { NodeType } from '@shared/models';
 
 import { Edge } from '../../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
-import { NodeType } from '../../../core/enums/node-type';
 import { ConnectionModel } from '../../../core/models/connection.model';
 import { NodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';

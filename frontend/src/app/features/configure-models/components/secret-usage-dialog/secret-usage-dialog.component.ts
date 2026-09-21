@@ -17,6 +17,7 @@ import {
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
 import { SecretUsageResourceType } from '@shared/models';
+import { NodeType } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -34,7 +35,6 @@ import { McpToolsService } from '../../../../features/tools/services/mcp-tools/m
 import { ToastService } from '../../../../services/notifications';
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import {
     SecretUsageFlowItem,
     SecretUsageFlowNode,

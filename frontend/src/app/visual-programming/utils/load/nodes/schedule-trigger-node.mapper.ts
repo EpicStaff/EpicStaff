@@ -1,3 +1,4 @@
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import {
@@ -8,7 +9,6 @@ import {
     ScheduleTriggerNodeData,
     WeekdayCode,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { NodeType } from '../../../core/enums/node-type';
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 

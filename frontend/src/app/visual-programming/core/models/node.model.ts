@@ -1,3 +1,5 @@
+import { NodeType, WebhookTriggerWrite } from '@shared/models';
+
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
@@ -8,11 +10,9 @@ import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/fl
 import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { TelegramTriggerNodeField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
-import { NodeType } from '../enums/node-type';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
-import { WebhookTriggerWrite } from './webhook-trigger.model';
 
 export interface BaseNodeModel {
     id: string;

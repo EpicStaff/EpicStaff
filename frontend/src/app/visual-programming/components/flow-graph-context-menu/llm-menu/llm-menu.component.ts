@@ -9,9 +9,8 @@ import {
     Output,
 } from '@angular/core';
 import { GetLlmConfigRequest } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { LLMConfigService } from '@shared/services';
-
-import { NodeType } from '../../../core/enums/node-type';
 
 @Component({
     selector: 'app-llm-menu',

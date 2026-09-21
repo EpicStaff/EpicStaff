@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
+import { NodeType } from '@shared/models';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -21,7 +22,6 @@ import { LlmConfigStorageService } from '../../../shared/services/llms/llm-confi
 import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
-import { NodeType } from '../../core/enums/node-type';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
