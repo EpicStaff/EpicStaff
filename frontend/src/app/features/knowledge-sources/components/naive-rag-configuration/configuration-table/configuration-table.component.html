@@ -176,7 +176,7 @@
                     <li
                         class="table__row"
                         [ngClass]="{ 'table__row--readonly': !canUpdateKnowledges() }"
-                        (keydown)="onRowKeyDown(d.naive_rag_document_id, $event)"
+                        [attr.data-document-id]="d.naive_rag_document_id"
                     >
                         <!-- checkbox -->
                         <div

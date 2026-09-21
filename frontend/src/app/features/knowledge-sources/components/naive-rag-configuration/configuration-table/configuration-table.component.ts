@@ -4,6 +4,8 @@ import {
     Component,
     computed,
     effect,
+    ElementRef,
+    HostListener,
     inject,
     input,
     model,
@@ -59,13 +61,13 @@ export class ConfigurationTableComponent {
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private collectionsStorage = inject(CollectionsStorageService);
     private permissionService = inject(PermissionsService);
+    private hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
 
     searchTerm = input<string>('');
     showBulkRow = input<boolean>(false);
     statusFilter = input<DocumentStatusFilter>('all');
     ragId = input.required<number>();
     documents = this.documentsStorageService.documents;
-    pendingDocIds = this.documentsStorageService.pendingDocIds;
     processingConfigIds = this.collectionsStorage.processingConfigIds;
     selectedRagDocId = model<number | null>(null);
 
@@ -141,21 +143,29 @@ export class ConfigurationTableComponent {
         this.onDocFieldChange(document, 'chunk_strategy', value);
     }
 
-    revert(documentId: number): void {
-        this.documentsStorageService.clearPending([documentId]);
-    }
-
-    hasPending(documentId: number): boolean {
-        return this.pendingDocIds().has(documentId);
-    }
-
-    onRowKeyDown(documentId: number, event: KeyboardEvent): void {
+    @HostListener('document:keydown', ['$event'])
+    onGlobalKeyDown(event: KeyboardEvent): void {
         const isUndoCombo =
-            (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z';
-        if (!isUndoCombo || !this.hasPending(documentId)) return;
+            (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.code === 'KeyZ';
+        if (!isUndoCombo || this.isOutsideEditScope(event.target)) return;
+
+        const documentId = this.documentsStorageService.undoLastPending();
+        if (documentId === null) return;
 
         event.preventDefault();
-        this.revert(documentId);
+        this.focusTuneButton(documentId);
+    }
+
+    private isOutsideEditScope(target: EventTarget | null): boolean {
+        const el = target as HTMLElement | null;
+        if (!el?.matches('input,textarea,select,[contenteditable="true"]')) return false;
+        return !el.closest('[data-document-id], app-edit-file-parameters-dialog');
+    }
+
+    focusTuneButton(documentId: number): void {
+        this.hostEl.nativeElement
+            .querySelector<HTMLElement>(`[data-document-id="${documentId}"] .table__col-btn button`)
+            ?.focus();
     }
 
     onFileTypeFilterChange(value: unknown[]): void {
