@@ -1,5 +1,4 @@
-import { NodeType } from '@shared/models';
-import { toSecretIds, toSecretNames } from '@shared/models';
+import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { PythonNodeModel } from '../../../core/models/node.model';

@@ -8,8 +8,7 @@ import {
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { ResourceCode } from '@shared/models';
-import { WebhookTriggerModel } from '@shared/models';
+import { ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';

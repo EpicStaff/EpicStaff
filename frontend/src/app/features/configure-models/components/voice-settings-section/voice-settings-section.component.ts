@@ -3,12 +3,11 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, RealtimeChannel, ResourceCode } from '@shared/models';
+import { RealtimeChannelService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { RealtimeChannel } from '../../../../shared/models/realtime-voice/realtime-channel.model';
-import { RealtimeChannelService } from '../../../../shared/services/realtime-channel.service';
 import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
 import {

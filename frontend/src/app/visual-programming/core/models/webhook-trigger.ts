@@ -1,5 +1,9 @@
-import { WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
-import { CreatePythonCodeRequest, GetPythonCodeRequest } from '@shared/models';
+import {
+    CreatePythonCodeRequest,
+    GetPythonCodeRequest,
+    WebhookTriggerModel,
+    WebhookTriggerWrite,
+} from '@shared/models';
 
 export interface GetWebhookTriggerNodeRequest {
     id: number;

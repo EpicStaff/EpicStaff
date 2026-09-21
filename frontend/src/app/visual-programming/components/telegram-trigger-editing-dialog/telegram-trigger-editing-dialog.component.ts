@@ -1,11 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { AppSvgIconComponent, HelpTooltipComponent, JsonEditorComponent, SearchComponent } from '@shared/components';
 
-import { ToastService } from '../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
-import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
-import { SearchComponent } from '../../../shared/components/search/search.component';
+import { ToastService } from '../../../services/notifications';
 import { MATERIAL_FORMS } from '../../../shared/material-forms';
 import { VARIABLE_PREFIX } from '../../core/constants/telegram-field-variable-path-prefix';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../core/constants/telegram-trigger-fields';

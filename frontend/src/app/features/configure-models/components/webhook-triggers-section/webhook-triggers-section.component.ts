@@ -9,8 +9,7 @@ import {
     WebhookTriggerDialogData,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
-import { WebhookTriggerModel } from '@shared/models';
+import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';

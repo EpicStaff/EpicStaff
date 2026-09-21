@@ -17,6 +17,8 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router } from '@angular/router';
+import { AppIconComponent } from '@shared/components';
+import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '@shared/constants';
 
 import {
     EntityTypeResult,
@@ -24,8 +26,6 @@ import {
     ImportResultDialogData,
     ImportResultItem,
 } from '../../../../core/models/import-result.model';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
-import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/entity-icons.constants';
 
 @Component({
     selector: 'app-import-result-dialog',

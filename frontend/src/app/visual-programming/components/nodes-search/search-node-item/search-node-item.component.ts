@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     AgentNodeModel,
     LLMNodeModel,

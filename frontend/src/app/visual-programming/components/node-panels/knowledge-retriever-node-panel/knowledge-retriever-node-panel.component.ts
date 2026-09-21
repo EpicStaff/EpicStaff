@@ -7,6 +7,7 @@ import {
     CopyButtonComponent,
     createColumnWidthState,
     CustomInputComponent,
+    RagTabComponent,
     SelectComponent,
     SelectItem,
     TemplateTextareaComponent,
@@ -24,7 +25,6 @@ import {
 } from '../../../../features/knowledge-sources/models/collection.model';
 import { CollectionsApiService } from '../../../../features/knowledge-sources/services/collections-api.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
-import { RagTabComponent } from '../../../../shared/components/rag-tab/rag-tab.component';
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';

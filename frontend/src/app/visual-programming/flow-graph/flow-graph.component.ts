@@ -39,14 +39,13 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
+import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
-import { ToastService } from '../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';

@@ -11,9 +11,9 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowAssistantService } from '../../flow-assistant.service';
 import { ActionItem, EfTable, FlowAssistantMessage } from '../../models/flow-assistant.model';
 import { stripTrailingEllipsis, toolStatusFor } from '../../services/tool-labels';

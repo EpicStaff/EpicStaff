@@ -3,10 +3,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, si
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
+    AppSvgIconComponent,
     ButtonComponent,
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    HelpTooltipComponent,
     HintMessageComponent,
     JsonEditorComponent,
     SelectComponent,
@@ -19,8 +21,6 @@ import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';

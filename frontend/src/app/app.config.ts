@@ -19,7 +19,7 @@ import { provideRoleBaseAccessStorages } from './features/role-base-access/role-
 import { provideToolsStorages } from './features/tools/tools.providers';
 import { ActiveOrgService } from './services/auth/active-org.service';
 import { PermissionsService } from './services/auth/permissions.service';
-import { ConfigService } from './services/config/config.service';
+import { ConfigService } from './services/config';
 import { APP_STORAGE } from './shared/services/app-storage.token';
 import { provideSharedStorages } from './shared/services/shared-storages.providers';
 

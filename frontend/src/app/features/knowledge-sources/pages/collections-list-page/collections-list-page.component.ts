@@ -1,10 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { SpinnerComponent } from '@shared/components';
 import { finalize, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
+import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';

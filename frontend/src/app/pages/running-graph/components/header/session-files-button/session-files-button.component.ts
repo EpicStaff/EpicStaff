@@ -12,6 +12,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
+import { CollapseOnOverflowDirective } from '@shared/directives';
 import { GraphSessionStatus } from '@shared/models';
 
 import {
@@ -20,8 +22,6 @@ import {
 } from '../../../../../features/files/components/export-session-files-dialog/export-session-files-dialog.component';
 import { SessionOutputFile } from '../../../../../features/files/models/storage.models';
 import { StorageApiService } from '../../../../../features/files/services/storage-api.service';
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CollapseOnOverflowDirective } from '../../../../../shared/directives/collapse-on-overflow.directive';
 
 const TERMINAL_STATUSES = new Set([
     GraphSessionStatus.ENDED,

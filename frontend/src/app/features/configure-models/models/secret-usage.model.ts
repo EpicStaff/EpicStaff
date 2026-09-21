@@ -1,11 +1,11 @@
 import {
+    NodeType,
     SecretUsageCategoryDto,
     SecretUsageFlowItemDto,
     SecretUsageNamedItemDto,
     SecretUsageResourceType,
     SecretUsageResponse,
 } from '@shared/models';
-import { NodeType } from '@shared/models';
 
 export type SecretUsageCategoryIcon =
     | { kind: 'entity'; value: string }

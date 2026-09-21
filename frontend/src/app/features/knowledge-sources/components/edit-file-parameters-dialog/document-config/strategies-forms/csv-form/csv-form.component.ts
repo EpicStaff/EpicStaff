@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { InputNumberComponent } from '@shared/components';
+import { HelpTooltipComponent, InputNumberComponent } from '@shared/components';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
-import { HelpTooltipComponent } from '../../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CsvStrategyModel } from '../../../../../models/strategy.model';
 import { StrategyForm } from '../strategy-config-form.abstract';
 

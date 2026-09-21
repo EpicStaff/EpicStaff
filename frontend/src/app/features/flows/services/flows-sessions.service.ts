@@ -1,13 +1,12 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { DateRangeFilter, GraphSessionStatus } from '@shared/models';
 import { map, Observable, Subject } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { GraphMessage } from '../../../pages/running-graph/models/graph-session-message.model';
 import { WarningMessages } from '../../../pages/running-graph/models/warning-messages.model';
-import { ConfigService } from '../../../services/config/config.service';
-import { DateRangeFilter } from '../../../shared/models/date-range-filter.model';
-import { GraphSessionStatus } from '../../../shared/models/session/graph-session-status.model';
+import { ConfigService } from '../../../services/config';
 
 export interface GraphSessionGraph {
     id: number;

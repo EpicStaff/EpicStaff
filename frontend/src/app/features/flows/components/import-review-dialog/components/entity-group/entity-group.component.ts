@@ -1,9 +1,9 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
 
 import { EntityTypeResult, ImportResultItem } from '../../../../../../core/models/import-result.model';
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ENTITY_DISPLAY_FIELDS } from '../../constants/import-review.constants';
 import { ReviewSessionStore } from '../../review-session.store';
 import { getEntityTypeLabel, getGroupIconColor } from '../../utils/entity-icon.util';

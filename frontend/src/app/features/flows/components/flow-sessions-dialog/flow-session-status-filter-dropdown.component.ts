@@ -7,10 +7,9 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
+import { ClickOutsideDirective } from '@shared/directives';
 import { GraphSessionStatus } from '@shared/models';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 
 interface StatusOption {
     value: string;

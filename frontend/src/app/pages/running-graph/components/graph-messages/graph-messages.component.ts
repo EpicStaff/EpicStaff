@@ -18,6 +18,7 @@ import {
     ViewChildren,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { AppSvgIconComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
 import { Subject } from 'rxjs';
 import { exhaustMap, takeUntil } from 'rxjs/operators';
@@ -30,7 +31,6 @@ import {
     SessionUpdates,
 } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     AgentNodeStreamMessageData,
     GraphMessage,

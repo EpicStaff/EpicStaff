@@ -6,7 +6,7 @@ import { map } from 'rxjs/operators';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import { GetScheduleTriggerNodeRequest } from '../../../visual-programming/core/models/schedule-trigger.model';
 import {
     CreateGraphDtoRequest,

@@ -1,11 +1,12 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { ActionCode, ResourceCode } from '@shared/models';
 import {
+    ActionCode,
     CreatePythonCodeToolPayload,
     CreatePythonCodeToolRequest,
     GetPythonCodeToolRequest,
     PatchPythonCodeToolRequest,
+    ResourceCode,
     UpdatePythonCodeToolRequest,
 } from '@shared/models';
 import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
@@ -13,7 +14,7 @@ import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 import { withPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { InspectResult } from '../../../../core/models/review-item.model';
-import { ConfigService } from '../../../../services/config/config.service';
+import { ConfigService } from '../../../../services/config';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
 
 @Injectable({

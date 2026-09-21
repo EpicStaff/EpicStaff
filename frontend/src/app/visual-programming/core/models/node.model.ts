@@ -1,9 +1,7 @@
-import { NodeType, WebhookTriggerWrite } from '@shared/models';
-import { CustomPythonCode } from '@shared/models';
+import { CustomPythonCode, GetLlmConfigRequest, NodeType, WebhookTriggerWrite } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
-import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
 import { AgentNodeData } from './agent-node.model';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { CustomConditionalEdgeModelForNode } from './conditional-edge.model';

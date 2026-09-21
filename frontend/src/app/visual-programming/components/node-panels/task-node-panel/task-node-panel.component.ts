@@ -24,6 +24,7 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
     SelectItem,
+    ToggleSwitchComponent,
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
@@ -42,7 +43,6 @@ import {
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { ToastService } from '../../../../services/notifications';
-import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';

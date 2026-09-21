@@ -8,8 +8,7 @@ import {
     OnInit,
     Output,
 } from '@angular/core';
-import { GetLlmConfigRequest } from '@shared/models';
-import { NodeType } from '@shared/models';
+import { GetLlmConfigRequest, NodeType } from '@shared/models';
 import { LLMConfigService } from '@shared/services';
 
 @Component({
