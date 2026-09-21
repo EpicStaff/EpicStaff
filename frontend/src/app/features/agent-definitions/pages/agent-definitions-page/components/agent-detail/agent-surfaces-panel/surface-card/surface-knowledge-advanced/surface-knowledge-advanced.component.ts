@@ -18,11 +18,13 @@ import { SelectComponent, SelectItem, TabButtonComponent } from '@shared/compone
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgentSearchConfigs, GraphSearchMethod, NaiveRagSearchConfig } from '@shared/models';
+import { RAG_SUGGEST_API } from '@shared/services';
 import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { RagTabComponent } from '../../../../../../../../../shared/components/create-agent-form-dialog/tabs/rag/rag-tab.component';
+import { RagTabComponent } from '../../../../../../../../../shared/components/rag-tab/rag-tab.component';
 import { CollectionsApiService } from '../../../../../../../../knowledge-sources/services/collections-api.service';
+import { AgentsService } from '../../../../../../../../staff/services/staff.service';
 import { SurfaceKnowledge } from '../../../../../../../models/surface.model';
 import { SurfaceCollectionOption } from '../../../../../../../models/surface-card.model';
 
@@ -41,6 +43,7 @@ type RagKind = 'naive' | 'graph' | null;
     templateUrl: './surface-knowledge-advanced.component.html',
     styleUrls: ['./surface-knowledge-advanced.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [{ provide: RAG_SUGGEST_API, useExisting: AgentsService }],
 })
 export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;

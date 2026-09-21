@@ -15,6 +15,7 @@ export * from './llms/llm-models.service';
 export * from './llms/llm-models-storage.service';
 export * from './llms/llm-providers.service';
 export * from './llms/llm-providers-storage.service';
+export * from './rag-suggest.token';
 export * from './realtime-llms/full-reamtime-config.service';
 export * from './realtime-llms/real-time-model-config.service';
 export * from './realtime-llms/real-time-models.service';
