@@ -44,10 +44,11 @@ export class PermissionsTableComponent {
 
     searchTerm = signal('');
     collapsedGroups = signal<Set<string>>(new Set());
-    /** Resource codes whose recommendation banner the user dismissed within this dialog session.
-     *  Only hides the banner UI — yellow borders on recommended checkboxes remain visible. */
-    dismissedResources = signal<Set<ResourceCode>>(new Set());
+    /** Missing-keys signatures whose recommendation banner the user dismissed within this dialog
+     *  session. Only hides the banner UI — yellow borders on recommended checkboxes remain visible. */
+    dismissedSignatures = signal<Set<string>>(new Set());
     lastToggledResources = signal<Set<ResourceCode>>(new Set());
+    lastShownPendingResourceCode = signal<ResourceCode | null>(null);
 
     totalSelected = computed(() => this.selectedPermissions().size);
 
@@ -148,17 +149,28 @@ export class PermissionsTableComponent {
         return set;
     });
 
+    private readonly missingKeysSignatureByResource = computed<Map<ResourceCode, string>>(() => {
+        const map = new Map<ResourceCode, string>();
+        for (const [resourceCode, entry] of this.recommendedByResource()) {
+            map.set(resourceCode, [...entry.missingKeys].sort().join('|'));
+        }
+        return map;
+    });
+
     private readonly consolidationWinners = computed<Set<ResourceCode>>(() => {
         const lastToggled = this.lastToggledResources();
-        const bySignature = new Map<string, ResourceCode>();
-        for (const [resourceCode, entry] of this.recommendedByResource()) {
-            const signature = [...entry.missingKeys].sort().join('|');
+        const signatures = this.missingKeysSignatureByResource();
+        const bySignature = new Map<string, { resourceCode: ResourceCode; toggled: boolean }>();
+        for (const rt of this.catalog().resource_types) {
+            const signature = signatures.get(rt.code);
+            if (!signature) continue;
+            const toggled = lastToggled.has(rt.code);
             const existing = bySignature.get(signature);
-            if (!existing || lastToggled.has(resourceCode)) {
-                bySignature.set(signature, resourceCode);
+            if (!existing || (toggled && !existing.toggled)) {
+                bySignature.set(signature, { resourceCode: rt.code, toggled });
             }
         }
-        return new Set(bySignature.values());
+        return new Set([...bySignature.values()].map((winner) => winner.resourceCode));
     });
 
     readonly consolidatedRecommendations = computed<{ resourceCode: ResourceCode; missingKeys: string[] }[]>(() => {
@@ -184,12 +196,21 @@ export class PermissionsTableComponent {
 
     readonly globalPendingCount = computed(() => this.recommendedSet().size);
 
-    readonly nextPendingResourceCode = computed<ResourceCode | null>(() => {
+    private readonly orderedPendingResourceCodes = computed<ResourceCode[]>(() => {
         const winners = this.consolidationWinners();
+        const codes: ResourceCode[] = [];
         for (const rt of this.catalog().resource_types) {
-            if (winners.has(rt.code)) return rt.code;
+            if (winners.has(rt.code) && !this.isBannerDismissed(rt.code)) codes.push(rt.code);
         }
-        return null;
+        return codes;
+    });
+
+    readonly nextPendingResourceCode = computed<ResourceCode | null>(() => {
+        const ordered = this.orderedPendingResourceCodes();
+        if (ordered.length === 0) return null;
+        const lastShown = this.lastShownPendingResourceCode();
+        const lastIndex = lastShown === null ? -1 : ordered.indexOf(lastShown);
+        return ordered[(lastIndex + 1) % ordered.length];
     });
 
     private readonly resourceToGroupMap = computed<Map<ResourceCode, string>>(() => {
@@ -198,9 +219,10 @@ export class PermissionsTableComponent {
         return map;
     });
 
-    /** Whether the recommendation banner for this resource has been dismissed. */
+    /** Whether the recommendation banner for this resource's missing-keys signature has been dismissed. */
     isBannerDismissed(resourceCode: ResourceCode): boolean {
-        return this.dismissedResources().has(resourceCode);
+        const signature = this.missingKeysSignatureByResource().get(resourceCode);
+        return signature !== undefined && this.dismissedSignatures().has(signature);
     }
 
     private readonly applicableKeySet = computed<Set<string>>(() => {
@@ -397,10 +419,12 @@ export class PermissionsTableComponent {
     }
 
     onDismissResourceRecommended(resourceCode: ResourceCode): void {
-        this.dismissedResources.update((set) => {
-            if (set.has(resourceCode)) return set;
+        const signature = this.missingKeysSignatureByResource().get(resourceCode);
+        if (!signature) return;
+        this.dismissedSignatures.update((set) => {
+            if (set.has(signature)) return set;
             const next = new Set(set);
-            next.add(resourceCode);
+            next.add(signature);
             return next;
         });
     }
@@ -408,6 +432,7 @@ export class PermissionsTableComponent {
     onShowNextPending(): void {
         const resourceCode = this.nextPendingResourceCode();
         if (!resourceCode) return;
+        this.lastShownPendingResourceCode.set(resourceCode);
         this.lastToggledResources.set(new Set([resourceCode]));
         const groupKey = this.resourceToGroupMap().get(resourceCode);
         if (groupKey) {
@@ -418,11 +443,39 @@ export class PermissionsTableComponent {
                 return next;
             });
         }
-        queueMicrotask(() => {
-            const host = this.hostEl.nativeElement;
+        this.scrollToResourceWhenSettled(resourceCode);
+    }
+
+    private scrollToResourceWhenSettled(resourceCode: ResourceCode, deadline = performance.now() + 1000): void {
+        const host = this.hostEl.nativeElement;
+        requestAnimationFrame(() => {
             const el = host.querySelector<HTMLElement>(`[data-resource-code="${resourceCode}"]`);
-            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const container = host.querySelector<HTMLElement>('.perm-table');
+            if (!el || !container) return;
+            let lastTop = el.getBoundingClientRect().top;
+            let stableFrames = 0;
+            const step = (): void => {
+                const top = el.getBoundingClientRect().top;
+                stableFrames = Math.abs(top - lastTop) < 0.5 ? stableFrames + 1 : 0;
+                lastTop = top;
+                if (stableFrames >= 3 || performance.now() >= deadline) {
+                    this.scrollRowUnderStickyHeader(container, el);
+                    return;
+                }
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
         });
+    }
+
+    private scrollRowUnderStickyHeader(container: HTMLElement, el: HTMLElement): void {
+        const headers = container.querySelector<HTMLElement>('.perm-headers');
+        const topBanner = container.querySelector<HTMLElement>('.related-banner.top');
+        const stickyOffset =
+            (headers?.getBoundingClientRect().height ?? 0) + (topBanner?.getBoundingClientRect().height ?? 0) + 8;
+        const currentOffset =
+            el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        container.scrollTo({ top: Math.max(0, currentOffset - stickyOffset), behavior: 'smooth' });
     }
 
     readonly gridTemplate = computed(() => `24px minmax(280px, 1fr) repeat(${this.catalog().actions.length}, 100px)`);
