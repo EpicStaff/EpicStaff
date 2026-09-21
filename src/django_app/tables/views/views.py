@@ -602,8 +602,8 @@ class RunPythonCodeAPIView(APIView):
         python_code = serializer.validated_data["python_code"]
         variables = serializer.validated_data["variables"]
 
-        # Executing arbitrary code is a contributor-level action, gated on
-        # TOOLS.UPDATE. The code must also be visible to the active org, so a
+        # Executing stored code is a contributor-level action, gated on
+        # FLOWS.UPDATE. The code must also be visible to the active org, so a
         # caller cannot run another org's code by passing its id (rejected like
         # a non-existent pk — existence never leaks).
         org_id = self._org_context.resolve(
@@ -613,7 +613,7 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=ResourceType.FLOWS,
-            action=Permission.READ,
+            action=Permission.UPDATE,
         )
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
