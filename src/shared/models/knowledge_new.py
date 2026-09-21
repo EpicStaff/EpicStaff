@@ -1,6 +1,7 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_serializer
+
 from ..enums.knowledge_new import (
     ChunkStrategyEnum,
     GraphSearchMethodEnum,
@@ -265,9 +266,7 @@ GraphSearchConfig = Annotated[
     Field(discriminator="method"),
 ]
 
-SearchConfig = Annotated[
-    GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")
-]
+SearchConfig = Annotated[GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")]
 
 
 class ChunkingConfig(ValueObject):

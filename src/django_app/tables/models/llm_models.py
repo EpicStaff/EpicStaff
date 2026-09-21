@@ -1,17 +1,18 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.core.validators import MinValueValidator, MaxValueValidator
+
 from tables.models import (
+    AbstractDefaultFillableModel,
     DefaultBaseModel,
     Provider,
-    AbstractDefaultFillableModel,
 )
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.models.tag_models import (
-    LLMModelTag,
     LLMConfigTag,
+    LLMModelTag,
     RealtimeConfigTag,
     RealtimeTranscriptionConfigTag,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class LLMModel(OrgScopedModel, models.Model):
@@ -134,12 +135,8 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
 class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""
 
-    name = models.CharField(
-        max_length=250, default="gpt-4o-mini-realtime-preview-2024-12-17"
-    )
-    provider = models.ForeignKey(
-        "Provider", on_delete=models.CASCADE, null=True, default=None
-    )
+    name = models.CharField(max_length=250, default="gpt-4o-mini-realtime-preview-2024-12-17")
+    provider = models.ForeignKey("Provider", on_delete=models.CASCADE, null=True, default=None)
     is_custom = models.BooleanField(default=False)
 
     class Meta(OrgScopedModel.Meta):
@@ -168,18 +165,14 @@ class RealtimeConfig(OrgScopedModel, models.Model):
         on_delete=models.SET_NULL,
         related_name="realtime_configs",
     )
-    tags = models.ManyToManyField(
-        RealtimeConfigTag, blank=True, related_name="realtime_configs"
-    )
+    tags = models.ManyToManyField(RealtimeConfigTag, blank=True, related_name="realtime_configs")
 
 
 class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
     """DEPRECATED: transcription model is now a field inside OpenAIRealtimeConfig."""
 
     name = models.CharField(max_length=250, default="whisper-1")
-    provider = models.ForeignKey(
-        "Provider", on_delete=models.CASCADE, null=True, default=None
-    )
+    provider = models.ForeignKey("Provider", on_delete=models.CASCADE, null=True, default=None)
     is_custom = models.BooleanField(default=False)
 
     class Meta(OrgScopedModel.Meta):

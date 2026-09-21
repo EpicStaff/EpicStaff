@@ -7,7 +7,7 @@ BASE_DIR: Path = Path(__file__).resolve().parent
 env = Env()
 
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(BASE_DIR / '../.env')
+    env.read_env(BASE_DIR / "../.env")
 
 DEBUG = env.bool("KNOWLEDGE_DEBUG")
 

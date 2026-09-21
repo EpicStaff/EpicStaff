@@ -40,8 +40,8 @@ class SurfaceService:
             candidate.full_clean()
         except dj_exceptions.ValidationError as exc:
             if hasattr(exc, "message_dict"):
-                raise SurfaceValidationError(detail=exc.message_dict)
-            raise SurfaceValidationError(detail=exc.messages)
+                raise SurfaceValidationError(detail=exc.message_dict) from exc
+            raise SurfaceValidationError(detail=exc.messages) from exc
 
         return attrs
 
@@ -53,9 +53,7 @@ class SurfaceService:
         storage_items_data = validated_data.pop("storage_items", [])
         knowledge_data = validated_data.pop("knowledge", [])
 
-        surface = Surface.objects.create(
-            organization_id=organization_id, **validated_data
-        )
+        surface = Surface.objects.create(organization_id=organization_id, **validated_data)
 
         SurfaceService._replace_python_tools(surface, python_tools_data)
         SurfaceService._replace_mcp_tools(surface, mcp_tools_data)
@@ -101,9 +99,7 @@ class SurfaceService:
 
     @staticmethod
     def _replace_python_tools(surface, items):
-        SurfaceContentService.replace_python_tools(
-            surface, items, CATALOG_SURFACE_CONTENT
-        )
+        SurfaceContentService.replace_python_tools(surface, items, CATALOG_SURFACE_CONTENT)
 
     @staticmethod
     def _replace_mcp_tools(surface, items):
@@ -111,9 +107,7 @@ class SurfaceService:
 
     @staticmethod
     def _replace_storage_items(surface, items):
-        SurfaceContentService.replace_storage_items(
-            surface, items, CATALOG_SURFACE_CONTENT
-        )
+        SurfaceContentService.replace_storage_items(surface, items, CATALOG_SURFACE_CONTENT)
 
     @staticmethod
     def _replace_knowledge(surface, items):

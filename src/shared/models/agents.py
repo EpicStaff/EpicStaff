@@ -1,9 +1,10 @@
-from pydantic import BaseModel
 from typing import Literal
-from pydantic import ConfigDict, Field
-from .ai_providers import LLMData, EmbedderData
-from .tools import BaseToolData
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .ai_providers import EmbedderData, LLMData
 from .knowledge import RagSearchConfig
+from .tools import BaseToolData
 
 
 class AgentData(BaseModel):

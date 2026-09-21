@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.permission_catalog import applicable_actions_for
 from tables.services.rbac.utils.permission_bitmask import bitmask_to_actions
@@ -23,9 +22,7 @@ class CatalogResourceTypeSerializer(serializers.Serializer):
     description = serializers.CharField()
     applicable_actions = serializers.ListField(child=serializers.CharField())
     platform_actions = serializers.ListField(child=serializers.CharField())
-    recommended_with = serializers.DictField(
-        child=RecommendedPermissionSerializer(many=True)
-    )
+    recommended_with = serializers.DictField(child=RecommendedPermissionSerializer(many=True))
 
 
 class CatalogResponseSerializer(serializers.Serializer):
@@ -87,11 +84,7 @@ class RoleResponseSerializer(serializers.Serializer):
 
     @staticmethod
     def _derive_scope(role):
-        if (
-            role.is_built_in
-            and role.org_id is None
-            and role.name == BuiltInRole.SUPERADMIN
-        ):
+        if role.is_built_in and role.org_id is None and role.name == BuiltInRole.SUPERADMIN:
             return "global"
         return "org"
 

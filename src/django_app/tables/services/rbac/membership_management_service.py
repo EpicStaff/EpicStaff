@@ -4,7 +4,6 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Lower
 from loguru import logger
 from rest_framework.exceptions import PermissionDenied
-
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
@@ -70,8 +69,7 @@ class MembershipManagementService(CrossOrgResourceService):
         )
         if search:
             qs = qs.filter(
-                Q(user__email__icontains=search)
-                | Q(user__display_name__icontains=search)
+                Q(user__email__icontains=search) | Q(user__display_name__icontains=search)
             )
         if role_id is not None:
             qs = qs.filter(role_id=role_id)
@@ -95,7 +93,7 @@ class MembershipManagementService(CrossOrgResourceService):
         because the queryset is DISTINCT, and Postgres requires every ORDER BY
         expression to appear in the select list.
         """
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806    # noqa: N806
         readable = self.resolve_readable_org_ids(actor, scopes=scopes)
 
         visible_memberships = OrganizationUser.objects.select_related("org")
@@ -106,9 +104,7 @@ class MembershipManagementService(CrossOrgResourceService):
         if readable is not None:
             qs = qs.filter(organization_memberships__org_id__in=readable)
         if search:
-            qs = qs.filter(
-                Q(email__icontains=search) | Q(display_name__icontains=search)
-            )
+            qs = qs.filter(Q(email__icontains=search) | Q(display_name__icontains=search))
         return (
             qs.prefetch_related(
                 Prefetch(
@@ -141,16 +137,13 @@ class MembershipManagementService(CrossOrgResourceService):
         if OrganizationUser.objects.filter(user=target, org_id=org_id).exists():
             raise MembershipAlreadyExistsError()
         try:
-            membership = OrganizationUser.objects.create(
-                user=target, org_id=org_id, role=role
-            )
+            membership = OrganizationUser.objects.create(user=target, org_id=org_id, role=role)
         except IntegrityError as exc:
             # Pre-check above covers the common duplicate; reaching here means a
             # concurrent insert of the same (user, org) — still a duplicate.
             raise MembershipAlreadyExistsError() from exc
         logger.info(
-            "MembershipManagementService.add_member actor={a} user={u} "
-            "org={o} role={r}",
+            "MembershipManagementService.add_member actor={a} user={u} org={o} role={r}",
             a=getattr(actor, "email", "system"),
             u=target.email,
             o=org_id,
@@ -176,16 +169,13 @@ class MembershipManagementService(CrossOrgResourceService):
         self.assert_can(effective, Permission.UPDATE)
         UserManagementGuards.assert_membership_holder_is_assignable(membership)
         new_role = self._resolve_role(role_id)
-        UserManagementGuards.assert_role_is_assignable(
-            new_role, org_id=membership.org_id
-        )
+        UserManagementGuards.assert_role_is_assignable(new_role, org_id=membership.org_id)
         assert_within_ceiling(effective, EffectivePermissions.bits_of(new_role))
         if membership.role_id != new_role.pk:
             membership.role = new_role
             membership.save(update_fields=["role"])
         logger.info(
-            "MembershipManagementService.change_role actor={a} membership={m} "
-            "role={r}",
+            "MembershipManagementService.change_role actor={a} membership={m} role={r}",
             a=getattr(actor, "email", "system"),
             m=membership_id,
             r=new_role.name,
@@ -246,7 +236,7 @@ class MembershipManagementService(CrossOrgResourceService):
 
     @staticmethod
     def _resolve_target_user(email, user_id):
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         if user_id is not None:
             user = UserModel.objects.filter(pk=user_id).first()
         else:
@@ -259,15 +249,11 @@ class MembershipManagementService(CrossOrgResourceService):
     def _resolve_role(role_id):
         """Fetch the target role with its permission rows prefetched — the
         assignment ceiling reads them via `EffectivePermissions.bits_of`."""
-        role = (
-            Role.objects.prefetch_related("permissions_set").filter(pk=role_id).first()
-        )
+        role = Role.objects.prefetch_related("permissions_set").filter(pk=role_id).first()
         if role is None:
             raise RoleNotFoundError()
         return role
 
     @staticmethod
     def _refetch(membership_pk):
-        return OrganizationUser.objects.select_related("user", "org", "role").get(
-            pk=membership_pk
-        )
+        return OrganizationUser.objects.select_related("user", "org", "role").get(pk=membership_pk)

@@ -1,5 +1,15 @@
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, ViewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    ViewChild,
+} from '@angular/core';
 import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 
 import { AgentNodeTaskUi } from '../../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
@@ -54,10 +64,15 @@ export class AgentTasksTableComponent {
         const rowIndex = this.contextPopupRowIndex();
         if (rowIndex === null) return [];
         const task = this.tasks()[rowIndex];
-        return (task?.contextRefs ?? []).map((ref) => ref.id ?? ref.tempId);
+        const allTasks = this.tasks();
+        return (task?.contextRefs ?? [])
+            .map((ref) => allTasks.find((t) => this.refMatchesTask(ref, t)))
+            .filter((t): t is AgentNodeTaskUi => t != null)
+            .map((t) => t.id ?? t.tempId);
     });
 
     @ViewChild('contextMultiSelect') private contextMultiSelect!: MultiSelectComponent;
+    @ViewChild('tableWrapper') private tableWrapper!: ElementRef<HTMLElement>;
 
     private readonly toastService = inject(ToastService);
 
@@ -194,9 +209,23 @@ export class AgentTasksTableComponent {
     openContextPopup(rowIndex: number, event: MouseEvent): void {
         event.stopPropagation();
         this.contextPopupRowIndex.set(rowIndex);
-        const task = this.tasks()[rowIndex];
-        const seedValues = (task.contextRefs ?? []).map((ref) => ref.id ?? ref.tempId);
-        this.contextMultiSelect.openAt(event.currentTarget as HTMLElement, seedValues);
+
+        const cell = event.currentTarget as HTMLElement;
+        const cellRect = cell.getBoundingClientRect();
+        const boundsRect = this.tableWrapper?.nativeElement.getBoundingClientRect();
+        const panelWidth = this.contextMultiSelect.panelWidth();
+        const popupWidth = panelWidth.endsWith('px') ? parseFloat(panelWidth) : NaN;
+
+        let x = cellRect.left;
+        if (boundsRect && !Number.isNaN(popupWidth)) {
+            x = Math.min(x, boundsRect.right - popupWidth);
+            x = Math.max(x, boundsRect.left);
+        }
+
+        this.contextMultiSelect.openAt(
+            { x, y: cellRect.top, width: 0, height: cellRect.height },
+            this.contextSelectedValues()
+        );
     }
 
     onContextSelectionChange(values: unknown[]): void {
