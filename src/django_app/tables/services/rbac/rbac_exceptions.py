@@ -402,3 +402,32 @@ class InactiveUserError(CustomAPIExeption):
         "This account is deactivated and cannot be added to an organization."
     )
     default_code = "user_not_active"
+
+
+class DefaultOrganizationNotDeletableError(CustomAPIExeption):
+    """Raised when deleting an organization flagged as the platform default."""
+
+    status_code = 400
+    default_detail = (
+        "Cannot delete the default organization. Promote another organization "
+        "to default first."
+    )
+    default_code = "default_organization_not_deletable"
+
+
+class LastOrganizationError(CustomAPIExeption):
+    """Raised when deleting an organization would leave the platform with none."""
+
+    status_code = 400
+    default_detail = (
+        "Cannot delete the last organization. At least one organization must remain."
+    )
+    default_code = "last_organization"
+
+
+class SelfAccountDeletionError(CustomAPIExeption):
+    """Raised when a superadmin targets their own account for deletion."""
+
+    status_code = 400
+    default_detail = "You cannot delete your own account."
+    default_code = "cannot_delete_self"
