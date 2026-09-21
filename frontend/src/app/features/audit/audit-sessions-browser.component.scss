@@ -15,34 +15,12 @@ $panel-width: 420px;
     align-items: center;
     gap: 8px;
     padding: 16px 20px 12px;
-    font-size: 20px;
 }
 
-.audit-browser__back {
-    display: inline-flex;
-    color: var(--color-text-secondary);
-
-    &:hover {
-        color: var(--color-text-primary);
-    }
-}
-
-.audit-browser__crumb {
-    color: var(--color-text-secondary);
-    text-decoration: none;
-
-    &:hover {
-        color: var(--color-text-primary);
-    }
-}
-
-.audit-browser__crumb--current {
+.audit-browser__title {
     color: var(--color-text-primary);
-    font-weight: 600;
-}
-
-.audit-browser__crumb-sep {
-    color: var(--color-text-secondary);
+    font-size: var(--text-h1-size);
+    font-weight: var(--text-h1-weight);
 }
 
 .audit-browser__body {

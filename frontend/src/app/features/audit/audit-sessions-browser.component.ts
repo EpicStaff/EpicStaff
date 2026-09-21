@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
 
 import { FlowsApiService } from '../flows/services/flows-api.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
@@ -18,7 +17,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 @Component({
     selector: 'app-audit-sessions-browser',
     standalone: true,
-    imports: [CommonModule, RouterLink, AuditFiltersPanelComponent, AuditFilterChipsComponent],
+    imports: [CommonModule, AuditFiltersPanelComponent, AuditFilterChipsComponent],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

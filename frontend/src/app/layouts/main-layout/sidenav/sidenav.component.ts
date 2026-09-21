@@ -201,6 +201,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 label: 'Chats',
                 showTooltip: false,
             },
+            {
+                id: 'audit',
+                routeLink: 'audit',
+                icon: 'audit',
+                label: 'Audit',
+                isPermitted: () => this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                showTooltip: false,
+            },
         ];
 
         this.bottomNavItems = [];
