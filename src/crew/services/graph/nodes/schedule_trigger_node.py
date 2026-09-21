@@ -3,7 +3,7 @@ from typing import Any
 from langgraph.types import StreamWriter
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 
 
 class ScheduleTriggerNode(BaseNode):
