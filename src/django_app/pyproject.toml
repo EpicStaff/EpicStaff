@@ -77,6 +77,3 @@ package = false
 DJANGO_SETTINGS_MODULE = "tests.settings"
 pythonpath = [".", "../.."]
 
-[tool.ruff]
-select = ["E"]
-ignore = ["E402","E501"]
