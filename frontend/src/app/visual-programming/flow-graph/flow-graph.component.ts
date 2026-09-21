@@ -783,34 +783,33 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    public commitSidePanelToFlow(): void {
-        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
-        if (updatedNode) {
+    public commitSidePanelToFlow(): boolean {
+        if (!this.nodePanelShell?.hasPanelInstance()) {
+            return true;
+        }
+        // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+        // get a node back here — even when their form is invalid — so their own invalid
+        // state can be reported by a flow-wide validation + blocking toast further down
+        // the save pipeline instead of a hard client-side abort. A panel with its own hard
+        // client-side validation that must never reach the backend (e.g. the
+        // schedule-trigger panel's date/timezone checks) can override
+        // `captureForValidation()` to return `null` on failure — which aborts the entire
+        // save right here (no request sent), matching this panel's pre-existing behavior.
+        const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
+        if (updatedNode === null) {
+            return false;
+        }
+        // Skip the writeback if the captured node was removed from the flow
+        // (e.g. during DT→CDT conversion the old panel instance lingers briefly
+        //  before the outlet swaps to the newly-selected node's panel).
+        if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
             this.flowService.updateNode(updatedNode);
         }
+        return true;
     }
 
     public emitSave(): void {
-        if (this.nodePanelShell?.hasPanelInstance()) {
-            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
-            // get a node back here — even when their form is invalid — so their own invalid
-            // state can be reported by a flow-wide validation + blocking toast further down
-            // the save pipeline instead of a hard client-side abort. A panel with its own hard
-            // client-side validation that must never reach the backend (e.g. the
-            // schedule-trigger panel's date/timezone checks) can override
-            // `captureForValidation()` to return `null` on failure — which aborts the entire
-            // save right here (no request sent), matching this panel's pre-existing behavior.
-            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
-            if (updatedNode === null) {
-                return;
-            }
-            // Skip the writeback if the captured node was removed from the flow
-            // (e.g. during DT→CDT conversion the old panel instance lingers briefly
-            //  before the outlet swaps to the newly-selected node's panel).
-            if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
-                this.flowService.updateNode(updatedNode);
-            }
-        }
+        if (!this.commitSidePanelToFlow()) return;
         this.save.emit(this.flowService.getFlowState());
     }
 
