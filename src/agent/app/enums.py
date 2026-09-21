@@ -8,13 +8,13 @@ contract is defined in a single place.  Import it from there.
 part of the cross-service contract.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 # Re-export RunType from shared so existing intra-agent imports keep working.
 from shared.models.agent_service import RunType  # noqa: F401
 
 
-class EmitterMode(str, Enum):
+class EmitterMode(StrEnum):
     """Output transport strategy declared per ``Runner`` subclass.
 
     ``BATCH`` — buffer all events, publish a single result envelope on

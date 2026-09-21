@@ -10,24 +10,24 @@ and injecting it — Producer and Consumer stay unchanged.
 To change default payload size threshold for all producers set DEFAULT_PAYLOAD_SIZE_THRESHOLD in the env.
 """
 
-from .message import Message
-from .producer import Producer
 from .consumer import Consumer
 from .errors import (
-    CommunicationError,
     BrokerError,
     BrokerOperationError,
+    CommunicationError,
     StorageError,
     StorageOperationError,
 )
+from .message import Message
+from .producer import Producer
 
 __all__ = [
-    "Message",
-    "Producer",
-    "Consumer",
-    "CommunicationError",
     "BrokerError",
     "BrokerOperationError",
+    "CommunicationError",
+    "Consumer",
+    "Message",
+    "Producer",
     "StorageError",
     "StorageOperationError",
 ]

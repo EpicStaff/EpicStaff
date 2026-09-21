@@ -1,7 +1,6 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from loguru import logger
-
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
 
@@ -29,5 +28,5 @@ def auto_initialize_document_configs(sender, instance, created, **kwargs):
         except Exception as e:
             logger.error(
                 f"[Signal] Failed to auto-initialize document configs for "
-                f"NaiveRag {instance.naive_rag_id}: {str(e)}"
+                f"NaiveRag {instance.naive_rag_id}: {e!s}"
             )

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import UTC, datetime, tzinfo
 
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -14,9 +14,7 @@ def _ensure_aware(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        from datetime import timezone as _tz
-
-        return dt.replace(tzinfo=_tz.utc)
+        return dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -132,15 +130,9 @@ class DaysTriggerStrategy(ScheduleTriggerStrategy):
 class WeeksTriggerStrategy(ScheduleTriggerStrategy):
     def build(self, ctx: ScheduleTriggerContext) -> BaseTrigger:
         clock = self._extract_start_clock(ctx)
-        wd = (
-            ",".join(ctx.weekdays)
-            if ctx.weekdays
-            else self._WEEKDAY_SHORT[clock.weekday]
-        )
+        wd = ",".join(ctx.weekdays) if ctx.weekdays else self._WEEKDAY_SHORT[clock.weekday]
         if ctx.every == 1:
-            return self._build_cron_trigger(
-                ctx, f"{clock.minute} {clock.hour} * * {wd}"
-            )
+            return self._build_cron_trigger(ctx, f"{clock.minute} {clock.hour} * * {wd}")
         return CronTrigger(
             second="0",
             minute=clock.minute,

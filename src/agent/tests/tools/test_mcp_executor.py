@@ -6,8 +6,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from app.exceptions import McpToolError
 from app.tools.executors.mcp_tool import McpToolExecutor
 from app.tools.mcp.gateway import McpToolGateway

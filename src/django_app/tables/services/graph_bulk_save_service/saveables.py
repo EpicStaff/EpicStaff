@@ -9,7 +9,6 @@ from tables.services.graph_bulk_save_service.data_types import NodeRef
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 
-
 """
 Fields present on the wire (bulk-save payload) that must never reach DB.
 Add new wire-only fields here; all saveable classes
@@ -115,16 +114,12 @@ class _DecisionTableNodeRefsSaveable:
             )
 
         if node_updates:
-            DecisionTableNode.objects.filter(id=self._decision_table_node_id).update(
-                **node_updates
-            )
+            DecisionTableNode.objects.filter(id=self._decision_table_node_id).update(**node_updates)
 
-        for group_id, ref in zip(self._group_ids, self._group_refs):
+        for group_id, ref in zip(self._group_ids, self._group_refs, strict=False):
             if ref is not None:
                 ConditionGroup.objects.filter(id=group_id).update(
-                    next_node_id=temp_id_map[str(ref.value)]
-                    if ref.is_temp
-                    else ref.value
+                    next_node_id=temp_id_map[str(ref.value)] if ref.is_temp else ref.value
                 )
 
 
@@ -176,12 +171,10 @@ class _ClassificationDecisionTableNodeRefsSaveable:
                 **node_updates
             )
 
-        for group_id, ref in zip(self._group_ids, self._group_refs):
+        for group_id, ref in zip(self._group_ids, self._group_refs, strict=False):
             if ref is not None:
                 ClassificationConditionGroup.objects.filter(id=group_id).update(
-                    next_node_id=temp_id_map[str(ref.value)]
-                    if ref.is_temp
-                    else ref.value
+                    next_node_id=temp_id_map[str(ref.value)] if ref.is_temp else ref.value
                 )
 
 
@@ -215,11 +208,7 @@ class DecisionTableNodeSaveable:
         s = self._serializer
         validated = dict(s.validated_data)
         _clean_for_write(validated)
-        node = (
-            s.create(validated)
-            if s.instance is None
-            else s.update(s.instance, validated)
-        )
+        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
 
         if self._instance is not None:
             Condition.objects.filter(condition_group__decision_table_node=node).delete()
@@ -232,9 +221,7 @@ class DecisionTableNodeSaveable:
 
         created_groups = []
         if self._condition_groups_data:
-            created_groups = self._create_condition_groups(
-                node, self._condition_groups_data
-            )
+            created_groups = self._create_condition_groups(node, self._condition_groups_data)
 
         if self._deferred is not None:
             self._deferred.set_group_ids(created_groups)
@@ -262,25 +249,17 @@ class DecisionTableNodeSaveable:
         excluded_cond = DecisionTableNodeSaveable._CONDITION_EXCLUDED_FIELDS
 
         for group_data in groups_data:
-            group_copy = {
-                k: v for k, v in group_data.items() if k not in excluded_group
-            }
-            groups_to_create.append(
-                ConditionGroup(decision_table_node=node, **group_copy)
-            )
+            group_copy = {k: v for k, v in group_data.items() if k not in excluded_group}
+            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_copy))
             conditions_map.append(group_data.get("conditions", []))
 
         created_groups = ConditionGroup.objects.bulk_create(groups_to_create)
 
         conditions_to_create = []
-        for group, conditions_data in zip(created_groups, conditions_map):
+        for group, conditions_data in zip(created_groups, conditions_map, strict=False):
             for cond_data in conditions_data:
-                cond_copy = {
-                    k: v for k, v in cond_data.items() if k not in excluded_cond
-                }
-                conditions_to_create.append(
-                    Condition(condition_group=group, **cond_copy)
-                )
+                cond_copy = {k: v for k, v in cond_data.items() if k not in excluded_cond}
+                conditions_to_create.append(Condition(condition_group=group, **cond_copy))
 
         if conditions_to_create:
             Condition.objects.bulk_create(conditions_to_create)
@@ -303,7 +282,9 @@ class ClassificationDecisionTableNodeSaveable:
     ):
         self._serializer = serializer
         self._condition_groups_data = condition_groups_data
-        self._deferred = deferred_refs_saveable  # _ClassificationDecisionTableNodeRefsSaveable | None
+        self._deferred = (
+            deferred_refs_saveable  # _ClassificationDecisionTableNodeRefsSaveable | None
+        )
         self._instance = instance
 
     _GROUP_EXCLUDED_FIELDS = frozenset(
@@ -323,11 +304,7 @@ class ClassificationDecisionTableNodeSaveable:
         validated = dict(s.validated_data)
         _clean_for_write(validated)
 
-        node = (
-            s.create(validated)
-            if s.instance is None
-            else s.update(s.instance, validated)
-        )
+        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
         # NOTE: s.update() now upserts prompt_configs by prompt_key (stable IDs).
 
         if self._deferred is not None:
@@ -348,9 +325,7 @@ class ClassificationDecisionTableNodeSaveable:
             prompt_by_key = {p.prompt_key: p for p in node_prompts}
 
             incoming_route_codes = {
-                gd["route_code"]
-                for gd in self._condition_groups_data
-                if gd.get("route_code")
+                gd["route_code"] for gd in self._condition_groups_data if gd.get("route_code")
             }
 
             if self._instance is not None:
@@ -396,9 +371,7 @@ class ClassificationDecisionTableNodeSaveable:
 
                 rc = gd.get("route_code")
                 existing = (
-                    existing_by_rc.get(rc)
-                    if rc
-                    else existing_by_name.get(gd.get("group_name"))
+                    existing_by_rc.get(rc) if rc else existing_by_name.get(gd.get("group_name"))
                 )
 
                 if existing is not None:
@@ -435,7 +408,7 @@ class ClassificationDecisionTableNodeSaveable:
                 new_objs = ClassificationConditionGroup.objects.bulk_create(
                     [obj for _, obj in to_bulk_create]
                 )
-                for (idx, _), new_obj in zip(to_bulk_create, new_objs):
+                for (idx, _), new_obj in zip(to_bulk_create, new_objs, strict=False):
                     ordered_groups[idx] = new_obj
 
             created_groups = ordered_groups
@@ -464,11 +437,7 @@ class KnowledgeNodeSaveable:
         KnowledgeNodeValidator().validate_serializer(s)
         validated = dict(s.validated_data)
         _clean_for_write(validated)
-        node = (
-            s.create(validated)
-            if s.instance is None
-            else s.update(s.instance, validated)
-        )
+        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
 
         if self._search_configs:
             SearchConfigService.apply_node_search_configs(node, self._search_configs)
@@ -520,9 +489,7 @@ class _EdgeSaveable:
             else self._start_ref.value
         )
         validated["end_node_id"] = (
-            temp_id_map[str(self._end_ref.value)]
-            if self._end_ref.is_temp
-            else self._end_ref.value
+            temp_id_map[str(self._end_ref.value)] if self._end_ref.is_temp else self._end_ref.value
         )
 
         if self._instance is None:

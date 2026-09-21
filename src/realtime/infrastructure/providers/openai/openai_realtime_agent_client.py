@@ -1,19 +1,21 @@
-import websockets
 import json
-from typing import Optional, List, Dict, Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
 from enum import Enum
+from typing import Any
 
+import websockets
+from application.tool_manager_service import ToolManagerService
+from domain.models.realtime_tool import RealtimeTool
+from loguru import logger
+from utils.openai_endpoints import derive_realtime_ws_url
+
+from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.openai.event_handlers.agent_client_event_handler import (
     ClientEventHandler,
 )
 from infrastructure.providers.openai.event_handlers.agent_server_event_handler import (
     ServerEventHandler,
 )
-from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
-from domain.models.realtime_tool import RealtimeTool
-from application.tool_manager_service import ToolManagerService
-from utils.openai_endpoints import derive_realtime_ws_url
-from loguru import logger
 
 
 class TurnDetectionMode(Enum):
@@ -30,18 +32,18 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         self,
         api_key: str,
         connection_key: str,
-        on_server_event: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_server_event: Callable[[dict], Awaitable[None]] | None = None,
         tool_manager_service: ToolManagerService = None,
-        rt_tools: Optional[List[RealtimeTool]] = None,
+        rt_tools: list[RealtimeTool] | None = None,
         model: str = "gpt-realtime-1.5",
         voice: str = "alloy",
         instructions: str = "You are a helpful assistant",
         turn_detection_mode: TurnDetectionMode = TurnDetectionMode.SERVER_VAD,
         input_audio_format: str = "pcm16",
         output_audio_format: str = "pcm16",
-        org_id: Optional[int] = None,
-        user_id: Optional[int] = None,
-        base_url: Optional[str] = None,
+        org_id: int | None = None,
+        user_id: int | None = None,
+        base_url: str | None = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -103,7 +105,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         )
 
     @staticmethod
-    def _ga_audio_format(audio_format: str) -> Dict[str, Any]:
+    def _ga_audio_format(audio_format: str) -> dict[str, Any]:
         """Translate a legacy beta audio-format string into the GA `audio.*.format` object.
 
         Beta accepted bare strings ("pcm16", "g711_ulaw", "g711_alaw").
@@ -115,7 +117,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
             return {"type": "audio/pcma"}
         return {"type": "audio/pcm", "rate": 24000}
 
-    async def update_session(self, config: Dict[str, Any]) -> None:
+    async def update_session(self, config: dict[str, Any]) -> None:
         """
         Update session configuration using the GA `session` object shape.
         """
@@ -125,15 +127,13 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         input_audio_transcription = config.get(
             "input_audio_transcription", {"model": "gpt-4o-mini-transcribe"}
         )
-        raw_modalities = config.get(
-            "output_modalities", config.get("modalities", ["audio"])
-        )
+        raw_modalities = config.get("output_modalities", config.get("modalities", ["audio"]))
         # GA only supports ['text'] or ['audio'], not both combined
         output_modalities = ["audio"] if "audio" in raw_modalities else raw_modalities
         input_audio_format = config.get("input_audio_format", "pcm16")
         output_audio_format = config.get("output_audio_format", "pcm16")
 
-        session: Dict[str, Any] = {
+        session: dict[str, Any] = {
             "type": "realtime",
             "model": self.model,
             "output_modalities": output_modalities,
@@ -202,9 +202,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         OpenAI is configured with input_audio_format='g711_ulaw' for the Twilio path,
         so no conversion is needed — pass through as-is.
         """
-        await self.send_server(
-            {"type": "input_audio_buffer.append", "audio": ulaw8k_b64}
-        )
+        await self.send_server({"type": "input_audio_buffer.append", "audio": ulaw8k_b64})
 
     async def send_function_result(self, call_id: str, result: Any) -> None:
         """Send function call result back to the API."""
@@ -218,9 +216,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         }
         await self.send_server(event)
 
-    async def call_tool(
-        self, call_id: str, tool_name: str, tool_arguments: Dict[str, Any]
-    ) -> None:
+    async def call_tool(self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]) -> None:
         tool_result = await self.tool_manager_service.execute(
             connection_key=self.connection_key,
             tool_name=tool_name,
@@ -239,9 +235,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
             # a redundant response.create while one is already in flight.
             await self.request_response()
 
-    async def process_message(
-        self, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    async def process_message(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Process incoming message from the frontend WebSocket."""
         return await self.client_event_handler.handle_event(data=message)
 
@@ -258,12 +252,12 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
                 except json.JSONDecodeError:
                     logger.exception("Failed to decode API message")
                 except Exception as e:
-                    logger.exception(f"Error processing API message: {str(e)}")
+                    logger.exception(f"Error processing API message: {e!s}")
 
         except websockets.exceptions.ConnectionClosed:
             logger.info("WebSocket connection closed")
         except Exception as e:
-            logger.exception(f"Error in message handler: {str(e)}")
+            logger.exception(f"Error in message handler: {e!s}")
 
     async def send_conversation_item_to_server(self, text: str):
         event = {

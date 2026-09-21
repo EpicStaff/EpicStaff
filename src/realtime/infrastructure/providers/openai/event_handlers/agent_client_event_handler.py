@@ -1,8 +1,10 @@
 import base64
-from typing import Callable, Dict, Any, Coroutine
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from loguru import logger
+
 from infrastructure.persistence.database import save_realtime_session_item_to_db
 
 
@@ -16,7 +18,7 @@ class ClientEventHandler:
         )
 
         self.client: OpenaiRealtimeAgentClient = client
-        self.event_map: Dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
+        self.event_map: dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
             "input_audio_buffer.commit": self.handle_input_audio_buffer_commit,
             "input_audio_buffer.append": self.handle_input_audio_buffer_append,
             "conversation.item.create": self.handle_conversation_item_create,
@@ -26,7 +28,7 @@ class ClientEventHandler:
             "transcription_session.update": self._handle_noop,
         }
 
-    async def handle_event(self, data: Dict[str, Any]) -> None:
+    async def handle_event(self, data: dict[str, Any]) -> None:
         """Handle incoming event by calling the appropriate method."""
         event_type = data.get("type")
 
@@ -42,15 +44,14 @@ class ClientEventHandler:
             user_id=self.client.user_id,
         )
 
-    async def unknown_event_handler(self, data: Dict[str, Any]) -> None:
+    async def unknown_event_handler(self, data: dict[str, Any]) -> None:
         """Default handler for unknown events."""
         logger.error(f"Unknown event type received: {json.dumps(data, indent=2)}")
-        return
 
-    async def handle_input_audio_buffer_commit(self, data: Dict[str, Any]) -> None:
+    async def handle_input_audio_buffer_commit(self, data: dict[str, Any]) -> None:
         await self.client.send_server(data)
 
-    async def handle_input_audio_buffer_append(self, data: Dict[str, Any]) -> None:
+    async def handle_input_audio_buffer_append(self, data: dict[str, Any]) -> None:
         await self.client.send_server(data)
 
     async def handle_conversation_item_create(self, data):
@@ -65,7 +66,7 @@ class ClientEventHandler:
     async def handle_session_update(self, data: dict):
         incoming = data.get("session") or {}
 
-        safe_config: Dict[str, Any] = {}
+        safe_config: dict[str, Any] = {}
 
         if "voice" in incoming:
             safe_config["voice"] = incoming["voice"]
@@ -87,17 +88,13 @@ class ClientEventHandler:
         if "output_audio_format" in incoming:
             safe_config["output_audio_format"] = incoming["output_audio_format"]
         if "input_audio_transcription" in incoming:
-            safe_config["input_audio_transcription"] = incoming[
-                "input_audio_transcription"
-            ]
+            safe_config["input_audio_transcription"] = incoming["input_audio_transcription"]
 
         await self.client.update_session(config=safe_config)
 
     async def _handle_noop(self, data: dict) -> None:
         """Silently drop an event we intentionally do not forward."""
-        logger.debug(
-            f"Dropping non-forwardable event on agent socket: {data.get('type')}"
-        )
+        logger.debug(f"Dropping non-forwardable event on agent socket: {data.get('type')}")
 
     async def send_audio(self, audio_bytes: bytes) -> None:
         """Send audio data to the API."""

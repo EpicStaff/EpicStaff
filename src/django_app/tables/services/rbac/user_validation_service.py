@@ -1,7 +1,6 @@
 from typing import Any
 
 from django.core.files.uploadedfile import UploadedFile
-
 from tables.services.rbac.base_rbac_validator import BaseRBACValidator, FieldError
 
 
@@ -17,9 +16,7 @@ class UserValidationService(BaseRBACValidator):
     echoed as-is so the FE can highlight the offending input.
     """
 
-    _redacted_fields = frozenset(
-        {"password", "new_password", "current_password", "ticket"}
-    )
+    _redacted_fields = frozenset({"password", "new_password", "current_password", "ticket"})
 
     # ---- create_user ----
 
@@ -34,13 +31,9 @@ class UserValidationService(BaseRBACValidator):
 
         errors: list[FieldError] = []
         errors.extend(self._validate_email_field(email))
-        errors.extend(
-            self._validate_password_field(password, user_hints={"email": email})
-        )
+        errors.extend(self._validate_password_field(password, user_hints={"email": email}))
         if organization_id is not None:
-            errors.extend(
-                self._validate_positive_int_field("organization_id", organization_id)
-            )
+            errors.extend(self._validate_positive_int_field("organization_id", organization_id))
             if role_id is not None:
                 errors.extend(self._validate_positive_int_field("role_id", role_id))
 
@@ -48,9 +41,7 @@ class UserValidationService(BaseRBACValidator):
         return {
             "email": email,
             "password": password,
-            "organization_id": int(organization_id)
-            if organization_id is not None
-            else None,
+            "organization_id": int(organization_id) if organization_id is not None else None,
             "role_id": int(role_id) if role_id is not None else None,
         }
 
@@ -91,9 +82,7 @@ class UserValidationService(BaseRBACValidator):
                 )
             )
         elif not has_email and not has_user_id:
-            errors.append(
-                FieldError("email", None, "Provide exactly one of email or user_id.")
-            )
+            errors.append(FieldError("email", None, "Provide exactly one of email or user_id."))
         elif has_email:
             errors.extend(self._validate_email_field(email))
         else:
@@ -170,9 +159,7 @@ class UserValidationService(BaseRBACValidator):
 
         organization_id: Any = None
         if organization_id_raw is not None and organization_id_raw != "":
-            org_errors = self._validate_positive_int_field(
-                "organization_id", organization_id_raw
-            )
+            org_errors = self._validate_positive_int_field("organization_id", organization_id_raw)
             errors.extend(org_errors)
             if not org_errors:
                 organization_id = int(organization_id_raw)
@@ -263,9 +250,7 @@ class UserValidationService(BaseRBACValidator):
         """`POST /api/profile/password-change/request/`. Body: current_password."""
         current_password = data.get("current_password")
         errors: list[FieldError] = []
-        errors.extend(
-            self._require_nonblank_string("current_password", current_password)
-        )
+        errors.extend(self._require_nonblank_string("current_password", current_password))
         self._raise_if_any(errors)
         return {"current_password": current_password}
 
@@ -275,8 +260,6 @@ class UserValidationService(BaseRBACValidator):
         new_password = data.get("new_password")
         errors: list[FieldError] = []
         errors.extend(self._require_nonblank_string("ticket", ticket))
-        errors.extend(
-            self._validate_password_field(new_password, field_name="new_password")
-        )
+        errors.extend(self._validate_password_field(new_password, field_name="new_password"))
         self._raise_if_any(errors)
         return {"ticket": ticket, "new_password": new_password}

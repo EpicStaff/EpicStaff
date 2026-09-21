@@ -1,10 +1,9 @@
 import time
+
 import requests
 from django.core.management.base import BaseCommand
 from loguru import logger
-
-from tables.models.knowledge_models import SourceCollection, NaiveRag
-
+from tables.models.knowledge_models import NaiveRag, SourceCollection
 
 MIGRATE_PREFIX = "COLLECTION_MIGRATE_"
 
@@ -46,19 +45,13 @@ class Command(BaseCommand):
         if not migrated_collections.exists():
             logger.info(f"No collections found with prefix '{MIGRATE_PREFIX}'")
             self.stdout.write(
-                self.style.WARNING(
-                    f"No collections found with prefix '{MIGRATE_PREFIX}'"
-                )
+                self.style.WARNING(f"No collections found with prefix '{MIGRATE_PREFIX}'")
             )
             return
 
-        logger.info(
-            f"Found {migrated_collections.count()} migrated collections to index"
-        )
+        logger.info(f"Found {migrated_collections.count()} migrated collections to index")
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Found {migrated_collections.count()} migrated collections"
-            )
+            self.style.SUCCESS(f"Found {migrated_collections.count()} migrated collections")
         )
 
         success_count = 0
@@ -68,9 +61,7 @@ class Command(BaseCommand):
             # Find NaiveRag for this collection via BaseRagType
             # BaseRagType.source_collection -> SourceCollection (FK)
             # NaiveRag.base_rag_type -> BaseRagType (FK)
-            naive_rag = NaiveRag.objects.filter(
-                base_rag_type__source_collection=collection
-            ).first()
+            naive_rag = NaiveRag.objects.filter(base_rag_type__source_collection=collection).first()
 
             if not naive_rag:
                 logger.warning(
@@ -116,13 +107,10 @@ class Command(BaseCommand):
                 )
 
                 if response.status_code == 202:
-                    logger.success(
-                        f"Successfully queued indexing for NaiveRag id={rag_id}"
-                    )
+                    logger.success(f"Successfully queued indexing for NaiveRag id={rag_id}")
                     self.stdout.write(
                         self.style.SUCCESS(
-                            f"  OK: Indexed NaiveRag id={rag_id} "
-                            f"for '{collection.collection_name}'"
+                            f"  OK: Indexed NaiveRag id={rag_id} for '{collection.collection_name}'"
                         )
                     )
                     success_count += 1
@@ -141,9 +129,7 @@ class Command(BaseCommand):
 
             except requests.RequestException as e:
                 logger.error(f"Request failed for NaiveRag id={rag_id}: {e}")
-                self.stdout.write(
-                    self.style.ERROR(f"  ERROR: NaiveRag id={rag_id} - {e}")
-                )
+                self.stdout.write(self.style.ERROR(f"  ERROR: NaiveRag id={rag_id} - {e}"))
                 error_count += 1
 
             # Wait before next request
@@ -153,9 +139,7 @@ class Command(BaseCommand):
         # Summary
         self.stdout.write("")
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING("Dry run completed - no requests sent")
-            )
+            self.stdout.write(self.style.WARNING("Dry run completed - no requests sent"))
         else:
             self.stdout.write(
                 self.style.SUCCESS(
@@ -167,6 +151,4 @@ class Command(BaseCommand):
                 "Command: [docker exec -it django_app python manage.py remove_migration_prefix --dry-run] - for preview."
                 "[docker exec -it django_app python manage.py remove_migration_prefix] - execute"
             )
-        logger.info(
-            f"Indexing completed: {success_count} successful, {error_count} failed"
-        )
+        logger.info(f"Indexing completed: {success_count} successful, {error_count} failed")

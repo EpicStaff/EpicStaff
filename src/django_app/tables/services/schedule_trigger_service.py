@@ -1,12 +1,11 @@
 import zoneinfo
-from datetime import datetime, timedelta, timezone as _tz
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 from loguru import logger
-
 from src.shared.models import ScheduleTriggerNodePayload
 from src.shared.schedule.trigger_builder import build_trigger
 from tables.models.graph_models import ScheduleTriggerNode
@@ -34,9 +33,7 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         node = ScheduleTriggerNode.objects.create(**validated_data)
         next_run = self._compute_next_run_date_time(node)
         if next_run is not None:
-            ScheduleTriggerNode.objects.filter(pk=node.pk).update(
-                next_run_date_time=next_run
-            )
+            ScheduleTriggerNode.objects.filter(pk=node.pk).update(next_run_date_time=next_run)
             node.next_run_date_time = next_run
         return node
 
@@ -47,9 +44,7 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         """
         node = ScheduleTriggerNode.objects.filter(id=node_id).first()
         if node is None:
-            logger.warning(
-                f"[ScheduleTriggerService] Node {node_id} not found for deactivation"
-            )
+            logger.warning(f"[ScheduleTriggerService] Node {node_id} not found for deactivation")
             return
         if not node.is_active:
             logger.info(f"[ScheduleTriggerService] Node {node_id} already inactive")
@@ -66,9 +61,7 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
     ) -> ScheduleTriggerNode:
         # Reactivating or changing the run cap restarts the run counter so the
         # node fires the full new quota instead of inheriting prior progress.
-        reactivating = (
-            not instance.is_active and validated_data.get("is_active") is True
-        )
+        reactivating = not instance.is_active and validated_data.get("is_active") is True
         new_max_runs = validated_data.get("max_runs", instance.max_runs)
         if reactivating or new_max_runs != instance.max_runs:
             validated_data["current_runs"] = 0
@@ -128,18 +121,14 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
                 )
                 return
 
-            next_run = self._compute_next_run_date_time(
-                node, after=now + timedelta(microseconds=1)
-            )
+            next_run = self._compute_next_run_date_time(node, after=now + timedelta(microseconds=1))
             ScheduleTriggerNode.objects.filter(pk=node.pk).update(
                 next_run_date_time=next_run,
                 updated_at=timezone.now(),
             )
 
         except Exception as exc:
-            logger.error(
-                f"[ScheduleTriggerService] Error processing node {node_id}: {exc}"
-            )
+            logger.error(f"[ScheduleTriggerService] Error processing node {node_id}: {exc}")
             raise
 
     def _lock_active_node(self, node_id: int) -> ScheduleTriggerNode | None:
@@ -167,9 +156,7 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         )
 
     def _increment_runs(self, node: ScheduleTriggerNode) -> None:
-        ScheduleTriggerNode.objects.filter(pk=node.pk).update(
-            current_runs=F("current_runs") + 1
-        )
+        ScheduleTriggerNode.objects.filter(pk=node.pk).update(current_runs=F("current_runs") + 1)
         node.refresh_from_db()
 
     def _deactivate(self, node: ScheduleTriggerNode, reason: str) -> None:
@@ -210,6 +197,6 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         if trigger is None:
             return None
 
-        after_utc = (after or datetime.now(_tz.utc)).astimezone(_tz.utc)
+        after_utc = (after or datetime.now(UTC)).astimezone(UTC)
         nxt = trigger.get_next_fire_time(None, after_utc)
-        return nxt.astimezone(_tz.utc) if nxt else None
+        return nxt.astimezone(UTC) if nxt else None

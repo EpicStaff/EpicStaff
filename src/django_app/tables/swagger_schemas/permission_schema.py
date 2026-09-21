@@ -27,27 +27,27 @@ _ORG_HEADER_REQUIRED = OpenApiParameter(
     ),
 )
 
-PERMISSIONS_CATALOG_GET = dict(
-    summary="Permission catalog (resource types × actions)",
-    description=(
+PERMISSIONS_CATALOG_GET = {
+    "summary": "Permission catalog (resource types x actions)",
+    "description": (
         "Static taxonomy that drives the permission-matrix UI. Caller- and "
         "org-independent; safe to cache."
     ),
-    responses={
+    "responses": {
         200: CatalogResponseSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-PERMISSIONS_ME_GET = dict(
-    summary="My effective permissions in the active org",
-    description=(
+PERMISSIONS_ME_GET = {
+    "summary": "My effective permissions in the active org",
+    "description": (
         "The caller's role and permissions in the org named by "
         "X-Organization-Id. `permissions` maps resource_type → action codes, "
         'or is "*" for a superadmin.'
     ),
-    parameters=[_ORG_HEADER_REQUIRED],
-    responses={
+    "parameters": [_ORG_HEADER_REQUIRED],
+    "responses": {
         200: PermissionsMeResponseSerializer,
         400: OpenApiResponse(
             description="Missing or non-integer X-Organization-Id (org_context_required)."
@@ -58,18 +58,18 @@ PERMISSIONS_ME_GET = dict(
         ),
         404: OpenApiResponse(description="Organization not found."),
     },
-)
+}
 
-PERMISSIONS_ME_ORGS_GET = dict(
-    summary="My per-org permissions across all my orgs",
-    description=(
+PERMISSIONS_ME_ORGS_GET = {
+    "summary": "My per-org permissions across all my orgs",
+    "description": (
         "The caller's permissions in every org they belong to, in one call — "
         "drives the admin nav, org filters, and per-org action gating. Takes "
         'no header. A superadmin gets {is_superadmin: true, permissions: "*"} '
         "with no `orgs` array."
     ),
-    responses={
+    "responses": {
         200: MyOrgsPermissionsResponseSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}

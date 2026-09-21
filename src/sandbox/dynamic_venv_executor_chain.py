@@ -1,25 +1,24 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
+
 import asyncio
-from dataclasses import asdict
 import hashlib
 import json
 import os
 import pwd
 import signal
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import settings
-
 from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
-
 from secret_scrubber import scrub
-from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
+from src.shared.models import CodeResultData
 from utils.environment import build_base_env
 from utils.logger import logger
 
@@ -97,7 +96,7 @@ class Handler(ABC):
         pass
 
     @abstractmethod
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         pass
 
 
@@ -114,7 +113,7 @@ class AbstractHandler(Handler):
         return handler
 
     @abstractmethod
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         if self._next_handler:
             return await self._next_handler.handle(context)
 
@@ -127,12 +126,12 @@ class DummyHandler(AbstractHandler):
 
 
 class CreateVenvHandler(AbstractHandler):
-    def calculate_hash(self, libraries: List[str]) -> str:
+    def calculate_hash(self, libraries: list[str]) -> str:
         """Calculate a hash of the libraries list."""
         libraries_str = json.dumps(libraries, sort_keys=True)
         return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
 
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         """Create virtual environment task."""
 
         context["libraries"] = set(context["libraries"])
@@ -177,7 +176,7 @@ class CreateVenvHandler(AbstractHandler):
 
 
 class InstallLibrariesHandler(AbstractHandler):
-    def calculate_hash(self, libraries: List[str]) -> str:
+    def calculate_hash(self, libraries: list[str]) -> str:
         """Calculate a hash of the libraries list."""
         libraries_str = json.dumps(libraries, sort_keys=True)
         return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
@@ -185,7 +184,7 @@ class InstallLibrariesHandler(AbstractHandler):
     def _hash_changed(self, lib_hash: str, hash_file: Path) -> bool:
         """Check if the hash of the libraries has changed."""
         if hash_file.exists():
-            with open(hash_file, "r") as f:
+            with open(hash_file) as f:
                 saved_hash = f.read().strip()
             return lib_hash != saved_hash
         return True
@@ -195,13 +194,11 @@ class InstallLibrariesHandler(AbstractHandler):
         with open(hash_file, "w") as f:
             f.write(lib_hash)
 
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         """Install libraries asynchronously."""
         python_executable = context["python_executable"]
         lib_hash = context.get("lib_hash")
-        hash_changed = self._hash_changed(
-            lib_hash=lib_hash, hash_file=context["hash_file"]
-        )
+        hash_changed = self._hash_changed(lib_hash=lib_hash, hash_file=context["hash_file"])
 
         if hash_changed:
             logger.info("Installing libraries...")
@@ -313,7 +310,7 @@ class ExecuteCodeHandler(AbstractHandler):
         global_kwargs: dict[str, Any] | None = None,
         storage_mutations_path: Path | None = None,
     ):
-        global_kwargs = global_kwargs or dict()
+        global_kwargs = global_kwargs or {}
         code_lines = code.split("\n")
         code_lines = ["    " + line for line in code_lines]
         code = "\n".join(code_lines)
@@ -356,7 +353,7 @@ except Exception:
 
         return wrapped_code
 
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         """Execute the provided code asynchronously."""
         python_executable = context["python_executable"]
 
@@ -378,7 +375,7 @@ except Exception:
         )
 
         # Write the code to a temporary file
-        with open(temp_code_path, "w") as f:
+        with open(temp_code_path, "w") as f:  # noqa: ASYNC230
             f.write(wrapped_code)
 
         # Execute the code asynchronously
@@ -386,9 +383,7 @@ except Exception:
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
         env["TMPDIR"] = context["tmp_path"]
-        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get(
-            "CONTAINER_SAVEFILES_PATH", "."
-        )
+        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
         if context.get("use_storage"):
             env["STORAGE_ENDPOINT"] = settings.STORAGE_ENDPOINT
             env["STORAGE_BUCKET_NAME"] = settings.STORAGE_BUCKET_NAME
@@ -485,12 +480,10 @@ except Exception:
 
         if returncode == 0:
             try:
-                with open(result_file_path, "r", encoding="utf-8") as file:
+                with open(result_file_path, encoding="utf-8") as file:  # noqa: ASYNC230
                     raw_result = file.read()
                 result_data = (
-                    scrub(text=raw_result, secrets=secrets)
-                    if mask_secrets
-                    else raw_result
+                    scrub(text=raw_result, secrets=secrets) if mask_secrets else raw_result
                 )
             except Exception:
                 logger.exception("Exception reading result file")
@@ -530,9 +523,7 @@ except Exception:
 
         stdout_bytes, stderr_bytes = b"", b""
         if killed:
-            done, _ = await asyncio.wait(
-                {comm_task}, timeout=_TIMEOUT_DRAIN_GRACE_SECONDS
-            )
+            done, _ = await asyncio.wait({comm_task}, timeout=_TIMEOUT_DRAIN_GRACE_SECONDS)
             if comm_task in done:
                 try:
                     stdout_bytes, stderr_bytes = comm_task.result()
@@ -561,9 +552,7 @@ except Exception:
 
         timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
-            timeout_message += (
-                " Process could not be terminated and may still be running."
-            )
+            timeout_message += " Process could not be terminated and may still be running."
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
 
         return CodeResultData(
@@ -615,7 +604,7 @@ class DynamicVenvExecutorChain:
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
         if func_kwargs is None:
-            func_kwargs = dict()
+            func_kwargs = {}
 
         output_path = Path(self.output_path) / execution_id
         os.makedirs(output_path, exist_ok=True)
@@ -667,9 +656,7 @@ class DynamicVenvExecutorChain:
         if use_storage:
             try:
                 if not storage_org_prefix:
-                    raise ValueError(
-                        "storage_org_prefix is required when use_storage is set"
-                    )
+                    raise ValueError("storage_org_prefix is required when use_storage is set")
                 policy = self.storage_credential_manager.build_policy(
                     allowed_bucket=settings.STORAGE_BUCKET_NAME,
                     org_prefix=storage_org_prefix,

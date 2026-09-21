@@ -1,12 +1,10 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
-
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.permission_serializers import RoleResponseSerializer
 from tables.services.rbac.role_management_service import RoleManagementService
 from tables.services.rbac.role_validation_service import RoleValidationService
-from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 from tables.swagger_schemas.role_admin_schema import (
     ROLES_CREATE_POST,
     ROLES_DESTROY_DELETE,
@@ -14,6 +12,7 @@ from tables.swagger_schemas.role_admin_schema import (
     ROLES_RETRIEVE_GET,
     ROLES_UPDATE_PATCH,
 )
+from tables.views.cross_org_admin import CrossOrgAdminPagination, CrossOrgAdminViewSet
 
 
 class RoleAdminViewSet(CrossOrgAdminViewSet):
@@ -48,9 +47,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
     def list(self, request):
         # `assignable_org_ids` is `org_ids` plus the assignability filter, so
         # when present it defines the org scope as well.
-        assignable_ids = self.parse_org_ids(
-            request.query_params.get("assignable_org_ids")
-        )
+        assignable_ids = self.parse_org_ids(request.query_params.get("assignable_org_ids"))
         org_ids = (
             assignable_ids
             if assignable_ids is not None
@@ -75,15 +72,11 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(custom_qs, request, view=self)
         self._service.attach_role_display(roles=page, scope_org_ids=scope_org_ids)
-        response = paginator.get_paginated_response(
-            RoleResponseSerializer(page, many=True).data
-        )
+        response = paginator.get_paginated_response(RoleResponseSerializer(page, many=True).data)
         built_ins = self._service.list_built_in_roles(
             scope_org_ids=scope_org_ids, assignable_in=assignable_in
         )
-        response.data["built_in_roles"] = RoleResponseSerializer(
-            built_ins, many=True
-        ).data
+        response.data["built_in_roles"] = RoleResponseSerializer(built_ins, many=True).data
         return response
 
     @extend_schema(**ROLES_RETRIEVE_GET)
@@ -105,16 +98,12 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
             description=cleaned["description"],
             permissions=cleaned["permissions"],
         )
-        return Response(
-            RoleResponseSerializer(role).data, status=status.HTTP_201_CREATED
-        )
+        return Response(RoleResponseSerializer(role).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(**ROLES_UPDATE_PATCH)
     def partial_update(self, request, pk=None):
         cleaned = self._validator.validate_update(request.data)
-        role = self._service.update_role(
-            actor=request.user, role_id=pk, changes=cleaned
-        )
+        role = self._service.update_role(actor=request.user, role_id=pk, changes=cleaned)
         return Response(RoleResponseSerializer(role).data)
 
     @extend_schema(**ROLES_DESTROY_DELETE)

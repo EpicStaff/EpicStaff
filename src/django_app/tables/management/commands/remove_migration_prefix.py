@@ -1,8 +1,6 @@
 from django.core.management.base import BaseCommand
 from loguru import logger
-
 from tables.models.knowledge_models import SourceCollection
-
 
 MIGRATE_PREFIX = "COLLECTION_MIGRATE_"
 
@@ -27,17 +25,13 @@ class Command(BaseCommand):
         if not migrated_collections.exists():
             logger.info(f"No collections found with prefix '{MIGRATE_PREFIX}'")
             self.stdout.write(
-                self.style.WARNING(
-                    f"No collections found with prefix '{MIGRATE_PREFIX}'"
-                )
+                self.style.WARNING(f"No collections found with prefix '{MIGRATE_PREFIX}'")
             )
             return
 
         count = migrated_collections.count()
         logger.info(f"Found {count} collections with migration prefix")
-        self.stdout.write(
-            self.style.SUCCESS(f"Found {count} collections with migration prefix")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Found {count} collections with migration prefix"))
 
         success_count = 0
         error_count = 0
@@ -56,9 +50,7 @@ class Command(BaseCommand):
                 collection.save(update_fields=["collection_name", "updated_at"])
 
                 logger.success(f"Renamed: '{old_name}' -> '{new_name}'")
-                self.stdout.write(
-                    self.style.SUCCESS(f"  OK: '{old_name}' -> '{new_name}'")
-                )
+                self.stdout.write(self.style.SUCCESS(f"  OK: '{old_name}' -> '{new_name}'"))
                 success_count += 1
 
             except Exception as e:
@@ -76,6 +68,4 @@ class Command(BaseCommand):
                     f"Renaming completed: {success_count} successful, {error_count} failed"
                 )
             )
-        logger.info(
-            f"Renaming completed: {success_count} successful, {error_count} failed"
-        )
+        logger.info(f"Renaming completed: {success_count} successful, {error_count} failed")

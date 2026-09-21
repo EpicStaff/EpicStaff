@@ -4,7 +4,6 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
 from tables.serializers.user_management_serializers import (
     UserCreateRequestSerializer,
     UserResponseSerializer,
@@ -57,9 +56,7 @@ class UserAdminViewSet(viewsets.ViewSet):
 
     @extend_schema(**USERS_LIST_GET)
     def list(self, request):
-        org_ids = CrossOrgAdminViewSet.parse_org_ids(
-            request.query_params.get("org_ids")
-        )
+        org_ids = CrossOrgAdminViewSet.parse_org_ids(request.query_params.get("org_ids"))
         cleaned = self._validator.validate_list_users_query(request.query_params)
         if org_ids is None and cleaned["organization_id"] is not None:
             org_ids = [cleaned["organization_id"]]
@@ -74,9 +71,7 @@ class UserAdminViewSet(viewsets.ViewSet):
         qs = self._apply_ordering(qs, request.query_params.get("ordering"))
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)
-        serializer = UserResponseSerializer(
-            page, many=True, context={"request": request}
-        )
+        serializer = UserResponseSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
     def _apply_ordering(self, qs, raw):
@@ -122,9 +117,7 @@ class UserAdminViewSet(viewsets.ViewSet):
         },
     )
     def grant_superadmin(self, request, pk=None):
-        user = self._service.grant_superadmin(
-            actor=request.user, target_user_id=int(pk)
-        )
+        user = self._service.grant_superadmin(actor=request.user, target_user_id=int(pk))
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
@@ -138,9 +131,7 @@ class UserAdminViewSet(viewsets.ViewSet):
         },
     )
     def revoke_superadmin(self, request, pk=None):
-        user = self._service.revoke_superadmin(
-            actor=request.user, target_user_id=int(pk)
-        )
+        user = self._service.revoke_superadmin(actor=request.user, target_user_id=int(pk))
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
@@ -149,9 +140,7 @@ class UserAdminViewSet(viewsets.ViewSet):
         summary="Deactivate a user account (superadmin)",
         responses={
             200: UserResponseSerializer,
-            400: OpenApiResponse(
-                description="Cannot deactivate the last active superadmin"
-            ),
+            400: OpenApiResponse(description="Cannot deactivate the last active superadmin"),
             404: OpenApiResponse(description="User not found"),
         },
     )
@@ -171,8 +160,6 @@ class UserAdminViewSet(viewsets.ViewSet):
         },
     )
     def reactivate(self, request, pk=None):
-        user = self._service.set_user_active(
-            actor=request.user, target_user_id=int(pk), value=True
-        )
+        user = self._service.set_user_active(actor=request.user, target_user_id=int(pk), value=True)
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
