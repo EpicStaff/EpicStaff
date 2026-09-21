@@ -1,50 +1,46 @@
 <section class="llm-library">
-    @if (configsLoaded()) {
-        <header class="header">
-            <div class="header-left">
-                <h3 class="title">LLM Library</h3>
-                <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
+    <header class="header">
+        <div class="header-left">
+            <h3 class="title">LLM Library</h3>
+            <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
+        </div>
+
+        <div class="header-right">
+            <app-search
+                placeholder="Search configurations..."
+                [searchTerm]="searchQuery()"
+                (searchTermChange)="onSearchChange($event)"
+            />
+
+            <div class="filter">
+                <app-select
+                    [items]="capabilities()"
+                    placeholder="All Capabilities"
+                    (changed)="selectedCapability.set($event)"
+                />
             </div>
 
-            <div class="header-right">
-                <div class="search">
-                    <i
-                        class="ti ti-search search-icon"
-                        aria-hidden="true"
-                    ></i>
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search configurations..."
-                        autocomplete="off"
-                        [value]="searchQuery()"
-                        (input)="onSearchChange($any($event.target).value)"
-                    />
-                </div>
+            <app-button
+                class="add-btn"
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                [disabled]="status() === 'error'"
+                (click)="onAddModel()"
+                leftIcon="plus"
+            >
+                Add Configuration
+            </app-button>
+        </div>
+    </header>
 
-                <div class="filter">
-                    <app-select
-                        [items]="capabilities()"
-                        placeholder="All Capabilities"
-                        (changed)="selectedCapability.set($event)"
-                    />
-                </div>
-
-                <button
-                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                    type="button"
-                    class="add-btn"
-                    (click)="onAddModel()"
-                >
-                    <i
-                        class="ti ti-plus"
-                        aria-hidden="true"
-                    ></i>
-                    Add Configuration
-                </button>
-            </div>
-        </header>
-
+    @if (status() === 'error') {
+        <app-fetch-error-state
+            title="Failed to load configurations"
+            message="Your search and filters are still applied. Check your connection and try again."
+            (retry)="retry()"
+        />
+    } @else if (status() !== 'loaded') {
+        <app-loading-spinner message="Loading Configurations data" />
+    } @else {
         @for (section of groupedByType(); track section.type) {
             <div class="section">
                 <h4 class="section-title">{{ section.label }} Configs:</h4>
@@ -122,7 +118,5 @@
                 }
             </div>
         }
-    } @else {
-        <app-loading-spinner message="Loading Configurations data" />
     }
 </section>

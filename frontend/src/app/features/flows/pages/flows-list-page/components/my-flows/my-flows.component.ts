@@ -14,6 +14,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { FetchErrorStateComponent } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
@@ -38,7 +39,14 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './my-flows.component.html',
     styleUrls: ['./my-flows.component.scss'],
-    imports: [FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
+    imports: [
+        FlowCardComponent,
+        LoadingSpinnerComponent,
+        DialogModule,
+        RouterLink,
+        DragScrollDirective,
+        FetchErrorStateComponent,
+    ],
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);

@@ -1,6 +1,13 @@
 <div class="collections-page">
     <div class="collections-page__body">
-        @if (isLoading()) {
+        @if (error()) {
+            <app-fetch-error-state
+                class="collections-page__body-loading"
+                title="Failed to load knowledge sources"
+                message="Check your connection and try again."
+                (retry)="retryLoad()"
+            />
+        } @else if (isLoading()) {
             <div class="collections-page__body-loading">
                 <app-spinner
                     [text]="'Loading knowledge sources...'"

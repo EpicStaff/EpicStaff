@@ -94,6 +94,7 @@ export class AgentsPageStore {
     readonly agents = signal<AgentDefinition[]>([]);
     readonly surfaces = signal<Surface[]>([]);
     readonly loading = signal<boolean>(false);
+    readonly error = signal<string | null>(null);
     readonly saving = signal<boolean>(false);
     readonly agentSaveErrorTick = signal<number>(0);
     // Bumped when a specific surface's save fails; carries the surface id so only that
@@ -413,6 +414,7 @@ export class AgentsPageStore {
 
     load(): void {
         this.loading.set(true);
+        this.error.set(null);
         forkJoin({
             agents: this.agentsApi.getAgentDefinitions(),
             surfaces: this.surfacesApi.getSurfaces(),
@@ -424,14 +426,14 @@ export class AgentsPageStore {
                 this.surfaces.set(surfacesOk ? surfaces : []);
                 this.loading.set(false);
                 if (!agentsOk || !surfacesOk) {
-                    this.toast.error('Failed to load agents and surfaces');
+                    this.error.set('Failed to load agents and surfaces');
                 }
             },
             error: (err) => {
                 this.agents.set([]);
                 this.surfaces.set([]);
                 this.loading.set(false);
-                this.toast.error(this.extractError(err, 'Failed to load agents and surfaces'));
+                this.error.set(this.extractError(err, 'Failed to load agents and surfaces'));
             },
         });
     }

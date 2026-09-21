@@ -14,19 +14,23 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ButtonComponent,
     ConfirmationDialogData,
     ConfirmationDialogService,
     EmbeddingModelConfigDialogComponent,
+    FetchErrorStateComponent,
     LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
+    SearchComponent,
     SelectComponent,
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, LlmLibraryProviderGroup, ModelTypes, ResourceCode } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
-import { Observable } from 'rxjs';
+import { forkJoin, Observable } from 'rxjs';
 
+import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -64,6 +68,9 @@ interface VoiceProvider {
         LoadingSpinnerComponent,
         SelectComponent,
         HasPermissionDirective,
+        ButtonComponent,
+        SearchComponent,
+        FetchErrorStateComponent,
     ],
     templateUrl: './llm-library-section.component.html',
     styleUrls: ['./llm-library-section.component.scss'],
@@ -92,7 +99,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     public configs = this.llmConfigStorageService.configs;
     public searchQuery = signal('');
     public selectedCapability = signal<unknown>(null);
-    public configsLoaded = signal<boolean>(false);
+    public status = signal<LoadingState>(LoadingState.IDLE);
 
     readonly configTypeSections: { type: ModelTypes; label: string }[] = [
         { type: ModelTypes.LLM, label: 'LLM' },
@@ -155,14 +162,24 @@ export class LlmLibrarySectionComponent implements OnInit {
     ]);
 
     ngOnInit() {
-        this.llmLibraryService
-            .loadConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.configsLoaded.set(true));
+        this.loadAll();
+    }
 
-        for (const p of this.voiceProviders) {
-            p.storage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-        }
+    public retry(): void {
+        this.loadAll();
+    }
+
+    private loadAll(): void {
+        this.status.set(LoadingState.LOADING);
+        forkJoin({
+            configs: this.llmLibraryService.loadConfigs(),
+            voice: forkJoin(this.voiceProviders.map((p) => p.storage.getAllConfigs())),
+        })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => this.status.set(LoadingState.LOADED),
+                error: () => this.status.set(LoadingState.ERROR),
+            });
     }
 
     onAddConfig(provider: VoiceProvider): void {
