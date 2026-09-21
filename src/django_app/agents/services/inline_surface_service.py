@@ -7,6 +7,7 @@ from agents.services.surface_content_service import (
     INLINE_SURFACE_CONTENT,
     SurfaceContentService,
 )
+from agents.validators.surface_validator import SurfaceValidator
 
 
 class InlineSurfaceService:
@@ -35,6 +36,9 @@ class InlineSurfaceService:
         )
         SurfaceContentService.replace_mcp_tools(
             inline, data.get("mcp_tools", []), INLINE_SURFACE_CONTENT
+        )
+        SurfaceValidator.validate_storage_items_org(
+            data.get("storage_items", []), task_node.graph.org_id
         )
         SurfaceContentService.replace_storage_items(
             inline, data.get("storage_items", []), INLINE_SURFACE_CONTENT

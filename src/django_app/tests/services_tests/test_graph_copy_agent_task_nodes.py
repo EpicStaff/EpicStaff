@@ -17,6 +17,7 @@ from agents.models import (
     InlineSurface,
     InlineSurfaceKnowledge,
     InlineSurfacePythonTool,
+    InlineSurfaceStorageItem,
     Surface,
     ToolMode,
 )
@@ -35,6 +36,7 @@ from tables.models import (
     TaskNode,
 )
 from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.rbac_models import Organization
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 
 
@@ -87,6 +89,20 @@ def source_collection(default_org):
 @pytest.fixture
 def source_graph(default_org):
     return Graph.objects.create(org=default_org, name="copy-source-graph")
+
+
+@pytest.fixture
+def other_org(db):
+    return Organization.objects.create(name="copy-test-other-org")
+
+
+@pytest.fixture
+def storage_file_other_org(other_org):
+    return StorageFile.objects.create(
+        org=other_org,
+        path="copy-test-foreign-file.txt",
+        name="copy-test-foreign-file.txt",
+    )
 
 
 @pytest.mark.django_db
@@ -163,6 +179,29 @@ class TestGraphCopyTaskNode:
         assert new_knowledge.id != original_knowledge.id
         assert new_knowledge.collection_id == source_collection.collection_id
         assert new_knowledge.naive_search_config.search_limit == 3
+
+    def test_cross_org_inline_storage_item_skipped_not_raised_on_copy(
+        self, source_graph, storage_file_other_org
+    ):
+        """EST-4077 regression: an InlineSurfaceStorageItem pointing at a
+        StorageFile from a different org than the (new) node's graph org must
+        be silently skipped during copy -- never raise, and never appear on
+        the copied inline surface. The row is constructed directly via the
+        ORM (bypassing the serializer-level org check) because this defense
+        belongs to `copy_node_inline_surface` itself, not the write path."""
+        task_node = TaskNode.objects.create(graph=source_graph, node_name="task-node-cross-org")
+        inline_surface = InlineSurface.objects.create(task_node=task_node)
+        InlineSurfaceStorageItem.objects.create(
+            inline_surface=inline_surface,
+            storage_file=storage_file_other_org,
+            can_view="allow",
+        )
+
+        new_graph = GraphCopyService().copy(source_graph, org_id=source_graph.org_id)
+        new_task_node = new_graph.task_node_list.get()
+        new_inline_surface = new_task_node.inline_surface
+
+        assert new_inline_surface.storage_items.count() == 0
 
     def test_source_graph_unmodified_after_task_node_copy(
         self, source_graph, python_tool
