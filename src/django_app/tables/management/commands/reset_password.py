@@ -3,7 +3,6 @@ import secrets
 import sys
 
 from django.core.management.base import BaseCommand, CommandError
-
 from tables.services.rbac.auth_validation_service import AuthValidationService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
 from tables.services.rbac.rbac_exceptions import (
@@ -50,9 +49,7 @@ class Command(BaseCommand):
         except FormValidationError as exc:
             raise CommandError(
                 "Password validation failed:\n  "
-                + "\n  ".join(
-                    f"{item['field']}: {item['reason']}" for item in exc.errors
-                )
+                + "\n  ".join(f"{item['field']}: {item['reason']}" for item in exc.errors)
             ) from exc
 
         try:
@@ -72,9 +69,7 @@ class Command(BaseCommand):
         if options["password"]:
             return options["password"]
         if not sys.stdin.isatty():
-            raise CommandError(
-                "No TTY available; pass --password or --generate explicitly."
-            )
+            raise CommandError("No TTY available; pass --password or --generate explicitly.")
         first = getpass.getpass("New password: ")
         second = getpass.getpass("Confirm password: ")
         if first != second:

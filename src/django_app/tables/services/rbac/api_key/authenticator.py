@@ -1,6 +1,5 @@
 from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
-
 from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
 from tables.services.rbac.api_key.principals import PrincipalResolver

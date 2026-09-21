@@ -1,11 +1,10 @@
-from loguru import logger
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
-
-from tables.services.telegram_trigger_service import TelegramTriggerService
-from tables.services.webhook_trigger_service import WebhookTriggerService
+from loguru import logger
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
+from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
 def _resync_tunnel_registration(id_: int) -> None:
@@ -26,9 +25,7 @@ def _resync_tunnel_registration(id_: int) -> None:
                 f"Tunnel resync signal was sent but not delivered for TelegramTriggerNode ID: {id_}"
             )
     except Exception:
-        logger.exception(
-            f"Error resyncing tunnel registration for TelegramTriggerNode ID: {id_}"
-        )
+        logger.exception(f"Error resyncing tunnel registration for TelegramTriggerNode ID: {id_}")
 
 
 def _cleanup_orphaned_telegram_node_auth(trigger_id: int | None) -> None:
@@ -71,23 +68,15 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
         _cleanup_orphaned_telegram_node_auth(old_trigger_id)
 
     try:
-        TelegramTriggerService().register_telegram_trigger(
-            telegram_trigger_instance=instance
-        )
-        logger.info(
-            f"Successfully registered telegram trigger for TelegramTriggerNode : {id_}"
-        )
+        TelegramTriggerService().register_telegram_trigger(telegram_trigger_instance=instance)
+        logger.info(f"Successfully registered telegram trigger for TelegramTriggerNode : {id_}")
 
     except Exception:
         logger.exception("Error registering telegram bot {id_}", id_=id_)
 
 
 @receiver(post_delete, sender=TelegramTriggerNode)
-def telegram_trigger_post_delete_handler(
-    sender, instance: TelegramTriggerNode, **kwargs
-):
-    logger.info(
-        f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}"
-    )
+def telegram_trigger_post_delete_handler(sender, instance: TelegramTriggerNode, **kwargs):
+    logger.info(f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}")
     _resync_tunnel_registration(instance.pk)
     _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)

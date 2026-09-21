@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.services.cdt_explain import SUPPORTED_BLOCK_TYPES
 
 MAX_BLOCKS = 100

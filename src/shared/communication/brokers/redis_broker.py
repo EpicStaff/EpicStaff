@@ -1,11 +1,13 @@
 import json
-from typing import Any, Iterator, AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
-from redis import Redis as SyncRedis, RedisError
+from redis import Redis as SyncRedis
+from redis import RedisError
 from redis.asyncio import Redis as AsyncRedis
 
-from ..errors import BrokerOperationError
 from ..error_handler import handle_error
+from ..errors import BrokerOperationError
 from .abstract import AbstractBroker
 
 

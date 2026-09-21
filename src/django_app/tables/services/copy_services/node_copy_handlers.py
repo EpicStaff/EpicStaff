@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from agents.models.surface_models import AgentInlineSurface, InlineSurface
 from agents.services.surface_content_service import (
@@ -7,15 +7,14 @@ from agents.services.surface_content_service import (
 )
 from tables.import_export.enums import NodeType
 from tables.models import Graph
-from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
-    ConditionGroup,
     Condition,
+    ConditionGroup,
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
@@ -30,6 +29,7 @@ from tables.models.graph_models import (
     TelegramTriggerNodeField,
     WebhookTriggerNode,
 )
+from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
 from tables.services.copy_services.inline_surface_copy_helpers import (
     copy_agent_node_tasks,
@@ -54,14 +54,10 @@ def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
 
 
 def copy_graph_note(graph: Graph, node: GraphNote) -> GraphNote:
-    return GraphNote.objects.create(
-        graph=graph, content=node.content, metadata=node.metadata
-    )
+    return GraphNote.objects.create(graph=graph, content=node.content, metadata=node.metadata)
 
 
-def copy_file_extractor_node(
-    graph: Graph, node: FileExtractorNode
-) -> FileExtractorNode:
+def copy_file_extractor_node(graph: Graph, node: FileExtractorNode) -> FileExtractorNode:
     return FileExtractorNode.objects.create(
         graph=graph,
         **get_base_node_fields(node),
@@ -94,9 +90,7 @@ def copy_python_node(graph: Graph, node: PythonNode) -> PythonNode:
     )
 
 
-def copy_webhook_trigger_node(
-    graph: Graph, node: WebhookTriggerNode
-) -> WebhookTriggerNode:
+def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode) -> WebhookTriggerNode:
     new_code = copy_python_code(node.python_code)
     return WebhookTriggerNode.objects.create(
         graph=graph,
@@ -107,9 +101,7 @@ def copy_webhook_trigger_node(
     )
 
 
-def copy_telegram_trigger_node(
-    graph: Graph, node: TelegramTriggerNode
-) -> TelegramTriggerNode:
+def copy_telegram_trigger_node(graph: Graph, node: TelegramTriggerNode) -> TelegramTriggerNode:
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
         node_name=node.node_name,
@@ -152,9 +144,7 @@ def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
     return new_node
 
 
-def copy_schedule_trigger_node(
-    graph: Graph, node: ScheduleTriggerNode
-) -> ScheduleTriggerNode:
+def copy_schedule_trigger_node(graph: Graph, node: ScheduleTriggerNode) -> ScheduleTriggerNode:
     # Schedule config is preserved verbatim; activation state is reset so the
     # copy does not start firing on its own — user must enable it explicitly.
     return ScheduleTriggerNode.objects.create(
@@ -176,9 +166,7 @@ def copy_schedule_trigger_node(
     )
 
 
-def copy_decision_table_node(
-    graph: Graph, node: DecisionTableNode
-) -> DecisionTableNode:
+def copy_decision_table_node(graph: Graph, node: DecisionTableNode) -> DecisionTableNode:
     new_node = DecisionTableNode.objects.create(
         graph=graph,
         node_name=node.node_name,
@@ -209,12 +197,8 @@ def copy_decision_table_node(
 def copy_classification_decision_table_node(
     graph: Graph, node: ClassificationDecisionTableNode
 ) -> ClassificationDecisionTableNode:
-    new_pre_code = (
-        copy_python_code(node.pre_python_code) if node.pre_python_code else None
-    )
-    new_post_code = (
-        copy_python_code(node.post_python_code) if node.post_python_code else None
-    )
+    new_pre_code = copy_python_code(node.pre_python_code) if node.pre_python_code else None
+    new_post_code = copy_python_code(node.post_python_code) if node.post_python_code else None
 
     new_node = ClassificationDecisionTableNode.objects.create(
         graph=graph,
@@ -253,9 +237,7 @@ def copy_classification_decision_table_node(
             group_name=group.group_name,
             order=group.order,
             expression=group.expression,
-            prompt=new_prompt_map.get(group.prompt.prompt_key)
-            if group.prompt
-            else None,
+            prompt=new_prompt_map.get(group.prompt.prompt_key) if group.prompt else None,
             manipulation=group.manipulation,
             continue_flag=group.continue_flag,
             dock_visible=group.dock_visible,
@@ -276,9 +258,7 @@ def copy_task_node(graph: Graph, node: TaskNode) -> TaskNode:
         **get_base_node_fields(node),
     )
     new_node.surface_list.set(node.surface_list.all())
-    copy_node_inline_surface(
-        node, new_node, InlineSurface, "task_node", INLINE_SURFACE_CONTENT
-    )
+    copy_node_inline_surface(node, new_node, InlineSurface, "task_node", INLINE_SURFACE_CONTENT)
     return new_node
 
 

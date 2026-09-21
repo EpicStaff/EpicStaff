@@ -1,8 +1,9 @@
 import json
 from collections.abc import Sequence
 
-from app.prompt.base import PromptBuilder
 from shared.models.agent_service import AgentSpec, ContextAttachment
+
+from app.prompt.base import PromptBuilder
 
 
 class SingleTaskPromptBuilder(PromptBuilder):

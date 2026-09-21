@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import json
 
+import settings
 from loguru import logger
-
+from shared.knowledge.client import KnowledgeClient
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import ToolResult
 from shared.models.knowledge_new import FoundChunk
 
 from app.knowledge.events import KnowledgeEventSink
-from shared.knowledge.target import KnowledgeSearchTarget
-from shared.knowledge.client import KnowledgeClient
-import settings
 
 
 async def _notify_sink(
@@ -28,11 +27,11 @@ async def _notify_sink(
     try:
         await sink.on_knowledge_search(target, query, result, error=error)
 
-    except Exception as sink_error:
+    except Exception as exc:
         logger.warning(
             "knowledge search sink failed rag_id={} error={}",
             target.rag_id,
-            sink_error,
+            exc,
         )
 
 

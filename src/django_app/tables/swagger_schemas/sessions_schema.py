@@ -1,29 +1,29 @@
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiResponse,
     OpenApiExample,
     OpenApiParameter,
+    OpenApiResponse,
     inline_serializer,
 )
-from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
+
 from tables.serializers.model_serializers import (
     SessionSerializer,
-    SessionLightSerializer,
 )
 from tables.serializers.serializers import RunSessionSerializer
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-RUN_SESSION_POST = dict(
-    summary="Start a new session",
-    description=(
+RUN_SESSION_POST = {
+    "summary": "Start a new session",
+    "description": (
         "Starts a new session for the given flow (`graph_id` or `graph_uuid`). "
         "Caller and organization are derived from the authenticated request. "
         "Requires READ on flows. Uploaded `files` are base64-encoded into "
         "`variables` under the `files` key."
     ),
-    request=RunSessionSerializer,
-    examples=[
+    "request": RunSessionSerializer,
+    "examples": [
         OpenApiExample(
             "Run session",
             value={
@@ -37,7 +37,7 @@ RUN_SESSION_POST = dict(
             request_only=True,
         ),
     ],
-    responses={
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Session successfully started.",
@@ -59,9 +59,7 @@ RUN_SESSION_POST = dict(
             examples=[
                 OpenApiExample(
                     "File size exceeded",
-                    value={
-                        "files": ["Total files size exceeds 10.00 MB (got 15.32 MB)"]
-                    },
+                    value={"files": ["Total files size exceeds 10.00 MB (got 15.32 MB)"]},
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -109,11 +107,11 @@ RUN_SESSION_POST = dict(
             ],
         ),
     },
-)
+}
 
-RUN_SESSION_SSE_GET = dict(
-    summary="Subscribe to real-time updates via SSE",
-    description=(
+RUN_SESSION_SSE_GET = {
+    "summary": "Subscribe to real-time updates via SSE",
+    "description": (
         "Starts a **Server-Sent Events (SSE)** stream for a given run session. "
         "Continuously pushes the following event types:\n"
         "- **messages**: New or historical graph session messages\n"
@@ -123,7 +121,7 @@ RUN_SESSION_SSE_GET = dict(
         "Note: This is a streaming endpoint and won't produce a visible response in Swagger UI. "
         "Use `?test=true` to receive a few finite sample events."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             name="test",
             location=OpenApiParameter.QUERY,
@@ -132,7 +130,7 @@ RUN_SESSION_SSE_GET = dict(
             required=False,
         ),
     ],
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="SSE stream of real-time events (text/event-stream).",
@@ -194,17 +192,17 @@ RUN_SESSION_SSE_GET = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-SESSION_LIST_GET = dict(
-    summary="List sessions",
-    description=(
+SESSION_LIST_GET = {
+    "summary": "List sessions",
+    "description": (
         "Returns a paginated, filterable, orderable list of sessions. "
         "Pass `detailed=false` to get lightweight records (minimal fields + `has_output_files`). "
         "Defaults to full session detail (`detailed=true`). "
         "The `detailed=true` behaviour is deprecated and will be removed in a future version."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             name="detailed",
             location=OpenApiParameter.QUERY,
@@ -213,7 +211,7 @@ SESSION_LIST_GET = dict(
             required=False,
         ),
     ],
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="List of sessions. Shape depends on the `detailed` query param.",
@@ -309,12 +307,12 @@ SESSION_LIST_GET = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-SESSION_RETRIEVE_GET = dict(
-    summary="Retrieve a session",
-    description="Returns full details of a single session by its ID.",
-    responses={
+SESSION_RETRIEVE_GET = {
+    "summary": "Retrieve a session",
+    "description": "Returns full details of a single session by its ID.",
+    "responses": {
         200: SessionSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -330,12 +328,12 @@ SESSION_RETRIEVE_GET = dict(
             ],
         ),
     },
-)
+}
 
-SESSION_DESTROY_DELETE = dict(
-    summary="Delete a session",
-    description="Permanently deletes a single session by its ID.",
-    responses={
+SESSION_DESTROY_DELETE = {
+    "summary": "Delete a session",
+    "description": "Permanently deletes a single session by its ID.",
+    "responses": {
         204: OpenApiResponse(description="Session deleted — no content returned."),
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -351,15 +349,15 @@ SESSION_DESTROY_DELETE = dict(
             ],
         ),
     },
-)
+}
 
-SESSION_STATUSES_GET = dict(
-    summary="Get session status counts grouped by graph",
-    description=(
+SESSION_STATUSES_GET = {
+    "summary": "Get session status counts grouped by graph",
+    "description": (
         "Returns a mapping of `graph_id` to an object of status → count pairs "
         "for all sessions matching the current filter parameters."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Mapping of graph_id to status counts.",
@@ -377,22 +375,22 @@ SESSION_STATUSES_GET = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-SESSION_BULK_DELETE_POST = dict(
-    summary="Bulk delete sessions",
-    description=(
+SESSION_BULK_DELETE_POST = {
+    "summary": "Bulk delete sessions",
+    "description": (
         "Deletes the given sessions within the active organization in a single atomic transaction. "
         "`ids` echoes the requested IDs verbatim, while `deleted` counts only the sessions actually removed — "
         "requested IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`."
     ),
-    request=inline_serializer(
+    "request": inline_serializer(
         name="SessionBulkDeleteRequest",
         fields={
             "ids": drf_serializers.ListField(child=drf_serializers.IntegerField()),
         },
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Sessions successfully deleted.",
@@ -425,12 +423,12 @@ SESSION_BULK_DELETE_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-SESSION_WARNINGS_GET = dict(
-    summary="Get session warnings",
-    description="Returns warning messages recorded for a session, if any.",
-    responses={
+SESSION_WARNINGS_GET = {
+    "summary": "Get session warnings",
+    "description": "Returns warning messages recorded for a session, if any.",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Session warnings retrieved successfully.",
@@ -463,12 +461,12 @@ SESSION_WARNINGS_GET = dict(
             ],
         ),
     },
-)
+}
 
-STOP_SESSION_POST = dict(
-    summary="Stop a running session",
-    description="Sends a stop signal to the session identified by its session ID. The signal must be received by all required listeners (manager and crew); if fewer than expected acknowledge, the session is marked as errored.",
-    responses={
+STOP_SESSION_POST = {
+    "summary": "Stop a running session",
+    "description": "Sends a stop signal to the session identified by its session ID. The signal must be received by all required listeners (manager and crew); if fewer than expected acknowledge, the session is marked as errored.",
+    "responses": {
         204: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Session stopped — no content returned.",
@@ -501,12 +499,12 @@ STOP_SESSION_POST = dict(
             ],
         ),
     },
-)
+}
 
-GET_UPDATES_GET = dict(
-    summary="Get session status update",
-    description="Returns the current status of a session identified by its session ID.",
-    responses={
+GET_UPDATES_GET = {
+    "summary": "Get session status update",
+    "description": "Returns the current status of a session identified by its session ID.",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Session details retrieved successfully.",
@@ -539,15 +537,15 @@ GET_UPDATES_GET = dict(
             ],
         ),
     },
-)
+}
 
-SESSION_OUTPUT_FILES_GET = dict(
-    summary="List session output files",
-    description=(
+SESSION_OUTPUT_FILES_GET = {
+    "summary": "List session output files",
+    "description": (
         "Returns all storage files recorded as output during the given session, "
         "ordered by the time they were added."
     ),
-    responses={
+    "responses": {
         200: SessionOutputFileSerializer(many=True),
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -563,4 +561,4 @@ SESSION_OUTPUT_FILES_GET = dict(
             ],
         ),
     },
-)
+}

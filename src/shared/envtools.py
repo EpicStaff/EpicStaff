@@ -1,12 +1,14 @@
 import os
+from collections.abc import Callable
 from pathlib import Path
 from types import EllipsisType
-from typing import Any, Callable
+from typing import Any
+
 from . import humanize
 
 __all__ = [
-    "EnvironmentNotFoundError",
     "Env",
+    "EnvironmentNotFoundError",
 ]
 
 
@@ -43,7 +45,7 @@ class Env:
                 continue
 
             variable = variable.strip()
-            value = value.strip(" \"\'")
+            value = value.strip(" \"'")
 
             if override or variable not in self._envs:
                 self._envs[variable] = value
@@ -51,7 +53,7 @@ class Env:
     def get_value(
         self,
         variable: str,
-        default: Any | None | EllipsisType = ...,
+        default: Any | EllipsisType | None = ...,
         cast: Callable[[Any], Any] = lambda v: v,
     ) -> Any | None:
         """Look up an environment variable and cast its value.

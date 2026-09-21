@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
 def iso_utc_timestamp():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 

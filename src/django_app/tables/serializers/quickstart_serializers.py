@@ -1,15 +1,12 @@
 from rest_framework import serializers
-
+from tables.models.provider import Provider
+from tables.models.secret_models import Secret
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
 )
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
-    RealtimeConfigSerializer,
-    RealtimeTranscriptionConfigSerializer,
 )
-from tables.models.provider import Provider
-from tables.models.secret_models import Secret
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
@@ -41,9 +38,7 @@ class QuickstartSerializer(SecretReferenceGuardMixin, serializers.Serializer):
                 "Provide either api_key or api_key_secret_id, not both."
             )
         if not has_api_key and not has_secret:
-            raise serializers.ValidationError(
-                "Provide either api_key or api_key_secret_id."
-            )
+            raise serializers.ValidationError("Provide either api_key or api_key_secret_id.")
         return attrs
 
 

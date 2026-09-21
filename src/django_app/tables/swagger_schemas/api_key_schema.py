@@ -52,29 +52,29 @@ _NOT_FOUND_404_RESPONSE = OpenApiResponse(
     ],
 )
 
-PROFILE_API_KEYS_GET = dict(
-    summary="List my API keys",
-    description=(
+PROFILE_API_KEYS_GET = {
+    "summary": "List my API keys",
+    "description": (
         "Returns the caller's own API keys, newest first. Only metadata is "
         "returned — never the raw key or its hash. `status` is computed: "
         "active / expired / revoked."
     ),
-    responses={
+    "responses": {
         200: ApiKeySerializer(many=True),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
     },
-)
+}
 
-PROFILE_API_KEYS_POST = dict(
-    summary="Create an API key (raw key returned once)",
-    description=(
+PROFILE_API_KEYS_POST = {
+    "summary": "Create an API key (raw key returned once)",
+    "description": (
         "Creates a personal API key. `expires_in_days`: omit for the 90-day "
         "default, send null for a non-expiring key. The raw key appears only "
         "in this response. At most 5 active keys per user."
     ),
-    request=ApiKeyCreateRequestSerializer,
-    responses={
+    "request": ApiKeyCreateRequestSerializer,
+    "responses": {
         201: ApiKeyCreateResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
@@ -104,8 +104,7 @@ PROFILE_API_KEYS_POST = dict(
                                 "field": "expires_in_days",
                                 "value": 0,
                                 "reason": (
-                                    "Must be null (no expiry) or an integer "
-                                    "between 1 and 3650."
+                                    "Must be null (no expiry) or an integer between 1 and 3650."
                                 ),
                             }
                         ],
@@ -118,7 +117,7 @@ PROFILE_API_KEYS_POST = dict(
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
     },
-    examples=[
+    "examples": [
         OpenApiExample(
             "Default expiry (90 days)",
             value={"name": "my-mcp-client"},
@@ -135,39 +134,39 @@ PROFILE_API_KEYS_POST = dict(
             request_only=True,
         ),
     ],
-)
+}
 
-PROFILE_API_KEY_REVOKE_POST = dict(
-    summary="Revoke my API key (kept for audit)",
-    description=("Disables the key immediately; the record stays listed. Idempotent."),
-    request=None,
-    responses={
+PROFILE_API_KEY_REVOKE_POST = {
+    "summary": "Revoke my API key (kept for audit)",
+    "description": ("Disables the key immediately; the record stays listed. Idempotent."),
+    "request": None,
+    "responses": {
         200: ApiKeySerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
         404: _NOT_FOUND_404_RESPONSE,
     },
-)
+}
 
-PROFILE_API_KEY_DELETE = dict(
-    summary="Delete my API key",
-    description="Permanently removes the key and its record.",
-    responses={
+PROFILE_API_KEY_DELETE = {
+    "summary": "Delete my API key",
+    "description": "Permanently removes the key and its record.",
+    "responses": {
         204: OpenApiResponse(description="Deleted"),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
         404: _NOT_FOUND_404_RESPONSE,
     },
-)
+}
 
-API_KEYS_MANAGEMENT_LIST = dict(
-    summary="List members' API keys",
-    description=(
+API_KEYS_MANAGEMENT_LIST = {
+    "summary": "List members' API keys",
+    "description": (
         "Keys owned by members of every organization where the caller holds "
         "api_keys read. Superadmins see all. System keys never appear, and "
         "superadmin-owned keys are visible only to superadmins."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             name="org_ids",
             type=OpenApiTypes.STR,
@@ -212,7 +211,7 @@ API_KEYS_MANAGEMENT_LIST = dict(
             description="Items per page (default 50, max 200).",
         ),
     ],
-    responses={
+    "responses": {
         200: OpenApiResponse(description="Paginated API keys."),
         400: OpenApiResponse(
             description=(
@@ -223,33 +222,33 @@ API_KEYS_MANAGEMENT_LIST = dict(
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
     },
-)
+}
 
-API_KEYS_MANAGEMENT_REVOKE_POST = dict(
-    summary="Revoke a member's API key",
-    description=(
+API_KEYS_MANAGEMENT_REVOKE_POST = {
+    "summary": "Revoke a member's API key",
+    "description": (
         "Requires api_keys delete in an organization the owner belongs to. "
         "Revocation disables the key in every organization the owner belongs to."
     ),
-    request=None,
-    responses={
+    "request": None,
+    "responses": {
         200: ApiKeyAdminSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
         404: _NOT_FOUND_404_RESPONSE,
     },
-)
+}
 
-API_KEYS_MANAGEMENT_DELETE = dict(
-    summary="Delete a member's API key",
-    description=(
+API_KEYS_MANAGEMENT_DELETE = {
+    "summary": "Delete a member's API key",
+    "description": (
         "Requires api_keys delete in an organization the owner belongs to. "
         "Removes the record; revoke instead to keep it."
     ),
-    responses={
+    "responses": {
         204: OpenApiResponse(description="Deleted"),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _JWT_ONLY_403_RESPONSE,
         404: _NOT_FOUND_404_RESPONSE,
     },
-)
+}

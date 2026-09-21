@@ -1,6 +1,5 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-
 from tables.services.rbac.utils.bootstrap_lock import acquire_bootstrap_lock
 from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
@@ -25,7 +24,7 @@ class ResetUserService:
     def reset(self, *, email: str, password: str):
         acquire_bootstrap_lock()
 
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         UserModel.objects.all().delete()  # user keys cascade; system key survives
 
         result = self._bootstrap.provision(email=email, password=password)
