@@ -68,27 +68,22 @@ def test_compile_error_contains_targets_error_raw_not_error():
 
 
 def test_compile_flattened_numeric_op_uses_runtime_script_not_range():
-    """The numeric-runtime leaf itself compiles to a pure `exists` +
-    `script` filter conjunction - a root-level leaf like this one gets
-    flattened directly into the top-level `bool.filter` array alongside
-    org_id/retention (same flattening as an explicit `and`), so both the
-    `exists` guard and the `script` clause land as direct siblings rather
-    than nested one level deeper."""
+    """No full-path `exists` guard (flat_object `exists` is only correct
+    1 level below root - see _compile_numeric_runtime_filter); a root-only
+    `exists` pre-filter is kept as a safe-at-any-depth optimization."""
     node = {"field": "output.tokens", "op": "gt", "value": 500}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
     scripted = clauses[-1]
     assert "script" in scripted
     assert scripted["script"]["script"]["params"]["value"] == 500.0
-    assert clauses[-2] == {"exists": {"field": "output.tokens"}}
+    assert {"exists": {"field": "output"}} in clauses
     assert not any("range" in c for c in clauses)
 
 
 def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
-    """Regression test for the silent-0-results bug: `params._source` is
-    unavailable in a filter-context script query (verified live against the
-    running OpenSearch cluster - it silently resolves to `null`), so the
-    script must read the value via `doc[...]` instead."""
+    """`params._source` is unavailable in a filter-context script (verified
+    live - resolves to null), so the value must be read via `doc[...]`."""
     node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
@@ -100,9 +95,111 @@ def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
     assert scripted["script"]["script"]["params"]["path"] == "details.tokens_used"
     assert scripted["script"]["script"]["params"]["root"] == "details"
     assert scripted["script"]["script"]["params"]["value"] == 5000.0
-    # exists check still guards against an absent key - now a direct
-    # sibling filter clause rather than nested inside the script's own bool
-    assert clauses[-2] == {"exists": {"field": "details.tokens_used"}}
+    # No full-path `exists` guard - only the safe root-only pre-filter.
+    assert {"exists": {"field": "details"}} in clauses
+    assert not any("exists" in c and c["exists"]["field"] != "details" for c in clauses)
+
+
+def test_compile_numeric_deeply_nested_flattened_filter_has_no_full_path_exists_guard():
+    """A 2+-level path must never compile a full-path `exists` guard
+    (silently 0 matches on real OpenSearch) - only the root-only
+    pre-filter plus the script's own null-check."""
+    node = {
+        "field": "output.token_usage.completion_tokens",
+        "op": "gt",
+        "value": 100,
+    }
+    query = compile_filters(node, org_id=1, retention_days=0)
+    clauses = _filter_clauses(query)
+    scripted = clauses[-1]
+
+    assert "script" in scripted
+    assert {"exists": {"field": "output"}} in clauses
+    assert not any("exists" in c and c["exists"]["field"] != "output" for c in clauses)
+    assert (
+        scripted["script"]["script"]["params"]["path"]
+        == "output.token_usage.completion_tokens"
+    )
+    assert scripted["script"]["script"]["params"]["root"] == "output"
+    assert scripted["script"]["script"]["params"]["value"] == 100.0
+
+
+def test_compile_key_exists_deep_path_uses_script_not_native_exists():
+    """`key_exists`/`not_null` must not compile to native `exists` on a
+    2+-level path (same flat_object exists-depth bug, no script fallback
+    here) - must use the depth-agnostic `doc[path].size() != 0` script."""
+    node = {"field": "output.token_usage.completion_tokens", "op": "key_exists"}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    clauses = _filter_clauses(query)
+    scripted = clauses[-1]
+
+    assert not any("exists" in c for c in clauses)
+    assert "script" in scripted
+    source = scripted["script"]["script"]["source"]
+    assert "doc[params.path]" in source
+    assert "!= 0" in source
+    assert (
+        scripted["script"]["script"]["params"]["path"]
+        == "output.token_usage.completion_tokens"
+    )
+
+
+def test_compile_key_not_exists_deep_path_uses_script_not_native_must_not_exists():
+    """Negated direction: `must_not`-wrapped native `exists` on a 2+-level
+    path used to match every doc, not just ones missing the key - must use
+    the same script, checking `== 0` instead of `!= 0`."""
+    node = {"field": "output.token_usage.completion_tokens", "op": "key_not_exists"}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    clauses = _filter_clauses(query)
+    scripted = clauses[-1]
+
+    assert not any("exists" in c for c in clauses)
+    assert not any("must_not" in c.get("bool", {}) for c in clauses)
+    assert "script" in scripted
+    source = scripted["script"]["script"]["source"]
+    assert "doc[params.path]" in source
+    assert "== 0" in source
+    assert (
+        scripted["script"]["script"]["params"]["path"]
+        == "output.token_usage.completion_tokens"
+    )
+
+
+def test_compile_not_null_and_null_aliases_use_same_key_existence_script():
+    """`not_null`/`null` are aliases for `key_exists`/`key_not_exists` -
+    must compile identically, not a separate path that could drift."""
+    exists_via_alias = compile_filters(
+        {"field": "details.a.b", "op": "not_null"}, org_id=1, retention_days=0
+    )
+    exists_via_canonical = compile_filters(
+        {"field": "details.a.b", "op": "key_exists"}, org_id=1, retention_days=0
+    )
+    assert (
+        _filter_clauses(exists_via_alias)[-1]
+        == _filter_clauses(exists_via_canonical)[-1]
+    )
+
+    not_exists_via_alias = compile_filters(
+        {"field": "details.a.b", "op": "null"}, org_id=1, retention_days=0
+    )
+    not_exists_via_canonical = compile_filters(
+        {"field": "details.a.b", "op": "key_not_exists"}, org_id=1, retention_days=0
+    )
+    assert (
+        _filter_clauses(not_exists_via_alias)[-1]
+        == _filter_clauses(not_exists_via_canonical)[-1]
+    )
+
+
+def test_compile_key_exists_shallow_path_also_uses_script():
+    """Script-based check applies at every depth, even 0/1 where native
+    `exists` happens to work - one code path, not depth-branching."""
+    node = {"field": "output.iterations", "op": "key_exists"}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    clauses = _filter_clauses(query)
+
+    assert not any("exists" in c for c in clauses)
+    assert "script" in clauses[-1]
 
 
 def test_compile_numeric_flattened_filter_script_semantics_simulated():
@@ -124,7 +221,7 @@ def test_compile_numeric_flattened_filter_script_semantics_simulated():
     def _simulated_script(doc_values: list[str]) -> bool:
         for entry in doc_values:
             if entry.startswith(prefix):
-                value_str = entry[len(prefix):]
+                value_str = entry[len(prefix) :]
                 try:
                     d = float(value_str)
                 except ValueError:
@@ -136,9 +233,7 @@ def test_compile_numeric_flattened_filter_script_semantics_simulated():
     assert _simulated_script(["details.details.tokens_used=100"]) is False
     assert _simulated_script(["details.details.test_batch=f03_tokens"]) is False
     assert _simulated_script([]) is False
-    assert (
-        _simulated_script(["details.details.tokens_used=not-a-number"]) is False
-    )
+    assert _simulated_script(["details.details.tokens_used=not-a-number"]) is False
 
 
 def test_compile_mixed_structured_and_flattened_and():

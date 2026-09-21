@@ -127,16 +127,9 @@ def _free_text_clause(term: str) -> dict:
 
 
 def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
-    """flat_object has no native numeric type per sub-key (everything is
-    stored/queried as a string internally) - a numeric range comparison on a
-    nested key needs a Painless script that casts at query time.
-
-    This is a plain `script` query inside `bool.filter` - a filter/query
-    context script, not update/ingest/reindex - so `params._source` is
-    unavailable there (verified live against this cluster: it silently
-    resolves to `null`, so the old `params._source`-walking script always
-    fell through its own null-guard and matched nothing, for every request,
-    regardless of the literal value).
+    """flat_object `exists` on the full dotted path only resolves correctly
+    one level below root, so it's dropped in favor of the script's own
+    `fv == null` check; a root-only `exists` is kept as a safe pre-filter.
     """
     comparator = _PAINLESS_COMPARATORS[op]
     root = path.split(".", 1)[0]
@@ -158,7 +151,7 @@ def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
     return {
         "bool": {
             "filter": [
-                {"exists": {"field": path}},
+                {"exists": {"field": root}},
                 {
                     "script": {
                         "script": {
@@ -213,13 +206,42 @@ def _compile_structured_leaf(field: str, op: str, value: Any) -> dict:
     raise FilterCompileError(f"Unsupported op {op!r} for structured field {field!r}")
 
 
+def _compile_key_existence_filter(path: str, *, negate: bool) -> dict:
+    """flat_object `exists`-depth bug, but here `exists` IS the
+    correctness check (no fallback script) - so presence is read via
+    `doc[path].size()` instead, at every depth, for both directions.
+    """
+    comparator = "==" if negate else "!="
+    empty_result = "true" if negate else "false"
+    source = (
+        "def fv = doc[params.path]; "
+        f"if (fv == null) {{ return {empty_result}; }} "
+        f"return fv.size() {comparator} 0;"
+    )
+    return {
+        "bool": {
+            "filter": [
+                {
+                    "script": {
+                        "script": {
+                            "lang": "painless",
+                            "source": source,
+                            "params": {"path": path},
+                        }
+                    }
+                },
+            ]
+        }
+    }
+
+
 def _compile_flattened_leaf(field: str, op: str, value: Any) -> dict:
     path = _normalize_flattened_path(_resolve_deep_alias(field))
 
     if op in ("key_exists", "not_null"):
-        return {"exists": {"field": path}}
+        return _compile_key_existence_filter(path, negate=False)
     if op in ("key_not_exists", "null"):
-        return {"bool": {"must_not": [{"exists": {"field": path}}]}}
+        return _compile_key_existence_filter(path, negate=True)
     if op in ("equals", "key_equals_value"):
         return {"term": {path: value}}
     if op in ("not_equal", "key_not_equals"):

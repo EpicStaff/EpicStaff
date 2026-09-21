@@ -190,6 +190,101 @@ async def test_numeric_flattened_filter_matches_docs_above_threshold(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_numeric_flattened_filter_matches_docs_at_deep_nesting(
+    repository, opensearch_client
+):
+    """Regression test for the exists-guard bug: a `gt` filter on a
+    `output.*` flat_object key nested 3+ levels deep (root + 2, e.g.
+    `output.token_usage.completion_tokens`) must actually match documents
+    whose value clears the threshold. Before the fix, the compiled query
+    included a `{"exists": {"field": path}}` guard that OpenSearch's
+    flat_object `exists` query only resolves correctly one level below the
+    root, so it silently matched 0 docs for any deeper path regardless of
+    the literal value or whether the key was present."""
+    fixtures = [
+        _event(name="above", output={"token_usage": {"completion_tokens": 303}}),
+        _event(name="below", output={"token_usage": {"completion_tokens": 10}}),
+        # leaf key absent, but the parent object is present
+        _event(name="missing-leaf", output={"token_usage": {}}),
+        # the whole `output` root is absent from the document - the
+        # deep-path equivalent of doc[params.path] resolving against a
+        # completely unindexed flat_object field, not just a missing leaf
+        _event(name="missing-root"),
+    ]
+    await repository.write_batch(fixtures)
+    await opensearch_client.indices.refresh(index="audit_events")
+
+    ast = {
+        "field": "output.token_usage.completion_tokens",
+        "op": "gt",
+        "value": 100,
+    }
+    query = compile_filters(ast, org_id=ORG_A, retention_days=0)
+    events, _ = await repository.query(query, cursor=None, size=50)
+
+    names = {e.name for e in events}
+    assert "above" in names
+    assert "below" not in names
+    assert "missing-leaf" not in names
+    assert "missing-root" not in names
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_key_exists_matches_docs_with_deeply_nested_key_present(
+    repository, opensearch_client
+):
+    """Same flat_object exists-depth bug, on `key_exists`: a 2+-level path
+    used to silently match 0 docs regardless of whether the key was
+    actually present."""
+    fixtures = [
+        _event(name="present", output={"token_usage": {"completion_tokens": 42}}),
+        # leaf key absent, but the parent object is present
+        _event(name="missing-leaf", output={"token_usage": {}}),
+        # the whole `output` root is absent from the document
+        _event(name="missing-root"),
+    ]
+    await repository.write_batch(fixtures)
+    await opensearch_client.indices.refresh(index="audit_events")
+
+    ast = {"field": "output.token_usage.completion_tokens", "op": "key_exists"}
+    query = compile_filters(ast, org_id=ORG_A, retention_days=0)
+    events, _ = await repository.query(query, cursor=None, size=50)
+
+    names = {e.name for e in events}
+    assert "present" in names
+    assert "missing-leaf" not in names
+    assert "missing-root" not in names
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_key_not_exists_matches_only_docs_missing_the_deeply_nested_key(
+    repository, opensearch_client
+):
+    """Negated direction: `must_not`-wrapped `exists` on a 2+-level path
+    used to match every document. Must match only docs genuinely missing
+    the key."""
+    fixtures = [
+        _event(name="present", output={"token_usage": {"completion_tokens": 42}}),
+        _event(name="missing-leaf", output={"token_usage": {}}),
+        _event(name="missing-root"),
+    ]
+    await repository.write_batch(fixtures)
+    await opensearch_client.indices.refresh(index="audit_events")
+
+    ast = {"field": "output.token_usage.completion_tokens", "op": "key_not_exists"}
+    query = compile_filters(ast, org_id=ORG_A, retention_days=0)
+    events, _ = await repository.query(query, cursor=None, size=50)
+
+    names = {e.name for e in events}
+    assert "present" not in names
+    assert "missing-leaf" in names
+    assert "missing-root" in names
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_search_survives_a_document_with_out_of_literal_status(
     repository, opensearch_client
 ):
