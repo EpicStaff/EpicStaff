@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, model, sig
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
-import { ActionCode, FullMembership, GetMeResponse, ResourceCode } from '@shared/models';
+import { FullMembership, GetMeResponse } from '@shared/models';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap } from 'rxjs/operators';
 
@@ -35,12 +35,7 @@ export class OrganizationsMenuComponent {
 
     organizations = computed<FullMembership[]>(() => this.user().memberships);
 
-    canVisitWorkspace = computed(
-        () =>
-            this.permissionService.can(ResourceCode.Organizations, ActionCode.Read) ||
-            this.permissionService.can(ResourceCode.Users, ActionCode.Read) ||
-            this.permissionService.can(ResourceCode.Roles, ActionCode.Read)
-    );
+    canVisitWorkspace = computed(() => this.permissionService.canAccessWorkspace());
 
     isWorkspaceRoute = toSignal(
         this.router.events.pipe(
@@ -94,6 +89,6 @@ export class OrganizationsMenuComponent {
 
     onWorkspaceClick(): void {
         this.isMenuOpen.set(false);
-        this.router.navigate(['/workspace']);
+        void this.router.navigate(['/workspace']);
     }
 }
