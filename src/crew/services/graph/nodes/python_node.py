@@ -6,7 +6,7 @@ from models.graph_models import GraphMessage, PythonMessageData
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import ReturnCodeError
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
 

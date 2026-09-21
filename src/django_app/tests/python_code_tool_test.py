@@ -228,6 +228,9 @@ def test_python_code_tool_config_serializer_validation():
         "configuration": {"arg1": "val"},
     }
     invalid_data["configuration"]["arg2"] = "not_a_number"
-    serializer = PythonCodeToolConfigSerializer(data=invalid_data)
+    # Needs the same org-resolved context as above — without it, `tool` is
+    # invisible to OrgVisiblePrimaryKeyRelatedField's queryset and DRF raises
+    # its own field-level ValidationError before `validate()` ever runs.
+    serializer = PythonCodeToolConfigSerializer(data=invalid_data, context=context)
     with pytest.raises(PythonCodeToolConfigSerializerError):
         serializer.is_valid(raise_exception=True)

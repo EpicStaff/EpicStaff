@@ -4,9 +4,9 @@ from langgraph.types import StreamWriter
 from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
 from services.graph.nodes.agent_output_variable import agent_output_variable_value
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
+from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
 from src.shared.models import AgentNodeData
 
