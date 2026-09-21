@@ -28,6 +28,8 @@ interface GroupedItems {
     items: SelectItem[];
 }
 
+export type MultiSelectOrigin = HTMLElement | { x: number; y: number; width?: number; height?: number };
+
 @Component({
     selector: 'app-multi-select',
     imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
@@ -183,7 +185,7 @@ export class MultiSelectComponent implements OnInit {
         this.projectedTriggerEl.set(el.nativeElement);
     }
 
-    openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
+    openAt(originElement: MultiSelectOrigin, seedValues?: unknown[]): void {
         if (this.disabled()) return;
         const positions: ConnectedPosition[] = [
             // Below, left-aligned with trigger
@@ -200,7 +202,7 @@ export class MultiSelectComponent implements OnInit {
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
             .withPositions(positions)
-            .withPush(false)
+            .withPush(this.allowFlip())
             .withFlexibleDimensions(true)
             .withViewportMargin(8);
 
