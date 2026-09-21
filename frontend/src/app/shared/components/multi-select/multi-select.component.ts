@@ -183,23 +183,32 @@ export class MultiSelectComponent implements OnInit {
         this.projectedTriggerEl.set(el.nativeElement);
     }
 
-    openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
+    /**
+     * @param positions Optional full override of the dropdown position list; used verbatim when a
+     *  non-empty array is passed, otherwise the default below-the-trigger list applies (extended
+     *  with flip-above positions when `allowFlip` is set). Exists for side-opening submenu
+     *  flyouts, which must fly out beside their anchor row rather than below it.
+     */
+    openAt(originElement: HTMLElement, seedValues?: unknown[], positions?: ConnectedPosition[]): void {
         if (this.disabled()) return;
-        const positions: ConnectedPosition[] = [
+        const defaultPositions: ConnectedPosition[] = [
             // Below, left-aligned with trigger
             { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
             // Below, right-aligned with trigger (when right edge would clip)
             { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
         ];
         if (this.allowFlip()) {
-            positions.push(
+            defaultPositions.push(
                 { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
                 { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
             );
         }
+        const resolvedPositions: ConnectedPosition[] =
+            Array.isArray(positions) && positions.length > 0 ? positions : defaultPositions;
+
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
-            .withPositions(positions)
+            .withPositions(resolvedPositions)
             .withPush(false)
             .withFlexibleDimensions(true)
             .withViewportMargin(8);

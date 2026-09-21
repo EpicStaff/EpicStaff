@@ -12,6 +12,7 @@ import {
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
 
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export interface ColumnHeaderMenuParams extends IHeaderParams {
@@ -32,11 +33,12 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
     tooltip?: string;
     variant?: 'default' | 'delete';
     onIconClick?: (event: MouseEvent) => void;
+    showDragGrip?: boolean;
 }
 
 @Component({
     selector: 'app-column-header-menu',
-    imports: [],
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -53,6 +55,17 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                     [class.chm-icon-delete]="variant === 'delete'"
                     (click)="onIconClick($event)"
                 ></i>
+            }
+            @if (showDragGrip) {
+                <span
+                    class="drag-grip-btn"
+                    title="Drag to reposition"
+                >
+                    <app-svg-icon
+                        icon="drag-grip"
+                        size="12px"
+                    />
+                </span>
             }
             @if (showChevron) {
                 <button
@@ -182,6 +195,26 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 font-size: 0.75rem;
                 line-height: 1;
             }
+
+            .drag-grip-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 24px;
+                height: 28px;
+                border-radius: 4px;
+                flex-shrink: 0;
+                cursor: grab;
+                color: var(--color-ks-transparent-text-60);
+                transition: background 0.15s ease;
+            }
+            .drag-grip-btn:hover {
+                background: var(--color-ghost-btn-hover);
+                color: var(--color-ks-transparent-text-80);
+            }
+            .drag-grip-btn:active {
+                cursor: grabbing;
+            }
         `,
     ],
 })
@@ -199,6 +232,7 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
     public isPinned: (() => boolean) | undefined = undefined;
     public showFreeze = true;
     public showChevron = true;
+    public showDragGrip = false;
 
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
@@ -217,6 +251,7 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
         this.isPinned = params.isPinned;
         this.showFreeze = params.showFreeze !== false;
         this.showChevron = params.showChevron !== false;
+        this.showDragGrip = params.showDragGrip === true;
     }
 
     refresh(_params: ColumnHeaderMenuParams): boolean {
@@ -226,6 +261,9 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
         }
         if (_params.showFreeze !== undefined) {
             this.showFreeze = _params.showFreeze !== false;
+        }
+        if (_params.showDragGrip !== undefined) {
+            this.showDragGrip = _params.showDragGrip === true;
         }
         if (_params.showChevron !== undefined) {
             this.showChevron = _params.showChevron !== false;

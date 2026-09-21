@@ -1,7 +1,11 @@
+import uuid
 from typing import Optional
 
 from tables.models import ClassificationDecisionTableNode
-from tables.models.graph_models import ClassificationDecisionTablePrompt
+from tables.models.graph_models import (
+    ClassificationConditionGroupSection,
+    ClassificationDecisionTablePrompt,
+)
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.classification_decision_table_node import (
     ClassificationDecisionTableNodeImportSerializer,
@@ -47,6 +51,7 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
     ) -> ClassificationDecisionTableNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
         condition_groups_data = data.pop("condition_groups", [])
+        sections_data = data.pop("sections", [])
         prompt_configs_data = data.pop("prompt_configs", [])
 
         pre_python_code_data = data.pop("pre_python_code", None)
@@ -70,6 +75,18 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         node = serializer.save()
 
+        section_id_mapping = {}
+        for s in sections_data:
+            old_section_id = s.get("id")
+            new_section = ClassificationConditionGroupSection.objects.create(
+                id=uuid.uuid4(),
+                classification_decision_table_node=node,
+                name=s.get("name", ""),
+                metadata=s.get("metadata", {}),
+            )
+            if old_section_id is not None:
+                section_id_mapping[str(old_section_id)] = new_section.id
+
         prompt_id_mapping = {}
         for pc in prompt_configs_data:
             old_id = pc.get("id")
@@ -92,6 +109,12 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
             old_prompt_id = group_data.get("prompt")
             if old_prompt_id is not None:
                 group_data["prompt"] = prompt_id_mapping.get(old_prompt_id)
+            old_section_id = group_data.get("section")
+            group_data["section"] = (
+                section_id_mapping.get(str(old_section_id))
+                if old_section_id is not None
+                else None
+            )
             group_serializer = ClassificationConditionGroupImportSerializer(
                 data=group_data
             )

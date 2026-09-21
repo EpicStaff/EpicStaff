@@ -54,7 +54,7 @@ def rule_row(
     return [
         number,
         group.group_name,
-        group.section or "",
+        group.section.name if group.section else "",
         group.route_code or "",
         group.expression or "",
         prompt.prompt_text if prompt else "",

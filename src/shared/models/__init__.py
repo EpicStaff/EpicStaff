@@ -96,6 +96,7 @@ from .sessions import (
     SessionData,
     StorageMutation,
     StorageMutationEvent,
+    TokenUsage,
 )
 from .surfaces import (
     CombinedSurfaceData,
@@ -241,6 +242,7 @@ __all__ = [
     "CancelRequest",
     # sessions
     "SessionData",
+    "TokenUsage",
     "GraphSessionMessageData",
     "StopSessionMessage",
     "WebhookEventData",
