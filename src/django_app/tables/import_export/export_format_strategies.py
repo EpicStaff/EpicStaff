@@ -37,10 +37,7 @@ class CsvExportFormatStrategy(ExportFormatStrategy):
     ) -> HttpResponse:
         rows = []
         for item in data.get(entity_type, []):
-            if isinstance(item, list):
-                rows.extend(item)
-            else:
-                rows.append(item)
+            rows.extend(self.projection.expand(item))
 
         buf = io.StringIO()
         writer = csv.DictWriter(

@@ -4,7 +4,6 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from tables.models import CrewSessionMessage, GraphOrganizationUser
 
-
 class Session(models.Model):
     class SessionStatus(models.TextChoices):
         PENDING = "pending"
@@ -177,3 +176,34 @@ class SessionTrigger(models.Model):
         if attname is None:
             return None
         return getattr(self, attname, None)
+
+
+class SessionPrincipal(models.Model):
+    class ActionKind(models.TextChoices):
+        USER = "user"
+        API_KEY_USER = "api_key_user"
+        API_KEY_SYSTEM = "api_key_system"
+        TRIGGER = "trigger"
+        UNKNOWN = "unknown"
+
+    session = models.OneToOneField(
+        Session, on_delete=models.CASCADE, related_name="principal"
+    )
+
+    kind = models.CharField(choices=ActionKind.choices, max_length=32, db_index=True)
+
+    user = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    api_key = models.ForeignKey(
+        "ApiKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    email = models.CharField(max_length=256, default=None, blank=True, null=True)

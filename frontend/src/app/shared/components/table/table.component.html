@@ -123,7 +123,11 @@
                             </div>
                         }
                         @for (col of columns(); track col.key) {
-                            <div class="table-cell">
+                            <div
+                                class="table-cell"
+                                [class.center]="col.align === 'center'"
+                                [class.end]="col.align === 'end'"
+                            >
                                 @if (getCellTemplate(col.key); as tmpl) {
                                     <ng-container *ngTemplateOutlet="tmpl; context: { $implicit: item, index: i }" />
                                 } @else if (col.actions?.length) {

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from tables.models.webhook_models import WebhookTrigger
+from tables.services.webhook_trigger_service import validate_path_uniqueness
 
 
 class WebhookTriggerSerializer(serializers.ModelSerializer):
@@ -9,13 +10,9 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
         fields = ["id", "path", "provider_type"]
 
     def validate(self, attrs):
-        instance = self.instance or WebhookTrigger()
-        for k, v in attrs.items():
-            setattr(instance, k, v)
-        try:
-            instance.validate_unique()
-        except serializers.ValidationError as e:
-            raise serializers.ValidationError(
-                e.message_dict if hasattr(e, "message_dict") else e.messages
-            )
+        path = attrs.get("path", getattr(self.instance, "path", None))
+        validate_path_uniqueness(
+            path=path,
+            exclude_pk=self.instance.pk if self.instance else None,
+        )
         return attrs
