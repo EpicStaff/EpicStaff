@@ -4,8 +4,8 @@ from django.db import models
 from tables.models import (
     AbstractDefaultFillableModel,
     DefaultBaseModel,
-    Provider,
 )
+from tables.models.provider import Provider
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.models.tag_models import (
     LLMConfigTag,
