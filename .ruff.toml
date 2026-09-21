@@ -6,12 +6,15 @@ line-length = 100
 
 # default excludes: https://docs.astral.sh/ruff/settings/#exclude
 extend-exclude = [
-    "django_app/manage.py",
+    "**/django_app/manage.py",
     "**/libraries/",   # Local fors — must not be linted or modified
     "**/migrations/",  # Auto-generated Django migrations — no value in linting
-    "shared/tools/",
-    "**/tests/"
+    "**/shared/tools/",  # Shared tool sources
+    "**/tests/"          # Test suites
 ]
+
+# Respect the excludes above even for paths passed explicitly (e.g. pre-commit).
+force-exclude = true
 
 [lint]
 # default select: https://docs.astral.sh/ruff/settings/#lint_select
