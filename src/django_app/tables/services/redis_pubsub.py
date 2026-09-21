@@ -17,7 +17,7 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
-from tables.models.session_models import SessionTrigger
+from tables.models.session_models import SessionTrigger, SessionPrincipal
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -600,6 +600,21 @@ class RedisPubSub:
                     session=session,
                     **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
                 )
+                for _, session, _ in created_sessions
+            ]
+        )
+        root_principal = getattr(root_session, "principal", None)
+        root_principal_data = {"kind": SessionPrincipal.ActionKind.UNKNOWN}
+        if root_principal:
+            root_principal_data = {
+                "kind": root_principal.kind,
+                "user_id": root_principal.user_id,
+                "api_key": root_principal.api_key,
+                "email": root_principal.email,
+            }
+        SessionPrincipal.objects.bulk_create(
+            [
+                SessionPrincipal(session=session, **root_principal_data)
                 for _, session, _ in created_sessions
             ]
         )

@@ -144,6 +144,14 @@ RESOURCE_TYPE_METADATA = [
         "description": "Voice model configurations and settings",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.WEBHOOKS.value,
+        "label": "Webhooks",
+        "group": "config",
+        "description": "Webhook trigger ingress routes and their auth configuration",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
 ]
 
 
@@ -257,6 +265,11 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("voice", "read"), ("agents", "read")),
         "update": (("voice", "read"), ("agents", "read")),
         "delete": (("voice", "read"),),
+    },
+    ResourceType.WEBHOOKS.value: {
+        "create": (("webhooks", "read"),),
+        "update": (("webhooks", "read"),),
+        "delete": (("webhooks", "read"),),
     },
 }
 
