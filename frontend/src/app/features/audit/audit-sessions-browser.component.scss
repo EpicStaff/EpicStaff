@@ -239,6 +239,10 @@ $panel-width: 420px;
     color: var(--color-nodes-flow-link);
 }
 
+.audit-row--matched td {
+    background-color: var(--black-alpha-12);
+}
+
 .audit-status {
     font-weight: 500;
 }

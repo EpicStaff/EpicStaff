@@ -42,6 +42,7 @@ export interface AuditSessionEvent {
     event_time: string;
     record_time: string | null;
     ord_id: number;
+    filter_matched: boolean;
 }
 
 export interface AuditMatchScope {

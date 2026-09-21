@@ -121,7 +121,10 @@
                         </thead>
                         <tbody>
                             @for (row of rows(); track row.event.id) {
-                                <tr [class]="'audit-row--' + row.event.kind">
+                                <tr
+                                    [class]="'audit-row--' + row.event.kind"
+                                    [class.audit-row--matched]="row.event.filter_matched"
+                                >
                                     <td class="audit-table__gutter"></td>
                                     <td>
                                         <span
