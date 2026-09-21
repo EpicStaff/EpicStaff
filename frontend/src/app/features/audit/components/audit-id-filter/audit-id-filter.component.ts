@@ -2,11 +2,12 @@ import { ChangeDetectionStrategy, Component, model } from '@angular/core';
 
 import { AuditIdFilter, AuditIdMode } from '../../models/audit-filter.models';
 import { ID_MODE_OPTIONS } from '../../models/audit-filter-options';
+import { AuditSelectComponent } from '../audit-select/audit-select.component';
 
 @Component({
     selector: 'app-audit-id-filter',
     standalone: true,
-    imports: [],
+    imports: [AuditSelectComponent],
     templateUrl: './audit-id-filter.component.html',
     styleUrl: './audit-id-filter.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -16,8 +17,8 @@ export class AuditIdFilterComponent {
 
     protected readonly modeOptions = ID_MODE_OPTIONS;
 
-    protected setMode(event: Event): void {
-        const mode = (event.target as HTMLSelectElement).value as AuditIdMode;
+    protected setMode(value: string): void {
+        const mode = value as AuditIdMode;
         this.filter.update((current) => ({ ...current, mode }));
     }
 

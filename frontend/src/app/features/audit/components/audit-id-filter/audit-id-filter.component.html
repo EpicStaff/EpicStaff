@@ -1,16 +1,8 @@
-<select
-    class="id-filter__mode"
-    (change)="setMode($event)"
->
-    @for (option of modeOptions; track option.value) {
-        <option
-            [value]="option.value"
-            [selected]="option.value === filter().mode"
-        >
-            {{ option.label }}
-        </option>
-    }
-</select>
+<app-audit-select
+    [options]="modeOptions"
+    [value]="filter().mode"
+    (valueChange)="setMode($event)"
+/>
 
 @switch (filter().mode) {
     @case ('range') {

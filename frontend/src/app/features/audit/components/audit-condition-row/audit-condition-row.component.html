@@ -1,18 +1,11 @@
 <div class="condition-row">
     @if (showJoin()) {
-        <select
+        <app-audit-select
             class="condition-row__join"
-            (change)="setJoin($event)"
-        >
-            @for (option of joinOptions; track option.value) {
-                <option
-                    [value]="option.value"
-                    [selected]="option.value === condition().join"
-                >
-                    {{ option.label }}
-                </option>
-            }
-        </select>
+            [options]="joinOptions"
+            [value]="condition().join"
+            (valueChange)="setJoin($event)"
+        />
     }
 
     @if (showKey()) {

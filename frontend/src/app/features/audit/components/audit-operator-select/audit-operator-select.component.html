@@ -1,15 +1,5 @@
-<div class="operator-select">
-    <select
-        class="operator-select__control"
-        (change)="onSelect($event)"
-    >
-        @for (operator of operators(); track operator) {
-            <option
-                [value]="operator"
-                [selected]="operator === selectedOperator()"
-            >
-                {{ labelFor(operator) }}
-            </option>
-        }
-    </select>
-</div>
+<app-audit-select
+    [options]="options()"
+    [value]="selectedOperator()"
+    (valueChange)="onValueChange($event)"
+/>

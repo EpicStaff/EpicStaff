@@ -1,0 +1,23 @@
+<app-select-dropdown
+    mode="list"
+    selectionMode="single"
+    panelClass="audit-select-panel"
+    [searchable]="false"
+    [minPanelWidth]="160"
+    [items]="items()"
+    [selected]="selectedValues()"
+    (selectionChange)="onSelectionChange($event)"
+>
+    <button
+        class="audit-select__trigger"
+        type="button"
+        appSelectDropdownTrigger
+    >
+        <span class="audit-select__label">{{ selectedLabel() }}</span>
+        <app-svg-icon
+            class="audit-select__chevron"
+            icon="chevron-down-filled"
+            size="8px"
+        />
+    </button>
+</app-select-dropdown>

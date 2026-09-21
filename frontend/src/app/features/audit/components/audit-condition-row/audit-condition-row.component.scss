@@ -23,14 +23,13 @@ app-audit-operator-select {
     flex: 1 1 0;
 }
 
-.condition-row__join,
 .condition-row__key,
 .condition-row__value {
-    height: 28px;
+    height: 32px;
     padding: 0 8px;
     border: 1px solid var(--color-input-border);
-    border-radius: 6px;
-    background-color: var(--color-input-background);
+    border-radius: 4px;
+    background-color: transparent;
     color: var(--color-text-primary);
     font-size: 13px;
 

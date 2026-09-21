@@ -4,11 +4,12 @@ import { AuditCondition, AuditConditionJoin, AuditFilterOp } from '../../models/
 import { VALUE_FREE_OPS } from '../../models/audit-filter.models';
 import { JOIN_OPTIONS } from '../../models/audit-filter-options';
 import { AuditOperatorSelectComponent } from '../audit-operator-select/audit-operator-select.component';
+import { AuditSelectComponent } from '../audit-select/audit-select.component';
 
 @Component({
     selector: 'app-audit-condition-row',
     standalone: true,
-    imports: [AuditOperatorSelectComponent],
+    imports: [AuditOperatorSelectComponent, AuditSelectComponent],
     templateUrl: './audit-condition-row.component.html',
     styleUrl: './audit-condition-row.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,8 +24,8 @@ export class AuditConditionRowComponent {
     protected readonly joinOptions = JOIN_OPTIONS;
     protected needsValue = computed(() => !VALUE_FREE_OPS.includes(this.condition().op));
 
-    protected setJoin(event: Event): void {
-        const join = (event.target as HTMLSelectElement).value as AuditConditionJoin;
+    protected setJoin(value: string): void {
+        const join = value as AuditConditionJoin;
         this.condition.update((current) => ({ ...current, join }));
     }
 
