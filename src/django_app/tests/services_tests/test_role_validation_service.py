@@ -16,9 +16,7 @@ def test_validate_create_happy_path(validator):
             "org_id": 10,
             "name": "  Billing Manager ",
             "description": "manage billing",
-            "permissions": [
-                {"resource_type": "secrets", "actions": ["read", "update"]}
-            ],
+            "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
         }
     )
     assert cleaned["org_id"] == 10
@@ -26,7 +24,7 @@ def test_validate_create_happy_path(validator):
     assert cleaned["permissions"] == [
         {
             "resource_type": "secrets",
-            "bitmask": int(Permission.READ | Permission.UPDATE),
+            "bitmask": int(Permission.READ | Permission.USE),
         }
     ]
 

@@ -7,7 +7,7 @@ from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.models import RagSearchConfig
 
