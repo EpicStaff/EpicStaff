@@ -6,11 +6,16 @@ from . import humanize
 
 __all__ = [
     "EnvironmentNotFoundError",
+    "EnvironmentBlankError",
     "Env",
 ]
 
 
 class EnvironmentNotFoundError(Exception):
+    pass
+
+
+class EnvironmentBlankError(Exception):
     pass
 
 
@@ -43,7 +48,7 @@ class Env:
                 continue
 
             variable = variable.strip()
-            value = value.strip(" \"\'")
+            value = value.strip(" \"'")
 
             if override or variable not in self._envs:
                 self._envs[variable] = value
@@ -158,7 +163,9 @@ class Env:
         """
         return self.get_value(variable, default, Path)
 
-    def list(self, variable: str, default: list | EllipsisType = ..., split=",") -> list | None:
+    def list(
+        self, variable: str, default: list | EllipsisType = ..., split=","
+    ) -> list | None:
         """Read an environment variable as a delimited list of strings.
 
         Args:
@@ -169,7 +176,7 @@ class Env:
         Returns:
             The list of stripped items, or None when the variable holds the ``none`` value.
         """
-        cast = lambda v: [s.strip() for s in v.strip().split(split)]
+        cast = lambda v: [s.strip() for s in v.strip().split(split)]  # noqa: E731
         return self.get_value(variable, default, cast)
 
     def int(self, variable: str, default: int | EllipsisType = ...) -> int | None:
@@ -207,7 +214,7 @@ class Env:
             True when the raw value is one of ``BOOLEAN_TRUE_VALUES``; None when the
             variable holds the ``none`` value.
         """
-        cast = lambda v: v.lower() in self.BOOLEAN_TRUE_VALUES
+        cast = lambda v: v.lower() in self.BOOLEAN_TRUE_VALUES  # noqa: E731
         return self.get_value(variable, default, cast)
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:
@@ -221,3 +228,29 @@ class Env:
             The string value, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, str)
+
+    def secret(self, variable: str) -> str:
+        """Read a required secret environment variable.
+
+        Unlike ``str``, this never accepts a default: secrets must always be set
+        explicitly. The raw value is stripped of surrounding whitespace and
+        rejected if that leaves it empty, so a blank or whitespace-only secret
+        fails startup the same way an absent one does.
+
+        Args:
+            variable: Name of the environment variable to read.
+
+        Returns:
+            The stripped string value.
+
+        Raises:
+            EnvironmentNotFoundError: The variable is absent from the environment.
+            EnvironmentBlankError: The variable is present but empty or
+                whitespace-only after stripping.
+        """
+        value = (self.str(variable) or "").strip()
+        if not value:
+            raise EnvironmentBlankError(
+                f"Environment variable {variable} must not be blank."
+            )
+        return value
