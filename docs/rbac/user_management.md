@@ -181,6 +181,7 @@ members of an organization.
 | POST | `/api/admin/users/{id}/revoke-superadmin/` | Set `is_superadmin=false` (last-active-superadmin guard) |
 | POST | `/api/admin/users/{id}/deactivate/` | Set `is_active=false` (last-active-superadmin guard) |
 | POST | `/api/admin/users/{id}/reactivate/` | Set `is_active=true` |
+| DELETE | `/api/admin/users/{id}/` | Permanently delete an account — **JWT only** |
 
 ### GET `/api/admin/users/`
 
@@ -244,6 +245,46 @@ Idempotent, empty body, return `UserResponse`. `revoke-superadmin` and
 `grant-superadmin` also clears the target's memberships — see "Superadmins are not
 organization members" above.
 
+### DELETE `/api/admin/users/{id}/`
+
+Permanently removes an account. **Irreversible** — this is not the soft
+`deactivate`. Superadmin only, and **JWT only**: API keys are refused (403),
+so a leaked credential cannot erase accounts.
+
+**Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
+absent/empty/`false`/`0` → perform the delete; anything else → **400
+`invalid`**).
+
+Returns **200** in both modes with a report of what was (or would be)
+removed:
+
+```json
+{
+  "dry_run": true,
+  "target": {"type": "user", "id": 42, "email": "bob@acme.com"},
+  "database": {"total": 4, "by_model": [{"model": "tables.User", "count": 1}]},
+  "field_updates": [
+    {"model": "tables.Graph", "field": "created_by", "action": "SET_NULL", "count": 12}
+  ],
+  "external": [{"kind": "avatar", "path": "avatars/42/abc.png"}]
+}
+```
+
+**Deleting an account does not delete the content that account created.**
+Flows, agents, tools and secrets they authored stay in their organization
+with `created_by` set to null — that is the `field_updates` block. What goes
+with the account: its memberships, API keys, password-reset tokens, tool
+favorites, and flow-assistant conversations. Their avatar file is deleted.
+Any refresh token they hold is blacklisted, so existing sessions cannot be
+renewed.
+
+- `400 cannot_delete_self` — a superadmin cannot delete their own account.
+- `400 last_superadmin` — cannot delete the last active superadmin.
+- `404 user_not_found` — unknown id.
+
+Blockers apply in **both** modes: a `dry_run=true` call against a blocked
+target returns the same 400, so it doubles as a safe pre-flight check.
+
 ---
 
 ## Behavioral notes
@@ -274,6 +315,7 @@ organization members" above.
 | `organization_not_found` | 404 | No such organization, or you cannot access it |
 | `email_already_exists` | 400 | An account with that email exists |
 | `last_superadmin` | 400 | At least one active superadmin must remain |
+| `cannot_delete_self` | 400 | You cannot permanently delete your own account |
 | `permission_denied` | 403 | You can see the membership but lack the required `MEMBERSHIPS` action (one you cannot see is a 404 instead) |
 | `invalid` | 400 | Field validation, or a bad list filter |
 | `org_context_required` | 400 | A non-integer value in `?org_ids=` |
