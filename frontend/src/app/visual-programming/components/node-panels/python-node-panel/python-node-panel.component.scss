@@ -1,0 +1,164 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+:host {
+    display: block;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-top: 0;
+
+    &.editor-fullwidth {
+        padding: 0;
+    }
+}
+
+.section-header {
+    @include mixins.section-header;
+}
+
+.form-container {
+    @include mixins.form-container;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-layout {
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+
+    &.expanded {
+        display: flex;
+        gap: 0;
+        height: 100%;
+        width: 100%;
+        overflow: visible;
+
+        &.form-collapsed .form-fields {
+            display: none;
+        }
+    }
+
+    &.collapsed {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow: visible;
+
+        .form-fields {
+            flex: 1 1 auto;
+            max-width: none;
+            height: auto;
+            overflow-y: visible;
+        }
+
+        .code-editor-wrapper {
+            flex: 0 0 auto;
+            height: auto;
+            display: block;
+            margin: 0 -1rem;
+        }
+    }
+}
+
+.form-fields {
+    @include mixins.resizable-column(406px);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+    overflow-y: auto;
+    padding-top: 1rem;
+    padding-right: 0.75rem;
+}
+
+.form-layout.expanded:not(.form-collapsed) app-column-resize-divider {
+    @include mixins.resize-divider-bleed;
+}
+
+@include mixins.field-isolated-spacing;
+
+.code-editor-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 100%;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+
+    app-code-editor {
+        min-width: 0;
+    }
+
+    .expanded:not(.form-collapsed) & {
+        @include mixins.editor-pane-bleed;
+    }
+}
+
+.code-editor-column {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.code-editor-section {
+    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    display: flex;
+    flex-direction: column;
+
+    .expanded & {
+        flex: 1;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        @include mixins.editor-pane-corner;
+    }
+
+    .collapsed & {
+        border-radius: 8px;
+        overflow: hidden;
+        height: 300px;
+        flex-shrink: 0;
+    }
+}
+
+.btn-primary {
+    @include mixins.primary-button;
+}
+
+.btn-secondary {
+    @include mixins.secondary-button;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0 0 0.75rem 0;
+    flex-shrink: 0;
+}

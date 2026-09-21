@@ -69,6 +69,13 @@
     @include mixins.resize-divider-bleed;
 }
 
+@include mixins.field-isolated-spacing;
+
+// Agent field: offset .field's gap (0.5rem) to a 4px input-to-error spacing.
+::ng-deep .field .validation-errors {
+    margin: -4px 0 0 !important;
+}
+
 .field {
     display: flex;
     flex-direction: column;
@@ -89,7 +96,7 @@
 
     &__label {
         font-size: 0.875rem;
-        color: var(--color-text-primary);
+        color: var(--color-text-secondary);
         margin: 0;
 
         .required {
@@ -107,7 +114,7 @@
     padding: 0.5rem 0.75rem;
     background-color: var(--color-input-background);
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
     cursor: pointer;
@@ -154,7 +161,7 @@
     padding: 0.5rem 0.75rem;
     background-color: var(--color-input-background);
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
 }
@@ -277,6 +284,21 @@
 
 .editor-block__textarea {
     width: 100%;
+}
+
+// Instructions (compact left-column view): offset editor-block's gap (0.5rem).
+::ng-deep .editor-block .validation-errors {
+    margin: -4px 0 0 !important;
+}
+
+// Instructions (expanded right pane).
+::ng-deep .main-editor-pane__validation .validation-errors {
+    margin: 4px 0 0 !important;
+}
+
+// Instructions (collapsed layout): offset form-layout.collapsed's gap (1rem).
+::ng-deep .instructions-collapsed-validation .validation-errors {
+    margin: -12px 0 0 !important;
 }
 
 ::ng-deep .editor-block__textarea .vht-field {

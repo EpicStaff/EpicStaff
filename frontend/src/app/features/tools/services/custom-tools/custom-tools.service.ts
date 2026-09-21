@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 
+import { withPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
@@ -35,7 +37,15 @@ export class CustomToolsService {
         const fetchSlice = (offset: number) => {
             let httpParams = new HttpParams().set('limit', String(LIMIT)).set('offset', String(offset));
             if (params?.name) httpParams = httpParams.set('name', params.name);
-            return this.http.get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, { params: httpParams });
+            return this.http.get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, {
+                params: httpParams,
+                context: withPermission<ApiGetRequest<GetPythonCodeToolRequest>>(ResourceCode.Tools, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            });
         };
 
         return fetchSlice(0).pipe(

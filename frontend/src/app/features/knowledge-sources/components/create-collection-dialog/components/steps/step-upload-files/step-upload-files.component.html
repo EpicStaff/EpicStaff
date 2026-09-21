@@ -1,5 +1,8 @@
 <div class="dialog__form">
-    <div class="dialog__form-field">
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="dialog__form-field"
+    >
         <div class="dialog__form-label">
             <label for="collection-name">Collection Name</label>
             <app-help-tooltip
@@ -10,18 +13,23 @@
             />
         </div>
 
-        <input
-            type="text"
-            id="collection-name"
-            class="dialog__form-input"
-            [formControl]="collectionName"
-            placeholder="Enter collection name"
-            [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
-        />
-        <app-validation-errors [control]="collectionName" />
+        <div class="dialog__form-input-wrap">
+            <input
+                type="text"
+                id="collection-name"
+                class="dialog__form-input"
+                [formControl]="collectionName"
+                placeholder="Enter collection name"
+                [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
+            />
+            <app-validation-errors [control]="collectionName" />
+        </div>
     </div>
 
-    <div class="dialog__form-field">
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="dialog__form-field"
+    >
         <div class="dialog__form-label">
             <label for="collection-description">Guidance for Agents</label>
             <app-help-tooltip
@@ -32,17 +40,19 @@
             />
         </div>
 
-        <textarea
-            #descriptionTa
-            id="collection-description"
-            class="dialog__form-input dialog__form-textarea"
-            [formControl]="description"
-            placeholder="Describe what's inside and which questions this collection can answer..."
-            rows="1"
-            (input)="autoGrow(descriptionTa)"
-            [class.dialog__input--invalid]="description.invalid && description.touched"
-        ></textarea>
-        <app-validation-errors [control]="description" />
+        <div class="dialog__form-input-wrap">
+            <textarea
+                #descriptionTa
+                id="collection-description"
+                class="dialog__form-input dialog__form-textarea"
+                [formControl]="description"
+                placeholder="Describe what's inside and which questions this collection can answer..."
+                rows="1"
+                (input)="autoGrow(descriptionTa)"
+                [class.dialog__input--invalid]="description.invalid && description.touched"
+            ></textarea>
+            <app-validation-errors [control]="description" />
+        </div>
     </div>
 
     <div class="dialog__content">
@@ -52,7 +62,7 @@
                     Selected Files: <span class="dialog__content-title--count">(0)</span>
                 </h6>
                 <app-file-uploader
-                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
                     (filesUploaded)="onFilesUpload($event)"
                 />
             </div>
@@ -61,9 +71,14 @@
                 <app-files-list
                     [(documents)]="documents"
                     (filesUploaded)="onFilesUpload($event)"
+                    (documentSelected)="selectedDocument.set($event)"
                     class="dialog__files-list"
                 />
-                <app-file-preview class="dialog__file-preview" />
+                <app-blob-preview
+                    [blob]="previewState().blob"
+                    [fileName]="previewState().fileName"
+                    class="dialog__file-preview"
+                />
             </div>
         }
     </div>

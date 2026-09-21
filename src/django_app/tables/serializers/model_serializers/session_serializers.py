@@ -4,6 +4,7 @@ from tables.models.session_models import (
     AgentSessionMessage,
     Session,
     SessionTrigger,
+    SessionPrincipal,
     TaskSessionMessage,
     UserSessionMessage,
 )
@@ -37,8 +38,15 @@ class SessionTriggerSerializer(serializers.ModelSerializer):
         fields = ("trigger_type", "trigger_id")
 
 
+class SessionPrincipalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SessionPrincipal
+        fields = ["kind", "user", "api_key", "email"]
+
+
 class SessionSerializer(serializers.ModelSerializer):
     trigger = SessionTriggerSerializer(read_only=True)
+    principal = SessionPrincipalSerializer(read_only=True)
 
     class Meta:
         model = Session
@@ -54,6 +62,7 @@ class SessionSerializer(serializers.ModelSerializer):
             "graph_schema",
             "parent_session",
             "trigger",
+            "principal",
         ]
 
 

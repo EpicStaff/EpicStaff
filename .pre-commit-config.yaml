@@ -23,7 +23,7 @@ repos:
         args: ["--fix"]
         exclude: ^(src/crew/libraries/|src/knowledge/libraries/|.*/tests/|src/shared/tools|src/crew/utils/)
     -   id: ruff-format
-        exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/django_app/tables/migrations)
+        exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/django_app/tables/migrations|src/django_app/agents/migrations)
 
 
 

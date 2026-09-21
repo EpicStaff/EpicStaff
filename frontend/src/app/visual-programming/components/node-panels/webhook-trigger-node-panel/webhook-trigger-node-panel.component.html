@@ -18,14 +18,16 @@
                     class="form-fields"
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this Webhook Trigger node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
 
                     <app-webhook-trigger-select
                         formControlName="webhook_trigger"

@@ -42,6 +42,11 @@ export class ValidationErrorsComponent {
         numericOnly: () => 'Password cannot be entirely numeric.',
         whitespace: () => 'Value cannot be blank string.',
         uniqueName: () => 'A tool with this name already exists.',
+        notUnique: (e) => (e as { message?: string })?.message || 'Node name must be unique.',
+        tasksRequired: () => 'Add at least one task.',
+        taskNameRequired: () => 'Every task needs a name.',
+        taskNameDuplicate: () => 'Task names must be unique.',
+        taskInstructionsRequired: () => 'Every task needs instructions.',
     };
 
     messagesList = computed<string[]>(() => {
