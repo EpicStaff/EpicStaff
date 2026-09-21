@@ -4,12 +4,10 @@ in place via `assert_mutable`.
 """
 
 from collections import defaultdict
-from typing import Optional
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count
 from rest_framework.exceptions import PermissionDenied
-
 from tables.models.rbac_models import (
     Organization,
     OrganizationUser,
@@ -20,7 +18,6 @@ from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, Resour
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.permission_assert import assert_within_ceiling
-from tables.services.rbac.user_management_guards import UserManagementGuards
 from tables.services.rbac.rbac_exceptions import (
     BuiltInRoleImmutableError,
     OrganizationNotFoundError,
@@ -29,6 +26,7 @@ from tables.services.rbac.rbac_exceptions import (
     RoleNotFoundError,
     SelfRoleDeletionError,
 )
+from tables.services.rbac.user_management_guards import UserManagementGuards
 
 
 class RoleManagementService(CrossOrgResourceService):
@@ -43,7 +41,7 @@ class RoleManagementService(CrossOrgResourceService):
             raise BuiltInRoleImmutableError()
 
     @staticmethod
-    def _attach_assigned_counts(roles, org_id: Optional[int]) -> None:
+    def _attach_assigned_counts(roles, org_id: int | None) -> None:
         role_ids = [r.id for r in roles]
         if not role_ids:
             return
@@ -51,9 +49,7 @@ class RoleManagementService(CrossOrgResourceService):
         if org_id is not None:
             filters["org_id"] = org_id
         counts_qs = (
-            OrganizationUser.objects.filter(**filters)
-            .values("role_id")
-            .annotate(c=Count("id"))
+            OrganizationUser.objects.filter(**filters).values("role_id").annotate(c=Count("id"))
         )
         counts = {row["role_id"]: row["c"] for row in counts_qs}
         for role in roles:
@@ -97,14 +93,10 @@ class RoleManagementService(CrossOrgResourceService):
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self.resolve_for_write(
-                actor, role.org_id, action=Permission.UPDATE
-            )
+            effective = self.resolve_for_write(actor, role.org_id, action=Permission.UPDATE)
             self.assert_can(effective=effective, action=Permission.UPDATE)
             if "permissions" in changes:
-                self._assert_within_ceiling(
-                    effective=effective, permissions=changes["permissions"]
-                )
+                self._assert_within_ceiling(effective=effective, permissions=changes["permissions"])
             if "name" in changes:
                 self._assert_name_available(
                     org_id=role.org_id, name=changes["name"], exclude_role_id=role.id
@@ -118,9 +110,7 @@ class RoleManagementService(CrossOrgResourceService):
                 raise RoleNameConflictError() from exc
             if "permissions" in changes:
                 role.permissions_set.all().delete()
-                self._write_permission_rows(
-                    role=role, permissions=changes["permissions"]
-                )
+                self._write_permission_rows(role=role, permissions=changes["permissions"])
         return self._build_role_response(role_id=role.id)
 
     def preview_delete(self, actor, role_id) -> dict:
@@ -136,9 +126,7 @@ class RoleManagementService(CrossOrgResourceService):
         effective = self.resolve_for_write(actor, role.org_id, action=Permission.DELETE)
         self.assert_can(effective=effective, action=Permission.DELETE)
         self._assert_not_own_role(actor=actor, role=role)
-        memberships = OrganizationUser.objects.filter(role_id=role.id).select_related(
-            "user"
-        )
+        memberships = OrganizationUser.objects.filter(role_id=role.id).select_related("user")
         affected = [
             {
                 "user_id": m.user_id,
@@ -160,9 +148,7 @@ class RoleManagementService(CrossOrgResourceService):
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self.resolve_for_write(
-                actor, role.org_id, action=Permission.DELETE
-            )
+            effective = self.resolve_for_write(actor, role.org_id, action=Permission.DELETE)
             self.assert_can(effective=effective, action=Permission.DELETE)
             self._assert_not_own_role(actor=actor, role=role)
             viewer_role = Role.objects.get(
@@ -215,11 +201,7 @@ class RoleManagementService(CrossOrgResourceService):
         except (TypeError, ValueError) as exc:
             raise RoleNotFoundError() from exc
         try:
-            role = (
-                Role.objects.select_related("org")
-                .prefetch_related("permissions_set")
-                .get(pk=pk)
-            )
+            role = Role.objects.select_related("org").prefetch_related("permissions_set").get(pk=pk)
         except Role.DoesNotExist as exc:
             raise RoleNotFoundError() from exc
 
@@ -240,9 +222,7 @@ class RoleManagementService(CrossOrgResourceService):
         response must not re-apply the READ gate (a role granting
         CREATE/UPDATE without READ would otherwise 404 a committed write)."""
         role = (
-            Role.objects.select_related("org")
-            .prefetch_related("permissions_set")
-            .get(pk=role_id)
+            Role.objects.select_related("org").prefetch_related("permissions_set").get(pk=role_id)
         )
         # Only create/update reach here, and `assert_mutable` rejects a
         # built-in before either write begins. Only built-in counting consults
@@ -291,9 +271,9 @@ class RoleManagementService(CrossOrgResourceService):
         The boolean twin of the two assertions `MembershipManagementService`
         runs before a write, so the picker cannot offer a role the write
         would refuse."""
-        return UserManagementGuards.role_is_assignable(
-            role, org_id
-        ) and effective.covers(EffectivePermissions.bits_of(role))
+        return UserManagementGuards.role_is_assignable(role, org_id) and effective.covers(
+            EffectivePermissions.bits_of(role)
+        )
 
     def resolve_assignable_scopes(self, actor, org_ids, scopes=None):
         """{org_id: EffectivePermissions} for the assignability filter, or None
@@ -307,11 +287,7 @@ class RoleManagementService(CrossOrgResourceService):
         if scopes is None:
             scopes = self._org_access.resolve_all(user=actor)
         requested = set(org_ids)
-        return {
-            scope.org.id: scope.effective
-            for scope in scopes
-            if scope.org.id in requested
-        }
+        return {scope.org.id: scope.effective for scope in scopes if scope.org.id in requested}
 
     def list_custom_roles(self, actor, org_ids, scopes=None, assignable_in=None):
         """Return a queryset of custom roles across the orgs the actor may
@@ -368,9 +344,7 @@ class RoleManagementService(CrossOrgResourceService):
         built_in = [role for role in roles if role.is_built_in]
         self._attach_assigned_counts(roles=custom, org_id=None)
         self._attach_custom_assigned_breakdown(roles=custom)
-        self._attach_built_in_assigned_counts(
-            roles=built_in, scope_org_ids=scope_org_ids
-        )
+        self._attach_built_in_assigned_counts(roles=built_in, scope_org_ids=scope_org_ids)
         for role in roles:
             role._perm_rows = list(role.permissions_set.all())
             role._effective_org_id = role.org_id
@@ -411,15 +385,11 @@ class RoleManagementService(CrossOrgResourceService):
         countable = [role for role in roles if role.name != BuiltInRole.SUPERADMIN]
         if not countable or (scope_org_ids is not None and not scope_org_ids):
             return
-        rows = OrganizationUser.objects.filter(
-            role_id__in=[role.id for role in countable]
-        )
+        rows = OrganizationUser.objects.filter(role_id__in=[role.id for role in countable])
         if scope_org_ids is not None:
             rows = rows.filter(org_id__in=scope_org_ids)
         by_role = defaultdict(list)
-        for row in rows.values("role_id", "org_id", "org__name").annotate(
-            c=Count("id")
-        ):
+        for row in rows.values("role_id", "org_id", "org__name").annotate(c=Count("id")):
             by_role[row["role_id"]].append(
                 {
                     "org": {"id": row["org_id"], "name": row["org__name"]},
@@ -474,9 +444,7 @@ class RoleManagementService(CrossOrgResourceService):
         role assignment uses too. Collapsing the list into a mapping cannot
         lose an entry -- RoleValidationService rejects a duplicate
         resource_type. Superadmin bypasses."""
-        assert_within_ceiling(
-            effective, {e["resource_type"]: e["bitmask"] for e in permissions}
-        )
+        assert_within_ceiling(effective, {e["resource_type"]: e["bitmask"] for e in permissions})
 
     @staticmethod
     def _assert_not_own_role(actor, role) -> None:

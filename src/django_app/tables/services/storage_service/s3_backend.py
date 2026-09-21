@@ -2,12 +2,11 @@ import io
 
 import boto3
 from botocore.exceptions import ClientError
-
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
     FileInfo,
-    FolderInfo,
     FileListItem,
+    FolderInfo,
     TreeNode,
     UploadResult,
 )
@@ -103,12 +102,8 @@ class S3StorageBackend(AbstractStorageBackend):
                     MaxKeys=2,
                 )
                 # folder_key itself is the zero-byte marker created by mkdir — exclude it
-                real_files = [
-                    obj for obj in probe.get("Contents", []) if obj["Key"] != folder_key
-                ]
-                is_empty = (
-                    len(real_files) == 0 and len(probe.get("CommonPrefixes", [])) == 0
-                )
+                real_files = [obj for obj in probe.get("Contents", []) if obj["Key"] != folder_key]
+                is_empty = len(real_files) == 0 and len(probe.get("CommonPrefixes", [])) == 0
                 results.append(
                     FileListItem(
                         id=None,
@@ -150,7 +145,7 @@ class S3StorageBackend(AbstractStorageBackend):
             response = self.client.get_object(Bucket=self.bucket_name, Key=full_path)
         except ClientError as error:
             if error.response["Error"]["Code"] == "NoSuchKey":
-                raise FileNotFoundError(f"File does not exist: {path}")
+                raise FileNotFoundError(f"File does not exist: {path}") from error
             raise
         return response["Body"].read()
 
@@ -177,9 +172,7 @@ class S3StorageBackend(AbstractStorageBackend):
                     Bucket=self.bucket_name,
                     Delete={"Objects": objects},
                 )
-                logger.info(
-                    "Deleted {} S3 objects under prefix {}", len(objects), prefix
-                )
+                logger.info("Deleted {} S3 objects under prefix {}", len(objects), prefix)
 
     def delete_prefix(self, prefix: str) -> None:
         """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
@@ -209,7 +202,7 @@ class S3StorageBackend(AbstractStorageBackend):
         except ClientError as error:
             code = error.response["Error"]["Code"]
             if code in ("400", "XMinioInvalidObjectName"):
-                raise ValueError(f"Invalid storage path: {path!r}")
+                raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
 
     def move(self, source_path: str, destination_path: str) -> str:
@@ -243,11 +236,7 @@ class S3StorageBackend(AbstractStorageBackend):
 
         # Folder: map source_prefix/* -> destination_prefix/* (no extra nesting)
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
-        dest_prefix = (
-            full_destination
-            if full_destination.endswith("/")
-            else full_destination + "/"
-        )
+        dest_prefix = full_destination if full_destination.endswith("/") else full_destination + "/"
 
         paginator = self.client.get_paginator("list_objects_v2")
         keys_to_delete = []
@@ -267,9 +256,7 @@ class S3StorageBackend(AbstractStorageBackend):
         if not found:
             raise FileNotFoundError(f"Source path does not exist: {source_path}")
 
-        self.client.delete_objects(
-            Bucket=self.bucket_name, Delete={"Objects": keys_to_delete}
-        )
+        self.client.delete_objects(Bucket=self.bucket_name, Delete={"Objects": keys_to_delete})
         logger.info("Renamed S3 prefix {} to {}", source_prefix, dest_prefix)
 
     def _key_exists(self, key: str, is_folder: bool) -> bool:
@@ -301,9 +288,7 @@ class S3StorageBackend(AbstractStorageBackend):
             if not self._key_exists(candidate, is_folder):
                 return candidate
 
-    def _copy_into(
-        self, source_path: str, destination_path: str
-    ) -> tuple[str, list[str]]:
+    def _copy_into(self, source_path: str, destination_path: str) -> tuple[str, list[str]]:
         """
         Copy source into the destination folder, deduping the destination name
         against existing keys.
@@ -377,7 +362,7 @@ class S3StorageBackend(AbstractStorageBackend):
             if code == "404":
                 pass
             elif code in ("400", "XMinioInvalidObjectName"):
-                raise ValueError(f"Invalid storage path: {path!r}")
+                raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
 
@@ -395,15 +380,13 @@ class S3StorageBackend(AbstractStorageBackend):
             if code == "404":
                 pass
             elif code in ("400", "XMinioInvalidObjectName"):
-                raise ValueError(f"Invalid storage path: {path!r}")
+                raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
 
         # Fallback: virtual folder (no marker, but objects exist under prefix)
         prefix = full_path if full_path.endswith("/") else full_path + "/"
-        response = self.client.list_objects_v2(
-            Bucket=self.bucket_name, Prefix=prefix, MaxKeys=1
-        )
+        response = self.client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix, MaxKeys=1)
         if response.get("Contents"):
             obj = response["Contents"][0]
             return FolderInfo(

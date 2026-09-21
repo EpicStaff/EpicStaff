@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.db.models import Q
-
 from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
@@ -29,9 +28,7 @@ class PythonCodeToolCopyService(BaseCopyService):
             new_code = copy_python_code(tool.python_code)
 
             existing_names = (
-                PythonCodeTool.objects.filter(
-                    Q(org_id=target_org_id) | Q(built_in=True)
-                )
+                PythonCodeTool.objects.filter(Q(org_id=target_org_id) | Q(built_in=True))
                 .filter(name__istartswith=clean_base)
                 .values_list("name", flat=True)
             )
@@ -48,7 +45,5 @@ class PythonCodeToolCopyService(BaseCopyService):
                 org_id=target_org_id,
             )
 
-        new_tool.labels.set(
-            tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id)
-        )
+        new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id))
         return new_tool

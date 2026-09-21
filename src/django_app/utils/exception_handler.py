@@ -1,12 +1,10 @@
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
+from django_app.settings import DEBUG
 from rest_framework import exceptions
 from rest_framework.exceptions import APIException
 from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
-
-from django_app.settings import DEBUG
-
 
 # Keys DRF generates itself; naming them back at the client adds no information.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})

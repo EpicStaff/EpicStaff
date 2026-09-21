@@ -7,6 +7,7 @@ import {
     Injector,
     input,
     signal,
+    viewChild,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -61,6 +62,7 @@ import {
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
     InstructionsViewToggleComponent,
@@ -89,6 +91,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         InstructionsViewToggleComponent,
         MarkdownComponent,
         ColumnResizeDividerComponent,
+        InputsYouCanUseComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -113,6 +116,15 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly instructionsView = signal<InstructionsView>('preview');
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
+
+    private readonly instructionsTextareaSchemaView = viewChild<VariableHighlightTextareaComponent>(
+        'instructionsTextareaSchemaView'
+    );
+    private readonly instructionsTextareaMainPane =
+        viewChild<VariableHighlightTextareaComponent>('instructionsTextareaMainPane');
+    private readonly instructionsTextareaCollapsed = viewChild<VariableHighlightTextareaComponent>(
+        'instructionsTextareaCollapsed'
+    );
 
     outputSchemaText = '{}';
     outputSchemaError = '';
@@ -387,6 +399,19 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     copyInstructions(): void {
         this.copyToClipboard(this.form.get('instructions')?.value || '');
+    }
+
+    insertInputToInstructions(name: string): void {
+        if (this.mainView() === 'instructions' && this.instructionsView() === 'preview') {
+            this.setInstructionsView('edit');
+        }
+        setTimeout(() => {
+            const target =
+                this.instructionsTextareaSchemaView() ??
+                this.instructionsTextareaMainPane() ??
+                this.instructionsTextareaCollapsed();
+            target?.insertAtCursor(name);
+        });
     }
 
     copySchema(): void {

@@ -39,9 +39,7 @@ class SecretUsageService:
             source.count_pairs(
                 org_id=org_id,
                 secret_ids=secret_ids,
-                readability=source.readability(
-                    readable_types=readable_types, org_id=org_id
-                ),
+                readability=source.readability(readable_types=readable_types, org_id=org_id),
             )
             for source in USAGE_SOURCES
         ]
@@ -62,9 +60,9 @@ class SecretUsageService:
 
     def count_for(self, *, secret: Secret, effective) -> UsageCounts:
         """One secret's counts, in a single query."""
-        return self.counts(
-            org_id=secret.org_id, effective=effective, secret_ids={secret.pk}
-        )[secret.pk]
+        return self.counts(org_id=secret.org_id, effective=effective, secret_ids={secret.pk})[
+            secret.pk
+        ]
 
     @staticmethod
     def readable_types(*, effective) -> frozenset[str]:
@@ -163,9 +161,7 @@ class SecretUsageService:
 
         by_shape: dict[str, list] = defaultdict(list)
         for source in USAGE_SOURCES:
-            readability = source.readability(
-                readable_types=readable_types, org_id=org_id
-            )
+            readability = source.readability(readable_types=readable_types, org_id=org_id)
             if readability == READABLE_NEVER:
                 continue
             by_shape[source.detail_shape].append((source, readability))

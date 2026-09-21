@@ -5,6 +5,7 @@
             <p class="tab__subtitle">Create and manage webhook triggers reused by trigger nodes and channels.</p>
         </div>
         <app-button
+            *appHasPermission="[ResourceCode.Webhooks, ActionCode.Create]"
             type="primary"
             (click)="onAdd()"
             >Add Trigger</app-button
@@ -45,6 +46,7 @@
                         </div>
                         <div class="trigger-card__actions">
                             <button
+                                *appHasPermission="[ResourceCode.Webhooks, ActionCode.Update]"
                                 type="button"
                                 class="trigger-card__action"
                                 title="Edit"
@@ -56,6 +58,7 @@
                                 ></i>
                             </button>
                             <button
+                                *appHasPermission="[ResourceCode.Webhooks, ActionCode.Delete]"
                                 type="button"
                                 class="trigger-card__action trigger-card__action--delete"
                                 title="Delete"

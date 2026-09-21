@@ -2,7 +2,6 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.organization_serializers import (
     OrganizationListResponseSerializer,
@@ -88,9 +87,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
             include_superadmin_fallback=getattr(request.user, "is_superadmin", False),
         )
         return paginator.get_paginated_response(
-            OrganizationListResponseSerializer(
-                page, many=True, context={"request": request}
-            ).data
+            OrganizationListResponseSerializer(page, many=True, context={"request": request}).data
         )
 
     @extend_schema(**ORGANIZATIONS_RETRIEVE_GET)

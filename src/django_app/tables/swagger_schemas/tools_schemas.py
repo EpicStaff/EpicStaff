@@ -1,10 +1,10 @@
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
     OpenApiResponse,
     inline_serializer,
 )
-from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 
 from tables.serializers.model_serializers import (
@@ -33,9 +33,9 @@ _BULK_DELETE_REQUEST = inline_serializer(
     },
 )
 
-PYTHON_CODE_TOOL_BULK_DELETE_POST = dict(
-    summary="Bulk delete Python-code tools",
-    description=(
+PYTHON_CODE_TOOL_BULK_DELETE_POST = {
+    "summary": "Bulk delete Python-code tools",
+    "description": (
         "Deletes multiple `PythonCodeTool` rows (scoped to the active org) in a "
         "single atomic transaction. Built-in tools (`built_in=True`) are always "
         "excluded from deletion — silently skipped, not rejected — so the "
@@ -43,8 +43,8 @@ PYTHON_CODE_TOOL_BULK_DELETE_POST = dict(
         "in the response always echoes the full requested list, regardless of "
         "which ids were actually found/deleted/skipped."
     ),
-    request=_BULK_DELETE_REQUEST,
-    responses={
+    "request": _BULK_DELETE_REQUEST,
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Deletion completed (built-in ids silently skipped).",
@@ -71,7 +71,7 @@ PYTHON_CODE_TOOL_BULK_DELETE_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
 _COPY_REQUEST = inline_serializer(
     name="ToolCopyRequest",
@@ -81,7 +81,7 @@ _COPY_REQUEST = inline_serializer(
             help_text=(
                 "Optional name for the copied tool. If omitted, the original "
                 "tool's name is reused with an auto-generated suffix on "
-                "collision (e.g. \"My Tool (1)\")."
+                'collision (e.g. "My Tool (1)").'
             ),
         ),
     },
@@ -116,18 +116,18 @@ def _copy_post_schema(
                 ),
             ],
         )
-    return dict(
-        summary=f"Copy a {model_name}",
-        description=(
+    return {
+        "summary": f"Copy a {model_name}",
+        "description": (
             f"Creates a duplicate of the `{model_name}` identified by the id "
             "in the URL, scoped to the active org. Accepts an optional "
             "`name` to override the name of the copy; if omitted, the "
             "original's name is reused with an auto-generated suffix on "
-            f"collision (e.g. \"My Tool (1)\"). {built_in_note}"
+            f'collision (e.g. "My Tool (1)"). {built_in_note}'
         ),
-        request=_COPY_REQUEST,
-        responses=responses,
-    )
+        "request": _COPY_REQUEST,
+        "responses": responses,
+    }
 
 
 PYTHON_CODE_TOOL_COPY_POST = _copy_post_schema(
@@ -145,40 +145,41 @@ MCP_TOOL_COPY_POST = _copy_post_schema(
     error_400_example=None,
 )
 
+
 def _favorite_post_schema(*, model_name: str) -> dict:
-    return dict(
-        summary=f"Favorite a {model_name}",
-        description=(
+    return {
+        "summary": f"Favorite a {model_name}",
+        "description": (
             f"Marks the `{model_name}` identified by the id in the URL as a "
             "favorite for the current user. This is a personal preference — "
             "it is per-user, not shared across the org — and does not affect "
             "other users' favorites. Idempotent: calling this again on a "
             "tool that is already favorited succeeds without error."
         ),
-        request=None,
-        responses={
+        "request": None,
+        "responses": {
             200: OpenApiResponse(description="Tool favorited (or already was)."),
             401: UNAUTHORIZED_401_RESPONSE,
         },
-    )
+    }
 
 
 def _favorite_delete_schema(*, model_name: str) -> dict:
-    return dict(
-        summary=f"Unfavorite a {model_name}",
-        description=(
+    return {
+        "summary": f"Unfavorite a {model_name}",
+        "description": (
             f"Removes the `{model_name}` identified by the id in the URL from "
             "the current user's favorites. This is a personal preference — "
             "it is per-user, not shared across the org — and does not affect "
             "other users' favorites. Idempotent: calling this again on a "
             "tool that is not currently favorited succeeds without error."
         ),
-        request=None,
-        responses={
+        "request": None,
+        "responses": {
             200: OpenApiResponse(description="Tool unfavorited (or already wasn't)."),
             401: UNAUTHORIZED_401_RESPONSE,
         },
-    )
+    }
 
 
 PYTHON_CODE_TOOL_FAVORITE_POST = _favorite_post_schema(model_name="PythonCodeTool")
@@ -186,15 +187,15 @@ PYTHON_CODE_TOOL_FAVORITE_DELETE = _favorite_delete_schema(model_name="PythonCod
 MCP_TOOL_FAVORITE_POST = _favorite_post_schema(model_name="McpTool")
 MCP_TOOL_FAVORITE_DELETE = _favorite_delete_schema(model_name="McpTool")
 
-MCP_TOOL_BULK_DELETE_POST = dict(
-    summary="Bulk delete MCP tools",
-    description=(
+MCP_TOOL_BULK_DELETE_POST = {
+    "summary": "Bulk delete MCP tools",
+    "description": (
         "Deletes multiple `McpTool` rows (scoped to the active org) in a "
         "single atomic transaction. `McpTool` has no built-in concept, so "
         "every matching requested id is deleted."
     ),
-    request=_BULK_DELETE_REQUEST,
-    responses={
+    "request": _BULK_DELETE_REQUEST,
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="MCP tools successfully deleted.",
@@ -221,13 +222,13 @@ MCP_TOOL_BULK_DELETE_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
 
 def _export_get_schema(*, model_name: str) -> dict:
-    return dict(
-        summary=f"Export a {model_name}",
-        description=(
+    return {
+        "summary": f"Export a {model_name}",
+        "description": (
             f"Downloads a single `{model_name}` (identified by the id in the "
             "URL) as a JSON bundle file, scoped to the active org. The "
             f"response is a raw file download — not a `{model_name}` "
@@ -236,18 +237,18 @@ def _export_get_schema(*, model_name: str) -> dict:
             f'"main_entity": "{model_name}", "version": <int>}}`, suitable '
             "for later re-import via the `import` action."
         ),
-        request=None,
-        responses={
+        "request": None,
+        "responses": {
             200: OpenApiTypes.BINARY,
             401: UNAUTHORIZED_401_RESPONSE,
         },
-    )
+    }
 
 
 def _bulk_export_post_schema(*, model_name: str) -> dict:
-    return dict(
-        summary=f"Bulk export {model_name}s",
-        description=(
+    return {
+        "summary": f"Bulk export {model_name}s",
+        "description": (
             f"Downloads multiple `{model_name}` rows (identified by `ids`, "
             "scoped to the active org) as a single JSON bundle file. The "
             f"response is a raw file download — not a list of `{model_name}` "
@@ -256,8 +257,8 @@ def _bulk_export_post_schema(*, model_name: str) -> dict:
             f'"main_entity": "{model_name}", "version": <int>}}`, suitable '
             "for later re-import via the `import` action."
         ),
-        request=BulkExportSerializer,
-        responses={
+        "request": BulkExportSerializer,
+        "responses": {
             200: OpenApiTypes.BINARY,
             400: OpenApiResponse(
                 response=OpenApiTypes.STR,
@@ -273,13 +274,13 @@ def _bulk_export_post_schema(*, model_name: str) -> dict:
             ),
             401: UNAUTHORIZED_401_RESPONSE,
         },
-    )
+    }
 
 
 def _import_post_schema(*, model_name: str) -> dict:
-    return dict(
-        summary=f"Import {model_name}(s)",
-        description=(
+    return {
+        "summary": f"Import {model_name}(s)",
+        "description": (
             f"Imports one or more `{model_name}` rows from a JSON bundle file "
             "previously produced by the `export`/`bulk-export` actions "
             "(multipart form upload), scoped to the active org. "
@@ -289,7 +290,7 @@ def _import_post_schema(*, model_name: str) -> dict:
             "`total`/`created`/`reused` counts and previews — not a "
             f"`{model_name}` representation."
         ),
-        request={
+        "request": {
             "multipart/form-data": {
                 "type": "object",
                 "properties": {
@@ -299,7 +300,7 @@ def _import_post_schema(*, model_name: str) -> dict:
                 "required": ["file"],
             }
         },
-        responses={
+        "responses": {
             200: OpenApiResponse(
                 description=(
                     "Import summary: a dict keyed by entity type name, each "
@@ -309,7 +310,7 @@ def _import_post_schema(*, model_name: str) -> dict:
             ),
             401: UNAUTHORIZED_401_RESPONSE,
         },
-    )
+    }
 
 
 PYTHON_CODE_TOOL_EXPORT_GET = _export_get_schema(model_name="PythonCodeTool")

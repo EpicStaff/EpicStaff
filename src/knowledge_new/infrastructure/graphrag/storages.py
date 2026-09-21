@@ -2,19 +2,19 @@ import io
 import re
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 
+import settings
 from common.utils import run_async_to_sync
 from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
 from miniopy_async import Minio, S3Error
 from miniopy_async.deleteobjects import DeleteObject
-import settings
 
 
 def create_storage_config(
     rag_id: int,
-    subdir: Optional[str] = None,
+    subdir: str | None = None,
 ) -> StorageConfig:
     prefix = f"graphrag/rag_{rag_id}"
     if subdir:

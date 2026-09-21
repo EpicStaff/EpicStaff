@@ -1,14 +1,14 @@
-WEBHOOK_TRIGGER_NODE_CREATE = dict(
-    description=(
+WEBHOOK_TRIGGER_NODE_CREATE = {
+    "description": (
         "Auth for this node's inbound webhook is not configured here -- it "
         "lives on the linked `webhook_trigger` (see `/webhook-triggers/`), "
         "not on the node."
     ),
-)
+}
 
-WEBHOOK_TRIGGER_NODE_UPDATE = dict()
+WEBHOOK_TRIGGER_NODE_UPDATE = {}
 
-WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = dict()
+WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {}
 
 _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
     "`auth_secret_id` sets/updates this trigger's user-settable auth "
@@ -31,8 +31,8 @@ _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
     "was correctly saved."
 )
 
-WEBHOOK_TRIGGER_CREATE = dict(description=_WEBHOOK_TRIGGER_AUTH_DESCRIPTION)
+WEBHOOK_TRIGGER_CREATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 
-WEBHOOK_TRIGGER_UPDATE = dict(description=_WEBHOOK_TRIGGER_AUTH_DESCRIPTION)
+WEBHOOK_TRIGGER_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 
-WEBHOOK_TRIGGER_PARTIAL_UPDATE = dict(description=_WEBHOOK_TRIGGER_AUTH_DESCRIPTION)
+WEBHOOK_TRIGGER_PARTIAL_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}

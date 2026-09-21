@@ -4,19 +4,18 @@ import json
 import os
 import time
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator, AsyncIterable, Callable
 from datetime import datetime
 from functools import partial
-from typing import AsyncGenerator, AsyncIterable, Callable, Union
 
-from django.core.serializers.json import DjangoJSONEncoder
 from asgiref.sync import sync_to_async
-from django.http import JsonResponse, StreamingHttpResponse
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
+from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
 from loguru import logger
-
-from tables.services.redis_service import RedisService
 from tables.services.rbac.ticket_service import sse_ticket_service
+from tables.services.redis_service import RedisService
 
 redis_service = RedisService()
 
@@ -45,9 +44,7 @@ _trim_task_started = False
 
 
 async def _periodic_malloc_trim() -> None:
-    logger.info(
-        f"Periodic malloc_trim task started (interval={settings.MALLOC_TRIM_INTERVAL}s)"
-    )
+    logger.info(f"Periodic malloc_trim task started (interval={settings.MALLOC_TRIM_INTERVAL}s)")
     while True:
         try:
             await asyncio.sleep(settings.MALLOC_TRIM_INTERVAL)
@@ -67,13 +64,13 @@ def _ensure_trim_task() -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
-    loop.create_task(_periodic_malloc_trim())
+    loop.create_task(_periodic_malloc_trim())  # noqa: RUF006
     _trim_task_started = True
 
 
 def _read_rss_mb() -> float:
     try:
-        with open(f"/proc/{os.getpid()}/status", "r") as f:
+        with open(f"/proc/{os.getpid()}/status") as f:
             for line in f:
                 if line.startswith("VmRSS:"):
                     kb = int(line.split()[1])
@@ -94,12 +91,8 @@ def _log_sse_state(action: str, view_name: str) -> None:
     )
 
 
-session_status_channel_name = os.environ.get(
-    "SESSION_STATUS_CHANNEL", "sessions:session_status"
-)
-graph_messages_channel_name = os.environ.get(
-    "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
-)
+session_status_channel_name = os.environ.get("SESSION_STATUS_CHANNEL", "sessions:session_status")
+graph_messages_channel_name = os.environ.get("GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update")
 
 
 class SSEMixin(View, ABC):
@@ -123,7 +116,6 @@ class SSEMixin(View, ABC):
             - a dict with optional 'event' and required 'data' keys
             - or any JSON-serializable primitive (str, int, etc)
         """
-        pass
 
     @abstractmethod
     async def get_live_updates(self, pubsub):
@@ -133,7 +125,6 @@ class SSEMixin(View, ABC):
             - a dict with optional 'event' and required 'data' keys
             - or any JSON-serializable primitive (str, int, etc)
         """
-        pass
 
     async def sort_by_timestamp(self, messages: list[dict]) -> list[dict]:
         """
@@ -141,12 +132,12 @@ class SSEMixin(View, ABC):
         """
         return sorted(
             messages,
-            key=lambda m: datetime.fromisoformat(m["timestamp"].replace("Z", "+00:00")),
+            key=lambda m: datetime.fromisoformat(m["timestamp"]),
         )
 
     async def _data_generator(
         self,
-        callback: Callable[[], AsyncIterable[Union[dict, str, int, float, bool, None]]],
+        callback: Callable[[], AsyncIterable[dict | str | int | float | bool | None]],
     ) -> AsyncGenerator[str, None]:
         """
         SSE data generator.
@@ -204,9 +195,7 @@ class SSEMixin(View, ABC):
                     yield f"data: test event #{i + 1}\n\n"
                 raise GeneratorExit()
 
-            async for data in self._data_generator(
-                partial(self.get_live_updates, pubsub)
-            ):
+            async for data in self._data_generator(partial(self.get_live_updates, pubsub)):
                 logger.debug(f"event_stream data: {data}")
                 yield data
 
@@ -231,7 +220,7 @@ class SSEMixin(View, ABC):
         """Optional post-ticket authorization hook. Runs after the SSE ticket
         resolves to `self.user`. Return an HttpResponse to deny (short-circuit
         the stream), or None to proceed. Default: allow."""
-        return None
+        return
 
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")

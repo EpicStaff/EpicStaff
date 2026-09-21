@@ -1,14 +1,13 @@
-import uuid
 import asyncio
+import uuid
 from typing import Any
 
-from loguru import logger
-
 import settings
+from loguru import logger
 from services.graph.events import StopEvent
-from utils.singleton_meta import SingletonMeta
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from utils.singleton_meta import SingletonMeta
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
@@ -61,9 +60,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
-        await self.redis_service.apublish(
-            settings.CODE_EXEC_CHANNEL, code_task_data.model_dump()
-        )
+        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
         logger.info("Waiting for code_results")
 
         while True:

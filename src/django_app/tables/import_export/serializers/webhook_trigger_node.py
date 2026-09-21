@@ -1,14 +1,12 @@
 from rest_framework import serializers
 
-from tables.models import Graph, WebhookTriggerNode, PythonCode, WebhookTrigger
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
+from tables.models import Graph, PythonCode, WebhookTrigger, WebhookTriggerNode
 
 
 class WebhookTriggerNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     python_code = PythonCodeImportSerializer(required=False)
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),

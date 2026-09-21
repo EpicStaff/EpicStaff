@@ -6,7 +6,6 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-
 from tables.serializers.serializers import (
     InspectImportRequestSerializer,
     ToolUsageDetailSerializer,
@@ -44,9 +43,7 @@ class CopyActionMixin:
             extra["org_id"] = self.get_active_org_id()
         try:
             with transaction.atomic():
-                new_instance = self.copy_service_class().copy(
-                    instance, name=name, **extra
-                )
+                new_instance = self.copy_service_class().copy(instance, name=name, **extra)
         except IntegrityError:
             logger.warning(
                 "Copy of %s#%s raced on a unique constraint; client should retry.",
@@ -110,14 +107,8 @@ class OrgScopedChildViewSetMixin(OrgScopedResolverMixin):
 
     def get_queryset(self):
         if not self.org_filter_path:
-            raise NotImplementedError(
-                f"{self.__class__.__name__} must set org_filter_path."
-            )
-        return (
-            super()
-            .get_queryset()
-            .filter(**{self.org_filter_path: self.get_active_org_id()})
-        )
+            raise NotImplementedError(f"{self.__class__.__name__} must set org_filter_path.")
+        return super().get_queryset().filter(**{self.org_filter_path: self.get_active_org_id()})
 
     def perform_create(self, serializer):
         # A child may only be created under a parent that lives in the active
@@ -160,9 +151,7 @@ class OrgScopedHybridViewSetMixin(OrgScopedResolverMixin):
 
     def get_queryset(self):
         if self.global_visibility_q is None:
-            raise NotImplementedError(
-                f"{self.__class__.__name__} must set global_visibility_q."
-            )
+            raise NotImplementedError(f"{self.__class__.__name__} must set global_visibility_q.")
         return (
             super()
             .get_queryset()
@@ -173,9 +162,7 @@ class OrgScopedHybridViewSetMixin(OrgScopedResolverMixin):
         # A row created via the org API is, by definition, that org's custom row:
         # stamp the org and force it out of the shared/built-in subset.
         if self.custom_create_values is None:
-            raise NotImplementedError(
-                f"{self.__class__.__name__} must set custom_create_values."
-            )
+            raise NotImplementedError(f"{self.__class__.__name__} must set custom_create_values.")
         serializer.save(
             org_id=self.get_active_org_id(),
             created_by=self.request.user,
@@ -214,16 +201,10 @@ class OrgScopedQuerysetMixin(OrgScopedResolverMixin):
     scope_distinct: bool = False
 
     def get_org_scope_q(self, org_id: int) -> Q:
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_org_scope_q()."
-        )
+        raise NotImplementedError(f"{self.__class__.__name__} must implement get_org_scope_q().")
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .filter(self.get_org_scope_q(self.get_active_org_id()))
-        )
+        queryset = super().get_queryset().filter(self.get_org_scope_q(self.get_active_org_id()))
         return queryset.distinct() if self.scope_distinct else queryset
 
 
@@ -244,9 +225,7 @@ class OrgScopedServiceViewSetMixin(OrgScopedResolverMixin):
     """
 
     def get_in_active_org_or_404(self, model, pk, org_path: str = "org_id", **filters):
-        obj = model.objects.filter(
-            pk=pk, **{org_path: self.get_active_org_id()}, **filters
-        ).first()
+        obj = model.objects.filter(pk=pk, **{org_path: self.get_active_org_id()}, **filters).first()
         if obj is None:
             raise NotFound()
         return obj
@@ -270,11 +249,7 @@ class ToolUsageActionsMixin:
                 )
             if len(ids) > self.MAX_USAGE_IDS:
                 return Response(
-                    {
-                        "detail": (
-                            f"maximum {self.MAX_USAGE_IDS} allowed, got {len(ids)}"
-                        )
-                    },
+                    {"detail": (f"maximum {self.MAX_USAGE_IDS} allowed, got {len(ids)}")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             ids = set(ids)
@@ -300,12 +275,12 @@ class ToolUsageActionsMixin:
         org_id = self.get_active_org_id()
         try:
             tool_id = int(pk)
-        except (TypeError, ValueError):
-            raise NotFound(f"{not_found_name} {pk} not found.")
+        except (TypeError, ValueError) as e:
+            raise NotFound(f"{not_found_name} {pk} not found.") from e
         try:
             detail = service_fn(tool_id, org_id)
-        except ToolNotFoundError:
-            raise NotFound(f"{not_found_name} {pk} not found.")
+        except ToolNotFoundError as e:
+            raise NotFound(f"{not_found_name} {pk} not found.") from e
         serializer = ToolUsageDetailSerializer(detail)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -321,9 +296,7 @@ class SuperadminWriteMixin:
     permission_classes = [IsAuthenticated].
     """
 
-    superadmin_write_actions = frozenset(
-        {"create", "update", "partial_update", "destroy"}
-    )
+    superadmin_write_actions = frozenset({"create", "update", "partial_update", "destroy"})
 
     def get_permissions(self):
         if getattr(self, "action", None) in self.superadmin_write_actions:

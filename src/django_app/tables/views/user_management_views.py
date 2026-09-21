@@ -4,8 +4,10 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
-from tables.serializers.user_management_serializers import UserResponseSerializer
+from tables.serializers.user_management_serializers import (
+    UserCreateRequestSerializer,
+    UserResponseSerializer,
+)
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.delete.dry_run import parse_dry_run
 from tables.services.rbac.delete.service import DeleteService
@@ -71,9 +73,7 @@ class UserAdminViewSet(viewsets.ViewSet):
 
     @extend_schema(**USERS_LIST_GET)
     def list(self, request):
-        org_ids = CrossOrgAdminViewSet.parse_org_ids(
-            request.query_params.get("org_ids")
-        )
+        org_ids = CrossOrgAdminViewSet.parse_org_ids(request.query_params.get("org_ids"))
         cleaned = self._validator.validate_list_users_query(request.query_params)
         if org_ids is None and cleaned["organization_id"] is not None:
             org_ids = [cleaned["organization_id"]]
@@ -88,9 +88,7 @@ class UserAdminViewSet(viewsets.ViewSet):
         qs = self._apply_ordering(qs, request.query_params.get("ordering"))
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)
-        serializer = UserResponseSerializer(
-            page, many=True, context={"request": request}
-        )
+        serializer = UserResponseSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
     def _apply_ordering(self, qs, raw):
@@ -122,18 +120,14 @@ class UserAdminViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"], url_path="grant-superadmin")
     @extend_schema(**USERS_GRANT_SUPERADMIN_POST)
     def grant_superadmin(self, request, pk=None):
-        user = self._service.grant_superadmin(
-            actor=request.user, target_user_id=int(pk)
-        )
+        user = self._service.grant_superadmin(actor=request.user, target_user_id=int(pk))
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="revoke-superadmin")
     @extend_schema(**USERS_REVOKE_SUPERADMIN_POST)
     def revoke_superadmin(self, request, pk=None):
-        user = self._service.revoke_superadmin(
-            actor=request.user, target_user_id=int(pk)
-        )
+        user = self._service.revoke_superadmin(actor=request.user, target_user_id=int(pk))
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
@@ -149,9 +143,7 @@ class UserAdminViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"], url_path="reactivate")
     @extend_schema(**USERS_REACTIVATE_POST)
     def reactivate(self, request, pk=None):
-        user = self._service.set_user_active(
-            actor=request.user, target_user_id=int(pk), value=True
-        )
+        user = self._service.set_user_active(actor=request.user, target_user_id=int(pk), value=True)
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 

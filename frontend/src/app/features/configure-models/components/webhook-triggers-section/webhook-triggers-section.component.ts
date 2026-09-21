@@ -8,6 +8,8 @@ import {
     WebhookTriggerDialogComponent,
     WebhookTriggerDialogData,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
@@ -18,7 +20,7 @@ import { WebhookTriggerModel } from '../../../../visual-programming/core/models/
     selector: 'app-webhook-triggers-section',
     templateUrl: './webhook-triggers-section.component.html',
     styleUrls: ['./webhook-triggers-section.component.scss'],
-    imports: [ButtonComponent, LoadingSpinnerComponent],
+    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WebhookTriggersSectionComponent implements OnInit {
@@ -110,4 +112,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
                     });
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -16,16 +16,16 @@ from tables.serializers.user_management_serializers import (
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-USERS_LIST_GET = dict(
-    summary="List user accounts (superadmin)",
-    description=(
+USERS_LIST_GET = {
+    "summary": "List user accounts (superadmin)",
+    "description": (
         "Global account entity, paginated. Filter with ?org_ids= (accounts "
         "holding a membership in any of those orgs), ?search= "
         "(email/display name), ?status=active|inactive, ?role_id= (held in "
         "any in-scope org), ?is_superadmin=, and ?ordering=. Each row carries "
         "the account's full memberships[], unaffected by the filters."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             "org_ids",
             type=OpenApiTypes.STR,
@@ -57,8 +57,7 @@ USERS_LIST_GET = dict(
             location=OpenApiParameter.QUERY,
             required=False,
             description=(
-                "Exact role id held in at least one org in scope (a built-in "
-                "role id spans orgs)."
+                "Exact role id held in at least one org in scope (a built-in role id spans orgs)."
             ),
         ),
         OpenApiParameter(
@@ -82,8 +81,7 @@ USERS_LIST_GET = dict(
                 "-display_name",
             ],
             description=(
-                "Sort field; prefix '-' for descending. Default: newest "
-                "account first, then email."
+                "Sort field; prefix '-' for descending. Default: newest account first, then email."
             ),
         ),
         OpenApiParameter(
@@ -101,7 +99,7 @@ USERS_LIST_GET = dict(
             description="Items per page (default 50, max 200).",
         ),
     ],
-    responses={
+    "responses": {
         200: UserResponseSerializer(many=True),
         400: OpenApiResponse(
             description=(

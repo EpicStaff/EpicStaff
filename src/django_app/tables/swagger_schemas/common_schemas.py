@@ -1,5 +1,5 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
 UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.STR,
