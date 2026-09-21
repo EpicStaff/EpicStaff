@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.serializers.permission_serializers import RoleResponseSerializer
 
 
@@ -17,9 +16,7 @@ class RoleWriteSerializer(serializers.Serializer):
 
     org_id = serializers.IntegerField(required=False)
     name = serializers.CharField(required=False)
-    description = serializers.CharField(
-        required=False, allow_null=True, allow_blank=True
-    )
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     permissions = RolePermissionInputSerializer(many=True, required=False)
 
 

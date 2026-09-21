@@ -1,8 +1,8 @@
 import lancedb
+import settings
 from graphrag_vectors import register_vector_store
 from graphrag_vectors.lancedb import LanceDBVectorStore
 from graphrag_vectors.vector_store_config import VectorStoreConfig
-import settings
 
 
 def create_vector_store_config(

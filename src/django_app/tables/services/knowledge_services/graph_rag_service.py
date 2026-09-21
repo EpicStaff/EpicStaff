@@ -1,38 +1,38 @@
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from django.db import transaction
 from django.db.models import Q
 from loguru import logger
-
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
+from tables.constants.knowledge_constants import (
+    GRAPHRAG_DEFAULT_CHUNK_OVERLAP,
+    GRAPHRAG_DEFAULT_CHUNK_SIZE,
+    GRAPHRAG_DEFAULT_CHUNK_STRATEGY,
+    GRAPHRAG_DEFAULT_ENTITY_TYPES,
+    GRAPHRAG_DEFAULT_INPUT_FILE_TYPE,
+    GRAPHRAG_DEFAULT_MAX_CLUSTER_SIZE,
+    GRAPHRAG_DEFAULT_MAX_GLEANINGS,
+)
+from tables.exceptions import (
+    CollectionNotFoundException,
+    EmbedderNotFoundException,
+    GraphRagDocumentNotFoundException,
+    GraphRagNotFoundException,
+    InvalidChunkParametersException,
+    InvalidGraphRagParametersException,
+    LLMConfigNotFoundException,
+)
+from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import (
-    SourceCollection,
     BaseRagType,
     DocumentMetadata,
     GraphRag,
     GraphRagDocument,
     GraphRagIndexConfig,
+    SourceCollection,
 )
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
-from tables.exceptions import (
-    GraphRagNotFoundException,
-    EmbedderNotFoundException,
-    LLMConfigNotFoundException,
-    CollectionNotFoundException,
-    InvalidGraphRagParametersException,
-    GraphRagDocumentNotFoundException,
-    InvalidChunkParametersException,
-)
-from tables.constants.knowledge_constants import (
-    GRAPHRAG_DEFAULT_INPUT_FILE_TYPE,
-    GRAPHRAG_DEFAULT_CHUNK_SIZE,
-    GRAPHRAG_DEFAULT_CHUNK_OVERLAP,
-    GRAPHRAG_DEFAULT_CHUNK_STRATEGY,
-    GRAPHRAG_DEFAULT_ENTITY_TYPES,
-    GRAPHRAG_DEFAULT_MAX_GLEANINGS,
-    GRAPHRAG_DEFAULT_MAX_CLUSTER_SIZE,
-)
 
 
 class GraphRagService:
@@ -51,24 +51,24 @@ class GraphRagService:
         """Get collection by ID."""
         try:
             return SourceCollection.objects.get(collection_id=collection_id)
-        except SourceCollection.DoesNotExist:
-            raise CollectionNotFoundException(collection_id)
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
 
     @staticmethod
     def _get_embedder(embedder_id: int) -> EmbeddingConfig:
         """Get embedder by ID."""
         try:
             return EmbeddingConfig.objects.get(pk=embedder_id)
-        except EmbeddingConfig.DoesNotExist:
-            raise EmbedderNotFoundException(embedder_id)
+        except EmbeddingConfig.DoesNotExist as e:
+            raise EmbedderNotFoundException(embedder_id) from e
 
     @staticmethod
     def _get_llm_config(llm_id: int) -> LLMConfig:
         """Get LLM config by ID."""
         try:
             return LLMConfig.objects.get(pk=llm_id)
-        except LLMConfig.DoesNotExist:
-            raise LLMConfigNotFoundException(llm_id)
+        except LLMConfig.DoesNotExist as e:
+            raise LLMConfigNotFoundException(llm_id) from e
 
     @staticmethod
     def get_graph_rag(graph_rag_id: int) -> GraphRag:
@@ -81,11 +81,11 @@ class GraphRagService:
                 "llm",
                 "index_config",
             ).get(graph_rag_id=graph_rag_id)
-        except GraphRag.DoesNotExist:
-            raise GraphRagNotFoundException(graph_rag_id)
+        except GraphRag.DoesNotExist as e:
+            raise GraphRagNotFoundException(graph_rag_id) from e
 
     @staticmethod
-    def get_or_none_graph_rag_by_collection(collection_id: int) -> Optional[GraphRag]:
+    def get_or_none_graph_rag_by_collection(collection_id: int) -> GraphRag | None:
         """
         Get GraphRag for a collection, or None if doesn't exist.
         """
@@ -169,8 +169,7 @@ class GraphRagService:
         updated_fields = set()
         embedding_provider_changed = (
             rag.embedder is None
-            or rag.embedder.model.embedding_provider
-            != embedding_config.model.embedding_provider
+            or rag.embedder.model.embedding_provider != embedding_config.model.embedding_provider
         )
 
         if rag.embedder is None or rag.embedder.pk != embedding_config.pk:
@@ -268,9 +267,7 @@ class GraphRagService:
 
         rag = cls.get_graph_rag(graph_rag_id)
         if not rag.index_config:
-            raise InvalidGraphRagParametersException(
-                "GraphRag has no index configuration"
-            )
+            raise InvalidGraphRagParametersException("GraphRag has no index configuration")
         index_config = rag.index_config
 
         chunk_size = data.get("chunk_size") or index_config.chunk_size
@@ -278,9 +275,7 @@ class GraphRagService:
         if chunk_overlap >= chunk_size:
             reason = "'chunk_overlap' must be less than 'chunk_size'"
             raise InvalidChunkParametersException(
-                errors=[
-                    {"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}
-                ],
+                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
             )
 
         updated_fields = set()
@@ -313,8 +308,8 @@ class GraphRagService:
     @staticmethod
     @transaction.atomic
     def remove_documents_from_graph_rag(
-        graph_rag_id: int, document_ids: List[int]
-    ) -> Dict[str, Any]:
+        graph_rag_id: int, document_ids: list[int]
+    ) -> dict[str, Any]:
         """
         Remove documents from GraphRag.
 
@@ -342,9 +337,7 @@ class GraphRagService:
         deleted_document_ids = list(documents.values_list("document_id", flat=True))
         documents.delete()
 
-        GraphRagService.sync_status_after_document_removal(
-            rag, completed_document_deleted
-        )
+        GraphRagService.sync_status_after_document_removal(rag, completed_document_deleted)
 
         logger.info(
             "Removed {} documents from GraphRag(id={})",
@@ -359,7 +352,7 @@ class GraphRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_document(graph_rag_id: int, document_id: int) -> Dict[str, Any]:
+    def delete_document(graph_rag_id: int, document_id: int) -> dict[str, Any]:
         """
         Remove a single document from GraphRag.
 
@@ -391,21 +384,19 @@ class GraphRagService:
         return {"graph_rag_id": graph_rag_id, "document_id": document_id}
 
     @staticmethod
-    def sync_status_after_document_removal(
-        rag: GraphRag, indexed_document_deleted: bool
-    ) -> None:
+    def sync_status_after_document_removal(rag: GraphRag, indexed_document_deleted: bool) -> None:
         updated_fields = set()
-        S = GraphRagDocument.Status
+        status = GraphRagDocument.Status
         if indexed_document_deleted:
             # Graph can't excise a single file from the index — treat any indexed
             # deletion as outdating the whole graph.
-            rag.graph_rag_documents.filter(status=S.COMPLETED).update(status=S.OUTDATED)
+            rag.graph_rag_documents.filter(status=status.COMPLETED).update(status=status.OUTDATED)
             rag.add_outdated_reason(
                 code="indexed_document_deleted",
                 detail="Indexed document was deleted.",
             )
             updated_fields.add("outdated_reasons")
-        has_outdated = rag.graph_rag_documents.filter(status=S.OUTDATED).exists()
+        has_outdated = rag.graph_rag_documents.filter(status=status.OUTDATED).exists()
         if not has_outdated and rag.outdated_reasons:
             rag.clear_outdated_reason()
             updated_fields.add("outdated_reasons")
@@ -415,7 +406,7 @@ class GraphRagService:
             rag.save(update_fields=updated_fields)
 
     @staticmethod
-    def get_documents_for_graph_rag(graph_rag_id: int) -> List[DocumentMetadata]:
+    def get_documents_for_graph_rag(graph_rag_id: int) -> list[DocumentMetadata]:
         """
         Get all documents linked to GraphRag.
 
@@ -431,7 +422,7 @@ class GraphRagService:
 
     @staticmethod
     @transaction.atomic
-    def init_documents_from_collection(graph_rag_id: int) -> Dict[str, Any]:
+    def init_documents_from_collection(graph_rag_id: int) -> dict[str, Any]:
         """
         Re-initialize GraphRag with all documents from collection.
         Adds documents that are not already linked (useful after accidental deletion).
@@ -446,14 +437,11 @@ class GraphRagService:
         collection_id = graph_rag.base_rag_type.source_collection_id
 
         # Get all documents in collection
-        all_documents = DocumentMetadata.objects.filter(
-            source_collection_id=collection_id
-        )
+        all_documents = DocumentMetadata.objects.filter(source_collection_id=collection_id)
 
         if not all_documents.exists():
             logger.info(
-                f"No documents found in collection {collection_id} "
-                f"for GraphRag {graph_rag_id}"
+                f"No documents found in collection {collection_id} for GraphRag {graph_rag_id}"
             )
             return {
                 "added_count": 0,
@@ -474,9 +462,7 @@ class GraphRagService:
         # Create links for new documents
         added_documents = []
         for document in documents_to_add:
-            link = GraphRagDocument.objects.create(
-                graph_rag=graph_rag, document=document
-            )
+            link = GraphRagDocument.objects.create(graph_rag=graph_rag, document=document)
             added_documents.append(
                 {
                     "graph_rag_document_id": link.graph_rag_document_id,
@@ -498,7 +484,7 @@ class GraphRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_graph_rag(graph_rag_id: int) -> Dict[str, Any]:
+    def delete_graph_rag(graph_rag_id: int) -> dict[str, Any]:
         """
         Delete GraphRag and its configurations.
 

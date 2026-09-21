@@ -3,8 +3,8 @@ from django.db import transaction
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.constants import IMPORT_VERSION
 from tables.models import (
-    GraphVersion,
     Graph,
+    GraphVersion,
     Label,
 )
 
@@ -14,17 +14,13 @@ class GraphVersioningService:
         self._manager = GraphVersioningManager()
 
     @transaction.atomic
-    def save_version(
-        self, graph: Graph, name: str, description: str = ""
-    ) -> GraphVersion:
+    def save_version(self, graph: Graph, name: str, description: str = "") -> GraphVersion:
         """
         Create a named version snapshot of the given graph.
         """
         snapshot = self._manager.create_snapshot(graph)
         snapshot["version"] = IMPORT_VERSION
-        snapshot["secret_declarations"] = self._manager.collect_secret_declarations(
-            graph=graph
-        )
+        snapshot["secret_declarations"] = self._manager.collect_secret_declarations(graph=graph)
         light_deps = self._manager.collect_dependencies(graph)
 
         return GraphVersion.objects.create(

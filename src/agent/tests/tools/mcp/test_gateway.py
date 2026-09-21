@@ -12,12 +12,10 @@ from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.exceptions import McpToolError
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
 from shared.models.tools import McpToolData
-
 
 # ---------------------------------------------------------------------------
 # Fakes / helpers
@@ -32,9 +30,7 @@ def _mcp_data(tool_name: str = "search") -> McpToolData:
 class FakeTool:
     name: str
     description: str = "A fake tool."
-    inputSchema: dict = field(
-        default_factory=lambda: {"type": "object", "properties": {}}
-    )
+    inputSchema: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
 
 
 @dataclass
@@ -215,9 +211,7 @@ async def test_call_returns_structured_content_as_json():
 
 
 async def test_call_returns_text_content_joined():
-    result = FakeCallResult(
-        content=[FakeTextContent("hello"), FakeTextContent("world")]
-    )
+    result = FakeCallResult(content=[FakeTextContent("hello"), FakeTextContent("world")])
     client = _make_client(call_tool_result=result)
     gateway = McpToolGateway(_factory(client))
 

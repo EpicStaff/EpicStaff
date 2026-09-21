@@ -1,4 +1,5 @@
 from agents.models import AgentDefinition, Surface
+
 from tables.import_export.enums import EntityType
 from tables.models import (
     Graph,

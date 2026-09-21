@@ -1,20 +1,12 @@
 from rest_framework import serializers
-
-from tables.models.secret_models import Secret
-
-from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.graph_models import (
     Graph,
+    ScheduleTriggerNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
     WebhookTriggerNode,
-    ScheduleTriggerNode,
 )
-
-from tables.validators.schedule_trigger_validator import (
-    ScheduleTriggerInputParser,
-    ScheduleTriggerValidator,
-)
+from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     WebhookTrigger,
@@ -25,11 +17,15 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
-from tables.serializers.utils.mixins import NestedPythonCodeMixin
+from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.schedule_trigger_service import ScheduleTriggerService
-
+from tables.validators.schedule_trigger_validator import (
+    ScheduleTriggerInputParser,
+    ScheduleTriggerValidator,
+)
 
 _OTHER_NODE_TYPE_RELATED_NAME = {
     WebhookTriggerAuthKind.WEBHOOK: "telegram_trigger_nodes",
@@ -37,9 +33,7 @@ _OTHER_NODE_TYPE_RELATED_NAME = {
 }
 
 
-def _reject_cross_type_trigger_conflict(
-    wt: WebhookTrigger | None, expected_kind: str
-) -> None:
+def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind: str) -> None:
     if wt is None:
         return
 
@@ -88,7 +82,8 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
-        ] + BaseGraphEntityMixin.Meta.common_fields
+            *BaseGraphEntityMixin.Meta.common_fields,
+        ]
 
     def validate(self, attrs):
         _reject_cross_type_trigger_conflict(
@@ -101,9 +96,7 @@ class WebhookTriggerNodeReadSerializer(WebhookTriggerNodeSerializer):
     webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
-class TelegramTriggerNodeFieldSerializer(
-    ContentHashWritableMixin, serializers.ModelSerializer
-):
+class TelegramTriggerNodeFieldSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     class Meta:
         model = TelegramTriggerNodeField
         fields = [
@@ -143,7 +136,8 @@ class TelegramTriggerNodeSerializer(
             "graph",
             "fields",
             "webhook_trigger",
-        ] + BaseGraphEntityMixin.Meta.common_fields
+            *BaseGraphEntityMixin.Meta.common_fields,
+        ]
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -181,9 +175,7 @@ class TelegramTriggerNodeSerializer(
         if fields_data is not None:
             instance.fields.all().delete()
             for item in fields_data:
-                TelegramTriggerNodeField.objects.create(
-                    telegram_trigger_node=instance, **item
-                )
+                TelegramTriggerNodeField.objects.create(telegram_trigger_node=instance, **item)
 
         return instance
 
@@ -251,9 +243,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     is_active = serializers.BooleanField(required=False)
     metadata = serializers.JSONField(required=False)
     content_hash = serializers.CharField(required=False, allow_null=True)
-    schedule = _ScheduleConfigInputSerializer(
-        required=False, allow_null=True, write_only=True
-    )
+    schedule = _ScheduleConfigInputSerializer(required=False, allow_null=True, write_only=True)
     current_runs = serializers.IntegerField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
@@ -266,16 +256,12 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
         attrs = super().to_internal_value(data)
         if raw_schedule is not serializers.empty:
             attrs.update(
-                ScheduleTriggerInputParser().parse_to_internal_value(
-                    raw_schedule, self.instance
-                )
+                ScheduleTriggerInputParser().parse_to_internal_value(raw_schedule, self.instance)
             )
         return attrs
 
     def validate(self, attrs):
-        state = ScheduleTriggerValidator.compose_state(
-            self.instance, attrs, self.initial_data
-        )
+        state = ScheduleTriggerValidator.compose_state(self.instance, attrs, self.initial_data)
         ScheduleTriggerValidator().validate(state)
         return attrs
 

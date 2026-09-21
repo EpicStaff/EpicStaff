@@ -14,22 +14,16 @@ _PRIMITIVE_TYPE_CAST = {
 
 
 class PythonCodeToolConfigValidator:
-    def __init__(
-        self, validate_null_fields=True, validate_missing_required_fields=True
-    ):
+    def __init__(self, validate_null_fields=True, validate_missing_required_fields=True):
         self.validate_null_fields = validate_null_fields
         self.validate_missing_required_fields = validate_missing_required_fields
 
     def validate(self, name, tool: PythonCodeTool, configuration: dict):
         if not isinstance(configuration, dict):
-            raise PythonCodeToolConfigSerializerError(
-                "Field configuration must be an object"
-            )
+            raise PythonCodeToolConfigSerializerError("Field configuration must be an object")
 
         agent_names = {
-            v["name"]
-            for v in tool.variables
-            if v.get("input_type") == _AGENT_INPUT_TYPE
+            v["name"] for v in tool.variables if v.get("input_type") == _AGENT_INPUT_TYPE
         }
         for key in configuration:
             if key in agent_names:
@@ -45,14 +39,8 @@ class PythonCodeToolConfigValidator:
             field_name = var["name"]
             value = configuration.get(field_name)
 
-            if (
-                value is None
-                and var.get("required")
-                and self.validate_missing_required_fields
-            ):
-                raise PythonCodeToolConfigSerializerError(
-                    f"Field '{field_name}' is required"
-                )
+            if value is None and var.get("required") and self.validate_missing_required_fields:
+                raise PythonCodeToolConfigSerializerError(f"Field '{field_name}' is required")
 
             if value is not None:
                 value = self._cast_var(value, var)
@@ -64,7 +52,9 @@ class PythonCodeToolConfigValidator:
     def _cast_var(self, value, var: dict):
         var_type = var.get("type", "string")
         if var_type in ("object", "obj"):
-            return self._cast_object(value, var.get("properties", {}), var.get("required_properties", []))
+            return self._cast_object(
+                value, var.get("properties", {}), var.get("required_properties", [])
+            )
         if var_type in ("array", "list"):
             return self._cast_array(value, var.get("items", {}))
         return self._cast_primitive(value, var_type)
@@ -78,9 +68,7 @@ class PythonCodeToolConfigValidator:
         for prop_name, prop_schema in properties.items():
             prop_value = value.get(prop_name)
             if prop_value is None and prop_name in required_properties:
-                raise PythonCodeToolConfigSerializerError(
-                    f"Field '{prop_name}' is required"
-                )
+                raise PythonCodeToolConfigSerializerError(f"Field '{prop_name}' is required")
             if prop_value is not None:
                 prop_value = self._cast_var(prop_value, {"name": prop_name, **prop_schema})
             result[prop_name] = prop_value
@@ -97,7 +85,7 @@ class PythonCodeToolConfigValidator:
         cast_fn = _PRIMITIVE_TYPE_CAST.get(var_type, lambda v: v)
         try:
             return cast_fn(value)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             raise PythonCodeToolConfigSerializerError(
                 f"Error casting value '{value}' into '{var_type}'"
-            )
+            ) from e

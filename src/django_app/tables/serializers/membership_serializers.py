@@ -7,9 +7,7 @@ def _avatar_url(user, request):
         return None
     try:
         return (
-            request.build_absolute_uri(user.avatar.url)
-            if request is not None
-            else user.avatar.url
+            request.build_absolute_uri(user.avatar.url) if request is not None else user.avatar.url
         )
     except ValueError:
         return None

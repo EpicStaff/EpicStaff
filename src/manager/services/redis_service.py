@@ -1,11 +1,10 @@
-import os
 import json
+
 import redis.asyncio as aioredis
+from helpers.logger import logger
+from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
-from redis.backoff import ExponentialBackoff
-
-from helpers.logger import logger
 
 
 class RedisService:

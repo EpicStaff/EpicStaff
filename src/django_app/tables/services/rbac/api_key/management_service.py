@@ -1,11 +1,9 @@
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional
 
 from django.db.models import F, Q, QuerySet
 from django.utils import timezone
 from loguru import logger
-
 from tables.models.rbac_models import ApiKey, OrganizationUser
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.cross_org_permission_resolver import OrgScope
@@ -29,11 +27,11 @@ class ApiKeyManagementService(CrossOrgResourceService):
     def list_keys(
         self,
         actor,
-        org_ids: Optional[list[int]],
-        owner_id: Optional[int] = None,
-        status_value: Optional[str] = None,
-        search: Optional[str] = None,
-        scopes: Optional[list[OrgScope]] = None,
+        org_ids: list[int] | None,
+        owner_id: int | None = None,
+        status_value: str | None = None,
+        search: str | None = None,
+        scopes: list[OrgScope] | None = None,
     ) -> QuerySet[ApiKey]:
         """USER keys owned by members of the caller's readable orgs."""
         base_qs: QuerySet[ApiKey] = ApiKey.objects.filter(
@@ -53,18 +51,12 @@ class ApiKeyManagementService(CrossOrgResourceService):
         if search:
             qs = qs.filter(Q(name__icontains=search) | Q(prefix__icontains=search))
         # distinct(): the owner-membership join is multi-valued.
-        return qs.distinct().order_by(
-            F("last_used_at").desc(nulls_last=True), "-created_at", "id"
-        )
+        return qs.distinct().order_by(F("last_used_at").desc(nulls_last=True), "-created_at", "id")
 
-    def revoke_key(
-        self, actor, key_id: int, scopes: Optional[list[OrgScope]] = None
-    ) -> ApiKey:
+    def revoke_key(self, actor, key_id: int, scopes: list[OrgScope] | None = None) -> ApiKey:
         """Disable a key everywhere, keeping the row. Idempotent."""
         key: ApiKey = self._get_key_or_404(key_id)
-        self.authorize_any_org(
-            actor, self._owner_org_ids(key), Permission.DELETE, scopes=scopes
-        )
+        self.authorize_any_org(actor, self._owner_org_ids(key), Permission.DELETE, scopes=scopes)
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
@@ -76,13 +68,9 @@ class ApiKeyManagementService(CrossOrgResourceService):
         )
         return key
 
-    def delete_key(
-        self, actor, key_id: int, scopes: Optional[list[OrgScope]] = None
-    ) -> None:
+    def delete_key(self, actor, key_id: int, scopes: list[OrgScope] | None = None) -> None:
         key: ApiKey = self._get_key_or_404(key_id)
-        self.authorize_any_org(
-            actor, self._owner_org_ids(key), Permission.DELETE, scopes=scopes
-        )
+        self.authorize_any_org(actor, self._owner_org_ids(key), Permission.DELETE, scopes=scopes)
         logger.info(
             "ApiKeyManagementService.delete_key actor={a} key={k} owner={o}",
             a=getattr(actor, "email", "system"),
@@ -92,16 +80,14 @@ class ApiKeyManagementService(CrossOrgResourceService):
         key.delete()
 
     def attach_visible_orgs(
-        self, keys: list[ApiKey], actor, scopes: Optional[list[OrgScope]] = None
+        self, keys: list[ApiKey], actor, scopes: list[OrgScope] | None = None
     ) -> None:
         """Set `_visible_org_ids` on each key: the owner's orgs, limited to
         those the caller may read. One query for the whole page."""
         owner_ids: set[int] = {key.created_by_id for key in keys}
         if not owner_ids:
             return
-        readable: Optional[set[int]] = self.resolve_readable_org_ids(
-            actor, scopes=scopes
-        )
+        readable: set[int] | None = self.resolve_readable_org_ids(actor, scopes=scopes)
         rows: QuerySet[OrganizationUser] = OrganizationUser.objects.filter(
             user_id__in=owner_ids, org__is_active=True
         )
@@ -117,7 +103,7 @@ class ApiKeyManagementService(CrossOrgResourceService):
     def _get_key_or_404(key_id: int) -> ApiKey:
         """Owner status is not filtered here — a superadmin caller must reach
         every key, and `authorize_any_org` bypasses before the org check."""
-        key: Optional[ApiKey] = (
+        key: ApiKey | None = (
             ApiKey.objects.filter(pk=key_id, key_type=ApiKey.KeyType.USER)
             .select_related("created_by")
             .first()

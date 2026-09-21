@@ -1,5 +1,4 @@
-from django_app.settings import REDIS_HOST, REDIS_USER, REDIS_PASSWORD, REDIS_PORT
-
+from django_app.settings import REDIS_HOST, REDIS_PASSWORD, REDIS_PORT, REDIS_USER
 
 CACHES = {
     "default": {
