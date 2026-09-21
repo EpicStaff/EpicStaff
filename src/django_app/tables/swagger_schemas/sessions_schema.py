@@ -260,6 +260,16 @@ SESSION_LIST_GET = {
                                 "graph": 0,
                                 "parent_session": None,
                                 "graph_user": None,
+                                "trigger": {
+                                    "trigger_type": "manual",
+                                    "node_name": None,
+                                },
+                                "principal": {
+                                    "kind": "user",
+                                    "user": 7,
+                                    "api_key": None,
+                                    "email": "a@b.com",
+                                },
                             }
                         ],
                     },
@@ -283,6 +293,10 @@ SESSION_LIST_GET = {
                                 "finished_at": "2024-01-01T00:00:00Z",
                                 "parent_session": None,
                                 "has_output_files": True,
+                                "trigger": {
+                                    "trigger_type": "manual",
+                                    "node_name": None,
+                                },
                             }
                         ],
                     },

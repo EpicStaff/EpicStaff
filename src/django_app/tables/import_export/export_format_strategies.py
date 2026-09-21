@@ -29,10 +29,7 @@ class CsvExportFormatStrategy(ExportFormatStrategy):
     def render(self, data: dict, entity_type: str, prefix: str, base_name: str) -> HttpResponse:
         rows = []
         for item in data.get(entity_type, []):
-            if isinstance(item, list):
-                rows.extend(item)
-            else:
-                rows.append(item)
+            rows.extend(self.projection.expand(item))
 
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=self.projection.FIELDS, extrasaction="ignore")

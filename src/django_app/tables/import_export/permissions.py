@@ -15,7 +15,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.CREW_TAG: ResourceType.PROJECTS,
     EntityType.GRAPH: ResourceType.FLOWS,
     EntityType.GRAPH_TAG: ResourceType.FLOWS,
-    EntityType.WEBHOOK_TRIGGER: ResourceType.FLOWS,
+    EntityType.WEBHOOK_TRIGGER: ResourceType.WEBHOOKS,
     EntityType.LABEL: ResourceType.FLOWS,
     EntityType.LLM_CONFIG: ResourceType.LLM_CONFIGS,
     EntityType.EMBEDDING_CONFIG: ResourceType.LLM_CONFIGS,

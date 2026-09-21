@@ -1,7 +1,10 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
+
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
+    LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
@@ -12,7 +15,10 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.secret_reference_guard_mixin import (
+    SecretReferenceGuardMixin,
+)
+from tables.services.webhook_trigger_service import validate_path_uniqueness
 from utils.logger import logger
 
 
@@ -43,7 +49,9 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
     )
 
 
-class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class WebhookTriggerNestedSerializer(
+    SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("auth_secret_id",)
 
     provider_type = serializers.ChoiceField(
@@ -71,12 +79,11 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
     @transaction.atomic
     def create(self, validated_data):
         # A true create — always inserts a new row. `validate()` already
-        # rejects an exact (path, provider_type) duplicate before we get
-        # here, so two different providers sharing the same `path` legally
-        # create two separate WebhookTrigger rows (unique_together allows
-        # it). No existing-row lookup/merge/config-deletion here — that
-        # get-or-create behavior used to hijack another provider's row on a
-        # path collision.
+        # rejects any `path` duplicate before we get here (path is globally
+        # unique regardless of provider_type), so this always creates a
+        # brand-new WebhookTrigger row. No existing-row lookup/merge/
+        # config-deletion here — that get-or-create behavior used to
+        # hijack another provider's row on a path collision.
         request = self.context.get("request")
         org_id = resolve_active_org_id(request) if request is not None else None
         if org_id is None:
@@ -123,20 +130,24 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
         existing = getattr(trigger, "auth", None)
         kind = validated_data.get("auth_kind")
         if kind is None:
-            kind = existing.kind if existing is not None else WebhookTriggerAuthKind.WEBHOOK
+            kind = (
+                existing.kind
+                if existing is not None
+                else WebhookTriggerAuthKind.WEBHOOK
+            )
 
         try:
             WebhookTriggerService().set_trigger_auth_secret(
                 trigger,
                 secret=(
-                    validated_data.get(
-                        "auth_secret_id", existing.secret if existing is not None else None
-                    )
+                    validated_data["auth_secret_id"]
+                    if "auth_secret_id" in validated_data
+                    else (existing.secret if existing is not None else None)
                 ),
                 kind=kind,
             )
         except ValueError as e:
-            raise serializers.ValidationError({"auth_secret_id": str(e)}) from e
+            raise serializers.ValidationError({"auth_secret_id": str(e)})
 
         if kind == WebhookTriggerAuthKind.TELEGRAM:
             self._resync_telegram_nodes(trigger)
@@ -148,7 +159,9 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
         registration_failures: list[str] = []
         for node in trigger.telegram_trigger_nodes.all():
             try:
-                telegram_service.register_telegram_trigger(telegram_trigger_instance=node)
+                telegram_service.register_telegram_trigger(
+                    telegram_trigger_instance=node
+                )
             except Exception as e:
                 detail = getattr(e, "detail", None)
                 message = str(detail) if detail is not None else str(e)
@@ -197,7 +210,9 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
                 )
 
         if new_provider == ProviderType.NGROK and ngrok_data:
-            NgrokWebhookConfig.objects.update_or_create(trigger=instance, defaults=ngrok_data)
+            NgrokWebhookConfig.objects.update_or_create(
+                trigger=instance, defaults=ngrok_data
+            )
         elif new_provider == ProviderType.LOCALHOST and localhost_data:
             LocalhostWebhookConfig.objects.update_or_create(
                 trigger=instance, defaults=localhost_data
@@ -220,10 +235,14 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
 
             base_url = WebhookTriggerService().get_tunnel_url_for_trigger(instance)
             rep["live_url"] = (
-                f"{base_url.rstrip('/')}/webhooks/{instance.path}" if base_url is not None else None
+                f"{base_url.rstrip('/')}/webhooks/{instance.path}"
+                if base_url is not None
+                else None
             )
         except Exception:
-            logger.exception("Failed to resolve live_url for WebhookTrigger id=%s", instance.pk)
+            logger.exception(
+                "Failed to resolve live_url for WebhookTrigger id=%s", instance.pk
+            )
             rep["live_url"] = None
 
         auth = getattr(instance, "auth", None)
@@ -236,7 +255,9 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             else None
         )
 
-        telegram_registration_warning = getattr(instance, "_telegram_registration_warning", None)
+        telegram_registration_warning = getattr(
+            instance, "_telegram_registration_warning", None
+        )
         if telegram_registration_warning:
             rep["telegram_registration_warning"] = telegram_registration_warning
 
@@ -244,7 +265,9 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
 
     def get_current_secret_reference(self, source):
         """The persisted secret on this trigger's user-settable auth row, for the one field this hook supports."""
-        assert source == "auth_secret_id", f"unexpected guarded field source: {source!r}"
+        assert source == "auth_secret_id", (
+            f"unexpected guarded field source: {source!r}"
+        )
         existing = getattr(self.instance, "auth", None)
         return existing.secret if existing is not None else None
 
@@ -256,17 +279,13 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
         localhost = data.get("localhost_config")
 
         path = data.get("path", self.instance.path if self.instance else None)
-        lookup_provider_type = data.get(
-            "provider_type",
-            self.instance.provider_type if self.instance else None,
-        )
-        queryset = WebhookTrigger.objects.filter(path=path, provider_type=lookup_provider_type)
-        if self.instance:
-            queryset = queryset.exclude(id=self.instance.id)
-        if queryset.exists():
-            raise serializers.ValidationError(
-                "A WebhookTrigger with this path and provider type already exists."
+        try:
+            validate_path_uniqueness(
+                path=path,
+                exclude_pk=self.instance.pk if self.instance else None,
             )
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages[0] if e.messages else str(e))
 
         if ngrok and localhost:
             raise serializers.ValidationError(

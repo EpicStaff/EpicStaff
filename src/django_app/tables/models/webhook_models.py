@@ -148,6 +148,7 @@ class WebhookTriggerAuth(SoftDeleteFields):
 class WebhookTrigger(OrgScopedModel, models.Model):
     path = models.CharField(
         max_length=255,
+        unique=True,
         validators=[
             RegexValidator(
                 regex=r"^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$",
@@ -164,9 +165,6 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 
     class Meta(OrgScopedModel.Meta):
         abstract = False
-        unique_together = [
-            ("org", "path", "provider_type"),
-        ]
 
     def get_active_config(self) -> "TunnelConfig | None":
         if self.provider_type == ProviderType.NGROK:

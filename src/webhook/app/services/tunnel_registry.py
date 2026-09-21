@@ -145,8 +145,18 @@ class TunnelRegistry:
     async def resolve_by_path(self, path: str) -> tuple[str, BaseTunnelConfigData]:
         """Resolve the unique_id and config based purely on the requested path.
 
-        This eliminates reliance on spoofable Host headers. The `path` is cryptographically
-        unguessable (UUID/secret) and acts as the secure routing key.
+        This eliminates reliance on spoofable Host headers. `path` is a
+        user-chosen string (validated only by the permissive regex
+        `^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$` on the Django side), not a
+        cryptographically unguessable secret. Cross-org collisions on it
+        are now prevented structurally: Django's `WebhookTrigger` model
+        enforces a DB-level uniqueness constraint on `path` alone (see the
+        `unique=True` on `WebhookTrigger.path` and its accompanying
+        migration), so two different orgs -- regardless of provider type
+        -- can no longer register the same path at all. The
+        `AmbiguousWebhookPathError` fallback below remains as defense-in-depth
+        for this FastAPI service -- it should no longer be reachable via a
+        legitimate cross-org registration attempt.
 
         `config.name` (the matching field) carries no org information --
         only `unique_id` does -- so two configs from different orgs (or

@@ -2269,7 +2269,7 @@ class WebhookTriggerNodeViewSet(
 )
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_resource_type = ResourceType.WEBHOOKS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = WebhookTrigger.objects.select_related("ngrok", "localhost", "auth", "auth__secret")
     serializer_class = WebhookTriggerNestedSerializer
