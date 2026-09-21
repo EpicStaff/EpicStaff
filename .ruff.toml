@@ -1,0 +1,47 @@
+target-version = "py312"
+
+src = ["src"]
+
+line-length = 100
+
+# default excludes: https://docs.astral.sh/ruff/settings/#exclude
+extend-exclude = [
+    "**/django_app/manage.py",
+    "**/libraries/",   # Local fors — must not be linted or modified
+    "**/migrations/",  # Auto-generated Django migrations — no value in linting
+    "**/shared/tools/",  # Shared tool sources
+    "**/tests/"          # Test suites
+]
+
+# Respect the excludes above even for paths passed explicitly (e.g. pre-commit).
+force-exclude = true
+
+[lint]
+# default select: https://docs.astral.sh/ruff/settings/#lint_select
+extend-select = [
+    "W",   # pycodestyle warnings — softer PEP 8 issues (e.g. trailing whitespace)
+    "I",   # isort — import sorting and grouping
+    "B",   # flake8-bugbear — likely bugs (mutable defaults, bare except, etc.)
+    "UP",  # pyupgrade — rewrite to modern syntax for the target version
+    "N",   # pep8-naming — naming conventions for classes, functions, constants
+    "SIM", # flake8-simplify — simplifiable constructs (redundant if, etc.)
+    "C4",  # flake8-comprehensions — cleaner list/dict/set comprehensions
+    "RUF", # Ruff-specific rules
+]
+
+ignore = [
+    "B027",     # Empty method in an ABC without @abstractmethod — intentional optional hook
+    "E501",     # Line-too-long — line length is delegated to the formatter
+    "B008",     # Function call in argument defaults -- FastAPI Depends()/Query() in defaults is idiomatic
+    "PLW1508",  # Invalid type for env var default -- os.environ.get() with a non-str/None default is intentional
+    "SIM108",   # Use ternary instead of if-else -- keep explicit if/else when it reads clearer
+    "RUF012",   # Mutable class attribute needs ClassVar -- Django/DRF/pydantic model and Meta attrs are not ClassVar
+    "BLE001",   # Catch of blind Exception -- broad except is an intentional resilience boundary in places
+    "B024",     # ABC without abstract methods -- interface/marker base classes are intentional
+]
+
+[lint.per-file-ignores]
+"**/epicstaff_storage/**" = ["N803"]  # PascalCase kwargs (Bucket, Key, Body...) mirror the boto3 S3 client API
+
+[format]
+quote-style = "double"

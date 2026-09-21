@@ -4,15 +4,13 @@ import json
 import os
 import posixpath
 import tempfile
-from contextlib import contextmanager
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Generator
 
 
 class StoragePermissionError(PermissionError):
     """Raised when a storage operation is denied by the path allowlist."""
-
-    pass
 
 
 class StorageSizeLimitError(RuntimeError):
@@ -42,8 +40,7 @@ def split_lines(content: str) -> list[str]:
     """
     if content == "":
         return []
-    if content.endswith("\n"):
-        content = content[:-1]
+    content = content.removesuffix("\n")
     return content.split("\n")
 
 
@@ -74,9 +71,7 @@ def __is_path_allowed(normalized_path: str, allowed_paths: list[str]) -> bool:
         allowed_norm = __normalize_path(allowed)
         if allowed.endswith("/"):
             folder_prefix = allowed_norm + "/"
-            if normalized_path == allowed_norm or normalized_path.startswith(
-                folder_prefix
-            ):
+            if normalized_path == allowed_norm or normalized_path.startswith(folder_prefix):
                 return True
         else:
             if normalized_path == allowed_norm:
@@ -139,9 +134,7 @@ class EpicStaffStorage:
         }
         missing = [name for name, value in required_vars.items() if not value]
         if missing:
-            raise EnvironmentError(
-                f"Missing required environment variables: {', '.join(missing)}"
-            )
+            raise OSError(f"Missing required environment variables: {', '.join(missing)}")
 
         import boto3  # type: ignore[import-untyped]
 
@@ -233,9 +226,7 @@ class EpicStaffStorage:
         for common_prefix in response.get("CommonPrefixes") or []:
             folder_key = common_prefix["Prefix"]
             folder_name = folder_key.rstrip("/").split("/")[-1]
-            entries.append(
-                {"name": folder_name, "type": "folder", "size": 0, "modified": None}
-            )
+            entries.append({"name": folder_name, "type": "folder", "size": 0, "modified": None})
 
         for obj in response.get("Contents") or []:
             object_key = obj["Key"]
@@ -330,10 +321,7 @@ class EpicStaffStorage:
                             response = client.list_objects_v2(  # type: ignore[attr-defined]
                                 Bucket=self._bucket_name(), Prefix=prefix, MaxKeys=1
                             )
-                            return bool(
-                                response.get("Contents")
-                                or response.get("CommonPrefixes")
-                            )
+                            return bool(response.get("Contents") or response.get("CommonPrefixes"))
                         except Exception:
                             return False
             except ImportError:
@@ -444,12 +432,9 @@ class EpicStaffStorage:
 
         if failed_keys:
             shown = ", ".join(failed_keys[:10])
-            remainder = (
-                f", and {len(failed_keys) - 10} more" if len(failed_keys) > 10 else ""
-            )
+            remainder = f", and {len(failed_keys) - 10} more" if len(failed_keys) > 10 else ""
             raise RuntimeError(
-                f"Failed to delete {len(failed_keys)} object(s) under '{path}': "
-                f"{shown}{remainder}"
+                f"Failed to delete {len(failed_keys)} object(s) under '{path}': {shown}{remainder}"
             )
 
     def mkdir(self, path: str) -> None:
@@ -525,9 +510,7 @@ class EpicStaffStorage:
             "modified": modified.isoformat() if modified else None,
         }
 
-    def read_lines(
-        self, path: str, line_number: int, num_lines: int | None = None
-    ) -> str:
+    def read_lines(self, path: str, line_number: int, num_lines: int | None = None) -> str:
         file_info = self.info(path)
         if file_info["size"] > MAX_LINE_READ_BYTES:
             raise StorageSizeLimitError(
@@ -548,9 +531,7 @@ class EpicStaffStorage:
         end_index = line_number - 1 + num_lines if num_lines is not None else len(lines)
         selected = lines[line_number - 1 : end_index]
 
-        return "".join(
-            f"{line_number + idx}: {line}\n" for idx, line in enumerate(selected)
-        )
+        return "".join(f"{line_number + idx}: {line}\n" for idx, line in enumerate(selected))
 
     def count_lines(self, path: str) -> int:
         file_info = self.info(path)
@@ -562,9 +543,7 @@ class EpicStaffStorage:
         content = self.read(path)
         return len(split_lines(content))
 
-    def edit_line(
-        self, path: str, line_number: int, expected_text: str, new_text: str
-    ) -> None:
+    def edit_line(self, path: str, line_number: int, expected_text: str, new_text: str) -> None:
         content = self.read(path)
         lines = content.split("\n")
 
@@ -634,7 +613,5 @@ class EpicStaffStorage:
         try:
             yield tmp_path
         finally:
-            try:
+            with suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass

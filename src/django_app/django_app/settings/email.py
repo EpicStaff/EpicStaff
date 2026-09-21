@@ -1,6 +1,5 @@
 from django_app.settings import env
 
-
 DEFAULT_FROM_EMAIL = env.str("DJANGO_DEFAULT_FROM_EMAIL")
 EMAIL_HOST = env.str("DJANGO_EMAIL_HOST")
 EMAIL_PORT = env.int("DJANGO_EMAIL_PORT")

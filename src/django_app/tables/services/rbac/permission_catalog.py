@@ -10,7 +10,6 @@ from operator import or_
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 
-
 # Action metadata: ordered as the FE renders the matrix columns. View leads —
 # it is the permission every other one builds on, not bit order.
 ACTION_METADATA = [
@@ -144,6 +143,14 @@ RESOURCE_TYPE_METADATA = [
         "description": "Voice model configurations and settings",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.WEBHOOKS.value,
+        "label": "Webhooks",
+        "group": "config",
+        "description": "Webhook trigger ingress routes and their auth configuration",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
 ]
 
 
@@ -225,7 +232,11 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "delete": (("surfaces", "read"),),
     },
     ResourceType.KNOWLEDGE_SOURCES.value: {
-        "create": (("knowledge_sources", "read"), ("knowledge_sources", "update"), ("llm_configs", "read")),
+        "create": (
+            ("knowledge_sources", "read"),
+            ("knowledge_sources", "update"),
+            ("llm_configs", "read"),
+        ),
         "update": (("knowledge_sources", "read"), ("llm_configs", "read")),
         "delete": (("knowledge_sources", "read"),),
         "export": (("knowledge_sources", "read"),),
@@ -257,6 +268,11 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("voice", "read"), ("agents", "read")),
         "update": (("voice", "read"), ("agents", "read")),
         "delete": (("voice", "read"),),
+    },
+    ResourceType.WEBHOOKS.value: {
+        "create": (("webhooks", "read"),),
+        "update": (("webhooks", "read"),),
+        "delete": (("webhooks", "read"),),
     },
 }
 

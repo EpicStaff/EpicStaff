@@ -35,6 +35,7 @@ def seed_builtin_roles_and_permissions() -> None:
       0236  revoke secrets:USE from Member/Viewer (192 -> 128)
       0242  re-seed all three roles to the masks the code enforces
       0245  grant Org Admin knowledge_sources:EXPORT (for document download)
+      0246  seed the `webhooks` resource permissions
 
     Order is load-bearing twice over. The rename must precede 0242, which
     writes `memberships` rows directly -- running it first would leave both a
@@ -83,6 +84,10 @@ def seed_builtin_roles_and_permissions() -> None:
         (
             "tables.migrations.0245_knowledge_sources_export_permission",
             "grant_knowledge_sources_export",
+        ),
+        (
+            "tables.migrations.0246_seed_webhooks_resource_permissions",
+            "seed_webhooks_permissions",
         ),
     ]
     for module_path, func_name in steps:

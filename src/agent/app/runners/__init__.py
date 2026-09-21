@@ -8,4 +8,4 @@ from app.runners.base import Runner
 from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
 
-__all__ = ["Runner", "SingleTaskRunner", "ListOfTasksRunner"]
+__all__ = ["ListOfTasksRunner", "Runner", "SingleTaskRunner"]

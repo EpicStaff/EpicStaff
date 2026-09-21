@@ -87,7 +87,7 @@
 .header-input {
     background: var(--white-alpha-6);
     border: 1px solid var(--white-alpha-12);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--gray-215);
     padding: 0.4rem 0.6rem;
     font-size: 0.85rem;
@@ -425,7 +425,7 @@
     }
 
     .field-label {
-        color: var(--fog-200);
+        color: var(--color-text-secondary);
         font-size: var(--text-body-medium-size);
         font-weight: var(--text-body-medium-weight);
         line-height: var(--text-body-medium-line-height);
@@ -465,7 +465,7 @@
         flex: 1;
         background: var(--graphite-800);
         border: 1px solid var(--white-alpha-15);
-        border-radius: 8px;
+        border-radius: 4px;
         color: var(--white);
         padding: 0.6rem 1rem;
         font-size: 0.85rem;
@@ -641,7 +641,7 @@
     .field-input {
         background: var(--graphite-800);
         border: 1px solid var(--white-alpha-15);
-        border-radius: 8px;
+        border-radius: 4px;
         color: var(--white);
         padding: 0.55rem 0.75rem;
         font-size: 0.85rem;
@@ -661,7 +661,7 @@
     .prompt-textarea-wrapper {
         position: relative;
         border: 1px solid var(--white-alpha-15);
-        border-radius: 8px;
+        border-radius: 4px;
         background: var(--gray-850);
         overflow: hidden;
 
@@ -683,7 +683,7 @@
         word-break: break-word;
         overflow: hidden;
         pointer-events: none;
-        border-radius: 8px;
+        border-radius: 4px;
     }
 
     .var-token {
@@ -694,7 +694,7 @@
     .prompt-textarea {
         background: var(--gray-850);
         border: 1px solid var(--white-alpha-15);
-        border-radius: 8px;
+        border-radius: 4px;
         color: var(--white);
         padding: 0.75rem;
         font-family: 'Courier New', monospace;

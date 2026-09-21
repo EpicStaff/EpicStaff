@@ -1,7 +1,7 @@
 from tables.constants.upload_limits import default_upload_limits
 
 
-class ArchiveLimitExceeded(ValueError):
+class ArchiveLimitExceeded(ValueError):  # noqa: N818
     """Raised when an archive expands past what one extraction is allowed to buffer."""
 
 
@@ -20,9 +20,7 @@ class ArchiveExtractionGuard:
         """Account one archive member, rejecting an archive with too many entries."""
         self.entries_seen += 1
         if self.entries_seen > self.max_entries:
-            raise ArchiveLimitExceeded(
-                f"Archive contains more than {self.max_entries} entries"
-            )
+            raise ArchiveLimitExceeded(f"Archive contains more than {self.max_entries} entries")
 
     def read_member(self, member_file, name: str) -> bytes:
         """Read one member, stopping as soon as it would outgrow the remaining budget."""

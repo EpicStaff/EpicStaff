@@ -38,8 +38,7 @@ class FirstSetupMode:
         """
         if mode not in cls.CHOICES:
             raise ImproperlyConfigured(
-                f"FIRST_SETUP_MODE must be one of "
-                f"{sorted(cls.CHOICES)}; got {mode!r}."
+                f"FIRST_SETUP_MODE must be one of {sorted(cls.CHOICES)}; got {mode!r}."
             )
         return mode
 

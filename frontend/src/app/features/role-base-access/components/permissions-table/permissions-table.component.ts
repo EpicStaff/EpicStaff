@@ -67,12 +67,17 @@ export class PermissionsTableComponent {
 
     filteredGroups = computed<CatalogGroup[]>(() => {
         const term = this.searchTerm().toLowerCase().trim();
-        if (!term) return this.groupedCatalog();
+        const hideEmpty = this.readonly();
+        if (!term && !hideEmpty) return this.groupedCatalog();
         return this.groupedCatalog()
             .map((g) => ({
                 ...g,
                 resources: g.resources.filter((r) => {
-                    return r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term);
+                    if (term && !(r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term))) {
+                        return false;
+                    }
+                    if (hideEmpty && !this.hasGrantedPermission(r)) return false;
+                    return true;
                 }),
             }))
             .filter((g) => g.resources.length > 0);
@@ -226,6 +231,11 @@ export class PermissionsTableComponent {
 
     isChecked(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
         return this.selectedPermissions().has(`${resourceCode}:${actionCode}`);
+    }
+
+    private hasGrantedPermission(resource: CatalogResourceType): boolean {
+        const selected = this.selectedPermissions();
+        return resource.applicable_actions.some((action) => selected.has(`${resource.code}:${action}`));
     }
 
     isCellDisabled(resourceCode: ResourceCode, actionCode: ActionCode): boolean {

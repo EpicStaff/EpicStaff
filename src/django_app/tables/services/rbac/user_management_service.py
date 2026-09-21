@@ -2,16 +2,15 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
-
-from tables.models.rbac_models import OrganizationUser, Organization, Role
+from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import (
     EmailAlreadyExistsError,
+    LastSuperadminError,
     OrganizationNotFoundError,
     RoleNotFoundError,
     UserNotFoundError,
-    LastSuperadminError,
 )
 from tables.services.rbac.user_management_guards import UserManagementGuards
 
@@ -55,7 +54,7 @@ class UserManagementService(CrossOrgResourceService):
         `org_ids` and `role_id` both traverse a multi-valued join, so the
         result is DISTINCT.
         """
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         base_qs = UserModel.objects.all().prefetch_related(
             Prefetch(
                 "organization_memberships",
@@ -70,9 +69,7 @@ class UserManagementService(CrossOrgResourceService):
             scopes=scopes,
         )
         if search:
-            qs = qs.filter(
-                Q(email__icontains=search) | Q(display_name__icontains=search)
-            )
+            qs = qs.filter(Q(email__icontains=search) | Q(display_name__icontains=search))
         if is_superadmin is not None:
             qs = qs.filter(is_superadmin=is_superadmin)
         if status_value == "active":
@@ -105,7 +102,7 @@ class UserManagementService(CrossOrgResourceService):
           - unknown role_id → RoleNotFoundError (404).
           - non-assignable role → InvalidRoleAssignmentError (400).
         """
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
 
         if organization_id is not None:
             try:
@@ -127,8 +124,7 @@ class UserManagementService(CrossOrgResourceService):
             OrganizationUser.objects.create(user=user, org=org, role=role)
 
         logger.info(
-            "UserManagementService.create_user actor={actor} new_user={new} "
-            "org={org} role={role}",
+            "UserManagementService.create_user actor={actor} new_user={new} org={org} role={role}",
             actor=getattr(actor, "email", "system"),
             new=user.email,
             org=getattr(org, "name", None),
@@ -142,7 +138,7 @@ class UserManagementService(CrossOrgResourceService):
     def grant_superadmin(self, actor, target_user_id):
         """Sets is_superadmin=True on target_user_id. Idempotent if
         already True."""
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         try:
             target = UserModel.objects.select_for_update().get(pk=target_user_id)
         except UserModel.DoesNotExist as exc:
@@ -158,8 +154,7 @@ class UserManagementService(CrossOrgResourceService):
         purged = self._purge_memberships(target)
 
         logger.info(
-            "UserManagementService.grant_superadmin actor={a} target={t} "
-            "memberships_purged={p}",
+            "UserManagementService.grant_superadmin actor={a} target={t} memberships_purged={p}",
             a=getattr(actor, "email", "system"),
             t=target.email,
             p=purged,
@@ -170,7 +165,7 @@ class UserManagementService(CrossOrgResourceService):
     def revoke_superadmin(self, actor, target_user_id):
         """Sets is_superadmin=False on target_user_id. Last-active-superadmin
         guard. Idempotent if already False."""
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         superadmins = (
             UserModel.objects
             .filter(is_superadmin=True, is_active=True)
@@ -206,7 +201,7 @@ class UserManagementService(CrossOrgResourceService):
         """Set is_active on a user account (superadmin-only, gated at the
         view). Idempotent. Deactivating the last active superadmin is
         refused (reuses the last-active-superadmin guard)."""
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         superadmins = (
             UserModel.objects
             .filter(is_superadmin=True, is_active=True)
@@ -259,9 +254,7 @@ class UserManagementService(CrossOrgResourceService):
         (custom default-role per org)."""
         if role_id is None:
             try:
-                return Role.objects.get(
-                    name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True
-                )
+                return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
             except Role.DoesNotExist as exc:
                 raise RoleNotFoundError() from exc
         try:

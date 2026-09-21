@@ -165,7 +165,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 height: 38px;
                 background-color: var(--gray-850, #1a1a1a);
                 border: 1px solid var(--gray-750, #2f2f2f);
-                border-radius: 6px;
+                border-radius: 4px;
                 padding: 0 32px 0 12px;
                 color: var(--gray-200, #e3e3e3);
                 font-size: 0.8125rem;

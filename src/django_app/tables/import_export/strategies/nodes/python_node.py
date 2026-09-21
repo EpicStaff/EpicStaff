@@ -1,18 +1,16 @@
-from typing import Optional
-
-from tables.models import PythonNode
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.python_node import PythonNodeImportSerializer
-from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.python_node import PythonNodeImportSerializer
+from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import PythonNode
 
 
 class PythonNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.PYTHON_NODE
     serializer_class = PythonNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[PythonNode]:
+    def get_instance(self, entity_id: int) -> PythonNode | None:
         return PythonNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: PythonNode) -> dict:

@@ -1,8 +1,7 @@
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
-
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
@@ -39,12 +38,12 @@ class CrossOrgResourceService:
 
     rbac_resource_type = None
     not_found_exception = None
-    delegated_scope_q: Optional[Q] = None
+    delegated_scope_q: Q | None = None
 
     _resolver = PermissionResolver()
     _org_access = CrossOrgPermissionResolver()
 
-    def resolve_readable_org_ids(self, actor, scopes=None) -> Optional[set]:
+    def resolve_readable_org_ids(self, actor, scopes=None) -> set | None:
         """Org ids where `actor` may READ this resource. None = superadmin
         (no filter). `scopes` may be the door gate's per-request cache."""
         if getattr(actor, "is_superadmin", False):
@@ -97,7 +96,7 @@ class CrossOrgResourceService:
         actor,
         org_ids: Iterable[int],
         action: Permission,
-        scopes: Optional[list[OrgScope]] = None,
+        scopes: list[OrgScope] | None = None,
     ) -> None:
         """Authorize a row scoped through a set of orgs rather than one column.
 
@@ -117,9 +116,7 @@ class CrossOrgResourceService:
             raise self.not_found_exception()
         resource: str = self.rbac_resource_type.value
         if not any(scope.effective.can(resource, action) for scope in reachable):
-            if not any(
-                scope.effective.can(resource, Permission.READ) for scope in reachable
-            ):
+            if not any(scope.effective.can(resource, Permission.READ) for scope in reachable):
                 raise self.not_found_exception()
             raise PermissionDenied("You do not have permission to perform this action.")
 
@@ -127,7 +124,7 @@ class CrossOrgResourceService:
         if not effective.can(self.rbac_resource_type.value, action):
             raise PermissionDenied("You do not have permission to perform this action.")
 
-    def resolve_scope_org_ids(self, actor, org_ids, scopes=None) -> Optional[set[int]]:
+    def resolve_scope_org_ids(self, actor, org_ids, scopes=None) -> set[int] | None:
         """The org ids this request is scoped to.
 
         An explicit `org_ids` selection wins; an entry the actor cannot READ
@@ -144,7 +141,7 @@ class CrossOrgResourceService:
             org_ids=org_ids,
         )
 
-    def _narrow_to_requested(self, readable, org_ids) -> Optional[set[int]]:
+    def _narrow_to_requested(self, readable, org_ids) -> set[int] | None:
         """Apply an explicit `org_ids` selection to the readable set.
 
         Stated once so `apply_org_scope` (which filters a queryset) and

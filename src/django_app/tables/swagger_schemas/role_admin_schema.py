@@ -57,14 +57,13 @@ _NOT_FOUND_404 = OpenApiResponse(
 
 _NAME_CONFLICT_400 = OpenApiResponse(
     description=(
-        "Validation error, or a role with this name already exists in the "
-        "org (role_name_conflict)."
+        "Validation error, or a role with this name already exists in the org (role_name_conflict)."
     )
 )
 
-ROLES_LIST_GET = dict(
-    summary="List roles across the caller's authorized orgs",
-    description=(
+ROLES_LIST_GET = {
+    "summary": "List roles across the caller's authorized orgs",
+    "description": (
         "Built-in templates (once, in `built_in_roles`) plus custom roles "
         "(`results`, paginated) from every org the caller can read. Filter "
         "with ?org_ids=; omit for all readable orgs. Use "
@@ -73,7 +72,7 @@ ROLES_LIST_GET = dict(
         "`assigned_count` and an `assigned_by_org` breakdown, covering the "
         "orgs in scope for this request."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             name="org_ids",
             location=OpenApiParameter.QUERY,
@@ -113,53 +112,49 @@ ROLES_LIST_GET = dict(
             description="Items per page (default 50, max 200).",
         ),
     ],
-    responses={
+    "responses": {
         200: RoleListResponseSerializer,
         400: OpenApiResponse(
-            description=(
-                "Malformed org_ids or assignable_org_ids " "(org_context_required)."
-            )
+            description=("Malformed org_ids or assignable_org_ids (org_context_required).")
         ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _FORBIDDEN_403,
     },
-)
+}
 
-ROLES_RETRIEVE_GET = dict(
-    summary="Single role with its full permission matrix",
-    responses={
+ROLES_RETRIEVE_GET = {
+    "summary": "Single role with its full permission matrix",
+    "responses": {
         200: RoleResponseSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         403: _FORBIDDEN_403,
         404: _NOT_FOUND_404,
     },
-)
+}
 
-ROLES_CREATE_POST = dict(
-    summary="Create a custom role in an organization",
-    description=(
+ROLES_CREATE_POST = {
+    "summary": "Create a custom role in an organization",
+    "description": (
         "Creates an org-scoped custom role (org_id in the body). Requires "
         "ROLES create in that org; the caller can only grant permissions "
         "they themselves hold (ceiling rule). An empty `permissions` list "
         "is a valid 'no access' role."
     ),
-    request=RoleWriteSerializer,
-    responses={
+    "request": RoleWriteSerializer,
+    "responses": {
         201: RoleResponseSerializer,
         400: _NAME_CONFLICT_400,
         401: UNAUTHORIZED_401_RESPONSE,
         403: _WRITE_FORBIDDEN_403,
     },
-    examples=[
+    "examples": [
         OpenApiExample(
             "Billing Manager",
             value={
                 "org_id": 10,
                 "name": "Billing Manager",
                 "description": "Manage billing secrets",
-                "permissions": [
-                    {"resource_type": "secrets", "actions": ["read", "update"]}
-                ],
+                "permissions": [{"resource_type": "secrets", "actions": ["read", "update"]}],
             },
             request_only=True,
         ),
@@ -169,25 +164,25 @@ ROLES_CREATE_POST = dict(
             request_only=True,
         ),
     ],
-)
+}
 
-ROLES_UPDATE_PATCH = dict(
-    summary="Edit a custom role (name / description / permissions)",
-    description=(
+ROLES_UPDATE_PATCH = {
+    "summary": "Edit a custom role (name / description / permissions)",
+    "description": (
         "Partial update. If `permissions` is sent it fully replaces the "
         "role's matrix. Built-in roles are immutable; the ceiling rule "
         "applies to added bits. Changes take effect for assignees on their "
         "next request."
     ),
-    request=RoleWriteSerializer,
-    responses={
+    "request": RoleWriteSerializer,
+    "responses": {
         200: RoleResponseSerializer,
         400: _NAME_CONFLICT_400,
         401: UNAUTHORIZED_401_RESPONSE,
         403: _WRITE_FORBIDDEN_403,
         404: _NOT_FOUND_404,
     },
-    examples=[
+    "examples": [
         OpenApiExample(
             "Rename + narrow permissions",
             value={
@@ -197,30 +192,29 @@ ROLES_UPDATE_PATCH = dict(
             request_only=True,
         ),
     ],
-)
+}
 
-ROLES_DESTROY_DELETE = dict(
-    summary="Delete a custom role — or preview with ?dry_run=true",
-    description=(
+ROLES_DESTROY_DELETE = {
+    "summary": "Delete a custom role — or preview with ?dry_run=true",
+    "description": (
         "Deletes a custom role and reassigns its members to the built-in "
         "Viewer role (never evicts them). With ?dry_run=true nothing is "
         "deleted and the affected members are returned so the UI can warn "
         "first. Built-in roles are immutable, and a caller cannot delete the "
         "role they themselves hold."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             name="dry_run",
             location=OpenApiParameter.QUERY,
             type=OpenApiTypes.BOOL,
             required=False,
             description=(
-                "If true, return the members that would be reassigned and "
-                "delete nothing."
+                "If true, return the members that would be reassigned and delete nothing."
             ),
         ),
     ],
-    responses={
+    "responses": {
         200: PolymorphicProxySerializer(
             component_name="RoleDeleteOrPreview",
             serializers=[RoleDeleteResultSerializer, RoleDeletePreviewSerializer],
@@ -230,7 +224,7 @@ ROLES_DESTROY_DELETE = dict(
         403: _DELETE_FORBIDDEN_403,
         404: _NOT_FOUND_404,
     },
-    examples=[
+    "examples": [
         OpenApiExample(
             "Deleted",
             value={"reassigned_count": 5},
@@ -250,4 +244,4 @@ ROLES_DESTROY_DELETE = dict(
             status_codes=["200"],
         ),
     ],
-)
+}

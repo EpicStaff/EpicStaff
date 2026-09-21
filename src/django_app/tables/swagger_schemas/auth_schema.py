@@ -1,31 +1,32 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+
 from tables.serializers.rbac_serializers import (
-    FirstSetupStatusSerializer,
     FirstSetupRequestSerializer,
     FirstSetupResponseSerializer,
+    FirstSetupStatusSerializer,
     LoginResponseSerializer,
     LogoutResponseSerializer,
     RefreshResponseSerializer,
     ResetUserRequestSerializer,
     ResetUserResponseSerializer,
-    TicketResponseSerializer,
     SwaggerTokenRequestSerializer,
     SwaggerTokenResponseSerializer,
+    TicketResponseSerializer,
     TokenIntrospectRequestSerializer,
     TokenIntrospectResponseSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-API_KEY_VALIDATE_GET = dict(
-    summary="Validate the current API key",
-    description=(
+API_KEY_VALIDATE_GET = {
+    "summary": "Validate the current API key",
+    "description": (
         "Requires an API key. Returns metadata about the calling key "
         "including the owning user's id (null for env-seeded system keys). "
         "Permissions come from the owning user's live RBAC role, not a "
         "per-key scope list — the response carries no `scopes` field."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="Key is active.",
@@ -55,29 +56,29 @@ API_KEY_VALIDATE_GET = dict(
             ],
         ),
     },
-)
+}
 
-FIRST_SETUP_GET = dict(
-    summary="Check if first-time setup is required",
-    description=(
+FIRST_SETUP_GET = {
+    "summary": "Check if first-time setup is required",
+    "description": (
         "Whether the browser setup flow should be offered. `needs_setup` is "
         "true only when no user exists AND this deployment allows HTTP "
         "first-setup; `setup_mode` reports which creation path is live. "
         "No authentication required. See docs/rbac/first_setup_operations.md."
     ),
-    responses={200: FirstSetupStatusSerializer},
-)
+    "responses": {200: FirstSetupStatusSerializer},
+}
 
-FIRST_SETUP_POST = dict(
-    summary="Perform first-time setup",
-    description=(
+FIRST_SETUP_POST = {
+    "summary": "Perform first-time setup",
+    "description": (
         "Creates the first superadmin, the default organization, and a "
         "membership with the built-in Superadmin role, then returns JWT "
         "tokens. Available only when this deployment allows HTTP "
         "first-setup. See docs/rbac/first_setup_operations.md."
     ),
-    request=FirstSetupRequestSerializer,
-    responses={
+    "request": FirstSetupRequestSerializer,
+    "responses": {
         201: FirstSetupResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -132,8 +133,7 @@ FIRST_SETUP_POST = dict(
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
             description=(
-                "HTTP first-setup is disabled on this deployment "
-                "(code: first_setup_disabled)."
+                "HTTP first-setup is disabled on this deployment (code: first_setup_disabled)."
             ),
         ),
         409: OpenApiResponse(
@@ -153,11 +153,11 @@ FIRST_SETUP_POST = dict(
             ],
         ),
     },
-)
+}
 
-TOKEN_INTROSPECT_POST = dict(
-    summary="Introspect a JWT access token",
-    description=(
+TOKEN_INTROSPECT_POST = {
+    "summary": "Introspect a JWT access token",
+    "description": (
         "Service-to-service JWT validator: the caller authenticates with "
         "an API key and passes a JWT in the body to get its claims back. "
         "Requires a SYSTEM-type API key — user-owned keys are rejected. "
@@ -165,8 +165,8 @@ TOKEN_INTROSPECT_POST = dict(
         "`JWT_SECRET` but still need to verify bearer tokens. "
         "See `docs/rbac/auth_endpoints.md` for full behavior."
     ),
-    request=TokenIntrospectRequestSerializer,
-    responses={
+    "request": TokenIntrospectRequestSerializer,
+    "responses": {
         200: TokenIntrospectResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -200,11 +200,11 @@ TOKEN_INTROSPECT_POST = dict(
             ],
         ),
     },
-)
+}
 
-LOGIN_POST = dict(
-    summary="Log in and obtain JWT tokens",
-    description=(
+LOGIN_POST = {
+    "summary": "Log in and obtain JWT tokens",
+    "description": (
         "Accepts `email` and `password`. Validates both fields are present "
         "and non-blank before delegating to simplejwt. Returns a short-lived "
         "access token in the response body. The refresh token is set as an "
@@ -214,7 +214,7 @@ LOGIN_POST = dict(
         "per minute per IP+email combination; the 6th attempt returns 429 "
         "with a `Retry-After` header."
     ),
-    responses={
+    "responses": {
         200: LoginResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -250,11 +250,11 @@ LOGIN_POST = dict(
             description="Too many login attempts — throttle limit exceeded.",
         ),
     },
-)
+}
 
-LOGOUT_POST = dict(
-    summary="Log out (blacklist refresh token)",
-    description=(
+LOGOUT_POST = {
+    "summary": "Log out (blacklist refresh token)",
+    "description": (
         "Reads the refresh token from the HttpOnly `auth.refresh` cookie, "
         "blacklists it so it can no longer be used to obtain new access "
         "tokens, and clears the cookie. The short-lived access token "
@@ -262,7 +262,7 @@ LOGOUT_POST = dict(
         "a leaked refresh token cannot be used to log out a different user. "
         "No request body is required."
     ),
-    responses={
+    "responses": {
         205: LogoutResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -282,17 +282,17 @@ LOGOUT_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-REFRESH_POST = dict(
-    summary="Refresh access token",
-    description=(
+REFRESH_POST = {
+    "summary": "Refresh access token",
+    "description": (
         "Reads the refresh token from the HttpOnly `auth.refresh` cookie. "
         "Returns a fresh short-lived access token in the response body. "
         "When token rotation is enabled, the rotated refresh token is set "
         "as a new HttpOnly cookie. No request body is required."
     ),
-    responses={
+    "responses": {
         200: RefreshResponseSerializer,
         401: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -313,19 +313,19 @@ REFRESH_POST = dict(
             ],
         ),
     },
-)
+}
 
-RESET_USER_POST = dict(
-    summary="Reset user (destructive)",
-    description=(
+RESET_USER_POST = {
+    "summary": "Reset user (destructive)",
+    "description": (
         "Deletes all Users inside a single transaction (their API keys "
         "cascade; the system API key survives), then creates a new "
         "superadmin. Organizations are left intact; the new superadmin "
         "is given a default-organization membership (the default org is "
         "reused if one exists, otherwise created)."
     ),
-    request=ResetUserRequestSerializer,
-    responses={
+    "request": ResetUserRequestSerializer,
+    "responses": {
         201: ResetUserResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -357,17 +357,17 @@ RESET_USER_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-SSE_TICKET_POST = dict(
-    summary="Issue a short-lived single-use SSE ticket",
-    description=(
+SSE_TICKET_POST = {
+    "summary": "Issue a short-lived single-use SSE ticket",
+    "description": (
         "Issue a single-use SSE ticket bound to the calling JWT user. The ticket "
         "is used as a `?ticket=...` query param on SSE endpoints because "
         "EventSource cannot attach an `Authorization` header. The ticket is consumed "
         "on first read, so reconnects require a fresh ticket."
     ),
-    responses={
+    "responses": {
         200: TicketResponseSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
@@ -383,17 +383,17 @@ SSE_TICKET_POST = dict(
             ],
         ),
     },
-)
+}
 
-SWAGGER_TOKEN_POST = dict(
-    summary="Swagger UI token endpoint (OAuth2 password flow)",
-    description=(
+SWAGGER_TOKEN_POST = {
+    "summary": "Swagger UI token endpoint (OAuth2 password flow)",
+    "description": (
         "OAuth2 password flow token endpoint for Swagger UI. "
         "Swagger sends `username` + `password`; `username` is interpreted as email "
         "since `USERNAME_FIELD = 'email'` on the custom User model."
     ),
-    request=SwaggerTokenRequestSerializer,
-    responses={
+    "request": SwaggerTokenRequestSerializer,
+    "responses": {
         200: SwaggerTokenResponseSerializer,
         401: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -424,11 +424,11 @@ SWAGGER_TOKEN_POST = dict(
             ],
         ),
     },
-)
+}
 
-WS_TICKET_POST = dict(
-    summary="Issue a short-lived single-use WebSocket ticket",
-    description=(
+WS_TICKET_POST = {
+    "summary": "Issue a short-lived single-use WebSocket ticket",
+    "description": (
         "Issues a single-use ticket bound to the calling JWT user. The ticket is passed "
         "as a `?ticket=...` query param when opening a WebSocket connection because the "
         "WebSocket handshake cannot carry an `Authorization` header. "
@@ -437,7 +437,7 @@ WS_TICKET_POST = dict(
         "TTL is governed by the `GRAPH_WS_TICKET_TTL` setting and is returned "
         "as `expires_in` in the response."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=TicketResponseSerializer,
             description="Ticket issued successfully.",
@@ -467,4 +467,4 @@ WS_TICKET_POST = dict(
             ],
         ),
     },
-)
+}
