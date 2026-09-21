@@ -74,14 +74,26 @@
         }
 
         .title {
+            display: flex;
+            align-items: baseline;
+            gap: 0.25rem;
             font-size: 1rem;
             font-weight: 500;
-            letter-spacing: 0.3px;
+            letter-spacing: 0;
             color: inherit;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
             min-width: 0;
+
+            &__label {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                min-width: 0;
+            }
+
+            &__badge {
+                flex-shrink: 0;
+                white-space: nowrap;
+            }
         }
 
         .blocked-badge {
