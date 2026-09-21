@@ -171,7 +171,6 @@
                                     <app-textarea
                                         formControlName="prompt"
                                         label="Prompt"
-                                        tooltipText="Prompt"
                                         placeholder="Custom general knowledge instruction... Leave empty for default."
                                     />
                                 </div>
@@ -203,7 +202,6 @@
                                     <app-textarea
                                         formControlName="prompt"
                                         label="Prompt"
-                                        tooltipText="Prompt"
                                         placeholder="Custom general knowledge instruction... Leave empty for default."
                                     />
                                 </div>
@@ -212,9 +210,9 @@
                                     <div class="form-group">
                                         <app-dual-slider
                                             firstLabel="Text Unit Proportion"
-                                            firstTooltipText="The text unit proportion"
+                                            firstTooltipText="Context share for text units (0–1)."
                                             secondLabel="Community Proportion"
-                                            secondTooltipText="The community proportion"
+                                            secondTooltipText="Context share for community (0–1)."
                                             [firstValue]="textUnitProportionControl.value"
                                             [secondValue]="communityProportionControl.value"
                                             (firstValueChange)="onTextUnitPropUpdate($event)"
@@ -232,14 +230,14 @@
                                         @if (useSuggestedParams()) {
                                             <app-suggested-value
                                                 label="Conversation History max Turns"
-                                                tooltipText="The conversation history maximum turns"
+                                                tooltipText="How many previous conversation turns to include as context for local search."
                                                 [value]="localGroup?.get('conversation_history_max_turns')?.value"
                                             />
                                         } @else {
                                             <app-input-number
                                                 formControlName="conversation_history_max_turns"
                                                 label="Conversation History max Turns"
-                                                tooltipText="The conversation history maximum turns"
+                                                tooltipText="How many previous conversation turns to include as context for local search."
                                                 [alwaysShowSteps]="true"
                                                 [min]="1"
                                                 [max]="50"
@@ -253,14 +251,14 @@
                                         @if (useSuggestedParams()) {
                                             <app-suggested-value
                                                 label="Top K Entities"
-                                                tooltipText="The top k mapped entities"
+                                                tooltipText="Maximum number of matched entities to include in the local search context."
                                                 [value]="localGroup?.get('top_k_entities')?.value"
                                             />
                                         } @else {
                                             <app-input-number
                                                 formControlName="top_k_entities"
                                                 label="Top K Entities"
-                                                tooltipText="The top k mapped entities"
+                                                tooltipText="Maximum number of matched entities to include in the local search context."
                                                 [alwaysShowSteps]="true"
                                                 [min]="1"
                                                 [max]="100"
@@ -271,14 +269,14 @@
                                         @if (useSuggestedParams()) {
                                             <app-suggested-value
                                                 label="Top K Relationships"
-                                                tooltipText="The top k mapped relations"
+                                                tooltipText="Maximum number of matched relationships to include in the local search context."
                                                 [value]="localGroup?.get('top_k_relationships')?.value"
                                             />
                                         } @else {
                                             <app-input-number
                                                 formControlName="top_k_relationships"
                                                 label="Top K Relationships"
-                                                tooltipText="The top k mapped relations"
+                                                tooltipText="Maximum number of matched relationships to include in the local search context."
                                                 [alwaysShowSteps]="true"
                                                 [min]="1"
                                                 [max]="100"

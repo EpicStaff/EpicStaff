@@ -1,9 +1,10 @@
-from typing import Callable, Awaitable, List
+from collections.abc import Awaitable, Callable
 
-from src.shared.models import RealtimeAgentChatData
-
+from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
+from src.shared.models import RealtimeAgentChatData
+
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
@@ -14,7 +15,6 @@ from infrastructure.providers.openai.openai_realtime_agent_client import (
     OpenaiRealtimeAgentClient,
     TurnDetectionMode,
 )
-from application.tool_manager_service import ToolManagerService
 
 _DEFAULT_LLM = "gemini-2.5-flash"
 
@@ -31,7 +31,7 @@ class RealtimeAgentClientFactory:
     def create(
         self,
         config: RealtimeAgentChatData,
-        rt_tools: List[RealtimeTool],
+        rt_tools: list[RealtimeTool],
         instructions: str,
         tool_manager_service: ToolManagerService,
         on_server_event: Callable[[dict], Awaitable[None]],
@@ -93,9 +93,7 @@ class RealtimeAgentClientFactory:
             voice=config.voice,
             instructions=instructions,
             input_audio_format="g711_ulaw" if is_twilio else config.input_audio_format,
-            output_audio_format="g711_ulaw"
-            if is_twilio
-            else config.output_audio_format,
+            output_audio_format="g711_ulaw" if is_twilio else config.output_audio_format,
             turn_detection_mode=TurnDetectionMode.SERVER_VAD,
             org_id=config.org_id,
             user_id=config.user_id,

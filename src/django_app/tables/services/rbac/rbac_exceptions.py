@@ -282,9 +282,7 @@ class OrganizationContextAmbiguous(CustomAPIExeption):
     """Raised when the user belongs to multiple orgs and no X-Organization-Id header is set."""
 
     status_code = 400
-    default_detail = (
-        "Multiple organization memberships; please specify X-Organization-Id header."
-    )
+    default_detail = "Multiple organization memberships; please specify X-Organization-Id header."
     default_code = "organization_context_ambiguous"
 
 
@@ -304,8 +302,7 @@ class ApiKeyLimitExceededError(CustomAPIExeption):
 
     status_code = 400
     default_detail = (
-        "Maximum number of active API keys reached (5). "
-        "Revoke or delete an existing key first."
+        "Maximum number of active API keys reached (5). Revoke or delete an existing key first."
     )
     default_code = "api_key_limit_exceeded"
 
@@ -331,9 +328,7 @@ class PermissionEscalationError(CustomAPIExeption):
     no-escalation rule). Superadmin bypasses the rule."""
 
     status_code = 403
-    default_detail = (
-        "You cannot grant permissions you do not have in this organization."
-    )
+    default_detail = "You cannot grant permissions you do not have in this organization."
     default_code = "permission_escalation_denied"
 
 
@@ -398,7 +393,5 @@ class InactiveUserError(CustomAPIExeption):
     account cannot sign in, so a membership would be inert."""
 
     status_code = 400
-    default_detail = (
-        "This account is deactivated and cannot be added to an organization."
-    )
+    default_detail = "This account is deactivated and cannot be added to an organization."
     default_code = "user_not_active"

@@ -1,14 +1,12 @@
 import os
+from collections.abc import Callable
 from pathlib import Path
 from types import EllipsisType
-from typing import Any, Callable
+from typing import Any
+
 from . import humanize
 
-__all__ = [
-    "EnvironmentNotFoundError",
-    "EnvironmentBlankError",
-    "Env",
-]
+__all__ = ["Env", "EnvironmentBlankError", "EnvironmentNotFoundError"]
 
 
 class EnvironmentNotFoundError(Exception):
@@ -56,7 +54,7 @@ class Env:
     def get_value(
         self,
         variable: str,
-        default: Any | None | EllipsisType = ...,
+        default: Any | EllipsisType | None = ...,
         cast: Callable[[Any], Any] = lambda v: v,
     ) -> Any | None:
         """Look up an environment variable and cast its value.
@@ -163,9 +161,7 @@ class Env:
         """
         return self.get_value(variable, default, Path)
 
-    def list(
-        self, variable: str, default: list | EllipsisType = ..., split=","
-    ) -> list | None:
+    def list(self, variable: str, default: list | EllipsisType = ..., split=",") -> list | None:
         """Read an environment variable as a delimited list of strings.
 
         Args:
@@ -176,7 +172,7 @@ class Env:
         Returns:
             The list of stripped items, or None when the variable holds the ``none`` value.
         """
-        cast = lambda v: [s.strip() for s in v.strip().split(split)]  # noqa: E731
+        cast = lambda v: [s.strip() for s in v.strip().split(split)]
         return self.get_value(variable, default, cast)
 
     def int(self, variable: str, default: int | EllipsisType = ...) -> int | None:
@@ -214,7 +210,7 @@ class Env:
             True when the raw value is one of ``BOOLEAN_TRUE_VALUES``; None when the
             variable holds the ``none`` value.
         """
-        cast = lambda v: v.lower() in self.BOOLEAN_TRUE_VALUES  # noqa: E731
+        cast = lambda v: v.lower() in self.BOOLEAN_TRUE_VALUES
         return self.get_value(variable, default, cast)
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:
@@ -250,7 +246,5 @@ class Env:
         """
         value = (self.str(variable) or "").strip()
         if not value:
-            raise EnvironmentBlankError(
-                f"Environment variable {variable} must not be blank."
-            )
+            raise EnvironmentBlankError(f"Environment variable {variable} must not be blank.")
         return value

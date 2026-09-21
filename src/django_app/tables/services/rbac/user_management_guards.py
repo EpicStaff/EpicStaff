@@ -1,11 +1,8 @@
-from django.contrib.auth import get_user_model
-
 from tables.models.rbac_models import Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.rbac_exceptions import (
     InactiveUserError,
     InvalidRoleAssignmentError,
-    LastSuperadminError,
     SuperadminNotAssignableError,
 )
 
@@ -19,22 +16,6 @@ class UserManagementGuards:
     row lock + same-transaction count is what makes the checks race-safe;
     these methods themselves do not acquire locks.
     """
-
-    @staticmethod
-    def assert_not_last_active_superadmin(target_user) -> None:
-        """Refuses if target_user is the only User row with
-        is_superadmin=True AND is_active=True.
-
-        Caller must have already SELECT FOR UPDATE'd the target_user row.
-        """
-        UserModel = get_user_model()
-        if not (target_user.is_superadmin and target_user.is_active):
-            return  # not currently a counting superadmin → revoke is a no-op
-        active_superadmin_count = UserModel.objects.filter(
-            is_superadmin=True, is_active=True
-        ).count()
-        if active_superadmin_count <= 1:
-            raise LastSuperadminError()
 
     @staticmethod
     def role_is_assignable(role: Role, org_id: int) -> bool:

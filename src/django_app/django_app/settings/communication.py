@@ -1,4 +1,4 @@
-from django_app.settings import env, REDIS_HOST, REDIS_PASSWORD, REDIS_PORT
+from django_app.settings import REDIS_HOST, REDIS_PASSWORD, REDIS_PORT, env
 
 CHANNEL_LAYERS = {
     "default": {

@@ -1,9 +1,7 @@
 from typing import get_args
 
 from rest_framework import serializers
-
 from src.shared.models.search_config_suggestion import GraphSearchMethod
-
 
 GRAPH_SEARCH_METHODS = get_args(GraphSearchMethod)
 
@@ -44,9 +42,7 @@ class SuggestOutputSerializer(serializers.Serializer):
     effective_llm_context_window = serializers.IntegerField(
         min_value=1, required=False, allow_null=True
     )
-    safe_token_budget = serializers.IntegerField(
-        min_value=1, required=False, allow_null=True
-    )
+    safe_token_budget = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     clamped_fields = serializers.ListField(child=serializers.CharField())
     suggested_params = serializers.DictField()
     recommended_search_method = serializers.ChoiceField(

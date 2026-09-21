@@ -1,6 +1,5 @@
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
-
 from tables.models.rbac_models import Organization, OrganizationUser, User
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
@@ -87,9 +86,7 @@ class OrganizationManagementService(CrossOrgResourceService):
         self.assert_can(effective, Permission.READ)
         return self._get_organization_with_member_count(org_id)
 
-    def _list_organizations(
-        self, is_active: bool | None = None
-    ) -> QuerySet[Organization]:
+    def _list_organizations(self, is_active: bool | None = None) -> QuerySet[Organization]:
         qs = Organization.objects.annotate(member_count=Count("members")).order_by(
             "-is_active", "name"
         )
@@ -121,13 +118,20 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def deactivate_organization(self, org_id: int) -> Organization:
-        org = self._get_locked_org(org_id)
-        if not org.is_active:
-            return self._get_organization_with_member_count(org.pk)
-        self._assert_can_deactivate()
-        org.is_active = False
-        org.save(update_fields=["is_active", "updated_at"])
-        return self._get_organization_with_member_count(org.pk)
+        orgs = Organization.objects.filter(is_active=True).order_by("pk").select_for_update()
+        orgs_map = {o.pk: o for o in orgs}
+        if org_id in orgs_map:
+            if len(orgs_map) <= 1:
+                raise LastActiveOrganizationError()
+            target = orgs_map[org_id]
+        else:
+            target = self._get_locked_org(org_id)
+
+        if target.is_active:
+            target.is_active = False
+            target.save(update_fields=["is_active", "updated_at"])
+
+        return self._get_organization_with_member_count(target.pk)
 
     @transaction.atomic
     def reactivate_organization(self, org_id: int) -> Organization:
@@ -162,16 +166,3 @@ class OrganizationManagementService(CrossOrgResourceService):
             return Organization.objects.select_for_update().get(pk=org_id)
         except Organization.DoesNotExist as exc:
             raise OrganizationNotFoundError() from exc
-
-    @staticmethod
-    def _assert_can_deactivate() -> None:
-        """Refuses if `org` is the last active organization in the system.
-
-        Run inside the same transaction as the deactivate write so the count
-        is consistent with the SELECT FOR UPDATE on the org row. With per-row
-        locking + a counted-rows query, two simultaneous deactivate calls
-        cannot both succeed in driving the count to zero.
-        """
-        active_count = Organization.objects.filter(is_active=True).count()
-        if active_count <= 1:
-            raise LastActiveOrganizationError()

@@ -1,6 +1,5 @@
 import hmac
-import time
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
@@ -21,7 +20,7 @@ router = APIRouter()
 async def handle_webhook(
     request: Request,
     custom_path: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     redis: RedisService = Depends(get_redis_service),
     registry: TunnelRegistry = Depends(get_tunnel_registry),
 ):
@@ -31,7 +30,7 @@ async def handle_webhook(
         logger.warning(str(e))
         raise HTTPException(
             status_code=404, detail=f"No webhook registered for path '{custom_path}'"
-        )
+        ) from e
     except AmbiguousWebhookPathError as e:
         logger.error(str(e))
         raise HTTPException(
@@ -40,7 +39,7 @@ async def handle_webhook(
                 f"Path '{custom_path}' is registered by more than one tunnel "
                 "config; refusing to route ambiguously."
             ),
-        )
+        ) from e
 
     auth = config.auth
     if auth is None:

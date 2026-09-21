@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import random
-from typing import Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 import litellm
 from litellm.exceptions import APIError as LiteLLMAPIError
@@ -55,12 +56,8 @@ def _resolve_exception_classes(
     return tuple(resolved)
 
 
-RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(
-    _RETRYABLE_NAMES
-)
-NON_RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(
-    _NON_RETRYABLE_NAMES
-)
+RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(_RETRYABLE_NAMES)
+NON_RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(_NON_RETRYABLE_NAMES)
 
 
 class RetryPolicy:
@@ -116,12 +113,12 @@ class RetryPolicy:
             try:
                 return await func(*args, **kwargs)
 
-            except NON_RETRYABLE as error:
-                raise error
+            except NON_RETRYABLE:
+                raise
 
-            except RETRYABLE as error:
+            except RETRYABLE:
                 if attempt == self._max_retries:
-                    raise error
+                    raise
 
                 delay = min(
                     self._base_delay * (2**attempt) + random.uniform(0, self._jitter),
@@ -129,7 +126,7 @@ class RetryPolicy:
                 )
                 await asyncio.sleep(delay)
 
-            except Exception as error:
-                raise error
+            except Exception:
+                raise
 
         raise AssertionError("unreachable: retry loop must return or raise")

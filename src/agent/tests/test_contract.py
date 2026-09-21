@@ -8,11 +8,9 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import AgentRequest, LoopResult, RunType, TokenUsage
-
 
 # ---------------------------------------------------------------------------
 # The canonical example request blob (no correlation_id — DataLoader injects it)
@@ -290,10 +288,10 @@ def test_live_event_types_include_knowledge_search():
     """Pins 'agent.knowledge_search' as a recognized live envelope type
     alongside the existing tool-call/tool-result/task-start/task-finish set."""
     assert "agent.knowledge_search" in LIVE_EVENT_TYPES
-    assert LIVE_EVENT_TYPES == {
+    assert {
         "agent.tool_call",
         "agent.tool_result",
         "agent.task_start",
         "agent.task_finish",
         "agent.knowledge_search",
-    }
+    } == LIVE_EVENT_TYPES

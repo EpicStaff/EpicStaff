@@ -11,7 +11,6 @@ import json
 import httpx
 import pytest
 import settings
-
 from shared.knowledge.client import KnowledgeClient
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.knowledge import (
@@ -48,9 +47,7 @@ def _graph_target() -> KnowledgeSearchTarget:
 
 def _client_with_handler(handler) -> KnowledgeClient:
     client = KnowledgeClient(base_url=BASE_URL)
-    client._client = httpx.AsyncClient(
-        base_url=BASE_URL, transport=httpx.MockTransport(handler)
-    )
+    client._client = httpx.AsyncClient(base_url=BASE_URL, transport=httpx.MockTransport(handler))
     return client
 
 

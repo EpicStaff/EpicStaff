@@ -461,7 +461,23 @@ export class AgentsPageStore {
     }
 
     makeSurfaceShared(id: number): void {
-        this.updateSurface(id, { owner_agent: null });
+        const surface = this.surfaces().find((s) => s.id === id);
+        const ownerAgentId = surface?.owner_agent ?? null;
+        const agent = ownerAgentId != null ? this.agents().find((a) => a.id === ownerAgentId) : undefined;
+
+        if (!agent) {
+            this.updateSurface(id, { owner_agent: null });
+            return;
+        }
+
+        const hasRow = agent.default_surfaces.some((ds) => ds.surface === id);
+        const nextDefaultSurfaces: AgentDefaultSurface[] = hasRow
+            ? agent.default_surfaces
+            : [...agent.default_surfaces, { surface: id, place: 'all' }];
+
+        this.patchAgentDefaultSurfaces(agent.id, nextDefaultSurfaces, undefined, () =>
+            this.updateSurface(id, { owner_agent: null })
+        );
     }
 
     attachSharedSurfaceToAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {

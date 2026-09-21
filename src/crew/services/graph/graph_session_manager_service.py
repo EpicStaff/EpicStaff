@@ -1,25 +1,23 @@
-import json
-from types import CoroutineType
-import uuid
-from typing import Any
-from dataclasses import asdict, dataclass
 import asyncio
+import json
+import uuid
+from dataclasses import asdict, dataclass
+from types import CoroutineType
+from typing import Any
 
-from loguru import logger
 from dotdict import DotDict
-
+from loguru import logger
+from models.graph_models import GraphMessage
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
-from services.redis_service import AsyncPubsubSubscriber, RedisService
 from services.graph.graph_builder import SessionGraphBuilder
-from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
-from utils.singleton_meta import SingletonMeta
-from models.graph_models import GraphMessage
+from services.redis_service import AsyncPubsubSubscriber, RedisService
+from services.run_python_code_service import RunPythonCodeService
 from settings import DEFAULT_TOKEN_BUDGET
-
 from src.shared.models import SessionData, StopSessionMessage
+from utils.singleton_meta import SingletonMeta
 
 # Reserved key smuggled through SessionData.initial_state (a pre-existing
 # free-form dict[str, Any] field) to carry an optional per-run token-budget
@@ -265,7 +263,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 await self._handle_stop_session(data)
             else:
                 logger.info(f"Unknown channel {channel}")
-        except Exception:  # asyncio.CancelledError
+        except asyncio.CancelledError:
             logger.exception("Listener task cancelled.")
         finally:
             pass
@@ -341,15 +339,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         stop_session_message = StopSessionMessage.model_validate(json.loads(data))
         session_id = stop_session_message.session_id
-        await self.redis_service.aupdate_session_status(
-            session_id=session_id, status="stop"
-        )
 
         if session_id not in self.session_graph_pool:
             logger.warning(
                 f"Can not fetch task from session_graph_pool for session ID: {session_id}."
             )
             return
+
+        await self.redis_service.aupdate_session_status(session_id=session_id, status="stop")
         self.session_graph_pool[session_id].stop_event.set()
         self.session_graph_pool.pop(session_id, None)
 

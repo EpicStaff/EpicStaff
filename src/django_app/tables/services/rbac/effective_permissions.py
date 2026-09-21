@@ -1,5 +1,5 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping, Optional, Union
 
 from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permission_catalog import (
@@ -29,7 +29,7 @@ class EffectivePermissions:
     """
 
     is_superadmin: bool
-    role: Optional[object]  # Role instance or None for superadmin
+    role: object | None  # Role instance or None for superadmin
     by_resource: dict[str, int] = field(default_factory=dict)
 
     def can(self, resource_type: str, action: Permission) -> bool:
@@ -44,9 +44,7 @@ class EffectivePermissions:
         bits, so the resolver and the escalation ceiling cannot disagree
         about what a role grants. `role.permissions_set` should be
         prefetched by the caller."""
-        return {
-            row.resource_type: row.permissions for row in role.permissions_set.all()
-        }
+        return {row.resource_type: row.permissions for row in role.permissions_set.all()}
 
     @classmethod
     def from_role(cls, role) -> "EffectivePermissions":
@@ -77,13 +75,12 @@ class EffectivePermissions:
             return True
         return all(
             not (
-                (mask & grantable_bits_for(resource_type))
-                & ~self.by_resource.get(resource_type, 0)
+                (mask & grantable_bits_for(resource_type)) & ~self.by_resource.get(resource_type, 0)
             )
             for resource_type, mask in by_resource.items()
         )
 
-    def to_action_codes(self) -> Union[str, dict[str, list[str]]]:
+    def to_action_codes(self) -> str | dict[str, list[str]]:
         """Serialize for the wire — either "*" (superadmin) or
         {resource_type: [action_code, ...]}.
 

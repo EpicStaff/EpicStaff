@@ -1,7 +1,6 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
-
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.membership_serializers import (
     AssignableUserSerializer,
@@ -71,9 +70,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)
         return paginator.get_paginated_response(
-            MembershipResponseSerializer(
-                page, many=True, context={"request": request}
-            ).data
+            MembershipResponseSerializer(page, many=True, context={"request": request}).data
         )
 
     @extend_schema(**MEMBERSHIPS_ASSIGNABLE_USERS_GET)
@@ -111,9 +108,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
         membership = self._service.change_role(
             actor=request.user, membership_id=int(pk), role_id=cleaned["role_id"]
         )
-        return Response(
-            MembershipResponseSerializer(membership, context={"request": request}).data
-        )
+        return Response(MembershipResponseSerializer(membership, context={"request": request}).data)
 
     @extend_schema(**MEMBERSHIPS_DESTROY_DELETE)
     def destroy(self, request, pk=None):

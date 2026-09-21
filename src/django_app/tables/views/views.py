@@ -1,111 +1,97 @@
-from collections import defaultdict
 import base64
+from collections import defaultdict
+from typing import ClassVar
 
-from tables.services.secrets import SecretResolver
-from tables.models.graph_models import (
-    PythonNode,
-    GraphSessionMessage,
-)
-from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.services.realtime_service import RealtimeService
 from agents.models import AgentDefinition
-from tables.swagger_schemas.python_node_test_mode_schema import (
-    LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
-)
-from utils.logger import logger
-
+from django.conf import settings
+from django.db.models import Count, Exists, OuterRef, Q
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import (
-    extend_schema_view,
     OpenApiParameter,
     OpenApiResponse,
+    extend_schema_view,
 )
-from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, Q
-from django.conf import settings
+from rest_framework import filters, mixins, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-
-from rest_framework.decorators import action
-from rest_framework import viewsets, mixins
-from rest_framework.exceptions import NotFound, ValidationError
-from rest_framework import filters
-
-from tables.services.session_manager_service import SessionManagerService
-from tables.services.converter_service import ConverterService
-from tables.services.redis_service import RedisService
-from tables.services.run_python_code_service import RunPythonCodeService
-from tables.services.quickstart_service import QuickstartService
-from tables.services.knowledge_services.indexing_service import IndexingService
-from tables.services.trigger_spec import TriggerSpec
-
-from django_filters.rest_framework import DjangoFilterBackend
-
+from tables.filters import SessionFilter
+from tables.import_export.enums import EntityType
+from tables.import_export.export_format_strategies import (
+    CsvExportFormatStrategy,
+    JsonExportFormatStrategy,
+)
+from tables.import_export.export_tabular_projections.session import (
+    SessionTabularProjection,
+)
 from tables.models import (
-    Session,
     Graph,
     PythonCode,
-    SessionWarningMessage,
+    Session,
     SessionStorageFile,
+    SessionWarningMessage,
 )
+from tables.models.graph_models import (
+    GraphSessionMessage,
+    PythonNode,
+)
+from tables.models.knowledge_models import GraphRag, NaiveRag
+from tables.models.rbac_models import ApiKey
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.model_serializers import (
-    SessionSerializer,
     SessionLightSerializer,
+    SessionSerializer,
     TelegramTriggerNodeDataFieldsSerializer,
 )
-from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.serializers.quickstart_serializers import (
+    QuickstartConfigSerializer,
+    QuickstartSerializer,
+    QuickstartStatusSerializer,
+)
 from tables.serializers.serializers import (
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
-    RunSessionSerializer,
     RunPythonCodeSerializer,
+    RunSessionSerializer,
     SessionExportAllSerializer,
 )
-from tables.services.notification_email_sender import NotificationEmailSender
-from tables.throttles import NotifyEmailThrottle
-
-from tables.serializers.quickstart_serializers import (
-    QuickstartSerializer,
-    QuickstartConfigSerializer,
-    QuickstartStatusSerializer,
-)
-from tables.filters import SessionFilter
+from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
-from tables.import_export.enums import EntityType
-from rest_framework.permissions import IsAuthenticated
-from tables.views.mixins import (
-    OrgScopedChildViewSetMixin,
-    OrgScopedServiceViewSetMixin,
-)
-from tables.models.knowledge_models import NaiveRag, GraphRag
-from tables.models.rbac_models import ApiKey
+from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.notification_email_sender import NotificationEmailSender
+from tables.services.quickstart_service import QuickstartService
+from tables.services.rbac.org_context_service import OrgContextService
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.permission_assert import assert_org_permission
 from tables.services.rbac.permissions import (
     HasOrgPermission,
     IsSuperadmin,
 )
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.session_access import assert_session_org_access
-from tables.services.rbac.permission_assert import assert_org_permission
-from tables.services.rbac.org_context_service import OrgContextService
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.import_export.export_format_strategies import (
-    JsonExportFormatStrategy,
-    CsvExportFormatStrategy,
-)
-from tables.import_export.export_tabular_projections.session import (
-    SessionTabularProjection,
-)
-
+from tables.services.realtime_service import RealtimeService
+from tables.services.redis_service import RedisService
+from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.secrets import SecretResolver
+from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 from tables.swagger_schemas.default_config_schemas import (
+    QUICKSTART_APPLY_POST,
     QUICKSTART_GET,
     QUICKSTART_POST,
-    QUICKSTART_APPLY_POST,
 )
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
-    PROCESS_RAG_INDEXING_POST,
     CANCEL_RAG_INDEXING_DELETE,
+    PROCESS_RAG_INDEXING_POST,
+)
+from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
+from tables.swagger_schemas.python_node_test_mode_schema import (
+    LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
@@ -123,9 +109,15 @@ from tables.swagger_schemas.sessions_schema import (
 from tables.swagger_schemas.telegram_schemas import (
     TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET,
 )
-from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
-from .default_config import *
+from tables.throttles import NotifyEmailThrottle
+from tables.utils.telegram_fields import load_telegram_trigger_fields
+from tables.views.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
+from utils.logger import logger
 
+from .default_config import *
 
 MAX_TOTAL_FILE_SIZE = 15 * 1024 * 1024  # 15MB
 
@@ -209,7 +201,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph", "trigger").filter(
+        qs = Session.objects.select_related("graph", "trigger", "principal").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -238,9 +230,7 @@ class SessionViewSet(
         "Includes messages from all nested sub-sessions.",
         parameters=[_FORMAT_QUERY_PARAM],
         responses={
-            200: OpenApiResponse(
-                description="File download (application/json or text/csv)."
-            ),
+            200: OpenApiResponse(description="File download (application/json or text/csv)."),
         },
     )
     @action(detail=True, methods=["get"])
@@ -254,9 +244,7 @@ class SessionViewSet(
         request=BulkExportSerializer,
         parameters=[_FORMAT_QUERY_PARAM],
         responses={
-            200: OpenApiResponse(
-                description="File download (application/json or text/csv)."
-            ),
+            200: OpenApiResponse(description="File download (application/json or text/csv)."),
             400: OpenApiResponse(
                 description="Invalid request body or one or more session IDs do not exist."
             ),
@@ -286,9 +274,7 @@ class SessionViewSet(
         request=SessionExportAllSerializer,
         parameters=[_FORMAT_QUERY_PARAM],
         responses={
-            200: OpenApiResponse(
-                description="File download (application/json or text/csv)."
-            ),
+            200: OpenApiResponse(description="File download (application/json or text/csv)."),
             400: OpenApiResponse(description="Invalid request body."),
             404: OpenApiResponse(description="No sessions match the given filters."),
         },
@@ -302,9 +288,7 @@ class SessionViewSet(
         active_org_id = self.get_active_org_id()
         if (
             "graph_id" in data
-            and not Graph.objects.filter(
-                id=data["graph_id"], org_id=active_org_id
-            ).exists()
+            and not Graph.objects.filter(id=data["graph_id"], org_id=active_org_id).exists()
         ):
             raise NotFound(f"Graph {data['graph_id']} not found")
 
@@ -374,28 +358,19 @@ class SessionViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        with transaction.atomic():
-            session_list = Session.objects.filter(
-                id__in=ids, graph__org_id=self.get_active_org_id()
-            )
-            deleted_count = session_list.count()
-            for session in session_list:
-                session.delete()
+        _, per_model = Session.objects.filter(
+            id__in=ids, graph__org_id=self.get_active_org_id()
+        ).delete()
+        deleted_count = per_model.get("tables.Session", 0)
 
-        return Response(
-            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
-        )
+        return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
 
     @extend_schema(**SESSION_WARNINGS_GET)
     @action(detail=True, methods=["get"], url_path="warnings")
     def get_session_warnings(self, request, pk=None):
         session = self.get_object()
 
-        warning = (
-            SessionWarningMessage.objects.filter(session=session)
-            .values("messages")
-            .first()
-        )
+        warning = SessionWarningMessage.objects.filter(session=session).values("messages").first()
 
         return Response(warning, status=status.HTTP_200_OK)
 
@@ -422,11 +397,7 @@ class RunSession(APIView):
 
         if got_mb > max_mb:
             return Response(
-                {
-                    "files": [
-                        f"Total files size exceeds {max_mb:.2f} MB (got {got_mb:.2f} MB)"
-                    ]
-                },
+                {"files": [f"Total files size exceeds {max_mb:.2f} MB (got {got_mb:.2f} MB)"]},
                 status=400,
             )
 
@@ -476,22 +447,21 @@ class RunSession(APIView):
             if parent_session_id is not None
             else TriggerSpec.manual()
         )
-
+        api_key = request.auth if isinstance(request.auth, ApiKey) else None
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
                 graph_id=graph_id,
                 variables=variables,
                 user=request.user,
+                api_key=api_key,
                 trigger=trigger,
                 parent_session_id=parent_session_id,
                 token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
-            logger.exception(
-                f"Error occurred while starting session for graph_id {graph_id}"
-            )
+            logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
 
         return Response(
@@ -512,7 +482,7 @@ class RunSession(APIView):
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
-        session_id = kwargs.get("session_id", None)
+        session_id = kwargs.get("session_id")
         if session_id is None:
             return Response("Session id not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -530,7 +500,7 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs.get("session_id", None)
+        session_id = kwargs.get("session_id")
         if session_id is None:
             return Response("Session id is missing", status=status.HTTP_404_NOT_FOUND)
 
@@ -583,9 +553,7 @@ class NotifyEmailView(APIView):
         subject = serializer.validated_data["subject"]
         message = serializer.validated_data["message"]
 
-        sent, error = notification_email_sender.send(
-            to=to_email, subject=subject, message=message
-        )
+        sent, error = notification_email_sender.send(to=to_email, subject=subject, message=message)
         if not sent:
             return Response(
                 {"message": f"Failed to send notification email: {error}"},
@@ -609,9 +577,7 @@ class RunPythonCodeAPIView(APIView):
         # TOOLS.UPDATE. The code must also be visible to the active org, so a
         # caller cannot run another org's code by passing its id (rejected like
         # a non-existent pk — existence never leaks).
-        org_id = self._org_context.resolve(
-            request=request, view_kwargs=getattr(self, "kwargs", {})
-        )
+        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
         assert_org_permission(
             user=request.user,
             org_id=org_id,
@@ -622,11 +588,7 @@ class RunPythonCodeAPIView(APIView):
             self._python_code_visible_q(org_id), pk=python_code.pk
         ).exists():
             raise ValidationError(
-                {
-                    "python_code_id": [
-                        f'Invalid pk "{python_code.pk}" - object does not exist.'
-                    ]
-                }
+                {"python_code_id": [f'Invalid pk "{python_code.pk}" - object does not exist.']}
             )
 
         execution_id = run_python_code_service.run_code(
@@ -684,10 +646,7 @@ class InitRealtimeAPIView(APIView):
             config,
         )
 
-        if (
-            isinstance(request.auth, ApiKey)
-            and request.auth.key_type == ApiKey.KeyType.SYSTEM
-        ):
+        if isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM:
             # Trusted internal caller (realtime's Twilio MediaStream bridge, see
             # _voice_stream_handler) has no end-user session and therefore no
             # X-Organization-Id to send. It already resolved the agent definition
@@ -707,9 +666,7 @@ class InitRealtimeAPIView(APIView):
             # through to the else branch below, which resolves org from
             # X-Organization-Id / the key owner's membership and enforces
             # AGENTS.READ normally — same as a JWT session.
-            agent_definition = AgentDefinition.objects.filter(
-                pk=agent_definition_id
-            ).first()
+            agent_definition = AgentDefinition.objects.filter(pk=agent_definition_id).first()
             if agent_definition is None:
                 raise ValidationError(
                     {
@@ -737,11 +694,7 @@ class InitRealtimeAPIView(APIView):
             # Browser /chats flow: a real authenticated user (JWT session or
             # USER-type ApiKey) is making this request — attribute the
             # resulting RealtimeSessionItem rows to them via created_by.
-            user_id = (
-                request.user.id
-                if getattr(request.user, "is_authenticated", False)
-                else None
-            )
+            user_id = request.user.id if getattr(request.user, "is_authenticated", False) else None
 
         if not AgentDefinition.objects.filter(
             pk=agent_definition_id, organization_id=org_id
@@ -765,9 +718,7 @@ class InitRealtimeAPIView(APIView):
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
         else:
-            return Response(
-                data={"connection_key": connection_key}, status=status.HTTP_201_CREATED
-            )
+            return Response(data={"connection_key": connection_key}, status=status.HTTP_201_CREATED)
 
 
 class QuickstartView(APIView):
@@ -782,15 +733,11 @@ class QuickstartView(APIView):
 
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
-        org_id = self._org_context.resolve(
-            request=request, view_kwargs=getattr(self, "kwargs", {})
-        )
+        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
-            is_synced = (
-                quickstart_service.is_synced(last_config) if last_config else False
-            )
+            is_synced = quickstart_service.is_synced(last_config) if last_config else False
 
             data = QuickstartStatusSerializer(
                 {
@@ -802,7 +749,7 @@ class QuickstartView(APIView):
             return Response(data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error getting quickstart status: {str(e)}")
+            logger.error(f"Error getting quickstart status: {e!s}")
             return Response(
                 data={"detail": "Failed to retrieve quickstart status"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -812,17 +759,13 @@ class QuickstartView(APIView):
     def post(self, request):
         # The request must be in context: OrgScopedPrimaryKeyRelatedField reads the
         # active org from it and denies every pk without it (fail-safe).
-        serializer = QuickstartSerializer(
-            data=request.data, context={"request": request}
-        )
+        serializer = QuickstartSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
 
         provider = serializer.validated_data["provider"]
         api_key = serializer.validated_data.get("api_key")
         secret = serializer.validated_data.get("api_key_secret_id")
-        org_id = self._org_context.resolve(
-            request=request, view_kwargs=getattr(self, "kwargs", {})
-        )
+        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
         assert_org_permission(
             user=request.user,
             org_id=org_id,
@@ -876,9 +819,7 @@ class QuickstartApplyView(APIView):
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        org_id = self._org_context.resolve(
-            request=request, view_kwargs=getattr(self, "kwargs", {})
-        )
+        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
         last = quickstart_service.get_last_quickstart(org_id)
         if not last:
             return Response(
@@ -964,7 +905,7 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
 
 
 class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
-    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_MODELS: ClassVar[dict] = {"naive": NaiveRag, "graph": GraphRag}
     _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**CANCEL_RAG_INDEXING_DELETE)

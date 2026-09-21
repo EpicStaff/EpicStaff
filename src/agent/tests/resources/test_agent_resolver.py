@@ -10,7 +10,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.exceptions import (
     AgentServiceError,
     McpToolError,
@@ -47,7 +46,6 @@ from shared.models.tools import (
     PythonCodeData,
     PythonCodeToolData,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -411,9 +409,7 @@ async def test_knowledge_sink_threaded_to_registry_builder():
 
     await _resolver().resolve(agent, request, knowledge_sink=sink)
 
-    sink.register_knowledge_tool.assert_called_once_with(
-        "search_test_knowledge_base_naive"
-    )
+    sink.register_knowledge_tool.assert_called_once_with("search_test_knowledge_base_naive")
 
 
 async def test_resolve_without_knowledge_sink_still_works():
