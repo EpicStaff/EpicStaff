@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
@@ -20,6 +21,9 @@ export class DecisionTableNodeComponent {
     @Output() actualClick = new EventEmitter<MouseEvent>();
 
     private flowService = inject(FlowService);
+
+    public readonly headerHeightPx = DT_HEADER_HEIGHT;
+    public readonly rowHeightPx = DT_ROW_HEIGHT;
 
     public getPortConnections(portId: CustomPortId): CustomPortId[] {
         return this.flowService.portConnectionsMap()[portId] ?? ['__none__'];

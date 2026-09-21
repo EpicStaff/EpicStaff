@@ -1,18 +1,23 @@
-<!-- Node badge number -->
+<!-- Node badge number: EDGE has no header row to embed into, so it keeps the outside treatment. Other types render their badge inside .header below. -->
 @if (
     !noteNode &&
     node.nodeNumber != null &&
     node.type !== NodeType.CLASSIFICATION_TABLE &&
     node.type !== NodeType.START &&
-    node.type !== NodeType.END
+    node.type !== NodeType.END &&
+    node.type === NodeType.EDGE
 ) {
     <div class="node-name-wrapper">
         <div class="node-name-label">#{{ node.nodeNumber }}</div>
     </div>
 }
 
-<!-- Control buttons positioned above the node -->
-@if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
+<!-- Control buttons positioned above the node: only NOTE/EDGE still use this outside bar, since they have no header row. Other types render actions inside .header below. -->
+@if (
+    node.type !== NodeType.TABLE &&
+    node.type !== NodeType.CLASSIFICATION_TABLE &&
+    (node.type === NodeType.NOTE || node.type === NodeType.EDGE)
+) {
     <div
         class="actions"
         (mousedown)="$event.stopPropagation()"
@@ -28,17 +33,15 @@
                 <app-svg-icon icon="edit"></app-svg-icon>
             </div>
         }
-        <!-- Delete Button -->
-        @if (node.type !== NodeType.START) {
-            <div
-                class="action-button delete-button"
-                matTooltip="Delete node"
-                matTooltipPosition="above"
-                (click)="onDeleteClick($event)"
-            >
-                <i class="ti ti-trash"></i>
-            </div>
-        }
+        <!-- Delete Button (NOTE/EDGE only here - neither is ever START) -->
+        <div
+            class="action-button delete-button"
+            matTooltip="Delete node"
+            matTooltipPosition="above"
+            (click)="onDeleteClick($event)"
+        >
+            <i class="ti ti-trash"></i>
+        </div>
     </div>
 }
 
@@ -83,6 +86,8 @@
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
+        [class.has-number-chip]="hasNumberChip"
+        [class.has-delete-chip]="hasDeleteChip"
         appClickOrDrag
         (actualClick)="onEditClick()"
     >
@@ -152,6 +157,32 @@
                     </div>
                 }
             </div>
+            <!-- Action bar above the node box, hover/selected-only: #N chip at left, delete chip at right -->
+            @if (hasNumberChip || hasDeleteChip) {
+                <div class="node-action-bar">
+                    @if (hasNumberChip) {
+                        <div class="node-number-badge">#{{ node.nodeNumber }}</div>
+                    }
+                    <!-- Stops mousedown/mouseup/click so it never bubbles into appClickOrDrag's actualClick (mouseup) and opens the panel. -->
+                    @if (hasDeleteChip) {
+                        <div
+                            class="actions"
+                            (mousedown)="$event.stopPropagation()"
+                            (mouseup)="$event.stopPropagation()"
+                            (click)="$event.stopPropagation()"
+                        >
+                            <div
+                                class="action-button delete-button"
+                                matTooltip="Delete node"
+                                matTooltipPosition="above"
+                                (click)="onDeleteClick($event)"
+                            >
+                                <i class="ti ti-trash"></i>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
         }
     </div>
 </ng-template>
@@ -180,6 +211,33 @@
     @default {
         <ng-container *ngTemplateOutlet="interactiveNode"></ng-container>
     }
+}
+<!-- Table roots draw their outline as an inset box-shadow (no header row), so they get their own action bar here instead of inside .interactive-node-body. -->
+@if (
+    (node.type === NodeType.TABLE || node.type === NodeType.CLASSIFICATION_TABLE) && (hasNumberChip || hasDeleteChip)
+) {
+    <div class="node-action-bar node-action-bar--table">
+        @if (hasNumberChip) {
+            <div class="node-number-badge">#{{ node.nodeNumber }}</div>
+        }
+        @if (hasDeleteChip) {
+            <div
+                class="actions"
+                (mousedown)="$event.stopPropagation()"
+                (mouseup)="$event.stopPropagation()"
+                (click)="$event.stopPropagation()"
+            >
+                <div
+                    class="action-button delete-button"
+                    matTooltip="Delete node"
+                    matTooltipPosition="above"
+                    (click)="onDeleteClick($event)"
+                >
+                    <i class="ti ti-trash"></i>
+                </div>
+            </div>
+        }
+    </div>
 }
 @if (showVariables) {
     <app-flow-node-variables-overlay

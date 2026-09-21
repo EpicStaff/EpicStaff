@@ -5,8 +5,10 @@ import { ConnectionModel } from '../models/connection.model';
 import { NodeModel } from '../models/node.model';
 import { ViewPort } from '../models/port.model';
 import { computeBackwardArcPoints } from './backward-arc.path-builder';
+import { getRowPortCenterY, resolveRowIndex } from './cdt-row-snap.util';
 import { isBackwardConnection } from './helpers';
 import { getCollisionBounds } from './node-placement.utils';
+import { CDT_INPUT_PORT_CENTER_Y_OFFSET, DT_INPUT_PORT_CENTER_Y_OFFSET } from './node-size.util';
 
 const GAP = 40;
 const ROUTING_PAD = 15;
@@ -30,39 +32,20 @@ export function getPortPosition(node: NodeModel, port: ViewPort | undefined): IP
 
     let result: IPoint;
 
-    if (node.type === NodeType.TABLE && port) {
-        const headerH = 50;
-        const bodyH = height - headerH;
-
-        const conditionPorts = (node.ports ?? []).filter((p) => p.role?.startsWith('decision-out-'));
-        const totalOutputRows = conditionPorts.length + 2; // condition rows + default + error
-        const rowH = bodyH / totalOutputRows;
-
-        let portY = y + height / 2;
-
-        if (port.id?.includes('table-in')) {
-            portY = y + headerH + bodyH / 2;
-            result = { x, y: portY };
-        } else if (port.role?.startsWith('decision-out-')) {
-            const conditionIndex = conditionPorts.findIndex((p) => p.id === port.id);
-            const rowIndex = conditionIndex >= 0 ? conditionIndex : 0;
-            portY = y + headerH + rowH * (rowIndex + 0.5);
-            result = { x: x + width, y: portY };
-        } else if (port.id?.includes('decision-default')) {
-            portY = y + headerH + rowH * (conditionPorts.length + 0.5) - 10;
-            result = { x: x + width, y: portY };
-        } else if (port.id?.includes('decision-error')) {
-            portY = y + headerH + rowH * (conditionPorts.length + 1.5) - 6;
-            result = { x: x + width, y: portY };
+    if ((node.type === NodeType.TABLE || node.type === NodeType.CLASSIFICATION_TABLE) && port) {
+        // Both table types' input port renders near the top (`.input-port-wrapper`), not at the
+        // header's centre. Output-port rows resolve via `resolveRowIndex`/`getRowPortCenterY`
+        // (cdt-row-snap.util.ts) — the single shared source of truth for "which row is this".
+        if (port.role === 'table-in') {
+            const inputOffset =
+                node.type === NodeType.TABLE ? DT_INPUT_PORT_CENTER_Y_OFFSET : CDT_INPUT_PORT_CENTER_Y_OFFSET;
+            result = { x, y: y + inputOffset };
         } else {
+            const rowIndex = resolveRowIndex(node, port.role);
             result =
-                port.position === 'right'
-                    ? { x: x + width, y: y + height / 2 }
-                    : port.position === 'top'
-                      ? { x: x + width / 2, y }
-                      : port.position === 'bottom'
-                        ? { x: x + width / 2, y: y + height }
-                        : { x, y: y + height / 2 };
+                rowIndex !== null
+                    ? { x: x + width, y: getRowPortCenterY(node, rowIndex) }
+                    : { x: x + width, y: y + height / 2 };
         }
     } else {
         switch (port?.position) {

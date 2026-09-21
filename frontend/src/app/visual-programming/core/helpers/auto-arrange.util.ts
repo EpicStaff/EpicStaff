@@ -3,6 +3,7 @@ import { IPoint } from '@foblex/2d';
 import { NodeType } from '../enums/node-type';
 import { ConnectionModel } from '../models/connection.model';
 import { NodeModel } from '../models/node.model';
+import { getRowPortCenterYFromTop, resolveRowIndex, RowBasedTableNodeModel } from './cdt-row-snap.util';
 import { snapToGrid } from './node-placement.utils';
 
 // Horizontal gap between a layer's right edge and the next layer's left edge
@@ -23,11 +24,15 @@ const COMPONENT_VERTICAL_GAP = 500;
 
 /**
  * Returns a numeric sort key for a port role so that ownedChildren are placed
- * in the same top-to-bottom order as the parent's output ports.
- * For Decision-Table condition ports the key equals the condition index (1-based);
- * for all other ports returns 0 (stable — no reordering).
+ * in the same top-to-bottom order as the parent's output ports. When the parent is a
+ * row-based table (plain DT or CDT), delegates to `resolveRowIndex` for the rendered row
+ * order (routes/groups, then Default, then Error); falls through to the legacy rules otherwise.
  */
-function getPortSortKey(portRole: string): number {
+function getPortSortKey(portRole: string, parentNode?: NodeModel): number {
+    if (parentNode?.type === NodeType.CLASSIFICATION_TABLE || parentNode?.type === NodeType.TABLE) {
+        const rowIndex = resolveRowIndex(parentNode, portRole);
+        if (rowIndex !== null) return rowIndex;
+    }
     if (portRole.startsWith('decision-out-')) {
         const suffix = portRole.slice('decision-out-'.length);
         const m = suffix.match(/condition-(\d+)$/i);
@@ -37,6 +42,17 @@ function getPortSortKey(portRole: string): number {
     if (portRole === 'decision-default') return 100_000;
     if (portRole === 'decision-error') return 100_001;
     return 0;
+}
+
+// The port ID's slug (e.g. `decision-out-condition-1`) is normalized from the role
+// (e.g. `decision-out-Condition 1`, see helpers.ts) — they are NOT the same string, so a port's
+// real role must come from the source node's ports array, not from slicing the connection's id.
+function resolveSourcePortRole(conn: ConnectionModel, nodeMap: Map<string, NodeModel>): string {
+    const sourceNode = nodeMap.get(conn.sourceNodeId);
+    const portRole = sourceNode?.ports?.find((p) => p.id === conn.sourcePortId)?.role;
+    if (portRole !== undefined) return portRole;
+    const sep = conn.sourcePortId.indexOf('_');
+    return sep !== -1 ? conn.sourcePortId.slice(sep + 1) : '';
 }
 
 function nHeight(n: NodeModel | undefined): number {
@@ -93,6 +109,56 @@ function buildUndirectedComponents(nodes: NodeModel[], connections: ConnectionMo
         groups.get(root)!.push(node.id);
     }
     return [...groups.values()];
+}
+
+/**
+ * Aligns a row-based table's (DT or CDT) owned children to the rows feeding them (offset from
+ * the table's own top). Only direct-child heights bound feasibility — descendants live in later
+ * layers and can't collide with these siblings; the de-overlap pass below handles descendant
+ * crowding instead.
+ */
+function tryAlignRowBasedChildrenToRows(
+    tableId: string,
+    tableNode: RowBasedTableNodeModel,
+    children: string[],
+    connections: ConnectionModel[],
+    nodeMap: Map<string, NodeModel>
+): { offsets: Map<string, number>; span: number } | null {
+    const childOffsets = new Map<string, number>();
+
+    for (const childId of children) {
+        const rowOffsets: number[] = [];
+        for (const conn of connections) {
+            if (conn.sourceNodeId !== tableId || conn.targetNodeId !== childId) continue;
+            const portRole = resolveSourcePortRole(conn, nodeMap);
+            const rowIndex = resolveRowIndex(tableNode, portRole);
+            if (rowIndex === null) return null;
+            rowOffsets.push(getRowPortCenterYFromTop(0, rowIndex, tableNode.type));
+        }
+        if (rowOffsets.length === 0) return null;
+
+        const meanCentreOffset = rowOffsets.reduce((sum, o) => sum + o, 0) / rowOffsets.length;
+        const childHeight = nHeight(nodeMap.get(childId));
+        const quantizedTopOffset = snapToGrid(meanCentreOffset - childHeight / 2);
+        childOffsets.set(childId, quantizedTopOffset + childHeight / 2);
+    }
+
+    const ordered = [...children].sort((a, b) => childOffsets.get(a)! - childOffsets.get(b)!);
+    for (let i = 0; i < ordered.length - 1; i++) {
+        const heightA = nHeight(nodeMap.get(ordered[i]));
+        const heightB = nHeight(nodeMap.get(ordered[i + 1]));
+        const gap = childOffsets.get(ordered[i + 1])! - childOffsets.get(ordered[i])!;
+        if (gap < (heightA + heightB) / 2) return null;
+    }
+
+    const tableHeight = nHeight(tableNode);
+    let halfExtent = tableHeight / 2;
+    for (const childId of children) {
+        const height = nHeight(nodeMap.get(childId));
+        halfExtent = Math.max(halfExtent, Math.abs(childOffsets.get(childId)! - tableHeight / 2) + height / 2);
+    }
+
+    return { offsets: childOffsets, span: halfExtent * 2 };
 }
 
 /**
@@ -190,24 +256,30 @@ function layoutSingleComponent(
         const tgtL = layerMap.get(conn.targetNodeId);
         if (srcL === undefined || tgtL === undefined || srcL >= tgtL) continue;
 
-        allParents.get(conn.targetNodeId)?.push(conn.sourceNodeId);
+        // A node wired twice from the SAME parent (e.g. CDT Default + Error both → End) must not
+        // be misclassified as a genuine merge node — only distinct source ids count as parents.
+        const parentsOfTarget = allParents.get(conn.targetNodeId);
+        if (parentsOfTarget && !parentsOfTarget.includes(conn.sourceNodeId)) {
+            parentsOfTarget.push(conn.sourceNodeId);
+        }
 
         if (!primaryParent.has(conn.targetNodeId)) {
             primaryParent.set(conn.targetNodeId, conn.sourceNodeId);
             ownedChildren.get(conn.sourceNodeId)!.push(conn.targetNodeId);
             // Record the source port role so we can sort children in port order
-            const sep = conn.sourcePortId.indexOf('_');
-            if (sep !== -1) childSourcePortRole.set(conn.targetNodeId, conn.sourcePortId.slice(sep + 1));
+            childSourcePortRole.set(conn.targetNodeId, resolveSourcePortRole(conn, nodeMap));
         }
     }
 
     // Sort each parent's children by port order to prevent edge crossings.
     // For Decision-Table nodes this maps condition index → vertical position.
-    for (const [, children] of ownedChildren) {
+    for (const [parentId, children] of ownedChildren) {
         if (children.length < 2) continue;
+        const parentNode = nodeMap.get(parentId);
         children.sort(
             (a, b) =>
-                getPortSortKey(childSourcePortRole.get(a) ?? '') - getPortSortKey(childSourcePortRole.get(b) ?? '')
+                getPortSortKey(childSourcePortRole.get(a) ?? '', parentNode) -
+                getPortSortKey(childSourcePortRole.get(b) ?? '', parentNode)
         );
     }
 
@@ -215,11 +287,24 @@ function layoutSingleComponent(
     // subtreeSpan[id] = the minimum vertical space (px) required to render the
     // node together with its entire owned subtree without overlapping.
     const subtreeSpan = new Map<string, number>();
+    const rowAlignedChildOffsets = new Map<string, Map<string, number>>();
     for (const nodeId of [...bfsOrder].reverse()) {
         const h = nHeight(nodeMap.get(nodeId));
         const children = ownedChildren.get(nodeId) ?? [];
         if (children.length === 0) {
             subtreeSpan.set(nodeId, h);
+            continue;
+        }
+
+        const node = nodeMap.get(nodeId);
+        const alignment =
+            node?.type === NodeType.CLASSIFICATION_TABLE || node?.type === NodeType.TABLE
+                ? tryAlignRowBasedChildrenToRows(nodeId, node, children, connections, nodeMap)
+                : null;
+
+        if (alignment) {
+            rowAlignedChildOffsets.set(nodeId, alignment.offsets);
+            subtreeSpan.set(nodeId, Math.max(h, alignment.span));
         } else {
             const childrenTotal =
                 children.reduce((sum, cid) => sum + (subtreeSpan.get(cid) ?? 60), 0) +
@@ -231,6 +316,8 @@ function layoutSingleComponent(
     // ── Pass 3: top-down Y assignment ──────────────────────────────────────
     // centerYMap stores the vertical centre of each node.
     const centerYMap = new Map<string, number>();
+    // Nodes pinned to a row-based table's row — the de-overlap pass below must never move these.
+    const pinnedNodeIds = new Set<string>();
 
     // Layer-0 roots: stacked top-to-bottom, each allocated its full subtree span.
     {
@@ -262,6 +349,17 @@ function layoutSingleComponent(
             }
 
             const parentCY = centerYMap.get(primary)!;
+
+            // Row-aligned table child: place it directly at its recorded row offset from the
+            // table's top instead of the uniform sibling distribution below.
+            const rowOffset = rowAlignedChildOffsets.get(primary)?.get(nodeId);
+            if (rowOffset !== undefined) {
+                const tableHeight = nHeight(nodeMap.get(primary));
+                centerYMap.set(nodeId, parentCY - tableHeight / 2 + rowOffset);
+                pinnedNodeIds.add(nodeId);
+                continue;
+            }
+
             const siblings = ownedChildren.get(primary) ?? [];
 
             if (siblings.length === 1) {
@@ -297,6 +395,29 @@ function layoutSingleComponent(
         }
     }
 
+    // ── Per-layer de-overlap ─────────────────────────────────────────────────
+    // Row-alignment sizes a table only for its direct children, not their descendants, so a deep
+    // owned subtree can land in the same layer as an unrelated node. Sweep top-to-bottom
+    // enforcing SIBLING_GAP; pinned (row-aligned) nodes never move — resume from their bottom.
+    for (const layer of sortedLayers) {
+        const ids = [...(layerGroups.get(layer) ?? [])].sort(
+            (a, b) => (centerYMap.get(a) ?? 0) - (centerYMap.get(b) ?? 0)
+        );
+        let minAllowedTop = -Infinity;
+        for (const id of ids) {
+            const h = nHeight(nodeMap.get(id));
+            if (pinnedNodeIds.has(id)) {
+                minAllowedTop = centerYMap.get(id)! + h / 2 + SIBLING_GAP;
+                continue;
+            }
+            const top = centerYMap.get(id)! - h / 2;
+            if (top < minAllowedTop) {
+                centerYMap.set(id, minAllowedTop + h / 2);
+            }
+            minAllowedTop = centerYMap.get(id)! + h / 2 + SIBLING_GAP;
+        }
+    }
+
     // ── Safety: shift all Y up so the topmost node starts at startY ──
     // The compact top-pair placement can push subtree children above 0 in deep graphs.
     {
@@ -327,13 +448,38 @@ function layoutSingleComponent(
     // Snap the PORT Y (not the top-left) to the 20 px grid so that:
     //  • same-cy nodes share the same snapped port → straight horizontal arrows
     //  • different-cy nodes have port differences that are multiples of 20 px → clean grid-aligned steps
+    // A row-based table's port isn't at its centre but at its first row — snap THAT instead, or
+    // every row (a multiple of its row height away) lands 10px off the grid every ordinary node uses.
     const positions = new Map<string, IPoint>();
     for (const [nodeId, cy] of centerYMap) {
         const h = nHeight(nodeMap.get(nodeId));
         const layer = layerMap.get(nodeId) ?? 0;
         const x = layerX.get(layer) ?? CANVAS_START_X;
-        const portY = snapToGrid(cy); // port snapped to grid
-        positions.set(nodeId, { x: snapToGrid(x), y: portY - Math.round(h / 2) });
+        const nodeType = nodeMap.get(nodeId)?.type;
+        let y: number;
+        if (nodeType === NodeType.CLASSIFICATION_TABLE || nodeType === NodeType.TABLE) {
+            const firstRowPortOffset = getRowPortCenterYFromTop(0, 0, nodeType);
+            y = snapToGrid(cy - h / 2 + firstRowPortOffset) - firstRowPortOffset;
+        } else {
+            y = snapToGrid(cy) - Math.round(h / 2);
+        }
+        positions.set(nodeId, { x: snapToGrid(x), y });
+    }
+
+    // A pinned child's raw centre is the table's raw centre (unsnapped) plus a fixed offset, so
+    // snapping each of the two independently can still disagree by up to 10px when the table's
+    // and the child's heights fall on different halves of the 20px grid. Re-derive the child's
+    // top directly from the table's now-final (snapped) top instead: the offset was already
+    // grid-quantized above, so integer-plus-integer here can never need rounding.
+    for (const [parentId, offsets] of rowAlignedChildOffsets) {
+        const tablePos = positions.get(parentId);
+        if (!tablePos) continue;
+        for (const [childId, centreOffset] of offsets) {
+            const existing = positions.get(childId);
+            if (!existing) continue;
+            const topOffset = centreOffset - nHeight(nodeMap.get(childId)) / 2;
+            positions.set(childId, { ...existing, y: tablePos.y + topOffset });
+        }
     }
 
     // ── Disconnected nodes within the component (BFS stragglers, e.g. from cycles) ──

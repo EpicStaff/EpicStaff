@@ -211,6 +211,14 @@ export class FlowBaseNodeComponent {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
     }
 
+    public get hasNumberChip(): boolean {
+        return this.node.nodeNumber != null && this.node.type !== NodeType.START && this.node.type !== NodeType.END;
+    }
+
+    public get hasDeleteChip(): boolean {
+        return this.node.type !== NodeType.START;
+    }
+
     private get assignedAgentDefinitionId(): number | null {
         return this.agentNode?.data.agent_definition ?? this.taskNode?.data.agent_definition ?? null;
     }

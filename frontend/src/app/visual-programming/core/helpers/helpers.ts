@@ -42,6 +42,12 @@ export function parsePortId(portId: string): { nodeId: string; portRole: string 
     return { nodeId, portRole };
 }
 
+// Single source of truth for the id-slug derived from a port's display name (group name,
+// route code). Port ids are persisted in saved flows — do not change this behaviour.
+export function slugifyPortName(value: string): string {
+    return value.toLowerCase().replace(/\s+/g, '-');
+}
+
 export function getPortsForType(nodeType: NodeType): BasePort[] {
     switch (nodeType) {
         case NodeType.TASK:
@@ -295,7 +301,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
 
     const defaultOutputConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'output');
     const outputPorts: ViewPort[] = validGroups.map((group) => {
-        const normalizedGroupName = group.group_name.toLowerCase().replace(/\s+/g, '-');
+        const normalizedGroupName = slugifyPortName(group.group_name);
 
         return {
             ...(defaultOutputConfig ?? {
@@ -512,7 +518,7 @@ export function generatePortsForClassificationDecisionTableNode(
     const defaultOutputConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'output');
 
     const outputPorts: ViewPort[] = Array.from(uniqueRouteCodes.keys()).map((routeCode) => {
-        const normalizedRouteCode = routeCode.toLowerCase().replace(/\s+/g, '-');
+        const normalizedRouteCode = slugifyPortName(routeCode);
 
         return {
             ...(defaultOutputConfig ?? {

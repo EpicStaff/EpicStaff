@@ -2,7 +2,7 @@ import { IPoint } from '@foblex/2d';
 
 import { NodeType } from '../enums/node-type';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../models/node.model';
-import { getClassificationDecisionTableVisualHeight, getDecisionTableVisualHeight } from './node-size.util';
+import { getClassificationTableVisualHeight, getDecisionTableVisualHeight } from './node-size.util';
 
 export interface CollisionBounds {
     width: number;
@@ -35,7 +35,7 @@ export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data
             const conditionGroups = (node as DecisionTableNodeModel).data.table?.condition_groups ?? [];
             return {
                 width: node.size.width + 40,
-                height: getDecisionTableVisualHeight(conditionGroups) + 68,
+                height: getDecisionTableVisualHeight(conditionGroups) + 30,
                 offsetX: -20,
                 offsetY: -15,
             };
@@ -45,7 +45,7 @@ export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data
             const conditionGroups = (node as ClassificationDecisionTableNodeModel).data.table?.condition_groups ?? [];
             return {
                 width: node.size.width + 40,
-                height: getClassificationDecisionTableVisualHeight(conditionGroups) + 30,
+                height: getClassificationTableVisualHeight(conditionGroups) + 30,
                 offsetX: -20,
                 offsetY: -15,
             };
@@ -61,11 +61,38 @@ export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data
     }
 }
 
-export function findNearestFreePosition(proposed: IPoint, bounds: CollisionBounds, otherNodes: NodeModel[]): IPoint {
-    const overlaps = (pos: IPoint) =>
-        otherNodes.some((n) => rectOverlaps(pos, bounds, n.position, getCollisionBounds(n)));
+/**
+ * A node's true geometric bounds — its real `size`, with no padding/inflation. Unlike
+ * `getCollisionBounds()`, this is only meant for contexts where the user is intentionally
+ * placing a node (e.g. drag-end), so it can end up flush against another node instead of
+ * "bouncing" away from an artificial margin. Node creation/paste must keep using
+ * `getCollisionBounds()` so newly placed nodes still land with breathing room.
+ */
+export function getExactBounds(node: Pick<NodeModel, 'size'>): CollisionBounds {
+    return {
+        width: node.size.width,
+        height: node.size.height,
+        offsetX: 0,
+        offsetY: 0,
+    };
+}
 
-    if (!overlaps(proposed)) return proposed;
+export function hasCollision(
+    pos: IPoint,
+    bounds: CollisionBounds,
+    otherNodes: NodeModel[],
+    getOtherBounds: (node: NodeModel) => CollisionBounds = getCollisionBounds
+): boolean {
+    return otherNodes.some((n) => rectOverlaps(pos, bounds, n.position, getOtherBounds(n)));
+}
+
+export function findNearestFreePosition(
+    proposed: IPoint,
+    bounds: CollisionBounds,
+    otherNodes: NodeModel[],
+    getOtherBounds: (node: NodeModel) => CollisionBounds = getCollisionBounds
+): IPoint {
+    if (!hasCollision(proposed, bounds, otherNodes, getOtherBounds)) return proposed;
 
     const candidates: Array<[number, number]> = [];
     for (let dx = -MAX_SEARCH_RADIUS; dx <= MAX_SEARCH_RADIUS; dx++) {
@@ -81,7 +108,7 @@ export function findNearestFreePosition(proposed: IPoint, bounds: CollisionBound
             x: proposed.x + dx * GRID_CELL_SIZE,
             y: proposed.y + dy * GRID_CELL_SIZE,
         };
-        if (!overlaps(candidate)) return candidate;
+        if (!hasCollision(candidate, bounds, otherNodes, getOtherBounds)) return candidate;
     }
 
     return proposed;

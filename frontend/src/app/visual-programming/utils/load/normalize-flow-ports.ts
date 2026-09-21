@@ -1,6 +1,8 @@
 import { NodeType } from '../../core/enums/node-type';
 import { generatePortsForDecisionTableNode, generatePortsForNode } from '../../core/helpers/helpers';
+import { normalizeTableNodeSize } from '../../core/helpers/node-size.util';
 import { FlowModel } from '../../core/models/flow.model';
+import { NodeModel } from '../../core/models/node.model';
 
 /**
  * Generates ports for any node that has ports === null, and re-generates ports for
@@ -13,13 +15,18 @@ import { FlowModel } from '../../core/models/flow.model';
 export function normalizeFlowPorts(flowState: FlowModel): FlowModel {
     let hasChanges = false;
     const nodes = flowState.nodes.map((node) => {
-        if (node.ports === null) {
+        let workingNode: NodeModel = node;
+
+        if (workingNode.ports === null) {
             hasChanges = true;
-            return { ...node, ports: generatePortsForNode(node.id, node.type, node.data) };
+            workingNode = {
+                ...workingNode,
+                ports: generatePortsForNode(workingNode.id, workingNode.type, workingNode.data),
+            };
         }
 
-        if (node.type === NodeType.TABLE) {
-            const tableData = (node.data as { table?: { condition_groups?: unknown[] } })?.table;
+        if (workingNode.type === NodeType.TABLE) {
+            const tableData = (workingNode.data as { table?: { condition_groups?: unknown[] } })?.table;
             const conditionGroups = (tableData?.condition_groups ?? []) as Parameters<
                 typeof generatePortsForDecisionTableNode
             >[1];
@@ -27,16 +34,36 @@ export function normalizeFlowPorts(flowState: FlowModel): FlowModel {
             // Expected: 1 input + N valid condition outputs + default + error
             const expectedPortCount = 1 + validGroups.length + 2;
 
-            if (node.ports.length !== expectedPortCount) {
+            if (workingNode.ports!.length !== expectedPortCount) {
                 hasChanges = true;
-                return {
-                    ...node,
-                    ports: generatePortsForDecisionTableNode(node.id, conditionGroups),
+                workingNode = {
+                    ...workingNode,
+                    ports: generatePortsForDecisionTableNode(workingNode.id, conditionGroups),
                 };
+            }
+
+            const normalizedSizeNode = normalizeTableNodeSize(workingNode);
+            if (
+                normalizedSizeNode.size?.height !== workingNode.size?.height ||
+                normalizedSizeNode.size?.width !== workingNode.size?.width
+            ) {
+                hasChanges = true;
+                workingNode = normalizedSizeNode;
             }
         }
 
-        return node;
+        if (workingNode.type === NodeType.CLASSIFICATION_TABLE) {
+            const normalizedSizeNode = normalizeTableNodeSize(workingNode);
+            if (
+                normalizedSizeNode.size?.height !== workingNode.size?.height ||
+                normalizedSizeNode.size?.width !== workingNode.size?.width
+            ) {
+                hasChanges = true;
+                workingNode = normalizedSizeNode;
+            }
+        }
+
+        return workingNode;
     });
 
     return hasChanges ? { ...flowState, nodes } : flowState;

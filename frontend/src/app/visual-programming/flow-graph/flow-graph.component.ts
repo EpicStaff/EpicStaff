@@ -64,12 +64,15 @@ import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.di
 import { NodeType } from '../core/enums/node-type';
 import { computeAutoArrangePositions } from '../core/helpers/auto-arrange.util';
 import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
+import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
 import {
     findNearestFreePosition,
     getCollisionBounds,
+    getExactBounds,
     GRID_CELL_SIZE,
+    hasCollision,
     resolveOverlapsForNode,
     snapPointToGrid,
 } from '../core/helpers/node-placement.utils';
@@ -991,14 +994,31 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (!current) continue;
 
             const otherNodes = currentNodes.filter((n) => n.id !== id);
-            const freePos = this.findNearestFreePosition(
+
+            // Part 1: resolve genuine overlaps using the node's real bounds (no padding),
+            // so a node dropped flush against another node is left in place instead of
+            // "bouncing" away from an artificial margin. Node creation/paste are unaffected —
+            // they still go through getCollisionBounds() elsewhere.
+            let resolvedPosition = findNearestFreePosition(
                 current.position,
-                this.getCollisionBounds(current),
-                otherNodes
+                getExactBounds(current),
+                otherNodes,
+                getExactBounds
             );
 
-            if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
-                this.flowService.updateNode({ ...current, position: freePos });
+            // Part 2: magnetic snap to a connected Decision Table (plain or Classification) row.
+            // Only the y axis is ever touched, and only within the snap threshold; a snap that
+            // would reintroduce an overlap is discarded in favor of the resolved drop position.
+            const snappedY = computeRowSnapY(current, resolvedPosition, currentNodes, this.flowService.connections());
+            if (snappedY !== null) {
+                const snappedPosition = { x: resolvedPosition.x, y: snappedY };
+                if (!hasCollision(snappedPosition, getExactBounds(current), otherNodes, getExactBounds)) {
+                    resolvedPosition = snappedPosition;
+                }
+            }
+
+            if (resolvedPosition.x !== current.position.x || resolvedPosition.y !== current.position.y) {
+                this.flowService.updateNode({ ...current, position: resolvedPosition });
                 autoAlignedNodeIds.add(id);
             }
         }

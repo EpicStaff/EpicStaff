@@ -41,6 +41,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
+import { getClassificationTableVisualHeight } from '../../../core/helpers/node-size.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
@@ -437,23 +438,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             prompts: { ...this.prompts() },
         };
 
-        // Calculate node size based on unique route codes with dock_visible=true
-        const uniqueRouteCodes = new Set<string>();
-        conditionGroups
-            .filter((g) => g.route_code && g.dock_visible)
-            .forEach((g) => uniqueRouteCodes.add(g.route_code!));
-
-        const headerHeight = 60;
-        const rowHeight = 46;
-        const routeCodeCount = uniqueRouteCodes.size;
-        const hasDefaultRow = 1;
-        const hasErrorRow = 1;
-        const totalRows = Math.max(routeCodeCount + hasDefaultRow + hasErrorRow, 2);
-        const calculatedHeight = headerHeight + rowHeight * totalRows;
-
+        // Node height must match the rows actually rendered on the canvas (route rows —
+        // or the "No condition groups" placeholder — plus Default and Error), so ports
+        // line up horizontally with their connected target nodes. See node-size.util.ts.
         const updatedSize = {
             width: currentNode.size?.width || 330,
-            height: Math.max(calculatedHeight, 152),
+            height: getClassificationTableVisualHeight(conditionGroups),
         };
 
         const updatedPorts = generatePortsForClassificationDecisionTableNode(currentNode.id, conditionGroups);

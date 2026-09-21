@@ -6,6 +6,7 @@ import { ClassificationDecisionTableData } from '../models/classification-decisi
 import { ConditionGroup } from '../models/decision-table.model';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel } from '../models/node.model';
 import { generatePortsForClassificationDecisionTableNode } from './helpers';
+import { getClassificationTableVisualHeight } from './node-size.util';
 
 /**
  * Pure conversion function: maps a DecisionTableNodeModel to a new
@@ -113,7 +114,10 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: dtNode.node_name,
         position: { ...dtNode.position },
-        size: { ...dtNode.size },
+        size: {
+            width: dtNode.size?.width ?? 330,
+            height: getClassificationTableVisualHeight(conditionGroups),
+        },
         color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
         icon: NODE_ICONS[NodeType.CLASSIFICATION_TABLE],
         input_map: { ...dtNode.input_map },

@@ -3,10 +3,42 @@ import { IPoint } from '@foblex/2d';
 import { NodeType } from '../enums/node-type';
 import { ConnectionModel } from '../models/connection.model';
 import { NodeModel } from '../models/node.model';
-import { computeSegmentAvoidanceWaypoints, pathSelfIntersects } from './segment-avoidance.helper';
+import { ViewPort } from '../models/port.model';
+import { computeSegmentAvoidanceWaypoints, getPortPosition, pathSelfIntersects } from './segment-avoidance.helper';
 
 function pt(x: number, y: number): IPoint {
     return { x, y };
+}
+
+function dtGroup(groupName: string, order: number) {
+    return {
+        group_name: groupName,
+        group_type: 'simple',
+        expression: null,
+        conditions: [],
+        manipulation: null,
+        next_node: null,
+        valid: true,
+        order,
+    };
+}
+
+function dtTableNode(
+    id: string,
+    x: number,
+    y: number,
+    height: number,
+    groupNames: string[],
+    ports: { id: string; role: string }[]
+): NodeModel {
+    return {
+        id,
+        type: NodeType.TABLE,
+        position: { x, y },
+        size: { width: 330, height },
+        ports,
+        data: { name: id, table: { condition_groups: groupNames.map((name, i) => dtGroup(name, i)) } },
+    } as unknown as NodeModel;
 }
 
 function node(
@@ -303,5 +335,34 @@ describe('computeSegmentAvoidanceWaypoints', () => {
 
         expect(waypoints).not.toBeNull();
         expect(waypoints).toEqual([]);
+    });
+});
+
+describe('getPortPosition — plain Decision Table row geometry', () => {
+    it('resolves a DT output port by group_name after a reorder, not by its stored ports-array position', () => {
+        // Ports were generated when 'alpha' was order 0 and 'beta' was order 1 — that array
+        // order never changes on a pure reorder (normalize-flow-ports only regenerates on a
+        // port-count change). The groups have since been reordered: beta is now order 0.
+        const ports = [
+            { id: 'dt_table-in', role: 'table-in' },
+            { id: 'dt_decision-out-alpha', role: 'decision-out-alpha' },
+            { id: 'dt_decision-out-beta', role: 'decision-out-beta' },
+        ];
+        const dt = dtTableNode('dt', 0, 0, 300, ['beta', 'alpha'], ports);
+
+        const alphaPort = ports[1] as unknown as ViewPort;
+        const betaPort = ports[2] as unknown as ViewPort;
+
+        expect(getPortPosition(dt, alphaPort).y).toBe(60 + 60 * 1 + 30);
+        expect(getPortPosition(dt, betaPort).y).toBe(60 + 60 * 0 + 30);
+    });
+
+    it('places the DT input port at y + 28 (the .input-port-wrapper centre), not the body middle', () => {
+        const ports = [{ id: 'dt_table-in', role: 'table-in' }];
+        const dt = dtTableNode('dt', 100, 200, 300, [], ports);
+
+        const inputPort = ports[0] as unknown as ViewPort;
+
+        expect(getPortPosition(dt, inputPort)).toEqual({ x: 100, y: 228 });
     });
 });
