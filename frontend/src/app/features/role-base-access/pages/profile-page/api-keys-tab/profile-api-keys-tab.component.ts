@@ -79,7 +79,7 @@ export class ProfileApiKeysTabComponent implements OnInit {
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
         { key: 'lastUsed', label: 'LAST USED', width: 'minmax(100px, 1fr)' },
         { key: 'status', label: 'STATUS', width: '110px', align: 'center' },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'center', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end', actions: this.rowActions },
     ];
 
     private readonly keys = signal<GetMyApiKeyResponse[]>([]);

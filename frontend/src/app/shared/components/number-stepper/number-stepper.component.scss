@@ -6,7 +6,7 @@
         align-items: center;
         background: var(--color-input-background, #27272b);
         border: 1px solid var(--fog-alpha-16);
-        border-radius: 0.375rem;
+        border-radius: 4px;
         overflow: hidden;
         transition: border-color 0.2s ease;
 
@@ -59,7 +59,7 @@
         }
 
         &--md {
-            width: 2rem;
+            width: 2.5rem;
             height: 100%;
         }
 

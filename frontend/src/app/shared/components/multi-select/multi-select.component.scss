@@ -23,7 +23,7 @@
     }
 
     &__dropdown {
-        border-radius: 10px;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -111,7 +111,7 @@
         flex-shrink: 0;
         padding: 0;
         border: none;
-        border-radius: 8px;
+        border-radius: 4px;
         background: var(--accent-color);
         color: var(--color-text-primary);
         cursor: pointer;
@@ -228,7 +228,7 @@
         flex-shrink: 0;
         padding: 0;
         border: 1px solid var(--accent-color);
-        border-radius: 8px;
+        border-radius: 4px;
         background: transparent;
         color: var(--accent-color);
         cursor: pointer;
@@ -266,7 +266,7 @@
         ::ng-deep .btn {
             padding-left: 1rem;
             padding-right: 1rem;
-            border-radius: 8px;
+            border-radius: 4px;
             font-weight: 500;
         }
     }
