@@ -74,6 +74,7 @@ export * from './textarea/textarea.component';
 export * from './time-picker/time-picker.component';
 export * from './timezone-selector/timezone-selector.component';
 export * from './tools-selector/tools-selector.component';
+export * from './tools-selector/tools-source.token';
 export * from './tooltip/tooltip.component';
 export * from './unsaved-changes-dialog';
 export * from './voice-selector/voice-selector.component';
