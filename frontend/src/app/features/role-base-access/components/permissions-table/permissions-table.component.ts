@@ -446,15 +446,20 @@ export class PermissionsTableComponent {
         this.scrollToResourceWhenSettled(resourceCode);
     }
 
+    private scrollRequestId = 0;
+
     private scrollToResourceWhenSettled(resourceCode: ResourceCode, deadline = performance.now() + 1000): void {
+        const requestId = ++this.scrollRequestId;
         const host = this.hostEl.nativeElement;
         requestAnimationFrame(() => {
+            if (requestId !== this.scrollRequestId) return;
             const el = host.querySelector<HTMLElement>(`[data-resource-code="${resourceCode}"]`);
             const container = host.querySelector<HTMLElement>('.perm-table');
             if (!el || !container) return;
             let lastTop = el.getBoundingClientRect().top;
             let stableFrames = 0;
             const step = (): void => {
+                if (requestId !== this.scrollRequestId) return;
                 const top = el.getBoundingClientRect().top;
                 stableFrames = Math.abs(top - lastTop) < 0.5 ? stableFrames + 1 : 0;
                 lastTop = top;
