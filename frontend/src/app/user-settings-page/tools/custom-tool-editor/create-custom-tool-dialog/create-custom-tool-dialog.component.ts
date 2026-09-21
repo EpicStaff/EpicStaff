@@ -23,16 +23,12 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ValidationErrorsComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { CreatePythonCodeToolPayload, GetPythonCodeToolRequest, toSecretIds, toSecretNames } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
-import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
-import {
-    CreatePythonCodeToolPayload,
-    GetPythonCodeToolRequest,
-} from '../../../../features/tools/models/python-code-tool.model';
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';

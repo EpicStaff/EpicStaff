@@ -1,7 +1,7 @@
 import { NodeType, WebhookTriggerWrite } from '@shared/models';
+import { CustomPythonCode } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
-import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';

@@ -35,6 +35,7 @@ import {
     TooltipOnOverflowDirective,
 } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
 import { map, switchMap, take } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
@@ -50,8 +51,6 @@ import { StorageDragService } from '../../../../../../../files/services/storage-
 import { CreateCollectionDialogComponent } from '../../../../../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../../../../../../knowledge-sources/services/collections-storage.service';
 import { McpToolDialogComponent } from '../../../../../../../tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
-import { GetMcpToolRequest } from '../../../../../../../tools/models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../../../../../../../tools/models/python-code-tool.model';
 import { AgentSurfacePlace } from '../../../../../../models/agent-definition.model';
 import {
     CreateSurfaceRequest,

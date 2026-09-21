@@ -1,7 +1,7 @@
 import { NodeType } from '@shared/models';
+import { toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';

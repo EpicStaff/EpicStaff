@@ -32,6 +32,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { CreateMcpToolRequest, GetMcpToolRequest } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable, of, timer } from 'rxjs';
@@ -39,7 +40,6 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CreateMcpToolRequest, GetMcpToolRequest } from '../../models/mcp-tool.model';
 import { McpToolsService } from '../../services/mcp-tools/mcp-tools.service';
 
 interface DialogData {

@@ -21,5 +21,8 @@ export * from './role-based-access';
 export * from './secrets/secret.model';
 export * from './tag.model';
 export * from './task-message.model';
+export * from './tools/mcp-tool.model';
+export * from './tools/python-code.model';
+export * from './tools/python-code-tool.model';
 export * from './user-message.model';
 export * from './webhook-trigger/webhook-trigger.model';

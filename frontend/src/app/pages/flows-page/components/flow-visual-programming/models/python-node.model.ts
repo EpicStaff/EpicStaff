@@ -1,5 +1,4 @@
-import { GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
-
+import { GetPythonCodeRequest } from '@shared/models';
 export interface PythonNode {
     id: number;
     node_name: string;

@@ -10,11 +10,10 @@ import {
     Output,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
 import { forkJoin, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
-import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
 import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
