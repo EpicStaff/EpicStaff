@@ -18,6 +18,7 @@ import {
     ViewChildren,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { GraphSessionStatus } from '@shared/models';
 import { Subject } from 'rxjs';
 import { exhaustMap, takeUntil } from 'rxjs/operators';
 
@@ -26,7 +27,6 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import {
     GraphSession,
     GraphSessionService,
-    GraphSessionStatus,
     SessionUpdates,
 } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';

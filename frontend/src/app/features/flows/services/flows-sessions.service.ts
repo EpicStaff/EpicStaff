@@ -7,31 +7,13 @@ import { GraphMessage } from '../../../pages/running-graph/models/graph-session-
 import { WarningMessages } from '../../../pages/running-graph/models/warning-messages.model';
 import { ConfigService } from '../../../services/config/config.service';
 import { DateRangeFilter } from '../../../shared/models/date-range-filter.model';
+import { GraphSessionStatus } from '../../../shared/models/session/graph-session-status.model';
 
 export interface GraphSessionGraph {
     id: number;
     name: string;
     metadata: Record<string, unknown>;
 }
-
-export enum GraphSessionStatus {
-    RUNNING = 'run',
-    ERROR = 'error',
-    ENDED = 'end',
-    WAITING_FOR_USER = 'wait_for_user',
-    PENDING = 'pending',
-    EXPIRED = 'expired',
-    STOP = 'stop',
-}
-
-export const TERMINAL_SESSION_STATUSES: ReadonlySet<GraphSessionStatus> = new Set([
-    GraphSessionStatus.ENDED,
-    GraphSessionStatus.ERROR,
-    GraphSessionStatus.STOP,
-    GraphSessionStatus.EXPIRED,
-]);
-
-export const isTerminalSessionStatus = (status: GraphSessionStatus): boolean => TERMINAL_SESSION_STATUSES.has(status);
 
 export interface GraphSession {
     id: number;

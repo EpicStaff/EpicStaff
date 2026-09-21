@@ -25,6 +25,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
 import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
@@ -32,13 +33,7 @@ import { ExportFormat, ImportExportService } from '../../../../core/services/imp
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { downloadBlob } from '../../../../shared/utils/download-blob.util';
 import { GraphDto } from '../../models/graph.model';
-import {
-    GraphSessionLight,
-    GraphSessionService,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-    TriggerType,
-} from '../../services/flows-sessions.service';
+import { GraphSessionLight, GraphSessionService, TriggerType } from '../../services/flows-sessions.service';
 import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 

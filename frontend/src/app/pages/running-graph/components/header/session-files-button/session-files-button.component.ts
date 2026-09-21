@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { GraphSessionStatus } from '@shared/models';
 
 import {
     ExportSessionFilesDialogComponent,
@@ -19,7 +20,6 @@ import {
 } from '../../../../../features/files/components/export-session-files-dialog/export-session-files-dialog.component';
 import { SessionOutputFile } from '../../../../../features/files/models/storage.models';
 import { StorageApiService } from '../../../../../features/files/services/storage-api.service';
-import { GraphSessionStatus } from '../../../../../features/flows/services/flows-sessions.service';
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CollapseOnOverflowDirective } from '../../../../../shared/directives/collapse-on-overflow.directive';
 

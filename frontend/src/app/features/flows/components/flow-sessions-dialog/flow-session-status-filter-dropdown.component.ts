@@ -7,10 +7,10 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { GraphSessionStatus } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
-import { GraphSessionStatus } from '../../services/flows-sessions.service';
 
 interface StatusOption {
     value: string;

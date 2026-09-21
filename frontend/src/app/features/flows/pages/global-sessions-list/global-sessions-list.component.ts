@@ -22,6 +22,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
@@ -35,8 +36,6 @@ import {
     DurationFilter,
     GraphSessionLight,
     GraphSessionService,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
     TriggerType,
 } from '../../services/flows-sessions.service';
 

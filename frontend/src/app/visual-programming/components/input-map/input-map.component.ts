@@ -27,10 +27,11 @@ import {
     ReactiveFormsModule,
 } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { GraphSessionStatus } from '@shared/models';
 import { filter, Subscription } from 'rxjs';
 import { distinctUntilChanged, finalize } from 'rxjs/operators';
 
-import { GraphSessionService, GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
+import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
 import { RunSessionSSEService } from '../../../pages/running-graph/services/graph-session-sse.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
