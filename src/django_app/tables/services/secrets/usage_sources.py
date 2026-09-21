@@ -11,7 +11,6 @@ from django.db.models import (
     Value,
 )
 from django.db.models.functions import Cast, Concat
-
 from tables.models import (
     ElevenLabsRealtimeConfig,
     EmbeddingConfig,
@@ -42,7 +41,6 @@ from tables.services.secrets.python_code_sites import (
 )
 from utils.graph_utils import resolve_node_names
 
-
 CATEGORY_FLOWS = "flows"
 CATEGORY_TOOLS = "tools"
 CATEGORY_LLM_CONFIGS = "llm_configs"
@@ -65,9 +63,7 @@ RESOURCE_TYPE_EMBEDDING_CONFIG = "embedding_config"
 RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
 RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
 RESOURCE_TYPE_OPENAI_REALTIME_CONFIG = "openai_realtime_config"
-RESOURCE_TYPE_OPENAI_REALTIME_TRANSCRIPTION_CONFIG = (
-    "openai_realtime_transcription_config"
-)
+RESOURCE_TYPE_OPENAI_REALTIME_TRANSCRIPTION_CONFIG = "openai_realtime_transcription_config"
 RESOURCE_TYPE_ELEVENLABS_REALTIME_CONFIG = "elevenlabs_realtime_config"
 RESOURCE_TYPE_GEMINI_REALTIME_CONFIG = "gemini_realtime_config"
 RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
@@ -207,9 +203,7 @@ class UsageSource:
     def named_rows(self, *, org_id: int, secret_ids: set[int], readability):
         """(secret_id, category, resource_type, name) for a standalone resource."""
         return (
-            self.readable_scoped(
-                org_id=org_id, secret_ids=secret_ids, readability=readability
-            )
+            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
             .annotate(
                 usage_category=Value(self.category, output_field=TextField()),
                 usage_resource_type=Value(self.resource_type, output_field=TextField()),
@@ -231,14 +225,10 @@ class UsageSource:
         assigns it to `UsageHit.resource_id: int | None`.
         """
         return (
-            self.readable_scoped(
-                org_id=org_id, secret_ids=secret_ids, readability=readability
-            )
+            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
             .annotate(
                 usage_node_type=Value(self.node_type, output_field=TextField()),
-                usage_graph_name=Cast(
-                    f"{self.graph_path}__name", output_field=TextField()
-                ),
+                usage_graph_name=Cast(f"{self.graph_path}__name", output_field=TextField()),
                 usage_node_name=Cast(self.name_field, output_field=TextField()),
                 usage_code_field=Value(self.code_field, output_field=TextField()),
             )
@@ -256,9 +246,7 @@ class UsageSource:
         """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id,
         code_field). `graph_id` un-Cast, same reasoning as `node_rows`."""
         return (
-            self.readable_scoped(
-                org_id=org_id, secret_ids=secret_ids, readability=readability
-            )
+            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
             .annotate(
                 usage_node_type=Value(self.node_type, output_field=TextField()),
                 usage_code_field=Value(self.code_field, output_field=TextField()),
@@ -278,11 +266,7 @@ class UsageSource:
         """READABLE_ALWAYS, READABLE_NEVER, or a Q deciding visibility row by row."""
         if readable_types & self.rbac_resource_types:
             return READABLE_ALWAYS
-        granted = [
-            path
-            for path in self.conditional_paths
-            if path.resource_type in readable_types
-        ]
+        granted = [path for path in self.conditional_paths if path.resource_type in readable_types]
         if not granted:
             return READABLE_NEVER
         condition = Q(granted[0].exists(org_id=org_id))
@@ -425,7 +409,7 @@ def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | Non
     if formatted is None or node_id is None:
         return None
     suffix = f" #{node_id}"
-    return formatted[: -len(suffix)] if formatted.endswith(suffix) else formatted
+    return formatted.removesuffix(suffix)
 
 
 def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:

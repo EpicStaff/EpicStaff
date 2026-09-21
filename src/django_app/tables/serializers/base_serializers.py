@@ -1,10 +1,8 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
-
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
-    LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
@@ -49,9 +47,7 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
     )
 
 
-class WebhookTriggerNestedSerializer(
-    SecretReferenceGuardMixin, serializers.ModelSerializer
-):
+class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("auth_secret_id",)
 
     provider_type = serializers.ChoiceField(
@@ -130,24 +126,20 @@ class WebhookTriggerNestedSerializer(
         existing = getattr(trigger, "auth", None)
         kind = validated_data.get("auth_kind")
         if kind is None:
-            kind = (
-                existing.kind
-                if existing is not None
-                else WebhookTriggerAuthKind.WEBHOOK
-            )
+            kind = existing.kind if existing is not None else WebhookTriggerAuthKind.WEBHOOK
 
         try:
             WebhookTriggerService().set_trigger_auth_secret(
                 trigger,
                 secret=(
-                    validated_data["auth_secret_id"]
-                    if "auth_secret_id" in validated_data
-                    else (existing.secret if existing is not None else None)
+                    validated_data.get(
+                        "auth_secret_id", existing.secret if existing is not None else None
+                    )
                 ),
                 kind=kind,
             )
         except ValueError as e:
-            raise serializers.ValidationError({"auth_secret_id": str(e)})
+            raise serializers.ValidationError({"auth_secret_id": str(e)}) from e
 
         if kind == WebhookTriggerAuthKind.TELEGRAM:
             self._resync_telegram_nodes(trigger)
@@ -159,9 +151,7 @@ class WebhookTriggerNestedSerializer(
         registration_failures: list[str] = []
         for node in trigger.telegram_trigger_nodes.all():
             try:
-                telegram_service.register_telegram_trigger(
-                    telegram_trigger_instance=node
-                )
+                telegram_service.register_telegram_trigger(telegram_trigger_instance=node)
             except Exception as e:
                 detail = getattr(e, "detail", None)
                 message = str(detail) if detail is not None else str(e)
@@ -210,9 +200,7 @@ class WebhookTriggerNestedSerializer(
                 )
 
         if new_provider == ProviderType.NGROK and ngrok_data:
-            NgrokWebhookConfig.objects.update_or_create(
-                trigger=instance, defaults=ngrok_data
-            )
+            NgrokWebhookConfig.objects.update_or_create(trigger=instance, defaults=ngrok_data)
         elif new_provider == ProviderType.LOCALHOST and localhost_data:
             LocalhostWebhookConfig.objects.update_or_create(
                 trigger=instance, defaults=localhost_data
@@ -235,14 +223,10 @@ class WebhookTriggerNestedSerializer(
 
             base_url = WebhookTriggerService().get_tunnel_url_for_trigger(instance)
             rep["live_url"] = (
-                f"{base_url.rstrip('/')}/webhooks/{instance.path}"
-                if base_url is not None
-                else None
+                f"{base_url.rstrip('/')}/webhooks/{instance.path}" if base_url is not None else None
             )
         except Exception:
-            logger.exception(
-                "Failed to resolve live_url for WebhookTrigger id=%s", instance.pk
-            )
+            logger.exception("Failed to resolve live_url for WebhookTrigger id=%s", instance.pk)
             rep["live_url"] = None
 
         auth = getattr(instance, "auth", None)
@@ -255,9 +239,7 @@ class WebhookTriggerNestedSerializer(
             else None
         )
 
-        telegram_registration_warning = getattr(
-            instance, "_telegram_registration_warning", None
-        )
+        telegram_registration_warning = getattr(instance, "_telegram_registration_warning", None)
         if telegram_registration_warning:
             rep["telegram_registration_warning"] = telegram_registration_warning
 
@@ -265,9 +247,7 @@ class WebhookTriggerNestedSerializer(
 
     def get_current_secret_reference(self, source):
         """The persisted secret on this trigger's user-settable auth row, for the one field this hook supports."""
-        assert source == "auth_secret_id", (
-            f"unexpected guarded field source: {source!r}"
-        )
+        assert source == "auth_secret_id", f"unexpected guarded field source: {source!r}"
         existing = getattr(self.instance, "auth", None)
         return existing.secret if existing is not None else None
 
@@ -285,7 +265,7 @@ class WebhookTriggerNestedSerializer(
                 exclude_pk=self.instance.pk if self.instance else None,
             )
         except DjangoValidationError as e:
-            raise serializers.ValidationError(e.messages[0] if e.messages else str(e))
+            raise serializers.ValidationError(e.messages[0] if e.messages else str(e)) from e
 
         if ngrok and localhost:
             raise serializers.ValidationError(

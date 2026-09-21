@@ -2,7 +2,6 @@ import copy
 import uuid
 
 from loguru import logger
-
 from utils.tokenizer import Tokenizer
 
 
@@ -67,9 +66,7 @@ class ChatSummarizedBuffer(ChatBuffer):
     used to compress past conversation context.
     """
 
-    def __init__(
-        self, tokenizer: Tokenizer, max_buffer_tokens: int, max_chunks_tokens: int = 100
-    ):
+    def __init__(self, tokenizer: Tokenizer, max_buffer_tokens: int, max_chunks_tokens: int = 100):
         super().__init__(tokenizer, max_buffer_tokens)
         self._chunks: list[str] = []  # summarized chunks buffer
         self._max_chunks_tokens: int = max_chunks_tokens
@@ -77,9 +74,7 @@ class ChatSummarizedBuffer(ChatBuffer):
 
     def check_free_chunks(self) -> bool:
         if self._chunks_tokens_count >= self._max_chunks_tokens:
-            logger.debug(
-                "Cannot add new chunk because summarized chunks buffer is full"
-            )
+            logger.debug("Cannot add new chunk because summarized chunks buffer is full")
             return False
 
         return True

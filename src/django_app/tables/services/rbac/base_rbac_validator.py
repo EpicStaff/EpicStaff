@@ -1,15 +1,13 @@
-from abc import ABC
 import re
+from abc import ABC
 from dataclasses import asdict, dataclass
-from typing import Any, Optional
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
-
 from tables.services.rbac.rbac_exceptions import FormValidationError
-
 
 REDACTED_PLACEHOLDER = "***"
 
@@ -61,9 +59,7 @@ class BaseRBACValidator(ABC):
 
     def _require_nonblank_string(self, field: str, value: Any) -> list[FieldError]:
         if value is None or value == "":
-            return [
-                FieldError(field, self._echo(field, value), "This field is required.")
-            ]
+            return [FieldError(field, self._echo(field, value), "This field is required.")]
         if not isinstance(value, str):
             return [FieldError(field, self._echo(field, value), "Must be a string.")]
         return []
@@ -83,16 +79,13 @@ class BaseRBACValidator(ABC):
         try:
             validate_email(value)
         except DjangoValidationError as exc:
-            return [
-                FieldError("email", self._echo("email", value), msg)
-                for msg in exc.messages
-            ]
+            return [FieldError("email", self._echo("email", value), msg) for msg in exc.messages]
         return []
 
     def _validate_password_field(
         self,
         value: Any,
-        user_hints: Optional[dict] = None,
+        user_hints: dict | None = None,
         field_name: str = "password",
     ) -> list[FieldError]:
         required = self._require_nonblank_string(field_name, value)
@@ -107,24 +100,17 @@ class BaseRBACValidator(ABC):
             validate_password(value, user=user_stub)
         except DjangoValidationError as exc:
             return [
-                FieldError(field_name, self._echo(field_name, value), msg)
-                for msg in exc.messages
+                FieldError(field_name, self._echo(field_name, value), msg) for msg in exc.messages
             ]
         return []
 
     def _validate_positive_int_field(self, field: str, value: Any) -> list[FieldError]:
         if value is None or value == "":
-            return [
-                FieldError(field, self._echo(field, value), "This field is required.")
-            ]
+            return [FieldError(field, self._echo(field, value), "This field is required.")]
         try:
             coerced = int(value)
         except (TypeError, ValueError):
             return [FieldError(field, self._echo(field, value), "Must be an integer.")]
         if coerced <= 0:
-            return [
-                FieldError(
-                    field, self._echo(field, value), "Must be a positive integer."
-                )
-            ]
+            return [FieldError(field, self._echo(field, value), "Must be a positive integer.")]
         return []

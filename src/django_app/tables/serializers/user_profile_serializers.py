@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.serializers.user_management_serializers import (
     MembershipNestedSerializer,
     UserResponseSerializer,
@@ -29,7 +28,8 @@ class ProfileResponseSerializer(UserResponseSerializer):
     )
 
     class Meta(UserResponseSerializer.Meta):
-        fields = UserResponseSerializer.Meta.fields + [
+        fields = [
+            *UserResponseSerializer.Meta.fields,
             "avatar_url",
             "active_organization_id",
             "active_permissions",

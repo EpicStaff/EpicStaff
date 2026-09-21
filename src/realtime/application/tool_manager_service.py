@@ -1,20 +1,19 @@
-from loguru import logger
-
 from domain.models.realtime_tool import RealtimeTool
 from domain.ports.i_chat_mode_controller import IChatModeController
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
+from loguru import logger
 from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import (
     PythonCodeToolData,
     RealtimeAgentChatData,
 )
+from tool_executors import (
+    BaseToolExecutor,
+    KnowledgeSearchToolExecutor,
+    PythonCodeToolExecutor,
+)
 from tool_executors.stop_agent_tool_executor import StopAgentToolExecutor
 from utils.singleton_meta import SingletonMeta
-from tool_executors import (
-    PythonCodeToolExecutor,
-    KnowledgeSearchToolExecutor,
-    BaseToolExecutor,
-)
 
 
 class ToolManagerService(metaclass=SingletonMeta):
@@ -40,9 +39,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 stop_prompt=realtime_agent_chat_data.stop_prompt,
                 chat_mode_controller=chat_mode_controller,
             )
-            self.connection_tool_executors[connection_key].append(
-                stop_agent_tool_executor
-            )
+            self.connection_tool_executors[connection_key].append(stop_agent_tool_executor)
 
         if (
             realtime_agent_chat_data.knowledge_collection_id is not None
@@ -50,9 +47,7 @@ class ToolManagerService(metaclass=SingletonMeta):
         ):
             rag_search_config = None
             if realtime_agent_chat_data.rag_search_config:
-                rag_search_config = (
-                    realtime_agent_chat_data.rag_search_config.model_dump()
-                )
+                rag_search_config = realtime_agent_chat_data.rag_search_config.model_dump()
 
             knowledge_tool_executor = KnowledgeSearchToolExecutor(
                 knowledge_collection_id=realtime_agent_chat_data.knowledge_collection_id,
@@ -62,9 +57,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 rag_embedder_api_key=realtime_agent_chat_data.rag_embedder_api_key,
                 rag_llm_api_key=realtime_agent_chat_data.rag_llm_api_key,
             )
-            self.connection_tool_executors[connection_key].append(
-                knowledge_tool_executor
-            )
+            self.connection_tool_executors[connection_key].append(knowledge_tool_executor)
 
         for base_tool_data in realtime_agent_chat_data.tools:
             tool_data = base_tool_data.data

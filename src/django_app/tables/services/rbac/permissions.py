@@ -1,6 +1,5 @@
 from django.core.exceptions import ImproperlyConfigured
-from rest_framework.permissions import BasePermission, SAFE_METHODS
-
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 from tables.models.rbac_models import ApiKey
 from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
@@ -23,9 +22,7 @@ class IsSuperadmin(BasePermission):
 
     def has_permission(self, request, view):
         user = getattr(request, "user", None)
-        return bool(
-            user and user.is_authenticated and getattr(user, "is_superadmin", False)
-        )
+        return bool(user and user.is_authenticated and getattr(user, "is_superadmin", False))
 
 
 class IsSuperadminOrReadOnly(BasePermission):
@@ -112,13 +109,9 @@ class HasOrgPermission(BaseRbacPermission):
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
 
         if not effective.can(resource_type, required):
-            resource_str = (
-                resource_type if isinstance(resource_type, str) else resource_type.value
-            )
+            resource_str = resource_type if isinstance(resource_type, str) else resource_type.value
             action_name = getattr(view, "action", None)
-            self.message = (
-                f"You do not have permission to {action_name} {resource_str}."
-            )
+            self.message = f"You do not have permission to {action_name} {resource_str}."
             return False
         return True
 
@@ -161,10 +154,7 @@ class IsSystemApiKeyAuthenticated(BasePermission):
     message = "This endpoint requires system API key authentication."
 
     def has_permission(self, request, view) -> bool:
-        return (
-            isinstance(request.auth, ApiKey)
-            and request.auth.key_type == ApiKey.KeyType.SYSTEM
-        )
+        return isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM
 
 
 class DenyApiKeyAuth(BasePermission):

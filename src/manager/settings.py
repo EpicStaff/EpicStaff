@@ -2,12 +2,11 @@ from pathlib import Path
 
 from src.shared.envtools import Env
 
-
 BASE_DIR = Path(__file__).resolve().parent
 
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(BASE_DIR / '../.env')
+    env.read_env(BASE_DIR / "../.env")
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
