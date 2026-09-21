@@ -5,7 +5,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from tables.graph_collab.notifications import GraphEditNotifier
 from tables.serializers.user_profile_serializers import (
     PasswordChangeConfirmRequestSerializer,
     PasswordChangeConfirmResponseSerializer,
@@ -14,11 +14,10 @@ from tables.serializers.user_profile_serializers import (
     ProfilePatchRequestSerializer,
     ProfileResponseSerializer,
 )
-from tables.graph_collab.notifications import GraphEditNotifier
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.utils.refresh_cookie import set_refresh_cookie
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
+from tables.services.rbac.utils.refresh_cookie import set_refresh_cookie
 from tables.throttles import LoginThrottle
 
 
@@ -27,9 +26,7 @@ def _require_user_context(request):
     SystemServicePrincipal has no email).
     The profile surface is meaningless without a user identity.
     Inlined per design decision D19 (matches the auth_views.py pattern)."""
-    if not getattr(request.user, "is_authenticated", False) or not hasattr(
-        request.user, "email"
-    ):
+    if not getattr(request.user, "is_authenticated", False) or not hasattr(request.user, "email"):
         raise PermissionDenied("This endpoint requires a user context.")
 
 
@@ -48,9 +45,7 @@ class ProfileView(APIView):
         _require_user_context(request)
         active_org_id = self._extract_active_org_id(request)
         user = self._service.get_profile(request.user, active_org_id=active_org_id)
-        return Response(
-            ProfileResponseSerializer(user, context={"request": request}).data
-        )
+        return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
     @staticmethod
     def _extract_active_org_id(request):
@@ -79,9 +74,7 @@ class ProfileView(APIView):
         user = self._service.get_profile(user)
         if "display_name" in cleaned:
             GraphEditNotifier.notify_profile_updated(user)
-        return Response(
-            ProfileResponseSerializer(user, context={"request": request}).data
-        )
+        return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
 
 class ProfileAvatarView(APIView):
@@ -106,9 +99,7 @@ class ProfileAvatarView(APIView):
         },
         responses={
             200: ProfileResponseSerializer,
-            400: OpenApiResponse(
-                description="Validation error, file too large, or invalid image"
-            ),
+            400: OpenApiResponse(description="Validation error, file too large, or invalid image"),
         },
     )
     def post(self, request):
@@ -117,9 +108,7 @@ class ProfileAvatarView(APIView):
         user = self._service.update_avatar(request.user, uploaded)
         user = self._service.get_profile(user)
         GraphEditNotifier.notify_profile_updated(user)
-        return Response(
-            ProfileResponseSerializer(user, context={"request": request}).data
-        )
+        return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
     @extend_schema(
         summary="Remove my avatar",

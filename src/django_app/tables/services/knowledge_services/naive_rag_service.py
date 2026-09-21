@@ -1,27 +1,26 @@
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from django.db import transaction
 from loguru import logger
-
-from tables.models.knowledge_models import (
-    NaiveRagPreviewChunk,
-    SourceCollection,
-    BaseRagType,
-    NaiveRag,
-    NaiveRagDocumentConfig,
-    DocumentMetadata,
+from tables.constants.knowledge_constants import (
+    FILE_TYPE_SPECIFIC_STRATEGIES,
+    UNIVERSAL_STRATEGIES,
 )
-from tables.models.embedding_models import EmbeddingConfig
 from tables.exceptions import (
-    NaiveRagNotFoundException,
+    CollectionNotFoundException,
     DocumentConfigNotFoundException,
     EmbedderNotFoundException,
     InvalidChunkParametersException,
-    CollectionNotFoundException,
+    NaiveRagNotFoundException,
 )
-from tables.constants.knowledge_constants import (
-    UNIVERSAL_STRATEGIES,
-    FILE_TYPE_SPECIFIC_STRATEGIES,
+from tables.models.embedding_models import EmbeddingConfig
+from tables.models.knowledge_models import (
+    BaseRagType,
+    DocumentMetadata,
+    NaiveRag,
+    NaiveRagDocumentConfig,
+    NaiveRagPreviewChunk,
+    SourceCollection,
 )
 
 
@@ -59,9 +58,7 @@ class NaiveRagService:
         - html: Only for HTML files
         - csv: Only for CSV files
         """
-        if not NaiveRagService.is_strategy_allowed_for_file_type(
-            chunk_strategy, file_type
-        ):
+        if not NaiveRagService.is_strategy_allowed_for_file_type(chunk_strategy, file_type):
             allowed = NaiveRagService.get_allowed_strategies_for_file_type(file_type)
             raise InvalidChunkParametersException(
                 f"Strategy '{chunk_strategy}' is not allowed for file type '{file_type}'. "
@@ -73,16 +70,16 @@ class NaiveRagService:
         """Get collection by ID."""
         try:
             return SourceCollection.objects.get(collection_id=collection_id)
-        except SourceCollection.DoesNotExist:
-            raise CollectionNotFoundException(collection_id)
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
 
     @staticmethod
     def get_embedder(embedder_id: int) -> EmbeddingConfig:
         """Get embedder by ID."""
         try:
             return EmbeddingConfig.objects.get(pk=embedder_id)
-        except EmbeddingConfig.DoesNotExist:
-            raise EmbedderNotFoundException(embedder_id)
+        except EmbeddingConfig.DoesNotExist as e:
+            raise EmbedderNotFoundException(embedder_id) from e
 
     @staticmethod
     def get_naive_rag(naive_rag_id: int) -> NaiveRag:
@@ -91,11 +88,11 @@ class NaiveRagService:
             return NaiveRag.objects.select_related(
                 "base_rag_type", "base_rag_type__source_collection", "embedder"
             ).get(naive_rag_id=naive_rag_id)
-        except NaiveRag.DoesNotExist:
-            raise NaiveRagNotFoundException(naive_rag_id)
+        except NaiveRag.DoesNotExist as e:
+            raise NaiveRagNotFoundException(naive_rag_id) from e
 
     @staticmethod
-    def get_or_none_naive_rag_by_collection(collection_id: int) -> Optional[NaiveRag]:
+    def get_or_none_naive_rag_by_collection(collection_id: int) -> NaiveRag | None:
         """
         Get NaiveRag for a collection, or None if doesn't exist.
         """
@@ -103,9 +100,7 @@ class NaiveRagService:
             base_rag = BaseRagType.objects.get(
                 source_collection_id=collection_id, rag_type=BaseRagType.RagType.NAIVE
             )
-            return NaiveRag.objects.select_related("embedder").get(
-                base_rag_type=base_rag
-            )
+            return NaiveRag.objects.select_related("embedder").get(base_rag_type=base_rag)
         except (BaseRagType.DoesNotExist, NaiveRag.DoesNotExist):
             return None
 
@@ -143,8 +138,7 @@ class NaiveRagService:
         updated_fields = set()
         embedding_provider_changed = (
             rag.embedder is None
-            or rag.embedder.model.embedding_provider
-            != embedding_config.model.embedding_provider
+            or rag.embedder.model.embedding_provider != embedding_config.model.embedding_provider
         )
 
         if rag.embedder is None or rag.embedder.pk != embedding_config.pk:
@@ -176,9 +170,7 @@ class NaiveRagService:
 
     @classmethod
     @transaction.atomic
-    def create_or_update_naive_rag(
-        cls, collection_id: int, embedder_id: int
-    ) -> NaiveRag:
+    def create_or_update_naive_rag(cls, collection_id: int, embedder_id: int) -> NaiveRag:
         """
         Create new NaiveRag or update existing one.
         Creates BaseRagType + NaiveRag in one transaction.
@@ -214,9 +206,7 @@ class NaiveRagService:
         if chunk_overlap >= chunk_size:
             reason = "'chunk_overlap' must be less than 'chunk_size'"
             raise InvalidChunkParametersException(
-                errors=[
-                    {"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}
-                ],
+                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
             )
 
         chunk_strategy = data.get("chunk_strategy", "")
@@ -224,9 +214,7 @@ class NaiveRagService:
             chunk_strategy, config.document.file_type
         )
         if chunk_strategy and not is_allowed_strategy:
-            allowed = cls.get_allowed_strategies_for_file_type(
-                config.document.file_type
-            )
+            allowed = cls.get_allowed_strategies_for_file_type(config.document.file_type)
             reason = (
                 f"chunk_strategy '{chunk_strategy}' is not valid"
                 f" for file type '{config.document.file_type}."
@@ -293,15 +281,13 @@ class NaiveRagService:
                 .get(naive_rag_document_id=config_id, naive_rag_id=naive_rag_id)
             )  # fmt: off
 
-        except NaiveRagDocumentConfig.DoesNotExist:
-            raise DocumentConfigNotFoundException(config_id=config_id)
+        except NaiveRagDocumentConfig.DoesNotExist as e:
+            raise DocumentConfigNotFoundException(config_id=config_id) from e
 
         config, updated_fields = cls._update_document_config(config, data)
         rag_updated_fields = set()
         if "status" in updated_fields:
-            rag.add_outdated_reason(
-                "document_config_changed", "Document config was changed."
-            )
+            rag.add_outdated_reason("document_config_changed", "Document config was changed.")
             rag_updated_fields.add("outdated_reasons")
         if rag.update_rag_status():
             rag_updated_fields.add("rag_status")
@@ -312,7 +298,7 @@ class NaiveRagService:
     @staticmethod
     def get_document_configs_for_naive_rag(
         naive_rag_id: int,
-    ) -> List[NaiveRagDocumentConfig]:
+    ) -> list[NaiveRagDocumentConfig]:
         """
         Get all document configs for a NaiveRag.
 
@@ -333,7 +319,7 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_naive_rag(naive_rag_id: int) -> Dict[str, Any]:
+    def delete_naive_rag(naive_rag_id: int) -> dict[str, Any]:
         """
         Delete NaiveRag and its BaseRagType.
         Cascades to document configs.
@@ -349,9 +335,7 @@ class NaiveRagService:
         collection_id = base_rag_type.source_collection_id
 
         # Count configs before deletion
-        config_count = NaiveRagDocumentConfig.objects.filter(
-            naive_rag=naive_rag
-        ).count()
+        config_count = NaiveRagDocumentConfig.objects.filter(naive_rag=naive_rag).count()
 
         # Delete (cascades to configs)
         base_rag_type.delete()  # This will cascade to NaiveRag and configs
@@ -369,7 +353,7 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def init_document_configs(naive_rag_id: int) -> List[NaiveRagDocumentConfig]:
+    def init_document_configs(naive_rag_id: int) -> list[NaiveRagDocumentConfig]:
         """
         Initialize document configs with defaults for documents that don't have configs yet.
 
@@ -386,8 +370,8 @@ class NaiveRagService:
             List of newly created configs (empty list if all docs already configured)
         """
         from tables.constants.knowledge_constants import (
-            DEFAULT_CHUNK_SIZE,
             DEFAULT_CHUNK_OVERLAP,
+            DEFAULT_CHUNK_SIZE,
             DEFAULT_CHUNK_STRATEGY,
         )
 
@@ -396,9 +380,7 @@ class NaiveRagService:
         collection_id = naive_rag.base_rag_type.source_collection_id
 
         # Get all documents in collection
-        all_documents = DocumentMetadata.objects.filter(
-            source_collection_id=collection_id
-        )
+        all_documents = DocumentMetadata.objects.filter(source_collection_id=collection_id)
 
         if not all_documents.exists():
             logger.info(
@@ -414,9 +396,7 @@ class NaiveRagService:
         )
 
         # Filter documents that need new configs
-        documents_without_configs = all_documents.exclude(
-            document_id__in=existing_config_doc_ids
-        )
+        documents_without_configs = all_documents.exclude(document_id__in=existing_config_doc_ids)
 
         if not documents_without_configs.exists():
             logger.info(f"All documents already configured for NaiveRag {naive_rag_id}")
@@ -460,7 +440,7 @@ class NaiveRagService:
         cls,
         naive_rag_id: int,
         data: list[dict[str, Any]],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Bulk update multiple document configs with partial success support.
         Updates valid configs and collects errors for invalid ones.
@@ -521,9 +501,7 @@ class NaiveRagService:
             )
             rag_updated_fields = set()
             if "status" in total_updated_fields:
-                rag.add_outdated_reason(
-                    "document_config_changed", "Document config was changed."
-                )
+                rag.add_outdated_reason("document_config_changed", "Document config was changed.")
                 rag_updated_fields.add("outdated_reasons")
             if rag.update_rag_status():
                 rag_updated_fields.add("rag_status")
@@ -545,9 +523,7 @@ class NaiveRagService:
             "updated": updated,
             "unupdated": unupdated,
             "failed": failed,
-            "configs": total_updated_configs
-            + total_unupdated_configs
-            + total_failed_configs,
+            "configs": total_updated_configs + total_unupdated_configs + total_failed_configs,
             "errors": errors,
         }
 
@@ -569,9 +545,7 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def bulk_delete_document_configs(
-        naive_rag_id: int, config_ids: List[int]
-    ) -> Dict[str, Any]:
+    def bulk_delete_document_configs(naive_rag_id: int, config_ids: list[int]) -> dict[str, Any]:
         """
         Bulk delete multiple document configs by their config IDs.
 
@@ -614,7 +588,7 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_document_config(config_id: int, naive_rag_id: int) -> Dict[str, Any]:
+    def delete_document_config(config_id: int, naive_rag_id: int) -> dict[str, Any]:
         """
         Delete a single document config.
 
@@ -632,8 +606,8 @@ class NaiveRagService:
             config = NaiveRagDocumentConfig.objects.get(
                 naive_rag_document_id=config_id,
             )
-        except NaiveRagDocumentConfig.DoesNotExist:
-            raise DocumentConfigNotFoundException(config_id=config_id)
+        except NaiveRagDocumentConfig.DoesNotExist as e:
+            raise DocumentConfigNotFoundException(config_id=config_id) from e
 
         # Validate config belongs to the specified naive_rag
         if config.naive_rag_id != naive_rag_id:
@@ -646,9 +620,7 @@ class NaiveRagService:
         config.delete()
         NaiveRagService.sync_rag_status_after_config_removal(rag)
 
-        logger.info(
-            f"Deleted document config {config_id} for document '{document_name}'"
-        )
+        logger.info(f"Deleted document config {config_id} for document '{document_name}'")
 
         return {
             "config_id": config_id,
@@ -662,7 +634,7 @@ class NaiveRagService:
         query: str,
         limit: int = 100,
         offset: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search preview chunks of a document config by text query.
 
@@ -686,8 +658,7 @@ class NaiveRagService:
         ).exists()
         if not config_exists:
             raise DocumentConfigNotFoundException(
-                f"DocumentConfig {document_config_id} not found "
-                f"for NaiveRag {naive_rag_id}"
+                f"DocumentConfig {document_config_id} not found for NaiveRag {naive_rag_id}"
             )
 
         if not query:
@@ -697,18 +668,14 @@ class NaiveRagService:
             }
 
         preview_qs = (
-            NaiveRagPreviewChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            )
+            NaiveRagPreviewChunk.objects.filter(naive_rag_document_config_id=document_config_id)
             .filter(text__icontains=query)
             .order_by("chunk_index")
         )
 
         preview_total = preview_qs.count()
         preview_chunk_ids = list(
-            preview_qs.values_list("preview_chunk_id", flat=True)[
-                offset : offset + limit
-            ]
+            preview_qs.values_list("preview_chunk_id", flat=True)[offset : offset + limit]
         )
 
         return {
@@ -720,8 +687,8 @@ class NaiveRagService:
     def get_preview_chunks_by_ids(
         naive_rag_id: int,
         document_config_id: int,
-        preview_chunk_ids: List[int],
-    ) -> List[NaiveRagPreviewChunk]:
+        preview_chunk_ids: list[int],
+    ) -> list[NaiveRagPreviewChunk]:
         """
         Return preview chunks of a document config by a list of preview_chunk_ids.
 
@@ -742,8 +709,7 @@ class NaiveRagService:
         ).exists()
         if not config_exists:
             raise DocumentConfigNotFoundException(
-                f"DocumentConfig {document_config_id} not found "
-                f"for NaiveRag {naive_rag_id}"
+                f"DocumentConfig {document_config_id} not found for NaiveRag {naive_rag_id}"
             )
 
         unique_ids = list(dict.fromkeys(preview_chunk_ids))

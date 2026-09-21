@@ -1,17 +1,20 @@
 # from datetime import timedelta
 
-from django.db.models import OuterRef, Exists, F, IntegerField
-from django.db.models.functions import Extract, Cast
+from django.db.models import Exists, F, IntegerField, OuterRef
+from django.db.models.functions import Cast, Extract
 from django_filters import rest_framework as filters
-from tables.models.webhook_models import WebhookTrigger
-from tables.models import GraphSessionMessage
 from rest_framework.filters import BaseFilterBackend
+
+from tables.models import (
+    GraphSessionMessage,
+    Provider,  # SourceCollection,
+)
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.models.session_models import Session
-from tables.models import Provider  # SourceCollection,
+from tables.models.webhook_models import WebhookTrigger
 
 
 class CharInFilter(filters.BaseInFilter, filters.CharFilter):

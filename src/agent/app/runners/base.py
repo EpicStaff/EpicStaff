@@ -15,11 +15,11 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, ClassVar
 
 from loguru import logger
+from shared.models.agent_service import AgentRequest, AgentSpec
 
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
-from shared.models.agent_service import AgentRequest, AgentSpec
 
 if TYPE_CHECKING:
     from app.runners.deps import RunnerDependencies
@@ -47,7 +47,7 @@ class Runner(ABC):
     run_type: ClassVar[RunType]
     emitter_mode: ClassVar[EmitterMode]
 
-    def __init__(self, deps: "RunnerDependencies") -> None:
+    def __init__(self, deps: RunnerDependencies) -> None:
         self._deps = deps
 
     @abstractmethod

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loguru import logger
+from shared.models.agent_service import TokenUsage
 
 from app.constants import FAILURE_STOP_REASONS
 from app.exceptions import AgentServiceError, SchemaValidationError
@@ -11,7 +12,6 @@ from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.output.schema import ValidationOutcome, add_usage, validate_output
 from app.tools.registry import ToolRegistry
 from app.tools.system_tools.structured_output import ANSWER_TOOL, build_answer_tool
-from shared.models.agent_service import TokenUsage
 
 
 @dataclass(frozen=True)

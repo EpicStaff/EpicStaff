@@ -1,6 +1,5 @@
 import hashlib
 import secrets
-from typing import Optional
 
 from tables.models.rbac_models import PasswordResetToken
 
@@ -41,12 +40,10 @@ class PasswordResetTokenRepository:
         hash reaches the database.
         """
         raw_token = secrets.token_urlsafe(TOKEN_BYTES)
-        row = PasswordResetToken.objects.create(
-            user=user, token_hash=hash_token(raw_token)
-        )
+        row = PasswordResetToken.objects.create(user=user, token_hash=hash_token(raw_token))
         return row, raw_token
 
-    def get_active_by_raw_token(self, raw_token: str) -> Optional[PasswordResetToken]:
+    def get_active_by_raw_token(self, raw_token: str) -> PasswordResetToken | None:
         """Return the live row matching `raw_token`, else None.
 
         Hashes the submitted value and matches on `token_hash`, so the lookup

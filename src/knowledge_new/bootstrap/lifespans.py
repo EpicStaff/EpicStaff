@@ -1,12 +1,11 @@
-import asyncio
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from typing import Literal
 
+import settings
 from infrastructure.processing_run import set_process_pool
 from infrastructure.prompt_patching import patch_graphrag_prompts
-import settings
 
 __all__ = ["get_lifespans"]
 

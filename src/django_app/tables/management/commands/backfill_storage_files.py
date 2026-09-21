@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-
 from tables.models import Organization
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.reconciler import StorageReconciler
@@ -35,9 +34,7 @@ class Command(BaseCommand):
             if dry_run:
                 org_prefix = f"org_{org.id}/"
                 objects = backend.list_all_objects(org_prefix)
-                self.stdout.write(
-                    f"[org={org.id}] dry-run: {len(objects)} objects found"
-                )
+                self.stdout.write(f"[org={org.id}] dry-run: {len(objects)} objects found")
                 continue
 
             StorageReconciler(backend).reconcile_tree(org.id, "")

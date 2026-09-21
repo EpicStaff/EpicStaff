@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(env_file=BASE_DIR / '../.env')
+    env.read_env(env_file=BASE_DIR / "../.env")
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")

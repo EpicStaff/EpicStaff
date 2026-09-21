@@ -1,9 +1,10 @@
 import json
+
 import redis.asyncio as aioredis
+from loguru import logger
+from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
-from redis.backoff import ExponentialBackoff
-from loguru import logger
 
 
 class RedisService:

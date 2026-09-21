@@ -1,7 +1,6 @@
 from typing import Any
 
 from langgraph.types import StreamWriter
-
 from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
@@ -36,30 +35,20 @@ class AgentNode(BaseNode):
     def get_output_variable_value(self, output: Any) -> Any:
         return agent_output_variable_value(output)
 
-    async def execute(
-        self, state: State, writer: StreamWriter, execution_order: int, input_: Any
-    ):
+    async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         agent_definition = self.agent_node_data.agent_definition
         if agent_definition is None:
-            raise ValueError(
-                f"AgentNode '{self.node_name}' requires an agent_definition"
-            )
+            raise ValueError(f"AgentNode '{self.node_name}' requires an agent_definition")
         if agent_definition.llm is None:
-            raise ValueError(
-                f"AgentNode '{self.node_name}' requires agent_definition.llm"
-            )
+            raise ValueError(f"AgentNode '{self.node_name}' requires agent_definition.llm")
         if not self.agent_node_data.tasks:
             raise ValueError(f"AgentNode '{self.node_name}' has no tasks to execute.")
 
         rendered_tasks = [
-            task.model_copy(
-                update={"instructions": render_instructions(task.instructions, input_)}
-            )
+            task.model_copy(update={"instructions": render_instructions(task.instructions, input_)})
             for task in self.agent_node_data.tasks
         ]
-        agent_node_data = self.agent_node_data.model_copy(
-            update={"tasks": rendered_tasks}
-        )
+        agent_node_data = self.agent_node_data.model_copy(update={"tasks": rendered_tasks})
 
         on_agent_event = AgentStreamEventForwarder(
             custom_session_message_writer=self.custom_session_message_writer,
