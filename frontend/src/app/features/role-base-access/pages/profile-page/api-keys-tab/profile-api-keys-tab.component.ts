@@ -8,9 +8,10 @@ import {
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
-    AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
+    DeleteButtonComponent,
+    RevokeButtonComponent,
     TableRow,
 } from '@shared/components';
 import { ApiKeyStatus, GetMyApiKeyResponse } from '@shared/models';
@@ -44,6 +45,8 @@ import {
         MatTooltip,
         StatusBadgeComponent,
         AppSvgIconComponent,
+        DeleteButtonComponent,
+        RevokeButtonComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -56,22 +59,6 @@ export class ProfileApiKeysTabComponent implements OnInit {
 
     protected readonly MAX_PERSONAL_KEYS = 5;
 
-    private readonly rowActions: AppTableRowAction[] = [
-        {
-            icon: 'x',
-            tooltip: 'Revoke key',
-            variant: 'warning',
-            hidden: (row) => row['status'] !== ApiKeyStatus.ACTIVE,
-            onClick: (row) => this.onRevokeKey(row),
-        },
-        {
-            icon: 'trash',
-            tooltip: 'Delete key',
-            variant: (row) => (row['status'] === ApiKeyStatus.ACTIVE ? 'danger' : 'default'),
-            onClick: (row) => this.onDeleteKey(row),
-        },
-    ];
-
     protected readonly columns: AppTableColumnDef[] = [
         { key: 'name', label: 'NAME', width: 'minmax(140px, 2fr)' },
         { key: 'key', label: 'KEY', width: 'minmax(120px, 1.2fr)' },
@@ -79,8 +66,13 @@ export class ProfileApiKeysTabComponent implements OnInit {
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
         { key: 'lastUsed', label: 'LAST USED', width: 'minmax(100px, 1fr)' },
         { key: 'status', label: 'STATUS', width: '110px', align: 'center' },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
     ];
+
+    /** Revoke is offered only for active keys. */
+    canRevokeRow(row: TableRow): boolean {
+        return row['status'] === ApiKeyStatus.ACTIVE;
+    }
 
     private readonly keys = signal<GetMyApiKeyResponse[]>([]);
 

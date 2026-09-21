@@ -23,7 +23,7 @@ import {
 } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { StopSessionButtonComponent } from '../../../../shared/components/buttons/stop-session-button/stop-session-button.component';
+import { StopButtonComponent } from '../../../../shared/components/stop-button/stop-button.component';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
 import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-switcher.component';
 
@@ -34,7 +34,7 @@ import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-sw
         MatTooltipModule,
         GraphMessagesComponent,
         AppSvgIconComponent,
-        StopSessionButtonComponent,
+        StopButtonComponent,
         SessionIdSwitcherComponent,
     ],
     templateUrl: './flow-messages-panel.component.html',

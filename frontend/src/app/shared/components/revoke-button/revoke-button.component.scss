@@ -1,0 +1,23 @@
+.revoke-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--orange);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--orange);
+    opacity: 1;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover:not(:disabled) {
+        background: var(--transparent-white-8);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+}
