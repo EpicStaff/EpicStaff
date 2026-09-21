@@ -27,12 +27,18 @@ from .graphrag_models import (
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
     GraphRagLocalSearchConfig,
+    GraphRagGlobalSearchConfig,
+    GraphRagDriftSearchConfig,
+    KnowledgeNodeGraphRagGlobalSearchConfig,
+    KnowledgeNodeGraphRagDriftSearchConfig,
 )
 
 KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS = {
     "naive_search_config": KnowledgeNodeNaiveRagSearchConfig,
     "graph_basic_search_config": KnowledgeNodeGraphRagBasicSearchConfig,
     "graph_local_search_config": KnowledgeNodeGraphRagLocalSearchConfig,
+    "graph_global_search_config": KnowledgeNodeGraphRagGlobalSearchConfig,
+    "graph_drift_search_config": KnowledgeNodeGraphRagDriftSearchConfig,
 }
 
 __all__ = [
@@ -59,7 +65,11 @@ __all__ = [
     "GraphRagIndexConfig",
     "GraphRagBasicSearchConfig",
     "GraphRagLocalSearchConfig",
+    "GraphRagGlobalSearchConfig",
+    "GraphRagDriftSearchConfig",
     "KnowledgeNodeGraphRagLocalSearchConfig",
     "KnowledgeNodeGraphRagBasicSearchConfig",
+    "KnowledgeNodeGraphRagGlobalSearchConfig",
+    "KnowledgeNodeGraphRagDriftSearchConfig",
     "KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS",
 ]

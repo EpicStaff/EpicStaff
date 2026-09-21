@@ -11,13 +11,15 @@
             >
                 <div class="form-fields">
                     <!-- Node Name -->
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="A name for this node. Used to identify it within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this Schedule Trigger node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
 
                     <!-- Start section -->
                     <div class="section">

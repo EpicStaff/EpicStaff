@@ -25,8 +25,10 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
+from urllib.parse import urljoin
 
 import pytest
+import requests
 
 TOOLS_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_DIR = TOOLS_ROOT
@@ -113,3 +115,53 @@ def load_tool(tool_dir_name: str) -> ModuleType:
 
 def seed(fake_client: FakeS3Client, path: str, body: str) -> None:
     fake_client.put_object(Bucket=TEST_BUCKET, Key=path, Body=body.encode("utf-8"))
+
+
+class FakeResponse:
+    """Stand-in for `requests.Response` used by the `_guarded_get` tests
+    below -- carries just the attributes the 4 scraping tools read off a
+    real response (`status_code`, `headers`, `text`/`content`,
+    `apparent_encoding`) plus a `raise_for_status()` that mirrors
+    `requests`'s behavior for 4xx/5xx."""
+
+    def __init__(self, status_code: int = 200, headers: dict | None = None, text: str = ""):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self.text = text
+        self.content = text.encode("utf-8")
+        self.apparent_encoding = "utf-8"
+        self.encoding = "utf-8"
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} error", response=self)
+
+
+def make_fake_requests_get(responses_by_url: dict[str, FakeResponse]):
+    """Build a `requests.get` stand-in that mimics real `requests` redirect
+    semantics precisely, keyed off the `allow_redirects` kwarg: with
+    `allow_redirects=True` (the library default) it silently chases the 3xx
+    chain in `responses_by_url` itself and returns only the final response,
+    the same way the real library does -- so a tool that forgets to pass
+    `allow_redirects=False` would (like the pre-fix bug) never see the
+    intermediate redirect at all. With `allow_redirects=False` it returns
+    the response for the requested URL as-is, letting the caller walk the
+    chain (and re-run the SSRF guard on each hop) itself.
+    """
+
+    def _fake_get(url, headers=None, timeout=None, allow_redirects=True):
+        response = responses_by_url[url]
+        if not allow_redirects:
+            return response
+
+        seen_urls = set()
+        while 300 <= response.status_code < 400:
+            if url in seen_urls:
+                raise AssertionError(f"redirect loop in test fixture at {url}")
+            seen_urls.add(url)
+            location = response.headers["location"]
+            url = urljoin(url, location)
+            response = responses_by_url[url]
+        return response
+
+    return _fake_get

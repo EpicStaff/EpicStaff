@@ -138,6 +138,7 @@
     --gray-590: #5a5a5a; // chats-content "no agent" heading text
     --gray-600: #676767;
     --gray-570: #6b7280; // grid-controls search icon/placeholder
+    --gray-570-alpha-15: rgba(107, 114, 128, 0.15);
     --gray-605: #666666; // chats-content "no agent" body text
     --gray-610: #777777; // version-history-panel empty-state subtext
     --gray-225: #dddddd; // version-history-panel dropdown-item text
@@ -290,6 +291,10 @@
     --green-510: #00e676; // flow-graph minimap Code-Agent node fill
     --mint-500: #6bdb9a; // flow-session-status-badge "completed" background base
     --mint-500-alpha-18: rgba(107, 219, 154, 0.18);
+    --emerald-400: #34d399;
+    --emerald-400-alpha-15: rgba(52, 211, 153, 0.15);
+    --emerald-300: #6ee7b7;
+    --emerald-300-alpha-15: rgba(110, 231, 183, 0.15);
     --gold-460: #ffc14d; // flow-session-status-badge "waiting" text/background base
     --gold-470: #ffd43b; // expression-editor python-badge icon (Python logo yellow)
     --gold-475: #ffdd57; // custom-tool-editor code-editor python icon
@@ -329,6 +334,7 @@
     --crimson-600-alpha-30: rgba(220, 53, 69, 0.3);
     --amber-620: #f59e0b; // graph-messages "reconnecting" status
     --amber-620-alpha-10: rgba(245, 158, 11, 0.1);
+    --amber-620-alpha-15: rgba(245, 158, 11, 0.15);
     --amber-620-alpha-20: rgba(245, 158, 11, 0.2);
     --red-390: #f87171; // flow-visual-programming restore-warning-btn text (Tailwind red-400)
     --red-400: #ff6b6b;
@@ -395,6 +401,7 @@
     --crimson-600-alpha-20: rgba(220, 53, 69, 0.2);
     --red-alpha-6: rgba(245, 66, 66, 0.06);
     --red-alpha-8: rgba(245, 66, 66, 0.08);
+    --red-alpha-8-flat: #f5424214; // validation-errors error item background (exact 8-digit-hex alpha, distinct from the rounded 0.08 rgba)
     --red-alpha-10: rgba(245, 66, 66, 0.1);
     --red-alpha-12: rgba(245, 66, 66, 0.12);
     --red-alpha-15: rgba(245, 66, 66, 0.15);
@@ -459,6 +466,7 @@
     --cyan-460: #00d4ff; // dual-slider thumb color (first handle)
     --cyan-500: #00dddd; // dual range slider min, decorative
     --violet-500: #8b5cf6; // dual range slider max, filter/sort accent
+    --violet-400: #a78bfa;
     --lavender-500: #bb86fc; // json-editor resize-handle hover accent
     --lavender-460: #a5a5ff; // expression-renderer/expression-editor variable-token text
     --magenta-500: #c586c0; // expression-renderer/expression-editor keyword-token text
@@ -544,6 +552,7 @@
     --color-action-btn-background: var(--graphite-800);
     --color-action-btn-background-hover: var(--white-alpha-9);
     --focus-ring: 0 0 0 2px var(--purple-alpha-40);
+    --color-stop-session-button: var(--red-500);
 
     // ------------------------------------------------------------------
     // SEMANTIC — text
@@ -637,6 +646,7 @@
     --color-ks-text: #d9d9de;
     --color-ks-button-activated: #685fff;
     --color-ks-line: #2c2c2e;
+    --color-ks-toggle-track: #2b2d30;
     --color-ks-hover-row: #3a3e48;
     --color-ks-transparent-black-72: rgba(21, 21, 21, 0.72);
     --color-ks-transparent-black-60: rgba(21, 21, 21, 0.6);
@@ -662,6 +672,7 @@
     //ui-kit colors
     --orange: rgba(255, 143, 63, 1);
     --red: rgba(245, 66, 66, 1);
+    --yellow: rgba(255, 207, 0, 1);
     --inactive-purple: rgba(104, 95, 255, 0.4);
     --purple-primary: rgba(104, 95, 255, 1);
     --transparent-white-16: rgba(217, 217, 222, 0.16);

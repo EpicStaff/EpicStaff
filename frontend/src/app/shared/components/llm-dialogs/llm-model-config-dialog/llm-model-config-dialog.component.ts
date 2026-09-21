@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
-import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { ModelTypes } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 
@@ -86,7 +86,6 @@ export class LlmModelConfigDialogComponent implements OnInit {
             frequency_penalty: [0],
             logit_bias: [null],
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
-            headers: [{}],
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             is_visible: [true],
@@ -126,16 +125,6 @@ export class LlmModelConfigDialogComponent implements OnInit {
                     this.isLoading.set(false);
                 },
             });
-    }
-
-    onModelChanged(data: { model: LLMModel; provider: LLMProvider }): void {
-        const nameControl = this.form.get('custom_name');
-
-        if (!nameControl) return;
-
-        if (!nameControl.value) {
-            nameControl.setValue(`${data.provider.name}/${data.model.name}`);
-        }
     }
 
     onCancel(): void {

@@ -15,8 +15,8 @@ import { takeUntil } from 'rxjs/operators';
 
 import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
+import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 
@@ -208,7 +208,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 .tools-display {
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     padding: 0.625rem 0.75rem;
                     display: flex;
                     justify-content: space-between;
@@ -290,7 +290,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             width: 100%;
                             background-color: var(--color-input-background);
                             border: 1px solid var(--color-input-border);
-                            border-radius: 6px;
+                            border-radius: 4px;
                             padding: 0.625rem 0.75rem;
                             color: #fff;
                             font-size: 0.875rem;
@@ -406,7 +406,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             justify-content: space-between;
                             align-items: center;
                             padding: 0.75rem 1rem;
-                            border-radius: 6px;
+                            border-radius: 4px;
                             background: var(--color-input-background);
                             transition: all 0.2s ease;
                             cursor: pointer;
@@ -533,7 +533,7 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
     private readonly destroy$ = new Subject<void>();
 
     constructor(
-        private pythonCodeToolService: PythonCodeToolService,
+        private pythonCodeToolService: CustomToolsService,
         private mcpToolsService: McpToolsService,
         private cdr: ChangeDetectorRef
     ) {}

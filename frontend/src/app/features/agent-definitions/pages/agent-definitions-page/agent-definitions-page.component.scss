@@ -91,6 +91,45 @@
     }
 }
 
+.detail-header__menu {
+    width: max-content;
+    min-width: 160px;
+    padding: 4px;
+    overflow: hidden;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+}
+
+.detail-header__menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 32px;
+    padding: 0 12px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    font-size: 0.8rem;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &--danger {
+        color: var(--red-490);
+
+        &:hover {
+            background-color: color-mix(in srgb, var(--red-490) 10%, transparent);
+        }
+    }
+}
+
 .detail-body {
     flex: 1;
     min-height: 0;

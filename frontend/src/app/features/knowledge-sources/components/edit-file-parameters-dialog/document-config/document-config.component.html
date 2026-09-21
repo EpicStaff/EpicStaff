@@ -10,11 +10,15 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-select
-                [selectedValue]="selectedStrategy()"
-                [items]="chunkStrategySelectItems"
-                (changed)="onSelectedStrategyChange($event)"
-            />
+            @if (canUpdateKnowledges()) {
+                <app-select
+                    [selectedValue]="selectedStrategy()"
+                    [items]="chunkStrategySelectItems"
+                    (changed)="onSelectedStrategyChange($event)"
+                />
+            } @else {
+                <span>{{ selectedStrategy() }}</span>
+            }
         </div>
     </div>
 

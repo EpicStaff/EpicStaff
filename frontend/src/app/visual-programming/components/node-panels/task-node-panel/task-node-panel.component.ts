@@ -7,12 +7,15 @@ import {
     Injector,
     input,
     signal,
+    viewChild,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
     JsonEditorComponent,
@@ -22,6 +25,7 @@ import {
     SelectDropdownTriggerDirective,
     SelectItem,
     TooltipComponent,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
@@ -39,7 +43,6 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
-import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { TaskNodeModel } from '../../../core/models/node.model';
@@ -47,12 +50,19 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import {
+    computeApplyLocalSurfaceResult,
+    computeAutoSelectResult,
+    computeSurfacesChangeResult,
+    surfaceReplacedMessage,
+} from '../../../utils/surface/surface-collection-conflict.util';
+import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
     InstructionsViewToggleComponent,
@@ -80,6 +90,8 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ToggleSwitchComponent,
         InstructionsViewToggleComponent,
         MarkdownComponent,
+        ColumnResizeDividerComponent,
+        InputsYouCanUseComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -90,16 +102,29 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     public readonly agentDefinitions = signal<AgentDefinition[]>([]);
     public readonly surfaces = signal<Surface[]>([]);
+    private readonly surfacesById = computed(() => new Map(this.surfaces().map((s) => [s.id, s])));
     public readonly agentDefinitionId = signal<number | null>(null);
     public readonly selectedSurfaceIds = signal<number[]>([]);
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly outputSchemaExpanded = signal<boolean>(false);
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
 
+    public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('task-node', 406);
+
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
     public readonly instructionsView = signal<InstructionsView>('preview');
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
+
+    private readonly instructionsTextareaSchemaView = viewChild<VariableHighlightTextareaComponent>(
+        'instructionsTextareaSchemaView'
+    );
+    private readonly instructionsTextareaMainPane =
+        viewChild<VariableHighlightTextareaComponent>('instructionsTextareaMainPane');
+    private readonly instructionsTextareaCollapsed = viewChild<VariableHighlightTextareaComponent>(
+        'instructionsTextareaCollapsed'
+    );
 
     outputSchemaText = '{}';
     outputSchemaError = '';
@@ -118,6 +143,12 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         const id = this.agentDefinitionId();
         if (id == null) return null;
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
+    });
+
+    public readonly selectedAgentLlmConfigId = computed<number | null>(() => {
+        const id = this.agentDefinitionId();
+        if (id == null) return null;
+        return this.agentDefinitions().find((agent) => agent.id === id)?.llm_config ?? null;
     });
 
     public readonly agentInvalid = computed<boolean>(() => {
@@ -242,6 +273,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     onAgentSelectionChange(values: unknown[]): void {
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
+
         const agentControl = this.form.get('agent_definition');
         agentControl?.setValue(id);
         agentControl?.markAsTouched();
@@ -261,10 +293,18 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     onSurfacesChange(values: unknown[]): void {
-        const realIds = values.filter((v): v is number => v !== LOCAL_SURFACE_VALUE) as number[];
-        this.selectedSurfaceIds.set(realIds);
+        const result = computeSurfacesChangeResult(
+            values,
+            LOCAL_SURFACE_VALUE,
+            this.selectedSurfaceIds(),
+            this.surfacesById(),
+            this.inlineSurface(),
+            this.hasLocalSurface()
+        );
 
-        if (this.hasLocalSurface() && !values.includes(LOCAL_SURFACE_VALUE)) {
+        result.conflictMessages.forEach((m) => this.toastService.error(m));
+        this.selectedSurfaceIds.set(result.selectedSurfaceIds);
+        if (result.clearInline) {
             this.inlineSurface.set(null);
         }
 
@@ -272,15 +312,26 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.notifyExternalChange();
     }
 
+    private applyLocalSurface(inline: InlineSurface): void {
+        const result = computeApplyLocalSurfaceResult(inline, this.selectedSurfaceIds(), this.surfacesById());
+
+        if (result.removedNames.length > 0) {
+            this.selectedSurfaceIds.set(result.selectedSurfaceIds);
+            this.toastService.error(surfaceReplacedMessage(result.removedNames));
+        }
+
+        this.inlineSurface.set(inline);
+        this.sidePanelService.triggerAutosave();
+        this.notifyExternalChange();
+    }
+
     onCreateLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'create', inlineSurface: null })
+            .open({ mode: 'create', inlineSurface: null, llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
-                    this.inlineSurface.set(result);
-                    this.sidePanelService.triggerAutosave();
-                    this.notifyExternalChange();
+                    this.applyLocalSurface(result);
                 }
 
                 this.surfaceMultiSelects().forEach((ms) => ms.close());
@@ -289,13 +340,11 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     onEditLocalSurface(): void {
         this.localSurfaceDialog
-            .open({ mode: 'edit', inlineSurface: this.inlineSurface() })
+            .open({ mode: 'edit', inlineSurface: this.inlineSurface(), llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result) {
-                    this.inlineSurface.set(result);
-                    this.sidePanelService.triggerAutosave();
-                    this.notifyExternalChange();
+                    this.applyLocalSurface(result);
                 }
 
                 this.surfaceMultiSelects().forEach((ms) => ms.close());
@@ -350,6 +399,19 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     copyInstructions(): void {
         this.copyToClipboard(this.form.get('instructions')?.value || '');
+    }
+
+    insertInputToInstructions(name: string): void {
+        if (this.mainView() === 'instructions' && this.instructionsView() === 'preview') {
+            this.setInstructionsView('edit');
+        }
+        setTimeout(() => {
+            const target =
+                this.instructionsTextareaSchemaView() ??
+                this.instructionsTextareaMainPane() ??
+                this.instructionsTextareaCollapsed();
+            target?.insertAtCursor(name);
+        });
     }
 
     copySchema(): void {
@@ -469,16 +531,24 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     private autoSelectAgentSurfaces(agentId: number): void {
-        const validSurfaceIds = new Set(this.surfaces().map((surface) => surface.id));
         const flowContextSurfaceIds = (
             this.agentDefinitions().find((agent) => agent.id === agentId)?.default_surfaces ?? []
         )
             .filter((defaultSurface) => FLOW_CONTEXT_PLACES.includes(defaultSurface.place))
             .map((defaultSurface) => defaultSurface.surface)
-            .filter((surfaceId) => validSurfaceIds.has(surfaceId));
+            .filter((surfaceId) => this.surfacesById().has(surfaceId));
 
         if (flowContextSurfaceIds.length === 0) return;
-        this.selectedSurfaceIds.update((current) => Array.from(new Set([...current, ...flowContextSurfaceIds])));
+
+        const result = computeAutoSelectResult(
+            flowContextSurfaceIds,
+            this.selectedSurfaceIds(),
+            this.surfacesById(),
+            this.inlineSurface()
+        );
+
+        if (result.accepted.length === 0) return;
+        this.selectedSurfaceIds.update((curr) => Array.from(new Set([...curr, ...result.accepted])));
     }
 
     private applyPendingAgentSurfaceAutoSelect(): void {

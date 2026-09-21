@@ -66,7 +66,7 @@
         text-align: right;
         font-size: 0.875rem;
         line-height: 130%;
-        color: var(--color-text-primary);
+        color: var(--color-text-secondary);
     }
 
     &__config-tooltip {
@@ -74,5 +74,9 @@
         margin-left: 1rem;
         color: var(--accent-color);
         margin-right: 1.875rem;
+    }
+
+    &__config-select {
+        flex: 1;
     }
 }

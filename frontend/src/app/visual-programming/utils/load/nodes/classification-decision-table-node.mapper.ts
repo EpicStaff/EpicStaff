@@ -1,5 +1,6 @@
 import { generateUuid } from '@shared/utils';
 
+import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { normalizeCdtSectionColor, reconcileCdtSections } from '../../../core/models/cdt-section.model';
@@ -74,12 +75,16 @@ export function mapClassificationDecisionTableNodeToModel(
                     input_map: n.pre_input_map ?? {},
                     output_variable_path: n.pre_output_variable_path ?? null,
                     libraries: n.pre_python_code?.libraries ?? [],
+                    secret_ids: toSecretIds(n.pre_python_code?.secrets),
+                    secret_names: toSecretNames(n.pre_python_code?.secrets),
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
                     input_map: n.post_input_map ?? {},
                     output_variable_path: n.post_output_variable_path ?? null,
                     libraries: n.post_python_code?.libraries ?? [],
+                    secret_ids: toSecretIds(n.post_python_code?.secrets),
+                    secret_names: toSecretNames(n.post_python_code?.secrets),
                 },
                 condition_groups: conditionGroups,
                 sections: reconcileCdtSections(

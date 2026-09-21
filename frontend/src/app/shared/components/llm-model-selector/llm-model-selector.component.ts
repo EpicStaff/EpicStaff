@@ -19,6 +19,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import {
     DropdownManagerService,
     FullLLMConfig,
@@ -38,7 +40,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
-    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent, HasPermissionDirective],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -124,6 +126,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                             (click)="$event.stopPropagation()"
                         />
                         <button
+                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                             class="create-btn"
                             (click)="onCreateLlm()"
                         >
@@ -175,7 +178,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 justify-content: space-between;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 6px;
+                border-radius: 4px;
                 padding: 0.625rem 0.75rem;
                 cursor: pointer;
                 transition: border-color 0.2s ease;
@@ -264,7 +267,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 6px;
+                border-radius: 4px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 max-height: 300px;
                 display: flex;
@@ -536,4 +539,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     setDisabledState(isDisabled: boolean): void {
         void isDisabled;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

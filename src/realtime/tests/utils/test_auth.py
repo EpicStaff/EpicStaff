@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import utils.auth as auth_module
+from core import config
 
 
 @pytest.fixture(autouse=True)
@@ -21,11 +22,12 @@ def _mock_response(status_code: int = 200, json_data: dict | None = None) -> Mag
 
 
 def test_validate_api_key_overrides_host_header(monkeypatch):
-    """DJANGO_AUTH_URL points at the Docker Compose service name `django_app`,
-    which contains an underscore and fails Django's host_validation_re when used
-    verbatim as the Host header. The Host header must be pinned to a value
-    (e.g. "localhost") that is both regex-valid and present in ALLOWED_HOSTS,
-    while the request still connects to the real service via the URL authority.
+    """The Host header must be pinned to a value (e.g. "localhost") that is both
+    regex-valid and present in DJANGO_ALLOWED_HOSTS, since the URL authority
+    (DJANGO_AUTH_URL, resolved via the Docker Compose network alias) would
+    otherwise fail Django's host_validation_re if used verbatim as the Host
+    header. The request must still connect to the real service via the
+    configured URL authority, not a hardcoded hostname.
     """
     captured = {}
 
@@ -40,10 +42,17 @@ def test_validate_api_key_overrides_host_header(monkeypatch):
 
     assert result is True
     assert captured["headers"]["Host"] == "localhost"
-    assert "django_app" in captured["url"]
+    assert captured["url"] == f"{config.DJANGO_AUTH_URL}/api/auth/api-key/validate/"
 
 
 def test_introspect_token_overrides_host_header(monkeypatch):
+    """The Host header must be pinned to a value (e.g. "localhost") that is both
+    regex-valid and present in DJANGO_ALLOWED_HOSTS, since the URL authority
+    (DJANGO_AUTH_URL, resolved via the Docker Compose network alias) would
+    otherwise fail Django's host_validation_re if used verbatim as the Host
+    header. The request must still connect to the real service via the
+    configured URL authority, not a hardcoded hostname.
+    """
     monkeypatch.setattr(auth_module, "_api_key_validated", True)
 
     captured = {}
@@ -59,4 +68,4 @@ def test_introspect_token_overrides_host_header(monkeypatch):
 
     assert result == {"active": True, "sub": "user-1"}
     assert captured["headers"]["Host"] == "localhost"
-    assert "django_app" in captured["url"]
+    assert captured["url"] == f"{config.DJANGO_AUTH_URL}/api/auth/introspect/"

@@ -151,6 +151,7 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id, all_search_configs
         )
         embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
+        llm_api_key_secret_id = self._node_rag_llm_secret_id(knowledge_node)
         return KnowledgeNodeData(
             node_name=resolver(knowledge_node.id),
             collection_id=collection_id,
@@ -160,6 +161,7 @@ class ConverterService(metaclass=SingletonMeta):
             input_map=knowledge_node.input_map,
             output_variable_path=knowledge_node.output_variable_path,
             embedder_api_key_secret_id=embedder_api_key_secret_id,
+            llm_api_key_secret_id=llm_api_key_secret_id,
         )
 
     @staticmethod
@@ -175,6 +177,20 @@ class ConverterService(metaclass=SingletonMeta):
         )
         embedder = rag.embedder
         return embedder.api_key_secret_id if embedder else None
+
+    @staticmethod
+    def _node_rag_llm_secret_id(knowledge_node: KnowledgeNode) -> int | None:
+        """Secret id of the node's RAG LLM (graph search synthesis). Only graph
+        RAGs carry an LLM; naive RAGs have none, so this is None for them."""
+        if not (knowledge_node.rag_type and knowledge_node.rag_id):
+            return None
+        rag = resolve_rag_in_collection(
+            knowledge_node.rag_type,
+            knowledge_node.rag_id,
+            knowledge_node.source_collection,
+        )
+        llm = getattr(rag, "llm", None)
+        return llm.api_key_secret_id if llm else None
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
@@ -293,6 +309,7 @@ class ConverterService(metaclass=SingletonMeta):
             rag_type_id=surface_resolution.rag_type_id,
             rag_search_config=surface_resolution.rag_search_config,
             rag_embedder_api_key_secret_id=surface_resolution.rag_embedder_api_key_secret_id,
+            rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,
@@ -505,7 +522,6 @@ class ConverterService(metaclass=SingletonMeta):
                 api_version=config.model.api_version,
                 api_key_secret_id=config.api_key_secret_id,
                 deployment_id=config.model.deployment_id,
-                headers=config.headers,
                 extra_headers=config.extra_headers,
             ),
         )

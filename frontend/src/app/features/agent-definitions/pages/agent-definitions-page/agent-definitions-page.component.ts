@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -11,11 +12,15 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
 import {
     UNSAVED_CHANGES_RESULT,
@@ -70,6 +75,8 @@ import {
         AgentDocPreviewComponent,
         DetailHeaderComponent,
         AppSvgIconComponent,
+        OverlayModule,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-definitions-page.component.html',
     styleUrls: ['./agent-definitions-page.component.scss'],
@@ -83,8 +90,50 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
+    private readonly route: ActivatedRoute = inject(ActivatedRoute);
+    private readonly router: Router = inject(Router);
+    private readonly permissions: PermissionsService = inject(PermissionsService);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+
+    /** Read-only mode when the active org can't mutate agents/surfaces. */
+    protected readonly agentsReadOnly = computed<boolean>(() => {
+        this.permissions.active();
+        return !this.permissions.canAny(ResourceCode.Agents, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+    });
+
+    /** Storage preview is read-only when Files write actions are denied. */
+    protected readonly filesReadOnly = computed<boolean>(() => {
+        this.permissions.active();
+        return !this.permissions.canAny(ResourceCode.Files, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+    });
+
+    /** Can the selected item (agent or surface) be duplicated in the active org? */
+    protected readonly canDuplicateSelected = computed<boolean>(() => {
+        this.permissions.active();
+        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Create);
+        if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Create);
+        return false;
+    });
+
+    /** Can the selected item (agent or surface) be deleted in the active org? */
+    protected readonly canDeleteSelected = computed<boolean>(() => {
+        this.permissions.active();
+        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Delete);
+        if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Delete);
+        return false;
+    });
+
+    /** Kebab is worth showing only if at least one action is permitted. */
+    protected readonly canOpenHeaderMenu = computed<boolean>(
+        () => this.canDuplicateSelected() || this.canDeleteSelected()
+    );
 
     private readonly explorer = viewChild(ExplorerComponent);
+
+    private preselectApplied = false;
+    private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
 
@@ -143,6 +192,38 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 this.store.clearSelection();
             }
         });
+
+        effect(() => {
+            if (this.preselectApplied) return;
+            const loading = this.store.loading();
+            if (loading) {
+                this.sawLoading = true;
+                return;
+            }
+            if (!this.sawLoading) return;
+            this.preselectApplied = true;
+            this.applySurfaceIdPreselect();
+        });
+    }
+
+    private applySurfaceIdPreselect(): void {
+        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
+        if (raw == null) return;
+        void this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { surfaceId: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+        });
+        const surfaceId = Number(raw);
+        if (!Number.isFinite(surfaceId)) return;
+        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+        if (!surface) return;
+        if (surface.owner_agent != null) {
+            this.store.selectAgent(surface.owner_agent);
+        } else {
+            this.store.openSharedSurfaceSource(surface.id);
+        }
     }
 
     ngOnInit(): void {
@@ -222,14 +303,18 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     onSaveAgent(payload: AgentSavePayload): void {
         if (payload.id == null) {
-            this.store.saveNewAgent({
-                name: payload.name,
-                description: payload.description,
-                instructions: payload.instructions,
-                llm_config: payload.llm_config,
-                fcm_llm_config: payload.fcm_llm_config,
-                metadata: { instructions_format: payload.bootIsDoc ? 'markdown' : 'text' },
-            });
+            this.openDocInEdit = !!payload.openBootDocInEdit;
+            this.store.saveNewAgent(
+                {
+                    name: payload.name,
+                    description: payload.description,
+                    instructions: payload.instructions,
+                    llm_config: payload.llm_config,
+                    fcm_llm_config: payload.fcm_llm_config,
+                    metadata: { instructions_format: payload.bootIsDoc ? 'markdown' : 'text' },
+                },
+                !!payload.openBootDocInEdit
+            );
         } else {
             this.store.updateAgent(payload.id, {
                 name: payload.name,
@@ -293,6 +378,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
     }
 
+    openDocInEdit = false;
+
+    onBootDocChange(isDoc: boolean): void {
+        const id = this.store.selectedAgent()?.id;
+        if (id == null) return;
+        if (isDoc) {
+            this.openDocInEdit = true;
+            this.store.createAndOpenBootDoc(id);
+        } else {
+            this.store.setBootDoc(id, false);
+        }
+    }
+
+    onOpenBootDoc(): void {
+        const id = this.store.selectedAgent()?.id;
+        if (id == null) return;
+        this.openDocInEdit = false;
+        this.store.selectAgentDoc(id, 'boot');
+    }
+
     onDeleteAgent(agent: AgentDefinition): void {
         this.onDeleteAgentById(agent.id);
     }
@@ -321,6 +426,37 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         }
         const s = this.store.selectedSurface();
         if (s) this.onDeleteSurface(s.id);
+    }
+
+    readonly headerMenuOpen = signal(false);
+    readonly headerMenuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
+
+    toggleHeaderMenu(event: MouseEvent): void {
+        event.stopPropagation();
+        this.headerMenuOpen.update((open) => !open);
+    }
+
+    closeHeaderMenu(): void {
+        this.headerMenuOpen.set(false);
+    }
+
+    onHeaderDuplicate(): void {
+        this.closeHeaderMenu();
+        const a = this.store.selectedAgent();
+        if (a) {
+            this.store.duplicateAgent(a.id);
+            return;
+        }
+        const s = this.store.selectedSurface();
+        if (s) this.store.duplicateSurface(s.id);
+    }
+
+    onHeaderDelete(): void {
+        this.closeHeaderMenu();
+        this.onDeleteSelected();
     }
 
     onExplorerTreeMenu(event: ExplorerTreeMenuEvent): void {

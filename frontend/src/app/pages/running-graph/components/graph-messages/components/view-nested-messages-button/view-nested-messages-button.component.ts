@@ -48,8 +48,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 color: var(--color-white);
                 border: 2px solid rgba(0, 191, 165, 0.4);
                 border-radius: 6px;
-                padding: 0.5rem 0.75rem;
-                font-weight: 500;
+                padding: 0.125rem 0.5rem;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -74,7 +76,9 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .play-nested-arrow {
                 margin-top: 2px;
-                display: inline-block;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 transform: rotate(0deg);
                 transition: transform 0.2s ease;
                 color: var(--color-white);

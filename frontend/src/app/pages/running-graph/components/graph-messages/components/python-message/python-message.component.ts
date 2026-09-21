@@ -55,9 +55,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isCodeExpanded"
                             >
-                                <div class="code-wrapper">
-                                    <div class="result-content">
-                                        <pre>{{ getCode() }}</pre>
+                                <div class="collapsible-inner">
+                                    <div class="code-wrapper">
+                                        <div class="result-content">
+                                            <pre>{{ getCode() }}</pre>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -81,17 +83,19 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputExpanded"
                             >
-                                <div class="input-wrapper">
-                                    <div class="result-content">
-                                        @if (getParsedInput() && isValidJson(getInput())) {
-                                            <app-json-viewer
-                                                [json]="getParsedInput()"
-                                                [expanded]="false"
-                                            ></app-json-viewer>
-                                        }
-                                        @if (!isValidJson(getInput())) {
-                                            <pre>{{ getInput() }}</pre>
-                                        }
+                                <div class="collapsible-inner">
+                                    <div class="input-wrapper">
+                                        <div class="result-content">
+                                            @if (getParsedInput() && isValidJson(getInput())) {
+                                                <app-json-viewer
+                                                    [json]="getParsedInput()"
+                                                    [expanded]="false"
+                                                ></app-json-viewer>
+                                            }
+                                            @if (!isValidJson(getInput())) {
+                                                <pre>{{ getInput() }}</pre>
+                                            }
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -115,23 +119,25 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
                             >
-                                <div class="output-wrapper">
-                                    <div
-                                        class="result-content"
-                                        [ngClass]="{
-                                            collapsed: isCollapsed && shouldShowToggle(),
-                                        }"
-                                    >
-                                        <pre>{{ getOutput() }}</pre>
-                                    </div>
-                                    @if (shouldShowToggle() && isOutputExpanded) {
-                                        <button
-                                            class="toggle-button"
-                                            (click)="toggleCollapse()"
+                                <div class="collapsible-inner">
+                                    <div class="output-wrapper">
+                                        <div
+                                            class="result-content"
+                                            [ngClass]="{
+                                                collapsed: isCollapsed && shouldShowToggle(),
+                                            }"
                                         >
-                                            {{ isCollapsed ? 'Show more' : 'Show less' }}
-                                        </button>
-                                    }
+                                            <pre>{{ getOutput() }}</pre>
+                                        </div>
+                                        @if (shouldShowToggle() && isOutputExpanded) {
+                                            <button
+                                                class="toggle-button"
+                                                (click)="toggleCollapse()"
+                                            >
+                                                {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -154,9 +160,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isErrorExpanded"
                             >
-                                <div class="error-wrapper">
-                                    <div class="result-content error-content">
-                                        <pre>{{ getError() }}</pre>
+                                <div class="collapsible-inner">
+                                    <div class="error-wrapper">
+                                        <div class="result-content error-content">
+                                            <pre>{{ getError() }}</pre>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -179,13 +187,15 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isRawDataExpanded"
                         >
-                            <div class="raw-data-wrapper">
-                                <div class="raw-data-content">
-                                    <app-copy-button [text]="copyText" />
-                                    <app-json-viewer
-                                        [json]="getExecutionData() | formatExecutionData"
-                                        [expanded]="false"
-                                    ></app-json-viewer>
+                            <div class="collapsible-inner">
+                                <div class="raw-data-wrapper">
+                                    <div class="raw-data-content">
+                                        <app-copy-button [text]="copyText" />
+                                        <app-json-viewer
+                                            [json]="getExecutionData() | formatExecutionData"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -201,7 +211,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, 0.5rem 1rem);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #ffcf3f;
             }
@@ -214,9 +224,12 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             .play-arrow {
-                margin-right: 16px;
+                width: 1.1rem;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #ffcf3f;
@@ -224,8 +237,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #ffcf3f;
                 display: flex;
@@ -241,8 +254,9 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -250,9 +264,12 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .python-content > :first-child {
+                margin-top: 1.25rem;
             }
 
             /* Collapsible content container */
@@ -263,7 +280,9 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -332,7 +351,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 background-color: transparent;
                 border: none;
                 color: #ffcf3f;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;

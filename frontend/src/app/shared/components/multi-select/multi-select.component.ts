@@ -55,6 +55,7 @@ export class MultiSelectComponent implements OnInit {
     panelWidth = input<string>('338px');
     panelHeight = input<string>('475px');
     emptyText = input<string>('No items available');
+    allowFlip = input<boolean>(false);
 
     /** When true the default trigger button is not rendered.
      *  Use openAt(element) to open the dropdown anchored to an external element. */
@@ -73,18 +74,23 @@ export class MultiSelectComponent implements OnInit {
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
     saveLabel = input<string>('Save Selection');
+    readonlyView = input<boolean>(false);
+    /** When true (default), selected items float to the top of the list (within their group). */
+    sortSelectedToTop = input<boolean>(true);
 
     isOpen = signal(false);
     search = signal('');
     tempSelected = signal<unknown[]>([]);
+    projectedTriggerEl = signal<HTMLElement | null>(null);
 
     groupedFiltered = computed<GroupedItems[]>(() => {
         const search = this.search().toLowerCase();
         const selected = this.tempSelected();
 
-        const filteredItems = this.items()
-            .filter((i) => i.name.toLowerCase().includes(search))
-            .sort((a, b) => Number(selected.includes(b.value)) - Number(selected.includes(a.value)));
+        const filtered = this.items().filter((i) => i.name.toLowerCase().includes(search));
+        const filteredItems = this.sortSelectedToTop()
+            ? filtered.sort((a, b) => Number(selected.includes(b.value)) - Number(selected.includes(a.value)))
+            : filtered;
 
         // Grouping disabled
         if (!this.grouped()) {
@@ -148,7 +154,7 @@ export class MultiSelectComponent implements OnInit {
         return map;
     });
 
-    @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLElement>;
+    @ViewChild('triggerBtn') triggerBtn?: ElementRef<HTMLElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
 
     private overlayRef!: OverlayRef;
@@ -169,26 +175,36 @@ export class MultiSelectComponent implements OnInit {
 
     openDropdown(): void {
         if (this.disabled()) return;
-        this.openAt(this.triggerBtn.nativeElement);
+        const el = this.projectedTriggerEl() ?? this.triggerBtn?.nativeElement;
+        if (el) this.openAt(el);
+    }
+
+    registerTrigger(el: ElementRef<HTMLElement>): void {
+        this.projectedTriggerEl.set(el.nativeElement);
     }
 
     /**
-     * @param positions Optional full override of the dropdown position list. Used verbatim when a
-     *  non-empty array is passed; otherwise the default below-the-trigger list applies. Exists for
-     *  side-opening submenu flyouts, which must fly out beside their anchor row rather than below it.
+     * @param positions Optional full override of the dropdown position list; used verbatim when a
+     *  non-empty array is passed, otherwise the default below-the-trigger list applies (extended
+     *  with flip-above positions when `allowFlip` is set). Exists for side-opening submenu
+     *  flyouts, which must fly out beside their anchor row rather than below it.
      */
     openAt(originElement: HTMLElement, seedValues?: unknown[], positions?: ConnectedPosition[]): void {
         if (this.disabled()) return;
+        const defaultPositions: ConnectedPosition[] = [
+            // Below, left-aligned with trigger
+            { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+            // Below, right-aligned with trigger (when right edge would clip)
+            { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        ];
+        if (this.allowFlip()) {
+            defaultPositions.push(
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
+            );
+        }
         const resolvedPositions: ConnectedPosition[] =
-            Array.isArray(positions) && positions.length > 0
-                ? positions
-                : [
-                      // Below, left-aligned with trigger
-                      { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                      // Below, right-aligned with trigger (when right edge would clip) — always below,
-                      // never flips above, so the panel doesn't jump on top of the trigger/other controls.
-                      { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                  ];
+            Array.isArray(positions) && positions.length > 0 ? positions : defaultPositions;
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
@@ -239,6 +255,7 @@ export class MultiSelectComponent implements OnInit {
     }
 
     toggleValue(value: unknown) {
+        if (this.readonlyView()) return;
         const arr = [...this.tempSelected()];
         const i = arr.indexOf(value);
         if (i >= 0) arr.splice(i, 1);
@@ -248,11 +265,13 @@ export class MultiSelectComponent implements OnInit {
 
     onGroupAction(event: Event, group: string): void {
         event.stopPropagation();
+        this.commitPendingSelection();
         this.groupAction.emit(group);
     }
 
     onItemAction(event: Event, value: unknown): void {
         event.stopPropagation();
+        this.commitPendingSelection();
         this.itemAction.emit(value);
     }
 
@@ -266,8 +285,16 @@ export class MultiSelectComponent implements OnInit {
     }
 
     save() {
-        this.selectionChange.emit(this.tempSelected());
-        this.selectedValues.set(this.tempSelected());
+        this.commitPendingSelection();
         this.close();
+    }
+
+    private commitPendingSelection(): void {
+        const pending = this.tempSelected();
+        const current = this.selectedValues();
+        if (pending.length === current.length && pending.every((v) => current.includes(v))) return;
+
+        this.selectionChange.emit(pending);
+        this.selectedValues.set(pending);
     }
 }

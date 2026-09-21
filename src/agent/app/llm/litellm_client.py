@@ -182,6 +182,7 @@ class LiteLLMClient(LLMClient):
                 stream=True,
                 tools=litellm_tools,
                 stream_options={"include_usage": True},
+                _skip_mcp_handler=True,  # agent handles MCP itself; don't import litellm.proxy stack
                 **extra_kwargs,
             )
 

@@ -208,7 +208,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         .node-stream-container {
             background-color: var(--color-nodes-background);
             border-radius: 8px;
-            padding: var(--message-padding, 1.25rem);
+            padding: var(--message-padding, 0.5rem 1rem);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-left: 4px solid var(--stream-color, #2dd4bf);
         }
@@ -221,9 +221,12 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         }
 
         .play-arrow {
-            margin-right: 16px;
+            width: 1.1rem;
+            margin-right: 8px;
             display: flex;
             align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
 
             app-svg-icon {
                 color: var(--stream-color);
@@ -231,8 +234,8 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         }
 
         .icon-container {
-            width: 36px;
-            height: 36px;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
             background-color: var(--stream-color);
             display: flex;
@@ -272,8 +275,9 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .node-name {
             color: var(--gray-100);
-            font-size: 1.1rem;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
+            line-height: var(--text-body-medium-line-height);
         }
 
         .status-badge {
@@ -284,7 +288,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .step-count {
             color: var(--gray-400);
-            font-size: 0.85rem;
+            font-size: 0.875rem;
         }
 
         .node-stream-container.in-progress {
@@ -317,7 +321,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             display: flex;
             flex-direction: column;
             gap: 0.75rem;
-            padding: 0.75rem 0 0 5.5rem;
+            padding: 0.75rem 0 0 4.5rem;
             border-top: 1px solid var(--gray-750);
             margin-top: 0.75rem;
         }
@@ -327,7 +331,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             align-items: center;
             gap: 6px;
             color: var(--stream-color);
-            font-size: 0.85rem;
+            font-size: 0.875rem;
             font-weight: 500;
             margin-bottom: 0.35rem;
         }
@@ -366,7 +370,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .step-summary {
             color: var(--gray-300);
-            font-size: 0.85rem;
+            font-size: 0.875rem;
             font-weight: 500;
         }
 
@@ -392,7 +396,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         .tool-call-label {
             color: var(--stream-color);
             font-weight: 500;
-            font-size: 0.78rem;
+            font-size: 0.875rem;
             text-transform: uppercase;
             letter-spacing: 0.02em;
         }
@@ -400,7 +404,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         .tool-call-input,
         .tool-call-output {
             color: var(--gray-400);
-            font-size: 0.78rem;
+            font-size: 0.875rem;
             margin-top: 3px;
             white-space: pre-wrap;
             word-break: break-word;
@@ -414,7 +418,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .truncated-hint {
             color: var(--gray-500);
-            font-size: 0.7rem;
+            font-size: 0.875rem;
             font-style: italic;
             margin-top: 4px;
         }
@@ -429,7 +433,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .task-output-text {
             color: var(--gray-300);
-            font-size: 0.85rem;
+            font-size: 0.875rem;
             margin-top: 3px;
             white-space: pre-wrap;
             word-break: break-word;
@@ -437,7 +441,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
         .token-usage {
             color: var(--gray-500);
-            font-size: 0.75rem;
+            font-size: 0.875rem;
             margin-top: 0.4rem;
         }
     `,

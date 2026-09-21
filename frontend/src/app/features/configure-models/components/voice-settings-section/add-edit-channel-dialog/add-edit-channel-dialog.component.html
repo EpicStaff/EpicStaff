@@ -19,7 +19,6 @@
                 formControlName="name"
                 [required]="true"
                 placeholder="e.g. Support Line"
-                tooltipText="A descriptive name for this channel"
             />
         </div>
 
@@ -40,7 +39,7 @@
                 label="Account SID"
                 formControlName="account_sid"
                 placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                tooltipText="Your Twilio Account SID"
+                tooltipText="Found on your Twilio Console dashboard, under Account Info"
                 [required]="true"
             />
         </div>
@@ -50,7 +49,7 @@
                 formControlName="auth_token_secret_id"
                 label="Auth Token"
                 variant="boxed"
-                tooltipText="Your Twilio Auth Token"
+                tooltipText="The secret holding your Twilio Auth Token, found next to the Account SID on your Twilio Console dashboard"
                 placeholder="Select a secret"
                 [required]="true"
                 [items]="secretItems()"
@@ -81,7 +80,6 @@
 
         <app-toggle-switch
             label="Is enabled"
-            tooltipText="Enable to use"
             formControlName="is_enabled"
         />
 

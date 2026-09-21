@@ -17,7 +17,7 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
-from tables.models.session_models import SessionTrigger
+from tables.models.session_models import SessionTrigger, SessionPrincipal
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -93,10 +93,16 @@ class RedisPubSub:
                     status_data["total_token_usage"] = (
                         self._calculate_total_token_usage(data["session_id"])
                     )
-                    session.status = data["status"]
-                    session.status_data = status_data
-                    session.token_usage = status_data["total_token_usage"]
-                    session.save(force_update=True)
+                    updated_rows = Session.objects.filter(pk=session.pk).update(
+                        status=data["status"],
+                        status_data=status_data,
+                        token_usage=status_data["total_token_usage"],
+                    )
+                    if updated_rows == 0:
+                        logger.warning(
+                            f"Session {session.pk} was deleted concurrently, skipping status update"
+                        )
+                        return
 
                     if session.status in [
                         Session.SessionStatus.END,
@@ -333,7 +339,9 @@ class RedisPubSub:
                 logger.warning(f"Session {session_id} was deleted")
                 return
 
-            buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
+            buffer = self.buffers.setdefault(
+                settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000)
+            )
 
             if any(d.get("uuid") == message_uuid for d in buffer):
                 logger.warning("This message already proceeded")
@@ -424,7 +432,9 @@ class RedisPubSub:
             settings.REQUEST_WEBHOOK_UPDATE_CHANNEL, self.request_webhook_update_handler
         )
         self.set_handler(settings.SCHEDULE_CHANNEL, self.schedule_channel_handler)
-        self.set_handler(settings.STORAGE_MUTATION_CHANNEL, self.storage_mutations_handler)
+        self.set_handler(
+            settings.STORAGE_MUTATION_CHANNEL, self.storage_mutations_handler
+        )
 
         def inner_loop():
             while True:
@@ -435,7 +445,9 @@ class RedisPubSub:
     def cache_for_redis_messages_worker(self):
         """Saves to DB a bunch of data"""
         logger.info(f"Start worker {os.getpid()} caching for Redis messages...")
-        self.set_handler(settings.GRAPH_MESSAGES_CHANNEL, self.graph_session_message_handler)
+        self.set_handler(
+            settings.GRAPH_MESSAGES_CHANNEL, self.graph_session_message_handler
+        )
 
         start_time = time.time()
 
@@ -513,7 +525,9 @@ class RedisPubSub:
             logger.warning(f"Root session {root_session_id} not found")
             return
 
-        buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
+        buffer = self.buffers.setdefault(
+            settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000)
+        )
 
         all_messages = list(
             GraphSessionMessage.objects.filter(session_id=root_session_id).order_by(
@@ -586,6 +600,21 @@ class RedisPubSub:
                     session=session,
                     **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
                 )
+                for _, session, _ in created_sessions
+            ]
+        )
+        root_principal = getattr(root_session, "principal", None)
+        root_principal_data = {"kind": SessionPrincipal.ActionKind.UNKNOWN}
+        if root_principal:
+            root_principal_data = {
+                "kind": root_principal.kind,
+                "user_id": root_principal.user_id,
+                "api_key": root_principal.api_key,
+                "email": root_principal.email,
+            }
+        SessionPrincipal.objects.bulk_create(
+            [
+                SessionPrincipal(session=session, **root_principal_data)
                 for _, session, _ in created_sessions
             ]
         )

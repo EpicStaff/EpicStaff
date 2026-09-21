@@ -89,10 +89,8 @@ def redis_service():
 @pytest.fixture
 def tool_manager(redis_service) -> ToolManagerService:
     return ToolManagerService(
-        redis_service=redis_service,
         python_code_executor_service=PythonCodeExecutorService(redis_service),
-        knowledge_search_get_channel="knowledge:search:get",
-        knowledge_search_response_channel="knowledge:search:response",
+        knowledge_client=AsyncMock(),
     )
 
 

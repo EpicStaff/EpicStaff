@@ -16,14 +16,14 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 class="start-header"
                 (click)="toggleMessage()"
             >
-                @if (hasInputs()) {
-                    <div class="play-arrow">
+                <div class="play-arrow">
+                    @if (hasInputs()) {
                         <app-svg-icon
                             [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
                             size="1.1rem"
                         />
-                    </div>
-                }
+                    }
+                </div>
                 <div class="icon-container">
                     <app-svg-icon
                         icon="flag"
@@ -66,12 +66,14 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputsExpanded"
                             >
-                                <div class="input-content">
-                                    <app-copy-button [text]="startInputJson" />
-                                    <app-json-viewer
-                                        [json]="getStartInput()"
-                                        [expanded]="false"
-                                    ></app-json-viewer>
+                                <div class="collapsible-inner">
+                                    <div class="input-content">
+                                        <app-copy-button [text]="startInputJson" />
+                                        <app-json-viewer
+                                            [json]="getStartInput()"
+                                            [expanded]="false"
+                                        ></app-json-viewer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -87,7 +89,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, 0.5rem 1rem);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #d29922;
             }
@@ -100,9 +102,12 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             .play-arrow {
-                margin-right: 16px;
+                width: 1.1rem;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
 
                 app-svg-icon {
                     color: #d29922;
@@ -110,8 +115,8 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #d29922;
                 display: flex;
@@ -127,8 +132,9 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -147,13 +153,18 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
+                padding-left: 4.5rem;
+            }
+
+            .start-content > :first-child {
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;

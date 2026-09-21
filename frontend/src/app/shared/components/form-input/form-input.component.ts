@@ -44,6 +44,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [id]="id"
                     [name]="name"
                     [attr.autocomplete]="effectiveAutocomplete"
+                    [attr.spellcheck]="spellcheck"
                     [placeholder]="placeholder"
                     [(ngModel)]="value"
                     (focus)="focused.set(true)"
@@ -121,7 +122,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     color: var(--color-text-primary);
                     font-size: 0.875rem;
                     transition: border-color 0.2s ease;
@@ -180,7 +181,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     margin-top: 6px;
                     padding: 0.625rem;
                     background-color: rgba(104, 95, 255, 0.1);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     border-left: 3px solid #685fff;
                     font-size: 0.75rem;
                     color: #ffffffb3;
@@ -206,6 +207,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() id: string = '';
     @Input() name: string = '';
     @Input() autocomplete: string | null = null;
+    @Input() spellcheck: boolean = false;
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
     @Input() icon: string = 'help';

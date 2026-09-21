@@ -23,7 +23,7 @@
     }
 
     &__dropdown {
-        border-radius: 10px;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -44,6 +44,7 @@
         margin: 1.25rem;
         padding: 0 1rem;
         height: 40px;
+        flex-shrink: 0;
         font-size: 0.875rem;
         border-radius: 4px;
         border: 1px solid var(--color-ks-transparent-text-20);
@@ -111,7 +112,7 @@
         flex-shrink: 0;
         padding: 0;
         border: none;
-        border-radius: 8px;
+        border-radius: 4px;
         background: var(--accent-color);
         color: var(--color-text-primary);
         cursor: pointer;
@@ -152,13 +153,17 @@
         color: var(--color-ks-text);
         transition: border-color 0.2s ease;
 
-        &:hover {
+        &:hover:not(&--readonly) {
             background: var(--color-ks-hover-row);
         }
 
         &--selected {
             border-color: var(--purple-alpha-60);
             background: var(--purple-alpha-12);
+        }
+
+        &--readonly {
+            cursor: default;
         }
 
         &--checkbox-left {
@@ -224,7 +229,7 @@
         flex-shrink: 0;
         padding: 0;
         border: 1px solid var(--accent-color);
-        border-radius: 8px;
+        border-radius: 4px;
         background: transparent;
         color: var(--accent-color);
         cursor: pointer;
@@ -262,7 +267,7 @@
         ::ng-deep .btn {
             padding-left: 1rem;
             padding-right: 1rem;
-            border-radius: 8px;
+            border-radius: 4px;
             font-weight: 500;
         }
     }
