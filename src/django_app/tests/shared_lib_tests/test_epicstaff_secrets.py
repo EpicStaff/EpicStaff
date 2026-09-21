@@ -8,6 +8,13 @@ from src.shared.epicstaff_secrets import secrets as lib
 
 ENV_VAR = "EPICSTAFF_SECRETS"
 
+# These tests are pure os.environ manipulation and never touch the ORM. But
+# tests/conftest.py has an autouse `heal_builtin_roles` fixture that queries the
+# Role table before every db test, and without a test that pulls in the `db`
+# fixture, pytest-django never swaps the connection to the test database, so
+# that query would hit the real dev database instead.
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture(autouse=True)
 def clean_state(monkeypatch):

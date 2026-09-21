@@ -39,8 +39,8 @@ def channel_layer_settings():
 
 
 @pytest.fixture
-def test_graph(db):
-    return Graph.objects.create(name="test-graph-collab")
+def test_graph(db, default_org):
+    return Graph.objects.create(name="test-graph-collab", org=default_org)
 
 
 @pytest.fixture
@@ -82,7 +82,7 @@ def reset_presence_store():
 
 
 @pytest.fixture
-def auth_client(api_client, regular_user):
+def auth_client(api_client, regular_user, default_org):
     """
     Override the global auth_client for graph_collab tests.
     GraphViewSet does not declare authentication_classes, so it inherits the
@@ -90,8 +90,14 @@ def auth_client(api_client, regular_user):
     credentials() headers are never processed and request.user stays
     AnonymousUser. force_authenticate bypasses the auth middleware entirely
     and sets request.user directly, which is what these tests need.
+
+    Org-scoped endpoints still resolve the active organization from the
+    X-Organization-Id header (regardless of authentication_classes), so it
+    must be set here too — regular_user is an Org Admin member of
+    default_org, the same org the shared graph/agent fixtures use.
     """
     api_client.force_authenticate(user=regular_user)
+    api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
     return api_client
 
 
