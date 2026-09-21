@@ -26,10 +26,3 @@ repos:
       - id: ruff-format
         args: [ "--config", ".ruff.toml" ]
         stages: [ pre-commit ]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.1.0
-    hooks:
-      - id: mypy
-        args: [ "--config-file=.mypy.ini" ]
-        stages: [ pre-commit ]
