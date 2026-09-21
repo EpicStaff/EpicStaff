@@ -20,6 +20,8 @@ jobs:
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
+      django_app: ${{ steps.filter.outputs.be_django_app }}
+      py_services: ${{ steps.filter.outputs.py_services }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,6 +62,33 @@ jobs:
           filter code '^(src/|frontend/|scripts/envtool\.py$|\.github/scripts/compose_matrix\.py$|\.github/workflows/compose-build\.yml$|\.github/workflows/pr\.yml$)'
 
           filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
+
+          # Backend suites are gated per service, so a pull request touching one
+          # service does not pay for the other three. Three inputs force every
+          # suite to run whichever service directory changed:
+          #   src/shared/  -- imported by all four (django_app 49, crew 48 and
+          #                   sandbox 4 `src.shared` imports, agent 91 `shared`
+          #                   imports, plus crew's shared/dotdict path dependency)
+          #   Makefile     -- defines the *-tests targets these jobs invoke
+          #   this file    -- same self-testing rule as the filters above
+          backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
+
+          # crew, agent and sandbox need no database, so one matrix job covers
+          # them and this picks its legs. `filter` leaves $result set, so the
+          # array is built from the same regex that writes each output rather
+          # than from a second copy of it.
+          nodb=''
+          for svc in crew agent sandbox; do
+            filter "be_$svc" "^(src/$svc/|$backend_wide)"
+            if [ "$result" = true ]; then
+              nodb="$nodb${nodb:+,}\"$svc\""
+            fi
+          done
+          echo "py_services=[$nodb]" >> "$GITHUB_OUTPUT"
+          echo "py_services=[$nodb]"
+
+          # django_app gets its own output: it is the one suite needing Postgres.
+          filter be_django_app "^(src/django_app/|$backend_wide)"
 
   # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
   # toggle controls signature enforcement; this is repo hygiene. An edit to
@@ -192,6 +221,179 @@ jobs:
       - name: Audit dependencies
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
+
+  # crew, agent and sandbox: no database, no service containers, well under a
+  # minute for all three. One matrix job whose legs are decided at runtime, so a
+  # pull request touching only src/agent/ runs one leg and a pull request
+  # touching no Python service skips the job outright.
+  #
+  # An empty `py_services` array would make `fromJSON` produce a matrix with no
+  # legs, which GitHub treats as a workflow error rather than a skip -- hence the
+  # explicit `!= '[]'` guard.
+  backend-tests:
+    needs: changes
+    if: needs.changes.outputs.py_services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      # One failing service should not hide the state of the others.
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.py_services) }}
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Every service pins requires-python to exactly this version.
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ matrix.service }}-${{ hashFiles(format('src/{0}/uv.lock', matrix.service)) }}
+          restore-keys: uv-${{ runner.os }}-${{ matrix.service }}-
+
+      # Not just a django_app concern: each service's settings.py calls
+      # env.read_env() at import time, which raises `ValueError: Not found file
+      # in .../src/.env` when the file is absent. Without this, crew collapses
+      # at collection and agent errors out across the board.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install ${{ matrix.service }} dependencies
+        run: make uv-sync svc=${{ matrix.service }}
+
+      - name: Unit tests
+        run: make ${{ matrix.service }}-tests
+
+  # The one backend suite that needs a database. Migration 0048 enables the
+  # pgvector extension, so a stock postgres image will not do.
+  django-tests:
+    needs: changes
+    if: needs.changes.outputs.django_app == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same image src/crewdb/Dockerfile.crewdb builds on, pinned to its
+        # multi-arch index digest the way that Dockerfile pins its own base.
+        # crewdb itself only adds role provisioning for the other services
+        # (manager, knowledge, realtime), which this suite never connects as.
+        image: ankane/pgvector:v0.5.1@sha256:d3a9d8ac27bb7e05e333ef25b634d2625adaa85336ab729954b9e94859bf6fa7
+        env:
+          POSTGRES_USER: root_user
+          POSTGRES_PASSWORD: root_password
+          POSTGRES_DB: epicstaff_db
+        ports:
+          - 5432:5432
+        # Without a healthcheck the first connection races Postgres' own
+        # init, which restarts the server partway through startup.
+        options: >-
+          --health-cmd "pg_isready -U root_user -d epicstaff_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      # Not optional, and not only for cache tests: tests/conftest.py has a
+      # session-scoped autouse `flush_test_db_once` fixture whose `flush` call
+      # clears the django_redis cache backend, so every single Django test
+      # fails at setup without a reachable Redis.
+      #
+      # Runs without auth on purpose. Compose applies --requirepass through the
+      # container command, which GitHub service containers cannot override, so
+      # the credentials are dropped here instead (see REDIS_USER/REDIS_PASSWORD
+      # below) rather than reaching for an image that takes a password by env.
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      UV_PYTHON_DOWNLOADS: never
+      # envtool.py writes src/.env with DB_HOST=crewdb, the compose network
+      # name, which does not resolve on a runner. Env.read_env defaults to
+      # override=False (src/shared/envtools.py), so real environment variables
+      # win -- these point Django at the service container without editing the
+      # generated file. The rest of the values match env.yaml's dev defaults.
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: root_user
+      DB_PASSWORD: root_password
+      DB_NAME: epicstaff_db
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      # Deliberately blank, to match the unauthenticated service container
+      # above. settings/caches.py hands these to django_redis as OPTIONS
+      # USER/PASSWORD, and redis-py skips AUTH entirely when they are falsy.
+      # They still have to be *defined*: env.str() raises on an absent variable,
+      # and an empty value is not an absent one.
+      REDIS_USER: ''
+      REDIS_PASSWORD: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      # django_app pins psycopg2 (not psycopg2-binary), which publishes no Linux
+      # wheel and so is compiled here. Same build dependencies Dockerfile.dj
+      # installs for it; the runner image is not guaranteed to carry them.
+      - name: Install psycopg2 build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev gcc
+
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-django_app-${{ hashFiles('src/django_app/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-django_app-
+
+      # Django settings read every DB/secret value through env.str() with no
+      # default, so the suite cannot import without a generated env file.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      - name: Install django_app dependencies
+        run: make uv-sync svc=django_app
+
+      # pytest-django builds the test database and runs migrations itself, so
+      # there is no separate migrate step.
+      #
+      # tests/api_tests is excluded on cost, not because it is broken. Measured
+      # on 2026-09-18: it is 1704 of the suite's 3460 tests and 95 minutes of its
+      # ~100, so everything else together runs in about twenty. Running it here
+      # would quintuple the wait on every django_app pull request to cover half
+      # the tests.
+      #
+      # This is meant to be temporary. Once django_app is split into separate
+      # apps, the api tests can be selected per app and the ones relevant to a
+      # change brought back in, rather than the directory being all-or-nothing.
+      - name: Unit tests
+        run: make django-tests ARGS="--ignore=tests/api_tests"
 
   build:
     needs: [changes, check-cla, check-external-urls, frontend-checks]
