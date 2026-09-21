@@ -3,45 +3,40 @@ import json
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
-
 from models.state import State
+from services.agent_task_service import AgentTaskService
+from services.graph.events import StopEvent
 from services.graph.nodes import (
     AudioTranscriptionNode,
+    BaseNode,
+    EndNode,
     FileContentExtractorNode,
     KnowledgeNode,
     PythonNode,
-    CrewNode,
-    BaseNode,
-    EndNode,
 )
-
-from services.agent_task_service import AgentTaskService
 from services.graph.nodes.agent_node import AgentNode
-from services.graph.nodes.task_node import TaskNode
-from services.graph.remembered_outputs import RememberedOutputsStore
-from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
-from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
-from services.graph.events import StopEvent
+from services.graph.nodes.task_node import TaskNode
+from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
+from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
+from services.graph.remembered_outputs import RememberedOutputsStore
 from services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
 from services.graph.subgraphs.subgraph_node import SubGraphNode
+from services.knowledge_search_service import KnowledgeSearchService
+from services.redis_service import RedisService
+from services.run_python_code_service import RunPythonCodeService
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from services.crew.crew_parser_service import CrewParserService
-from services.redis_service import RedisService
 from src.shared.models import (
+    ClassificationDecisionTableNodeData,
     DecisionTableNodeData,
     PythonCodeData,
     SessionData,
     SubGraphData,
-    ClassificationDecisionTableNodeData,
 )
-from services.run_python_code_service import RunPythonCodeService
-from services.knowledge_search_service import KnowledgeSearchService
-
 from utils import map_variables_to_input
 
 
@@ -53,9 +48,7 @@ class SessionGraphBuilder:
         self,
         session_id: int,
         redis_service: RedisService,
-        crew_parser_service: CrewParserService,
         python_code_executor_service: RunPythonCodeService,
-        crewai_output_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
         agent_task_service: AgentTaskService | None = None,
@@ -66,23 +59,17 @@ class SessionGraphBuilder:
         Args:
             session_id (int): The unique identifier for the session.
             redis_service (RedisService): The service responsible for Redis operations.
-            crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
-            crewai_output_channel (str): The output channel for CrewAI communications.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
         """
 
         self.session_id = session_id
         self.redis_service = redis_service
-        self.crew_parser_service = crew_parser_service
         self.python_code_executor_service = python_code_executor_service
-        self.crewai_output_channel = crewai_output_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
-        self.remembered_outputs_store = RememberedOutputsStore(
-            redis_service=redis_service
-        )
+        self.remembered_outputs_store = RememberedOutputsStore(redis_service=redis_service)
 
         self._graph_builder = StateGraph(State)
         self._end_node_result: dict | None = {}
@@ -124,20 +111,16 @@ class SessionGraphBuilder:
                 },
             }
 
-            python_code_execution_data = (
-                await self.python_code_executor_service.run_code(
-                    python_code_data=python_code_data,
-                    inputs=input_,
-                    stop_event=self.stop_event,
-                    additional_global_kwargs=additional_global_kwargs,
-                )
+            python_code_execution_data = await self.python_code_executor_service.run_code(
+                python_code_data=python_code_data,
+                inputs=input_,
+                stop_event=self.stop_event,
+                additional_global_kwargs=additional_global_kwargs,
             )
 
             result = json.loads(python_code_execution_data["result_data"])
 
-            assert isinstance(
-                result, str
-            ), "output should be a string for decision edge"
+            assert isinstance(result, str), "output should be a string for decision edge"
 
             return result
 
@@ -158,9 +141,7 @@ class SessionGraphBuilder:
 
         self._graph_builder.add_node(node.node_name, inner)
 
-    def add_decision_table_node(
-        self, decision_table_node_data: DecisionTableNodeData
-    ) -> str:
+    def add_decision_table_node(self, decision_table_node_data: DecisionTableNodeData) -> str:
         """
         Adds a decision table node to the graph builder.
         Args:
@@ -181,14 +162,10 @@ class SessionGraphBuilder:
         self._graph_builder.add_node(decision_table_node_data.node_name, subgraph)
 
         async def condition(state: State, writer: StreamWriter):
-            decision_node_variables = state["system_variables"]["nodes"][
-                builder.node_name
-            ]
+            decision_node_variables = state["system_variables"]["nodes"][builder.node_name]
             return decision_node_variables["result_node"]
 
-        self._graph_builder.add_conditional_edges(
-            decision_table_node_data.node_name, condition
-        )
+        self._graph_builder.add_conditional_edges(decision_table_node_data.node_name, condition)
 
     def add_classification_decision_table_node(
         self, node_data: ClassificationDecisionTableNodeData
@@ -212,9 +189,7 @@ class SessionGraphBuilder:
             writer: StreamWriter,
             _default_next_node: str | None = default_next_node,
         ):
-            result_node = state["system_variables"]["nodes"][builder.node_name][
-                "result_node"
-            ]
+            result_node = state["system_variables"]["nodes"][builder.node_name]["result_node"]
             return result_node or _default_next_node
 
         self._graph_builder.add_conditional_edges(node_data.node_name, condition)
@@ -311,21 +286,6 @@ class SessionGraphBuilder:
             )
             self.add_node(agent_node)
 
-        for crew_node_data in schema.crew_node_list:
-            crew_node = CrewNode(
-                session_id=self.session_id,
-                node_name=crew_node_data.node_name,
-                crew_data=crew_node_data.crew,
-                redis_service=self.redis_service,
-                crewai_output_channel=self.crewai_output_channel,
-                crew_parser_service=self.crew_parser_service,
-                input_map=crew_node_data.input_map,
-                output_variable_path=crew_node_data.output_variable_path,
-                knowledge_search_service=self.knowledge_search_service,
-                stop_event=self.stop_event,
-            )
-            self.add_node(crew_node)
-
         for python_node_data in schema.python_node_list:
             python_node = PythonNode(
                 session_id=self.session_id,
@@ -351,6 +311,7 @@ class SessionGraphBuilder:
                 rag_search_config=knowledge_node_data.rag_search_config,
                 knowledge_search_service=self.knowledge_search_service,
                 embedder_api_key=knowledge_node_data.embedder_api_key,
+                llm_api_key=knowledge_node_data.llm_api_key,
             )
             self.add_node(knowledge_node)
 
@@ -394,9 +355,7 @@ class SessionGraphBuilder:
             )
 
         for decision_table_node_data in schema.decision_table_node_list:
-            self.add_decision_table_node(
-                decision_table_node_data=decision_table_node_data
-            )
+            self.add_decision_table_node(decision_table_node_data=decision_table_node_data)
         for ct_node_data in schema.classification_decision_table_node_list:
             self.add_classification_decision_table_node(node_data=ct_node_data)
 

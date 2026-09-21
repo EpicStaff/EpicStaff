@@ -8,6 +8,7 @@ import {
     CustomInputComponent,
     SelectComponent,
     SelectItem,
+    ToggleSwitchComponent,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
 import { SecretsStorageService, WebhookTriggerService } from '@shared/services';
@@ -20,8 +21,8 @@ import {
     WebhookTriggerModel,
     WebhookTriggerWrite,
 } from '../../../../../visual-programming/core/models/webhook-trigger.model';
-import { GetAgentRequest } from '../../../../staff/models/agent.model';
-import { AgentsService } from '../../../../staff/services/staff.service';
+import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
+import { AgentDefinitionsApiService } from '../../../../agent-definitions/services/agent-definitions-api.service';
 
 export interface AddEditChannelDialogData {
     channel: RealtimeChannel | null;
@@ -38,6 +39,7 @@ export interface AddEditChannelDialogData {
         SelectComponent,
         ButtonComponent,
         WebhookTriggerFieldComponent,
+        ToggleSwitchComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -45,7 +47,7 @@ export class AddEditChannelDialogComponent implements OnInit {
     private fb = inject(FormBuilder);
     private dialogRef = inject(DialogRef);
     private channelService = inject(RealtimeChannelService);
-    private agentsService = inject(AgentsService);
+    private agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private webhookTriggerService = inject(WebhookTriggerService);
     private secretsStorageService = inject(SecretsStorageService);
     private destroyRef = inject(DestroyRef);
@@ -61,7 +63,7 @@ export class AddEditChannelDialogComponent implements OnInit {
     /** Id of a trigger we created during this dialog session, so retries update instead of duplicating. */
     private createdTriggerId = signal<number | null>(null);
 
-    private agents = signal<GetAgentRequest[]>([]);
+    private agentDefinitions = signal<AgentDefinition[]>([]);
     private phoneNumbers = signal<TwilioPhoneNumber[]>([]);
     private phonesFetched = signal<boolean>(false);
     phoneNumbersLoading = signal<boolean>(false);
@@ -69,9 +71,11 @@ export class AddEditChannelDialogComponent implements OnInit {
 
     private readonly PHONE_CACHE_KEY = 'twilio_phone_numbers_cache_v2';
 
-    agentItems = computed<SelectItem[]>(() => [
+    agentDefinitionItems = computed<SelectItem[]>(() => [
         { name: '— None —', value: null },
-        ...this.agents().map((a) => ({ name: a.role, value: a.id })),
+        ...this.agentDefinitions()
+            .filter((d) => d.has_realtime_definition)
+            .map((d) => ({ name: d.name, value: d.id })),
     ]);
 
     secretItems = computed<SelectItem[]>(() =>
@@ -98,18 +102,18 @@ export class AddEditChannelDialogComponent implements OnInit {
 
         this.form = this.fb.group({
             name: [ch?.name ?? '', Validators.required],
-            realtime_agent: [ch?.realtime_agent ?? null],
-            is_active: [ch?.is_active ?? true],
-            account_sid: [tw?.account_sid ?? ''],
+            realtime_agent_definition: [ch?.realtime_agent_definition ?? null],
+            is_enabled: [ch?.is_enabled ?? true],
+            account_sid: [tw?.account_sid ?? '', Validators.required],
             auth_token_secret_id: [tw?.auth_token_secret_id ?? null, [Validators.required]],
             phone_number: [tw?.phone_number ?? ''],
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
 
-        this.agentsService
-            .getAgentsWithRealtimeConfig()
+        this.agentDefinitionsApi
+            .getAgentDefinitions()
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({ next: (agents) => this.agents.set(agents), error: () => {} });
+            .subscribe({ next: (defs) => this.agentDefinitions.set(defs), error: () => {} });
 
         this.secretsStorageService
             .getSecrets()
@@ -158,8 +162,8 @@ export class AddEditChannelDialogComponent implements OnInit {
                 .createChannel({
                     name: v.name,
                     channel_type: 'twilio',
-                    realtime_agent: v.realtime_agent ?? null,
-                    is_active: v.is_active,
+                    realtime_agent_definition: v.realtime_agent_definition ?? null,
+                    is_enabled: v.is_enabled,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
@@ -185,8 +189,8 @@ export class AddEditChannelDialogComponent implements OnInit {
                 .updateChannel({
                     id: saved.id,
                     name: v.name,
-                    realtime_agent: v.realtime_agent ?? null,
-                    is_active: v.is_active,
+                    realtime_agent_definition: v.realtime_agent_definition ?? null,
+                    is_enabled: v.is_enabled,
                 })
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
@@ -194,8 +198,8 @@ export class AddEditChannelDialogComponent implements OnInit {
                         this.savedChannel.set({
                             ...saved,
                             name: v.name,
-                            realtime_agent: v.realtime_agent ?? null,
-                            is_active: v.is_active,
+                            realtime_agent_definition: v.realtime_agent_definition ?? null,
+                            is_enabled: v.is_enabled,
                         });
                         this.channelService.channelsChanged$.next();
                         this.saveTwilioChannel(

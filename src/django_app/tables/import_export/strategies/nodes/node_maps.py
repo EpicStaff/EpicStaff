@@ -13,12 +13,10 @@ This module only maps each node type to:
 * the EntityType used to resolve the node's strategy from the registry.
 """
 
-from tables.import_export.enums import NodeType, EntityType
-
+from tables.import_export.enums import EntityType, NodeType
 
 # NodeType -> reverse-relation accessor on the Graph model.
 NODE_RELATIONS: dict[str, str] = {
-    NodeType.CREW_NODE: "crew_node_list",
     NodeType.SUBGRAPH_NODE: "subgraph_node_list",
     NodeType.PYTHON_NODE: "python_node_list",
     NodeType.WEBHOOK_TRIGGER_NODE: "webhook_trigger_node_list",

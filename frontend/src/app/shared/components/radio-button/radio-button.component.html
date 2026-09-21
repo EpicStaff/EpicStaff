@@ -24,8 +24,16 @@
                 class="segmented__option"
                 [class.segmented__option--active]="value() === option.value"
                 [disabled]="isDisabled()"
+                [title]="option.tooltip ?? ''"
                 (click)="select(option)"
             >
+                @if (option.icon) {
+                    <app-svg-icon
+                        class="option-icon"
+                        [icon]="option.icon"
+                        size="0.8rem"
+                    />
+                }
                 {{ option.label ?? option.name }}
             </button>
         }
@@ -42,8 +50,16 @@
                 class="item"
                 [style.width]="`calc(100% / ${count})`"
                 [class.active]="option.value === value()"
+                [title]="option.tooltip ?? ''"
                 (click)="select(option)"
             >
+                @if (option.icon) {
+                    <app-svg-icon
+                        class="option-icon"
+                        [icon]="option.icon"
+                        size="0.8rem"
+                    />
+                }
                 {{ option.label ?? option.name }}
             </div>
         }

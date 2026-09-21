@@ -5,6 +5,7 @@
             <p class="tab__subtitle">Create and manage webhook triggers reused by trigger nodes and channels.</p>
         </div>
         <app-button
+            *appHasPermission="[ResourceCode.Webhooks, ActionCode.Create]"
             type="primary"
             (click)="onAdd()"
             >Add Trigger</app-button
@@ -33,9 +34,19 @@
                             @if (trigger.provider_type) {
                                 <span class="trigger-card__badge">{{ trigger.provider_type }}</span>
                             }
+                            @if (trigger.auth) {
+                                <span class="trigger-card__badge">
+                                    {{
+                                        trigger.auth.kind === 'twilio' && trigger.auth.secret_tail == null
+                                            ? 'twilio (reserved)'
+                                            : trigger.auth.kind
+                                    }}
+                                </span>
+                            }
                         </div>
                         <div class="trigger-card__actions">
                             <button
+                                *appHasPermission="[ResourceCode.Webhooks, ActionCode.Update]"
                                 type="button"
                                 class="trigger-card__action"
                                 title="Edit"
@@ -47,6 +58,7 @@
                                 ></i>
                             </button>
                             <button
+                                *appHasPermission="[ResourceCode.Webhooks, ActionCode.Delete]"
                                 type="button"
                                 class="trigger-card__action trigger-card__action--delete"
                                 title="Delete"

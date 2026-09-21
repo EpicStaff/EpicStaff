@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -22,8 +21,7 @@ interface StatusOption {
 
 @Component({
     selector: 'app-flow-session-status-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [ClickOutsideDirective, AppSvgIconComponent],
     template: `
         <div
             class="status-filter-dropdown-custom"

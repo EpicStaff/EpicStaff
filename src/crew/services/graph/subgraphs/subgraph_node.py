@@ -1,19 +1,18 @@
 from copy import deepcopy
-from uuid import uuid4
 from dataclasses import asdict
+from uuid import uuid4
 
 from dotdict import DotDict
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
-from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
-
 from models.graph_models import (
     GraphMessage,
     SubGraphFinishMessageData,
     SubGraphStartMessageData,
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
+from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from utils import map_variables_to_input
 from utils.set_output_variables import set_output_variables
 
@@ -78,10 +77,9 @@ class SubGraphNode:
         return SessionGraphBuilder(
             session_id=self.session_id,
             redis_service=self.session_graph_builder.redis_service,
-            crew_parser_service=self.session_graph_builder.crew_parser_service,
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
-            crewai_output_channel=self.session_graph_builder.crewai_output_channel,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
+            agent_task_service=self.session_graph_builder.agent_task_service,
             stop_event=self.stop_event,
         )
 
@@ -205,9 +203,7 @@ class SubGraphNode:
                             data.message_data = msg_data
 
                         existing = msg_data.get("subgraph_execution_ids") or []
-                        msg_data["subgraph_execution_ids"] = existing + [
-                            subgraph_execution_id
-                        ]
+                        msg_data["subgraph_execution_ids"] = [*existing, subgraph_execution_id]
                     writer(data)
                 elif stream_mode == "values":
                     result = data
@@ -215,9 +211,7 @@ class SubGraphNode:
                 result = chunk
 
         if result is None:
-            result = await compiled_subgraph.ainvoke(
-                subgraph_state, {"recursion_limit": 1000}
-            )
+            result = await compiled_subgraph.ainvoke(subgraph_state, {"recursion_limit": 1000})
 
         return result
 
@@ -277,9 +271,7 @@ class SubGraphNode:
     ):
         """Send subgraph finish message to writer."""
         finish_message_data = SubGraphFinishMessageData(
-            state=self.custom_session_message_writer._convert_state(
-                state=updated_state
-            ),
+            state=self.custom_session_message_writer._convert_state(state=updated_state),
             output=subgraph_output,
             subgraph_execution_id=subgraph_execution_id,
         )
@@ -292,7 +284,5 @@ class SubGraphNode:
         writer(graph_message)
 
     def _get_graph_data(self, graph_id: int) -> GraphData:
-        subgraph = next(
-            (sg for sg in self.unique_subgraph_list if sg.id == graph_id), None
-        )
+        subgraph = next((sg for sg in self.unique_subgraph_list if sg.id == graph_id), None)
         return subgraph if subgraph else None

@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, Input, output, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, Input, output, ViewChild } from '@angular/core';
 
 export interface PickerItem {
     tag: string;
@@ -11,8 +10,7 @@ export interface PickerItem {
 
 @Component({
     selector: 'app-var-picker-flat',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="vpf-container">
             <div class="vpf-search">
@@ -45,12 +43,13 @@ export interface PickerItem {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .vpf-container {
                 background: var(--color-nodes-sidepanel-bg);
                 border: 1px solid var(--color-divider-regular);
-                border-radius: 6px;
+                border-radius: 4px;
                 box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
                 width: 280px;
                 max-height: 280px;
@@ -119,9 +118,9 @@ export interface PickerItem {
             .vpf-tag {
                 flex-shrink: 0;
                 font-size: 0.68rem;
-                font-weight: 600;
+                font-weight: 500;
                 padding: 1px 5px;
-                border-radius: 3px;
+                border-radius: 4px;
                 background: rgba(104, 95, 255, 0.25);
                 color: rgba(170, 160, 255, 0.9);
                 letter-spacing: 0.02em;

@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from django.db import IntegrityError
 from rest_framework import serializers
+from tables.models.llm_models import LLMConfig
+from tables.serializers.org_scoped_fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+)
 
 from agents.exceptions import AgentDefinitionConflictError
 from agents.models.agent_models import (
@@ -10,13 +15,8 @@ from agents.models.agent_models import (
     SurfacePlace,
 )
 from agents.models.surface_models import Surface
-from tables.models.llm_models import LLMConfig
 from agents.services.surface_service import AgentDefinitionSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
-from tables.serializers.org_scoped_fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
 
 
 class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
@@ -100,18 +100,12 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     default_surfaces = AgentDefaultSurfaceWriteSerializer(many=True, required=False)
-    max_tool_calls = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
-    tool_timeout = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    max_tool_calls = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    tool_timeout = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     max_consecutive_failures = serializers.IntegerField(
         required=False, allow_null=True, min_value=1
     )
-    schema_max_retries = serializers.IntegerField(
-        required=False, allow_null=True, min_value=0
-    )
+    schema_max_retries = serializers.IntegerField(required=False, allow_null=True, min_value=0)
 
     class Meta:
         model = AgentDefinition
@@ -139,15 +133,10 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         default_surfaces_data = attrs.get("default_surfaces")
 
         if default_surfaces_data is not None:
-            organization = self.context.get("organization")
-            agent_definition = self.instance
-
-            if organization is not None:
-                SurfaceValidator.validate_agent_default_surfaces(
-                    items=default_surfaces_data,
-                    agent_definition=agent_definition,
-                    organization=organization,
-                )
+            SurfaceValidator.validate_agent_default_surfaces(
+                items=default_surfaces_data,
+                agent_definition=self.instance,
+            )
 
         return attrs
 

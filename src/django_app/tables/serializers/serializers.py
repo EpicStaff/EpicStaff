@@ -1,36 +1,43 @@
 from rest_framework import serializers
-from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeTool
-from tables.models.python_models import PythonCodeToolConfig
-from tables.models import PythonCode
-from tables.models.session_models import Session
 from tables.import_export.services.partial_export_service import (
     LIST_KEY_TO_ENTITY_TYPE,
 )
+from tables.models import PythonCode
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
+from tables.models.session_models import Session
 
 
 class ToolUsageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    projects_count = serializers.IntegerField()
-    staff_count = serializers.IntegerField()
+    agent_surface_count = serializers.IntegerField()
+    shared_surface_count = serializers.IntegerField()
+    inline_surface_count = serializers.IntegerField()
     is_built_in = serializers.BooleanField()
 
 
-class ToolUsageProjectSerializer(serializers.Serializer):
+class ToolUsageSurfaceEntrySerializer(serializers.Serializer):
+    """Shared `{id, name, node_id}` shape reused for all three usage-detail
+    lists — list membership (agent_surface/shared_surface/inline_surface) already
+    conveys what a `kind` discriminator used to.
+
+    `id` is a navigation target, not a unique row key: for `agent_surface`/
+    `shared_surface` it's the catalog `Surface` id (unique per entry); for
+    `inline_surface` it's the owning graph's id, which two different nodes in the
+    same graph can share. `node_id` disambiguates that case — the id of the
+    `TaskNode`/`AgentNode` the inline attachment lives on — and is always
+    `null` for `agent_surface`/`shared_surface` entries, which have no node.
+    """
+
     id = serializers.IntegerField()
     name = serializers.CharField()
-
-
-class ToolUsageStaffSerializer(serializers.Serializer):
-    # Agent has no `name` field — `role` is its display identity
-    # (see tables.models.crew_models.Agent.__str__).
-    id = serializers.IntegerField()
-    role = serializers.CharField()
+    node_id = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class ToolUsageDetailSerializer(serializers.Serializer):
-    projects = ToolUsageProjectSerializer(many=True)
-    staff = ToolUsageStaffSerializer(many=True)
+    agent_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    shared_surface = ToolUsageSurfaceEntrySerializer(many=True)
+    inline_surface = ToolUsageSurfaceEntrySerializer(many=True)
 
 
 class RunSessionSerializer(serializers.Serializer):
@@ -52,28 +59,16 @@ class RunSessionSerializer(serializers.Serializer):
     # SessionManagerService.create_session_data) rather than a new typed
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
-    token_budget = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
-            raise serializers.ValidationError(
-                "Either 'graph_id' or 'graph_uuid' must be provided."
-            )
+            raise serializers.ValidationError("Either 'graph_id' or 'graph_uuid' must be provided.")
         return attrs
 
 
 class GetUpdatesSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
-
-
-class AnswerToLLMSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-    crew_id = serializers.IntegerField(required=True)
-    execution_order = serializers.IntegerField(required=True)
-    name = serializers.CharField()
-    answer = serializers.CharField()
 
 
 class NotifyEmailSerializer(serializers.Serializer):
@@ -85,20 +80,8 @@ class NotifyEmailSerializer(serializers.Serializer):
 
 
 class InitRealtimeSerializer(serializers.Serializer):
-    agent_id = serializers.IntegerField(required=False)
-    agent_definition_id = serializers.IntegerField(required=False)
+    agent_definition_id = serializers.IntegerField(required=True)
     config = serializers.DictField(required=False, default=dict)
-
-    def validate(self, attrs):
-        agent_id = attrs.get("agent_id")
-        agent_definition_id = attrs.get("agent_definition_id")
-
-        if bool(agent_id) == bool(agent_definition_id):
-            raise serializers.ValidationError(
-                "Exactly one of 'agent_id' or 'agent_definition_id' must be provided."
-            )
-
-        return attrs
 
 
 class BaseToolSerializer(serializers.Serializer):
@@ -107,9 +90,9 @@ class BaseToolSerializer(serializers.Serializer):
 
     def to_representation(self, instance):  # instance is a Tool instance
         from tables.serializers.model_serializers import (
-            PythonCodeToolSerializer,
             McpToolSerializer,
             PythonCodeToolConfigSerializer,
+            PythonCodeToolSerializer,
         )
 
         repr = {}
@@ -123,15 +106,9 @@ class BaseToolSerializer(serializers.Serializer):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
             repr["data"] = PythonCodeToolConfigSerializer(instance).data
         else:
-            raise TypeError(
-                f"Unsupported tool type for serialization: {type(instance)}"
-            )
+            raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 
         return repr
-
-
-class RegisterTelegramTriggerSerializer(serializers.Serializer):
-    telegram_trigger_node_id = serializers.IntegerField(required=True)
 
 
 class ProcessDocumentChunkingSerializer(serializers.Serializer):
@@ -150,6 +127,7 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
 
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
+    document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
 
 
 class BulkExportSerializer(serializers.Serializer):
@@ -161,9 +139,6 @@ class BulkExportSerializer(serializers.Serializer):
 
 
 class GraphNodesPartialExportSerializer(serializers.Serializer):
-    crew_node_list = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, default=list
-    )
     python_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
@@ -237,11 +212,13 @@ class ImportRequestSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs.get("replace_existing") and not attrs.get("preserve_uuids"):
             raise serializers.ValidationError(
-                {
-                    "replace_existing": "replace_existing=True requires preserve_uuids=True."
-                }
+                {"replace_existing": "replace_existing=True requires preserve_uuids=True."}
             )
         return attrs
+
+
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

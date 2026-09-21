@@ -1,8 +1,14 @@
 from rest_framework import serializers
+from tables.constants.knowledge_constants import (
+    MAX_CHUNK_OVERLAP,
+    MAX_CHUNK_SIZE,
+    MIN_CHUNK_OVERLAP,
+    MIN_CHUNK_SIZE,
+)
 from tables.models.knowledge_models import (
     NaiveRag,
-    NaiveRagDocumentConfig,
     NaiveRagChunk,
+    NaiveRagDocumentConfig,
     NaiveRagPreviewChunk,
     NaiveRagSearchConfig,
 )
@@ -29,6 +35,7 @@ class NaiveRagSerializer(serializers.ModelSerializer):
             "embedder",
             "embedder_name",
             "rag_status",
+            "outdated_reasons",
             "collection_id",
             "error_message",
             "created_at",
@@ -43,9 +50,7 @@ class NaiveRagCreateUpdateSerializer(serializers.Serializer):
     Serializer for creating/updating NaiveRag.
     """
 
-    embedder_id = serializers.IntegerField(
-        required=True, help_text="ID of the embedder to use"
-    )
+    embedder_id = serializers.IntegerField(required=True, help_text="ID of the embedder to use")
 
     def validate_embedder_id(self, value):
         """Validate embedder_id is positive."""
@@ -59,9 +64,7 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
     Serializer for displaying document configuration.
     """
 
-    document_id = serializers.IntegerField(
-        source="document.document_id", read_only=True
-    )
+    document_id = serializers.IntegerField(source="document.document_id", read_only=True)
     file_name = serializers.CharField(source="document.file_name", read_only=True)
 
     class Meta:
@@ -75,6 +78,9 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "outdated_reasons",
+            "error_message",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -89,9 +95,7 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
     Used in bulk update responses to show which configs failed and why.
     """
 
-    document_id = serializers.IntegerField(
-        source="document.document_id", read_only=True
-    )
+    document_id = serializers.IntegerField(source="document.document_id", read_only=True)
     file_name = serializers.CharField(source="document.file_name", read_only=True)
     errors = serializers.SerializerMethodField()
 
@@ -106,6 +110,9 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "outdated_reasons",
+            "error_message",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -121,6 +128,9 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "outdated_reasons",
+            "error_message",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -142,25 +152,29 @@ class DocumentConfigUpdateSerializer(serializers.Serializer):
     All fields optional - only updates provided fields.
     """
 
-    chunk_size = serializers.IntegerField(required=False, help_text="New chunk size")
+    chunk_size = serializers.IntegerField(
+        required=False,
+        min_value=MIN_CHUNK_SIZE,
+        max_value=MAX_CHUNK_SIZE,
+        help_text="New chunk size",
+    )
     chunk_overlap = serializers.IntegerField(
-        required=False, help_text="New chunk overlap"
+        required=False,
+        min_value=MIN_CHUNK_OVERLAP,
+        max_value=MAX_CHUNK_OVERLAP,
+        help_text="New chunk overlap",
     )
     chunk_strategy = serializers.ChoiceField(
         required=False,
         choices=NaiveRagDocumentConfig.ChunkStrategy.choices,
         help_text="New chunking strategy",
     )
-    additional_params = serializers.JSONField(
-        required=False, help_text="New additional parameters"
-    )
+    additional_params = serializers.JSONField(required=False, help_text="New additional parameters")
 
     def validate(self, attrs):
         """Ensure at least one field is provided."""
         if not attrs:
-            raise serializers.ValidationError(
-                "At least one field must be provided for update"
-            )
+            raise serializers.ValidationError("At least one field must be provided for update")
         return attrs
 
 
@@ -191,6 +205,7 @@ class NaiveRagDetailSerializer(serializers.ModelSerializer):
             "embedder",
             "embedder_name",
             "rag_status",
+            "outdated_reasons",
             "collection_id",
             "collection_name",
             "total_documents",
@@ -213,22 +228,22 @@ class NaiveRagDetailSerializer(serializers.ModelSerializer):
 
 
 class DocumentConfigBulkUpdateSerializer(serializers.Serializer):
-    """
-    Serializer for bulk updating document configs.
-    Updates multiple configs by their config IDs.
-    """
-
-    config_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+    id = serializers.IntegerField(
         required=True,
-        allow_empty=False,
-        help_text="List of naive_rag_document_config IDs to update",
+        help_text="Primary Key of Document Config.",
     )
+
     chunk_size = serializers.IntegerField(
-        required=False, help_text="New chunk size (applied to all selected configs)"
+        required=False,
+        min_value=MIN_CHUNK_SIZE,
+        max_value=MAX_CHUNK_SIZE,
+        help_text="New chunk size (applied to all selected configs)",
     )
     chunk_overlap = serializers.IntegerField(
-        required=False, help_text="New chunk overlap (applied to all selected configs)"
+        required=False,
+        min_value=MIN_CHUNK_OVERLAP,
+        max_value=MAX_CHUNK_OVERLAP,
+        help_text="New chunk overlap (applied to all selected configs)",
     )
     chunk_strategy = serializers.ChoiceField(
         required=False,
@@ -240,25 +255,13 @@ class DocumentConfigBulkUpdateSerializer(serializers.Serializer):
         help_text="New additional parameters (applied to all selected configs)",
     )
 
-    def validate_config_ids(self, value):
-        """Validate config_ids list is not empty."""
-        if not value:
-            raise serializers.ValidationError("config_ids list cannot be empty")
-        return value
+    default_error_messages = {
+        "empty_data_to_update": "At least one field must be provided to update config id={id}",
+    }
 
     def validate(self, attrs):
-        """Ensure at least one update field is provided besides config_ids."""
-        update_fields = {
-            "chunk_size",
-            "chunk_overlap",
-            "chunk_strategy",
-            "additional_params",
-        }
-        if not any(field in attrs for field in update_fields):
-            raise serializers.ValidationError(
-                "At least one field must be provided for update: "
-                "chunk_size, chunk_overlap, chunk_strategy, or additional_params"
-            )
+        if not any(f in attrs for f in self.fields if f != "id"):
+            self.fail("empty_data_to_update", id=attrs["id"])
         return attrs
 
 
@@ -330,9 +333,7 @@ class ChunkingResponseSerializer(serializers.Serializer):
     status = serializers.CharField()  # "completed", "failed", "cancelled", "timeout"
     chunk_count = serializers.IntegerField(allow_null=True)
     message = serializers.CharField(allow_null=True, allow_blank=True)
-    elapsed_time = serializers.FloatField(
-        allow_null=True, help_text="Chunking duration in seconds"
-    )
+    elapsed_time = serializers.FloatField(allow_null=True, help_text="Chunking duration in seconds")
 
 
 class ChunkPreviewResponseSerializer(serializers.Serializer):
@@ -378,7 +379,7 @@ class AssignRagSerializer(serializers.Serializer):
 class NaiveRagSearchConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = NaiveRagSearchConfig
-        fields = ["search_limit", "similarity_threshold"]
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
 
 
 class NaiveSearchConfigInputSerializer(serializers.Serializer):
@@ -395,6 +396,10 @@ class NaiveSearchConfigInputSerializer(serializers.Serializer):
         min_value=0.0,
         max_value=1.0,
         help_text="Similarity threshold for search (0.0-1.0)",
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 
@@ -461,3 +466,25 @@ class PreviewChunksByIdsResponseSerializer(serializers.Serializer):
     document_config_id = serializers.IntegerField()
     total = serializers.IntegerField()
     chunks = NaiveRagPreviewChunkSerializer(many=True)
+
+
+class ChunkingConfigSerializer(serializers.Serializer):
+    chunk_strategy = serializers.ChoiceField(choices=NaiveRagDocumentConfig.ChunkStrategy.choices)
+    chunk_size = serializers.IntegerField(
+        min_value=MIN_CHUNK_SIZE,
+        max_value=MAX_CHUNK_SIZE,
+    )
+    chunk_overlap = serializers.IntegerField(
+        min_value=MIN_CHUNK_OVERLAP,
+        max_value=MAX_CHUNK_OVERLAP,
+    )
+    additional_params = serializers.JSONField(default=dict)
+
+    def validate(self, attrs):
+        chunk_size = attrs["chunk_size"]
+        chunk_overlap = attrs["chunk_overlap"]
+        if chunk_overlap >= chunk_size:
+            raise serializers.ValidationError(
+                {"chunk_overlap": ["'chunk_overlap' must be less then 'chunk_size'"]}
+            )
+        return attrs

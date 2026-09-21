@@ -1,0 +1,9 @@
+# Trivy config for the frontend "all known" pass only.
+#
+# Trivy excludes npm dev dependencies by default, so without this the frontend
+# scan sees 58 of 775 locked packages -- a build-time compromise would be
+# invisible. The flag has no CLI equivalent exposed by trivy-action and is NOT
+# honoured as TRIVY_INCLUDE_DEV_DEPS (verified: still 58), so it has to come
+# from a config file, and the key is nested under `pkg`.
+pkg:
+  include-dev-deps: true

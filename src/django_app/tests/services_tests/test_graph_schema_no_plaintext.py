@@ -2,21 +2,20 @@ import json
 
 import pytest
 
+from agents.models import AgentDefinition
 from tables.models import (
-    Agent,
-    Crew,
     Graph,
     LLMConfig,
     LLMModel,
     Provider,
     Secret,
     Session,
-    Task,
 )
-from tables.models.graph_models import CrewNode, Edge, StartNode
+from tables.models.graph_models import AgentNode, Edge, StartNode
 from tables.models.rbac_models import Organization
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 
 SENTINEL = "sk-SENTINEL-must-never-be-persisted-9f3a"
 
@@ -36,33 +35,22 @@ def graph_with_secret_backed_llm(org):
         custom_name="leak-test-cfg", model=model, org=org, api_key_secret=secret
     )
 
-    agent = Agent.objects.create(
-        role="leak-tester",
-        goal="expose nothing",
-        backstory="none",
+    agent_definition = AgentDefinition.objects.create(
+        organization=org,
+        name="leak-tester",
+        instructions="expose nothing",
         llm_config=llm_config,
-        org=org,
-    )
-    crew = Crew.objects.create(name="leak-test-crew", org=org)
-    crew.agents.set([agent])
-    # converter_service asserts a crew has at least one task before building
-    # its payload, so the graph is not convertible without this.
-    Task.objects.create(
-        crew=crew,
-        agent=agent,
-        name="leak-test-task",
-        instructions="do nothing",
-        expected_output="nothing",
-        order=1,
     )
 
     graph = Graph.objects.create(name="leak-test-graph", org=org)
     # StartNode.node_name is a fixed "__start__" property, not a column.
     start = StartNode.objects.create(graph=graph, variables={"variables": {}})
-    crew_node = CrewNode.objects.create(graph=graph, crew=crew, node_name="crew_node")
+    agent_node = AgentNode.objects.create(
+        graph=graph, agent_definition=agent_definition, node_name="agent_node"
+    )
     # Without an edge off the start node, conversion raises
     # GraphEntryPointException before any payload is built.
-    Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=crew_node.pk)
+    Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=agent_node.pk)
     return graph, secret
 
 
@@ -81,7 +69,9 @@ class TestGraphSchemaNeverHoldsPlaintext:
             lambda channel, message: published.append((channel, message)) or 2,
         )
 
-        session_id = service.run_session(graph_id=graph.pk, variables={})
+        session_id = service.run_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
         session = Session.objects.get(pk=session_id)
 
         stored = json.dumps(session.graph_schema)
@@ -104,7 +94,9 @@ class TestGraphSchemaNeverHoldsPlaintext:
             service.redis_service.redis_client, "publish", lambda channel, message: 2
         )
 
-        session = service.create_session(graph_id=graph.pk, variables={})
+        session = service.create_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
         session_data = service.create_session_data(session=session)
 
         service.redis_service.publish_session_data(
@@ -135,7 +127,9 @@ class TestUnresolvableSecretFailsTheSession:
         )
 
         with pytest.raises(Exception):
-            service.run_session(graph_id=graph.pk, variables={})
+            service.run_session(
+                graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            )
 
         session = Session.objects.filter(graph_id=graph.pk).latest("pk")
         assert session.status == Session.SessionStatus.ERROR
@@ -195,7 +189,9 @@ class TestDeclaredNodeSecretsNeverPersist:
             lambda channel, message: published.append((channel, message)) or 2,
         )
 
-        session_id = service.run_session(graph_id=graph.pk, variables={})
+        session_id = service.run_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
         session = Session.objects.get(pk=session_id)
 
         stored = json.dumps(session.graph_schema)

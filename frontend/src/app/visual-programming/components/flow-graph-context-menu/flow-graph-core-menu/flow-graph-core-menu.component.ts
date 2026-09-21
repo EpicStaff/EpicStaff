@@ -13,7 +13,6 @@ interface FlowGraphBlock {
 
 @Component({
     selector: 'app-flow-graph-core-menu',
-    standalone: true,
     template: `
         <ul>
             @for (block of filteredBlocks(); track block.type) {

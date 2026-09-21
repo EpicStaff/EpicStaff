@@ -3,9 +3,9 @@
 This folder documents the **new agent execution path**: org-scoped agent
 definitions and reusable capability profiles (Surfaces) defined in the Django
 `agents` app, executed by a standalone async **agent service**
-(`src/agent/`) over Redis Streams. This is a **separate stack** from the
-legacy CrewAI `tables.Agent` / `tables.Crew` models, which still power the old
-`AGENT` / `CREW` node types — the two are not interchangeable.
+(`src/agent/`) over Redis Streams. This is the only agent execution path; the
+legacy `tables.Agent` / `tables.Crew` models still exist in the database but
+have no API surface and no execution path — do not build on them.
 
 ## How the pieces fit
 

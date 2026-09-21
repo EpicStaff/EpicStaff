@@ -1,49 +1,55 @@
-from rest_framework import viewsets, status, mixins
+from drf_spectacular.utils import extend_schema
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
-from rest_framework import serializers as drf_serializers
-
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
-
+from rest_framework.response import Response
+from tables.exceptions import (
+    CollectionNotFoundException,
+    DocumentNotFoundException,
+    DocumentsNotFoundException,
+    DocumentUploadException,
+    FileSizeExceededException,
+    InvalidFieldType,
+    InvalidFileTypeException,
+    NoFilesProvidedException,
+)
 from tables.models import DocumentMetadata, SourceCollection
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.knowledge_serializers import (
+    CopyDocumentsSerializer,
+    DocumentBulkDeleteSerializer,
+    DocumentDetailSerializer,
+    DocumentListSerializer,
     DocumentMetadataSerializer,
     DocumentUploadSerializer,
-    DocumentBulkDeleteSerializer,
-    DocumentListSerializer,
-    DocumentDetailSerializer,
 )
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
+)
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.swagger_schemas.knowledge_schemas.document_management_schemas import (
+    COLLECTION_DOCUMENTS_LIST_GET,
+    DOCUMENTS_BULK_DELETE_POST,
+    DOCUMENTS_COPY_POST,
+    DOCUMENTS_DESTROY_DELETE,
+    DOCUMENTS_DOWNLOAD_GET,
+    DOCUMENTS_LIST_GET,
+    DOCUMENTS_PREVIEW_GET,
+    DOCUMENTS_RETRIEVE_GET,
+    DOCUMENTS_UPLOAD_POST,
+)
+from tables.utils.document_serving import (
+    build_archive_response,
+    build_file_response,
+    build_preview_response,
 )
 from tables.views.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )
-from tables.services.rbac.permissions import HasOrgPermission
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-
-from tables.swagger_schemas.knowledge_schemas.document_management_schemas import (
-    DOCUMENTS_LIST_GET,
-    DOCUMENTS_RETRIEVE_GET,
-    DOCUMENTS_DESTROY_DELETE,
-    DOCUMENTS_UPLOAD_POST,
-    DOCUMENTS_BULK_DELETE_POST,
-    COLLECTION_DOCUMENTS_LIST_GET,
-)
-from tables.exceptions import (
-    DocumentUploadException,
-    FileSizeExceededException,
-    InvalidFileTypeException,
-    CollectionNotFoundException,
-    NoFilesProvidedException,
-    DocumentNotFoundException,
-    InvalidFieldType,
-)
-
 
 _DOCUMENT_ORG_PATH = "source_collection__org_id"
 
@@ -82,8 +88,8 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
     def upload_documents(self, request, collection_id=None):
         try:
             collection_id = int(collection_id)
-        except (ValueError, TypeError):
-            raise InvalidFieldType("collection_id", collection_id)
+        except (ValueError, TypeError) as e:
+            raise InvalidFieldType("collection_id", collection_id) from e
 
         # The collection must live in the active org (404 otherwise).
         self.get_in_active_org_or_404(SourceCollection, collection_id)
@@ -100,9 +106,7 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             )
 
             # Serialize response
-            response_serializer = DocumentMetadataSerializer(
-                created_documents, many=True
-            )
+            response_serializer = DocumentMetadataSerializer(created_documents, many=True)
 
             return Response(
                 {
@@ -122,7 +126,7 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response(
-                {"error": f"An unexpected error occurred: {str(e)}"},
+                {"error": f"An unexpected error occurred: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -163,7 +167,7 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response(
-                {"error": f"An unexpected error occurred: {str(e)}"},
+                {"error": f"An unexpected error occurred: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -189,12 +193,20 @@ class DocumentViewSet(
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     org_filter_path = _DOCUMENT_ORG_PATH
     queryset = DocumentMetadata.objects.select_related("source_collection")
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "preview": Permission.READ,
+        "download": Permission.EXPORT,
+        "copy": Permission.CREATE,
+    }
 
     def get_serializer_class(self):
         if self.action == "list":
             return DocumentListSerializer
         elif self.action == "retrieve":
             return DocumentDetailSerializer
+        elif self.action == "copy":
+            return CopyDocumentsSerializer
         return DocumentMetadataSerializer
 
     @extend_schema(**DOCUMENTS_LIST_GET)
@@ -217,6 +229,15 @@ class DocumentViewSet(
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
+    @extend_schema(**DOCUMENTS_PREVIEW_GET)
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        """Raw document content with ``Content-Disposition: inline`` so browsers
+        render supported formats (pdf, txt, md, json, html, csv) in place. DOCX
+        has no inline preview and is downloaded instead."""
+        document = self.get_object()
+        return build_preview_response(document)
+
     @extend_schema(**DOCUMENTS_DESTROY_DELETE)
     def destroy(self, request, *args, **kwargs):
         """
@@ -224,7 +245,6 @@ class DocumentViewSet(
         """
         instance = self.get_object()
         document_id = instance.document_id
-        file_name = instance.file_name
 
         try:
             # Use service for deletion
@@ -243,9 +263,83 @@ class DocumentViewSet(
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response(
-                {"error": f"An unexpected error occurred: {str(e)}"},
+                {"error": f"An unexpected error occurred: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @extend_schema(**DOCUMENTS_DOWNLOAD_GET)
+    @action(detail=False, methods=["get"], url_path="download")
+    def download(self, request):
+        """
+        Download one or multiple documents.
+        A single document is returned as-is; multiple are bundled into a zip.
+        """
+        document_ids = self._parse_document_ids(request.query_params.get("document_ids", ""))
+        if not document_ids:
+            raise ValidationError("document_ids query parameter is required")
+
+        try:
+            documents = DocumentManagementService.get_documents_with_content(document_ids)
+        except DocumentsNotFoundException as e:
+            raise NotFound(str(e)) from e
+
+        if len(documents) == 1:
+            return build_file_response(documents[0])
+        return build_archive_response(documents)
+
+    @extend_schema(**DOCUMENTS_COPY_POST)
+    @action(detail=False, methods=["post"], url_path="copy")
+    def copy(self, request):
+        """
+        Copy documents into a target collection (shares binary content).
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            copied_documents, skipped_documents = (
+                DocumentManagementService.copy_documents_to_collection(
+                    collection_id=serializer.validated_data["collection_id"],
+                    document_ids=serializer.validated_data["document_ids"],
+                )
+            )
+
+            message = f"Successfully copied {len(copied_documents)} document(s)"
+            if skipped_documents:
+                message += (
+                    f", skipped {len(skipped_documents)} already present in the target collection"
+                )
+
+            return Response(
+                {
+                    "message": message,
+                    "documents": DocumentMetadataSerializer(copied_documents, many=True).data,
+                    "skipped": DocumentMetadataSerializer(skipped_documents, many=True).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except (CollectionNotFoundException, DocumentsNotFoundException) as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response(
+                {"error": f"An unexpected error occurred: {e!s}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @staticmethod
+    def _parse_document_ids(raw_value: str) -> list:
+        """Parse a comma-separated ``document_ids`` query parameter into ints."""
+        ids = []
+        for chunk in raw_value.split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            try:
+                ids.append(int(chunk))
+            except ValueError as e:
+                raise InvalidFieldType("document_ids", chunk) from e
+        return ids
 
 
 class CollectionDocumentsViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
@@ -272,8 +366,8 @@ class CollectionDocumentsViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericV
     def list(self, request, collection_id=None):
         try:
             collection_id = int(collection_id)
-        except (ValueError, TypeError):
-            raise InvalidFieldType("collection_id", collection_id)
+        except (ValueError, TypeError) as e:
+            raise InvalidFieldType("collection_id", collection_id) from e
 
         # Collection must be in the active org (404 otherwise).
         collection = self.get_in_active_org_or_404(SourceCollection, collection_id)

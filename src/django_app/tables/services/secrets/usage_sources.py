@@ -1,19 +1,35 @@
 from dataclasses import dataclass
 
-from django.db.models import F, TextField, Value
+from django.db.models import (
+    BooleanField,
+    Exists,
+    ExpressionWrapper,
+    F,
+    OuterRef,
+    Q,
+    TextField,
+    Value,
+)
 from django.db.models.functions import Cast, Concat
-
 from tables.models import (
+    ElevenLabsRealtimeConfig,
     EmbeddingConfig,
+    GeminiRealtimeConfig,
     LLMConfig,
     McpTool,
+    OpenAIRealtimeConfig,
     RealtimeConfig,
     RealtimeTranscriptionConfig,
 )
-from tables.models.graph_models import ConditionalEdge, TelegramTriggerNode
+from tables.models.graph_models import (
+    ConditionalEdge,
+    TelegramTriggerNode,
+    WebhookTriggerNode,
+)
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     TwilioChannel,
+    WebhookTriggerAuth,
 )
 from tables.serializers.org_scoped_fields import org_visible_queryset
 
@@ -24,7 +40,6 @@ from tables.services.secrets.python_code_sites import (
     PythonCodeSite,
 )
 from utils.graph_utils import resolve_node_names
-
 
 CATEGORY_FLOWS = "flows"
 CATEGORY_TOOLS = "tools"
@@ -47,10 +62,54 @@ RESOURCE_TYPE_LLM_CONFIG = "llm_config"
 RESOURCE_TYPE_EMBEDDING_CONFIG = "embedding_config"
 RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
 RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
+RESOURCE_TYPE_OPENAI_REALTIME_CONFIG = "openai_realtime_config"
+RESOURCE_TYPE_OPENAI_REALTIME_TRANSCRIPTION_CONFIG = "openai_realtime_transcription_config"
+RESOURCE_TYPE_ELEVENLABS_REALTIME_CONFIG = "elevenlabs_realtime_config"
+RESOURCE_TYPE_GEMINI_REALTIME_CONFIG = "gemini_realtime_config"
 RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
 RESOURCE_TYPE_PYTHON_CODE_TOOL = "python_code_tool"
 RESOURCE_TYPE_TWILIO_CHANNEL = "twilio_channel"
 RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG = "ngrok_webhook_config"
+RESOURCE_TYPE_WEBHOOK_TRIGGER_AUTH = "webhook_trigger_auth"
+
+#: Sentinels returned by `UsageSource.readability()` when no SQL is needed.
+READABLE_ALWAYS = "always"
+READABLE_NEVER = "never"
+
+RBAC_FLOWS = "flows"
+RBAC_TOOLS = "tools"
+RBAC_LLM_CONFIGS = "llm_configs"
+RBAC_VOICE = "voice"
+
+
+@dataclass(frozen=True)
+class ConditionalPath:
+    """A resource type that grants visibility only while a live in-org row references this source's trigger."""
+
+    resource_type: str
+    model: type
+    trigger_field: str
+    """FK on `model` pointing at the WebhookTrigger."""
+    outer_field: str
+    """Field on the source model holding the trigger id."""
+    org_path: str
+    """ORM path from `model` to the org id."""
+    extra_filter: dict | None = None
+    """Extra conditions, e.g. excluding soft-deleted rows."""
+
+    def exists(self, *, org_id: int) -> Exists:
+        """An EXISTS subquery true when a live in-org row references this row's trigger."""
+        manager = getattr(self.model, "all_objects", self.model.objects)
+        return Exists(
+            manager.filter(
+                **{
+                    self.trigger_field: OuterRef(self.outer_field),
+                    self.org_path: org_id,
+                    **(self.extra_filter or {}),
+                }
+            )
+        )
+
 
 # The three column shapes the sources fall into. Sources sharing a shape share
 # a column list, so the detail path unions each group as-is instead of padding every
@@ -96,6 +155,8 @@ class UsageSource:
     name_field: str | None
     """Display name. None means the row has no name of its own — ConditionalEdge,
     which borrows the identity of the node it branches off."""
+    rbac_resource_types: frozenset[str]
+    """RBAC resource types that grant READ visibility of this resource unconditionally."""
     node_type: str | None = None
     """A NODE_TYPE_* value for flow nodes; None for standalone resources."""
     code_field: str | None = None
@@ -111,24 +172,25 @@ class UsageSource:
     no-op -- every existing entry omits this and behaves exactly as before.
     Needed when one model's secret FK is shared by more than one conceptual
     site and each site's `UsageSource` entry must exclude the rows the other
-    entry already covers (e.g. `WebhookNodeAuth`, which attaches via one of two
-    nullable node FKs -- the Telegram entry excludes rows where the webhook FK
-    is set, and vice versa)."""
+    entry already covers."""
     graph_path: str = "graph"
     """ORM path from `model` to its owning `Graph`, for flow (SHAPE_NODE/
     SHAPE_EDGE) sources only. Defaults to `"graph"`, which is correct for every
     existing flow-node model (the FK is direct) -- every existing entry omits
     this and behaves exactly as before. Overridden by sources whose model
-    reaches `Graph` only through a nested relation (e.g. `WebhookNodeAuth`,
-    which has no `graph` field of its own -- only
-    `telegram_trigger_node__graph` / `webhook_trigger_node__graph`)."""
+    reaches `Graph` only through a nested relation."""
+    conditional_paths: tuple[ConditionalPath, ...] = ()
+    """Resource types that grant visibility only while a referencing row exists."""
 
-    def count_pairs(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, resource_key) as a queryset, for the union in counts()."""
+    def count_pairs(self, *, org_id: int, secret_ids: set[int], readability):
+        """(secret_id, resource_key, is_readable) as a queryset, for the union in counts()."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
-            .annotate(usage_key=self._key_expression())
-            .values_list(self.secret_path, "usage_key")
+            .annotate(
+                usage_key=self._key_expression(),
+                is_readable=self._readable_expression(readability=readability),
+            )
+            .values_list(self.secret_path, "usage_key", "is_readable")
         )
 
     @property
@@ -138,10 +200,10 @@ class UsageSource:
             return SHAPE_NAMED
         return SHAPE_EDGE if self.name_field is None else SHAPE_NODE
 
-    def named_rows(self, *, org_id: int, secret_ids: set[int]):
+    def named_rows(self, *, org_id: int, secret_ids: set[int], readability):
         """(secret_id, category, resource_type, name) for a standalone resource."""
         return (
-            self._scoped(org_id=org_id, secret_ids=secret_ids)
+            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
             .annotate(
                 usage_category=Value(self.category, output_field=TextField()),
                 usage_resource_type=Value(self.resource_type, output_field=TextField()),
@@ -155,7 +217,7 @@ class UsageSource:
             )
         )
 
-    def node_rows(self, *, org_id: int, secret_ids: set[int]):
+    def node_rows(self, *, org_id: int, secret_ids: set[int], readability):
         """(secret_id, node_type, graph_id, graph_name, node_name, code_field).
 
         `graph_id` is passed straight through (no Cast) so it stays a real
@@ -163,12 +225,10 @@ class UsageSource:
         assigns it to `UsageHit.resource_id: int | None`.
         """
         return (
-            self._scoped(org_id=org_id, secret_ids=secret_ids)
+            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
             .annotate(
                 usage_node_type=Value(self.node_type, output_field=TextField()),
-                usage_graph_name=Cast(
-                    f"{self.graph_path}__name", output_field=TextField()
-                ),
+                usage_graph_name=Cast(f"{self.graph_path}__name", output_field=TextField()),
                 usage_node_name=Cast(self.name_field, output_field=TextField()),
                 usage_code_field=Value(self.code_field, output_field=TextField()),
             )
@@ -182,11 +242,11 @@ class UsageSource:
             )
         )
 
-    def edge_rows(self, *, org_id: int, secret_ids: set[int]):
+    def edge_rows(self, *, org_id: int, secret_ids: set[int], readability):
         """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id,
         code_field). `graph_id` un-Cast, same reasoning as `node_rows`."""
         return (
-            self._scoped(org_id=org_id, secret_ids=secret_ids)
+            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
             .annotate(
                 usage_node_type=Value(self.node_type, output_field=TextField()),
                 usage_code_field=Value(self.code_field, output_field=TextField()),
@@ -201,6 +261,34 @@ class UsageSource:
                 "usage_code_field",
             )
         )
+
+    def readability(self, *, readable_types: frozenset[str], org_id: int):
+        """READABLE_ALWAYS, READABLE_NEVER, or a Q deciding visibility row by row."""
+        if readable_types & self.rbac_resource_types:
+            return READABLE_ALWAYS
+        granted = [path for path in self.conditional_paths if path.resource_type in readable_types]
+        if not granted:
+            return READABLE_NEVER
+        condition = Q(granted[0].exists(org_id=org_id))
+        for path in granted[1:]:
+            condition |= Q(path.exists(org_id=org_id))
+        return condition
+
+    def readable_scoped(self, *, org_id: int, secret_ids: set[int], readability):
+        """Scoped rows narrowed to the readable ones, for the itemised detail path."""
+        rows = self._scoped(org_id=org_id, secret_ids=secret_ids)
+        if readability == READABLE_ALWAYS:
+            return rows
+        return rows.filter(readability)
+
+    @staticmethod
+    def _readable_expression(*, readability):
+        """The boolean column marking rows the caller may see."""
+        if readability == READABLE_ALWAYS:
+            return Value(True, output_field=BooleanField())
+        if readability == READABLE_NEVER:
+            return Value(False, output_field=BooleanField())
+        return ExpressionWrapper(readability, output_field=BooleanField())
 
     def _scoped(self, *, org_id: int, secret_ids: set[int]):
         """Rows of this source in this org that point at one of these secrets."""
@@ -321,7 +409,7 @@ def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | Non
     if formatted is None or node_id is None:
         return None
     suffix = f" #{node_id}"
-    return formatted[: -len(suffix)] if formatted.endswith(suffix) else formatted
+    return formatted.removesuffix(suffix)
 
 
 def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:
@@ -333,10 +421,40 @@ def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:
         category=CATEGORY_FLOWS if is_flow else CATEGORY_TOOLS,
         org_path=site.org_path,
         name_field=site.name_field,
+        rbac_resource_types=frozenset({RBAC_FLOWS if is_flow else RBAC_TOOLS}),
         node_type=site.node_type,
         code_field=site.code_field,
         resource_type=None if is_flow else RESOURCE_TYPE_PYTHON_CODE_TOOL,
     )
+
+
+#: Flow and voice reach a WebhookTrigger only while a live row points at it; all three
+#: back-references are SET_NULL, so deleting the referencing node produces an orphan.
+_WEBHOOK_CONDITIONAL_PATHS: tuple[ConditionalPath, ...] = (
+    ConditionalPath(
+        resource_type=RBAC_FLOWS,
+        model=WebhookTriggerNode,
+        trigger_field="webhook_trigger_id",
+        outer_field="trigger_id",
+        org_path="graph__org_id",
+        extra_filter={"is_soft_deleted": False},
+    ),
+    ConditionalPath(
+        resource_type=RBAC_FLOWS,
+        model=TelegramTriggerNode,
+        trigger_field="webhook_trigger_id",
+        outer_field="trigger_id",
+        org_path="graph__org_id",
+        extra_filter={"is_soft_deleted": False},
+    ),
+    ConditionalPath(
+        resource_type=RBAC_VOICE,
+        model=TwilioChannel,
+        trigger_field="webhook_trigger_id",
+        outer_field="trigger_id",
+        org_path="channel__org_id",
+    ),
+)
 
 
 USAGE_SOURCES: tuple[UsageSource, ...] = (
@@ -347,6 +465,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
         resource_type=RESOURCE_TYPE_LLM_CONFIG,
     ),
     UsageSource(
@@ -355,6 +474,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
         resource_type=RESOURCE_TYPE_EMBEDDING_CONFIG,
     ),
     UsageSource(
@@ -363,6 +483,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
         resource_type=RESOURCE_TYPE_REALTIME_CONFIG,
     ),
     UsageSource(
@@ -371,7 +492,45 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
         resource_type=RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG,
+    ),
+    # --- provider-specific realtime configs: distinct models from RealtimeConfig /
+    UsageSource(
+        model=OpenAIRealtimeConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_OPENAI_REALTIME_CONFIG,
+    ),
+    UsageSource(
+        model=OpenAIRealtimeConfig,
+        secret_path="transcription_api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_OPENAI_REALTIME_TRANSCRIPTION_CONFIG,
+    ),
+    UsageSource(
+        model=ElevenLabsRealtimeConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_ELEVENLABS_REALTIME_CONFIG,
+    ),
+    UsageSource(
+        model=GeminiRealtimeConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_GEMINI_REALTIME_CONFIG,
     ),
     UsageSource(
         model=McpTool,
@@ -379,6 +538,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_TOOLS,
         org_path="org_id",
         name_field="name",
+        rbac_resource_types=frozenset({RBAC_TOOLS}),
         resource_type=RESOURCE_TYPE_MCP_TOOL,
     ),
     UsageSource(
@@ -387,6 +547,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_FLOWS,
         org_path="graph__org_id",
         name_field="node_name",
+        rbac_resource_types=frozenset({RBAC_FLOWS}),
         node_type=NODE_TYPE_TELEGRAM_TRIGGER,
     ),
     UsageSource(
@@ -395,6 +556,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_CHANNELS,
         org_path="channel__org_id",
         name_field="channel__name",
+        rbac_resource_types=frozenset({RBAC_VOICE}),
         resource_type=RESOURCE_TYPE_TWILIO_CHANNEL,
     ),
     UsageSource(
@@ -403,17 +565,20 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_CHANNELS,
         org_path="trigger__org_id",
         name_field="name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        conditional_paths=_WEBHOOK_CONDITIONAL_PATHS,
         resource_type=RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG,
     ),
-    # NOTE: WebhookNodeAuth is intentionally NOT registered here. It stores its
-    # auth secret directly on the row (`secret_hash` for static_header,
-    # `signing_secret` for hmac_sha256) rather than referencing a `Secret` row
-    # via FK, so there is nothing for the Secret-deletion-usage registry to
-    # check -- deleting a `Secret` can never affect a `WebhookNodeAuth` row.
-    # An earlier, abandoned design used a `Secret` FK (`secret_id`) here; two
-    # stale entries referencing that removed field used to live in this tuple
-    # and crashed every usage-check query with
-    # `FieldError: Cannot resolve keyword 'secret_id' into field`.
+    UsageSource(
+        model=WebhookTriggerAuth,
+        secret_path="secret_id",
+        category=CATEGORY_CHANNELS,
+        org_path="trigger__org_id",
+        name_field="trigger__path",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        conditional_paths=_WEBHOOK_CONDITIONAL_PATHS,
+        resource_type=RESOURCE_TYPE_WEBHOOK_TRIGGER_AUTH,
+    ),
     # --- declaration-declared: PythonCode.secrets IS the allow-list ---
     *(_from_python_code_site(site=site) for site in PYTHON_CODE_SITES),
 )

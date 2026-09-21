@@ -1,16 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-error-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="error-container">
             <div
@@ -34,8 +31,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="error-content">
                     <!-- Error Details Section -->
@@ -51,61 +48,66 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                             Error Details
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isErrorExpanded"
                         >
-                            <div
-                                class="result-content"
-                                [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
-                            >
-                                <app-copy-button [text]="getFormattedErrorDetails()" />
-                                <pre>{{ getFormattedErrorDetails() }}</pre>
+                            <div class="grid-collapsible__inner">
+                                <div
+                                    class="result-content"
+                                    [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
+                                >
+                                    <app-copy-button [text]="getFormattedErrorDetails()" />
+                                    <pre>{{ getFormattedErrorDetails() }}</pre>
+                                </div>
+                                @if (shouldShowToggle() && isErrorExpanded) {
+                                    <button
+                                        class="toggle-button"
+                                        (click)="toggleCollapse($event)"
+                                    >
+                                        {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                    </button>
+                                }
                             </div>
-                            <button
-                                *ngIf="shouldShowToggle() && isErrorExpanded"
-                                class="toggle-button"
-                                (click)="toggleCollapse($event)"
-                            >
-                                {{ isCollapsed ? 'Show more' : 'Show less' }}
-                            </button>
                         </div>
                     </div>
 
                     <!-- Optional Data Subsection -->
-                    <div
-                        class="error-data-container"
-                        *ngIf="hasErrorData()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleDataSection($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Data
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isDataExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="result-content">
-                                <pre>{{ getFormattedErrorData() }}</pre>
+                    @if (hasErrorData()) {
+                        <div class="error-data-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleDataSection($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Data
+                            </div>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isDataExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="result-content">
+                                        <pre>{{ getFormattedErrorData() }}</pre>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .error-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, 0.5rem 1rem);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #ff6b6b;
             }
@@ -118,7 +120,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
 
@@ -128,8 +130,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             }
 
             .icon-container {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 border-radius: 50%;
                 background-color: #ff6b6b;
                 display: flex;
@@ -145,8 +147,9 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
@@ -154,23 +157,24 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-
-                &.ng-animating {
-                    overflow: hidden;
-                }
             }
 
             .error-content {
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                padding-left: 5.5rem;
+                padding-left: 4.5rem;
+            }
+
+            .error-content > :first-child {
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -216,7 +220,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 background-color: transparent;
                 border: none;
                 color: #ff6b6b;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;

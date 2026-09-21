@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
@@ -7,7 +6,7 @@ import { takeUntil } from 'rxjs/operators';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
+import { GraphSessionService, GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { GraphMessagesComponent } from '../../components/graph-messages/graph-messages.component';
 import { RunningGraphHeaderComponent } from '../../components/header/run-graph-header.component';
@@ -15,51 +14,9 @@ import { GraphMessage } from '../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-running-graph',
-    standalone: true,
-    imports: [CommonModule, RouterModule, RunningGraphHeaderComponent, GraphMessagesComponent],
-    template: `
-        <div class="running-graph-container">
-            <app-running-graph-header
-                [graphId]="graphId"
-                [sessionId]="sessionId"
-                [graphName]="graphData?.name"
-                [sessionStatus]="currentSessionStatus"
-                [graphData]="graphData"
-            >
-            </app-running-graph-header>
-
-            <div class="content-container">
-                <app-graph-messages
-                    [graphId]="graphId"
-                    [sessionId]="sessionId"
-                    (sessionStatusChanged)="handleSessionStatusChange($event)"
-                    (messagesChanged)="handleMessagesChanged($event)"
-                >
-                </app-graph-messages>
-                <!-- <app-flow-representation [graphData]="graphData" [messages]="messages">
-        </app-flow-representation> -->
-            </div>
-        </div>
-    `,
-    styles: [
-        `
-            .running-graph-container {
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-
-                .content-container {
-                    flex: 1;
-                    display: flex;
-                    overflow: hidden;
-                    gap: 1rem;
-                    padding: 1rem 0rem;
-                    padding-top: 0;
-                }
-            }
-        `,
-    ],
+    imports: [RouterModule, RunningGraphHeaderComponent, GraphMessagesComponent],
+    templateUrl: './running-graph-page.component.html',
+    styleUrls: ['./running-graph-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunningGraphComponent implements OnInit, OnDestroy {
@@ -76,6 +33,7 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
         private router: Router,
         private toast: ToastService,
         private graphService: FlowsApiService,
+        private graphSessionService: GraphSessionService,
         private cdr: ChangeDetectorRef
     ) {}
 
@@ -124,6 +82,22 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
                     this.toast.error(err.error?.detail || 'Failed to fetch graph');
                     void this.router.navigate(['/sessions']);
                     this.cdr.markForCheck();
+                },
+            });
+    }
+
+    public onStopSession(): void {
+        if (!this.sessionId) return;
+        this.graphSessionService
+            .stopSessionById(Number(this.sessionId))
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.currentSessionStatus = GraphSessionStatus.STOP;
+                    this.cdr.markForCheck();
+                },
+                error: (err) => {
+                    this.toast.error(err.error?.detail || 'Failed to stop session');
                 },
             });
     }

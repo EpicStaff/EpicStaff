@@ -1,5 +1,3 @@
-from typing import Optional
-
 from tables.models.rbac_models import Organization, OrganizationUser
 from tables.services.rbac.rbac_exceptions import (
     OrganizationNotFoundError,
@@ -25,7 +23,7 @@ class OrgContextService:
     - Caller is superadmin and the org id does not exist: OrganizationNotFoundError (404).
     """
 
-    def resolve(self, request, view_kwargs: Optional[dict] = None) -> int:
+    def resolve(self, request, view_kwargs: dict | None = None) -> int:
         org_id = self._extract_org_id(request=request, view_kwargs=view_kwargs)
         self._assert_membership(user=request.user, org_id=org_id)
         return org_id
@@ -37,11 +35,7 @@ class OrgContextService:
             except (TypeError, ValueError) as exc:
                 raise OrgContextRequiredError() from exc
 
-        header = (
-            request.headers.get("X-Organization-Id")
-            if hasattr(request, "headers")
-            else None
-        )
+        header = request.headers.get("X-Organization-Id") if hasattr(request, "headers") else None
         if not header:
             raise OrgContextRequiredError()
         try:

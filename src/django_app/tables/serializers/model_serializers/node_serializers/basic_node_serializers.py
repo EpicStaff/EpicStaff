@@ -1,21 +1,23 @@
-from loguru import logger
 from collections import Counter
 
 import jsonschema
+from agents.models.agent_models import AgentDefinition
+from agents.models.surface_models import Surface
+from agents.serializers.inline_surface_serializers import (
+    AgentInlineSurfaceReadSerializer,
+    AgentInlineSurfaceWriteSerializer,
+    InlineSurfaceReadSerializer,
+    InlineSurfaceWriteSerializer,
+)
+from agents.services.agent_inline_surface_service import AgentInlineSurfaceService
+from agents.services.inline_surface_service import InlineSurfaceService
+from agents.validators.surface_validator import SurfaceValidator
 from django.db import transaction
 from rest_framework import serializers
-
-from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.models.crew_models import Crew
-from tables.models.llm_models import LLMConfig
-from tables.serializers.model_serializers.crew_serializers import (
-    CrewSerializer,
-)
 from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CrewNode,
     Edge,
     FileExtractorNode,
     Graph,
@@ -25,32 +27,21 @@ from tables.models.graph_models import (
     TaskNode,
 )
 from tables.models.knowledge_models import SourceCollection
-from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
-from tables.services.rag_assignment_service import SearchConfigService
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
+from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
+from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
-    resolve_active_org_id,
-)
-from agents.models.agent_models import AgentDefinition
-from agents.models.surface_models import Surface
-from agents.serializers.inline_surface_serializers import (
-    AgentInlineSurfaceReadSerializer,
-    AgentInlineSurfaceWriteSerializer,
-    InlineSurfaceReadSerializer,
-    InlineSurfaceWriteSerializer,
 )
 from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
-from agents.services.agent_inline_surface_service import AgentInlineSurfaceService
-from agents.services.inline_surface_service import InlineSurfaceService
-from agents.validators.surface_validator import SurfaceValidator
+from tables.services.rag_assignment_service import SearchConfigService
 
 # Top-level keywords a real JSON Schema might use even without "type" (e.g.
 # "$ref", "allOf"). Used only to tell a bare field map ("reasoning":
@@ -89,8 +80,7 @@ def validate_output_schema(value):
 
     if not isinstance(value, dict):
         raise serializers.ValidationError(
-            "output_schema must be {} or a full JSON Schema object, "
-            f"got {type(value).__name__}."
+            f"output_schema must be {{}} or a full JSON Schema object, got {type(value).__name__}."
         )
 
     if "type" not in value:
@@ -120,47 +110,6 @@ def validate_output_schema(value):
     return value
 
 
-class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
-    """
-    DEPRECATED: CrewNodeSerializer is deprecated. Use AgentNodeSerializer or
-    TaskNodeSerializer instead. Exists only for backward compatibility with
-    existing CrewNode rows.
-    """
-
-    crew = CrewSerializer(read_only=True)
-    crew_id = serializers.IntegerField(write_only=True)
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta:
-        model = CrewNode
-        fields = "__all__"
-        read_only_fields = ["crew"]
-
-    def validate_crew_id(self, value):
-        # Org isolation: the referenced crew must be in the caller's active org.
-        # Out-of-org and non-existent ids are rejected identically (no leak).
-        request = self.context.get("request")
-        if request is None:
-            # No request in context => org scope cannot be applied. Deny (fail-safe)
-            # instead of allowing any crew, and log so the missing context surfaces.
-            logger.warning(
-                "CrewNodeSerializer.validate_crew_id was resolved without a request "
-                "in the serializer context; rejecting crew_id because org scope "
-                "cannot be applied. Construct the serializer with the request in "
-                "its context."
-            )
-            raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
-        crews = Crew.objects.only("id").filter(org_id=resolve_active_org_id(request))
-        if not crews.filter(id=value).exists():
-            raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
-        return value
-
-    def update(self, instance, validated_data):
-        if "crew_id" in validated_data:
-            instance.crew_id = validated_data["crew_id"]
-        return super().update(instance, validated_data)
-
-
 class PythonNodeSerializer(
     ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
 ):
@@ -172,9 +121,7 @@ class PythonNodeSerializer(
         fields = "__all__"
 
 
-class FileExtractorNodeSerializer(
-    ContentHashWritableMixin, serializers.ModelSerializer
-):
+class FileExtractorNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
@@ -204,9 +151,8 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
 
 
 class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
-    """Adds the nested read-back of node-bound search configs (mirror of
-    AgentReadSerializer.search_configs). Used for list/retrieve and inside
-    GraphSerializer.knowledge_node_list."""
+    """Adds the nested read-back of node-bound search configs, used for
+    list/retrieve and inside GraphSerializer.knowledge_node_list."""
 
     search_configs = serializers.SerializerMethodField()
 
@@ -216,8 +162,7 @@ class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
 
 class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
     """Accepts a partial nested `search_configs` block and merges it into the
-    node-bound config rows (mirror of AgentWriteSerializer). Only provided
-    fields are touched — the FE may send just what changed."""
+    node-bound config rows, touching only the fields provided."""
 
     search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
 
@@ -249,9 +194,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
         return data
 
 
-class AudioTranscriptionNodeSerializer(
-    ContentHashWritableMixin, serializers.ModelSerializer
-):
+class AudioTranscriptionNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
@@ -275,9 +218,7 @@ class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
 
 
 class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
-    inline_surface = InlineSurfaceWriteSerializer(
-        required=False, allow_null=True, write_only=True
-    )
+    inline_surface = InlineSurfaceWriteSerializer(required=False, allow_null=True, write_only=True)
     # Org isolation: agent_definition/surface_list/graph must belong to the
     # caller's active org — a cross-org pk is rejected exactly like a
     # non-existent one (no leak).
@@ -297,10 +238,6 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return validate_output_schema(value)
 
     def validate(self, attrs):
-        organization = self.context.get("organization")
-        if organization is None:
-            return attrs
-
         if "surface_list" in attrs:
             surfaces = attrs["surface_list"]
         elif "agent_definition" in attrs and self.instance is not None:
@@ -319,7 +256,6 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         SurfaceValidator.validate_task_node_surfaces(
             surfaces=surfaces,
             agent_definition=agent_definition,
-            organization=organization,
         )
 
         return attrs
@@ -332,9 +268,7 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
             node = super().create(validated_data)
             if has_inline:
                 # Prime select_related cache so to_representation avoids a query.
-                node.inline_surface = InlineSurfaceService.apply(
-                    task_node=node, data=inline_data
-                )
+                node.inline_surface = InlineSurfaceService.apply(task_node=node, data=inline_data)
 
         return node
 
@@ -346,18 +280,14 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
             node = super().update(instance, validated_data)
             if has_inline:
                 # Refresh stale select_related cache; None evicts it so to_representation re-queries.
-                node.inline_surface = InlineSurfaceService.apply(
-                    task_node=node, data=inline_data
-                )
+                node.inline_surface = InlineSurfaceService.apply(task_node=node, data=inline_data)
 
         return node
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         inline = getattr(instance, "inline_surface", None)
-        data["inline_surface"] = (
-            InlineSurfaceReadSerializer(inline).data if inline else None
-        )
+        data["inline_surface"] = InlineSurfaceReadSerializer(inline).data if inline else None
         return data
 
 
@@ -419,10 +349,6 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         if "tasks" in attrs:
             self._validate_tasks(attrs["tasks"])
 
-        organization = self.context.get("organization")
-        if organization is None:
-            return attrs
-
         if "surface_list" in attrs:
             surfaces = attrs["surface_list"]
         elif "agent_definition" in attrs and self.instance is not None:
@@ -441,7 +367,6 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         SurfaceValidator.validate_agent_node_surfaces(
             surfaces=surfaces,
             agent_definition=agent_definition,
-            organization=organization,
         )
 
         return attrs
@@ -459,18 +384,13 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         order_by_temp_id = {
             task["temp_id"]: task["order"] for task in tasks_data if task.get("temp_id")
         }
-        order_by_id = {
-            task["id"]: task["order"] for task in tasks_data if task.get("id")
-        }
+        order_by_id = {task["id"]: task["order"] for task in tasks_data if task.get("id")}
 
         for task in tasks_data:
             order = task["order"]
 
             for ref_temp_id in task.get("context_task_temp_ids", []):
-                if (
-                    ref_temp_id not in order_by_temp_id
-                    or order_by_temp_id[ref_temp_id] >= order
-                ):
+                if ref_temp_id not in order_by_temp_id or order_by_temp_id[ref_temp_id] >= order:
                     raise serializers.ValidationError(
                         {
                             "tasks": f"context_task_temp_ids must reference an earlier sibling task (temp_id={ref_temp_id})."
@@ -524,12 +444,8 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         """Upsert tasks by id, delete siblings missing from the payload, then
         resolve each task's context_tasks from temp_id/id references."""
         existing_tasks = {task.id: task for task in node.tasks.all()}
-        incoming_ids = {
-            task_data["id"] for task_data in tasks_data if task_data.get("id")
-        }
-        stale_ids = [
-            task_id for task_id in existing_tasks if task_id not in incoming_ids
-        ]
+        incoming_ids = {task_data["id"] for task_data in tasks_data if task_data.get("id")}
+        stale_ids = [task_id for task_id in existing_tasks if task_id not in incoming_ids]
 
         # Delete omitted siblings before upserting so freed `order` values are
         # available for updated/new tasks (unique constraint on agent_node+order).
@@ -574,20 +490,14 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
 
         for task, context_temp_ids, context_task_ids in saved_tasks:
             resolved_ids = set(context_task_ids)
-            resolved_ids.update(
-                temp_id_to_task_id[temp_id] for temp_id in context_temp_ids
-            )
+            resolved_ids.update(temp_id_to_task_id[temp_id] for temp_id in context_temp_ids)
             task.context_tasks.set(resolved_ids)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["tasks"] = AgentNodeTaskReadSerializer(
-            instance.tasks.all(), many=True
-        ).data
+        data["tasks"] = AgentNodeTaskReadSerializer(instance.tasks.all(), many=True).data
         inline = getattr(instance, "inline_surface", None)
-        data["inline_surface"] = (
-            AgentInlineSurfaceReadSerializer(inline).data if inline else None
-        )
+        data["inline_surface"] = AgentInlineSurfaceReadSerializer(inline).data if inline else None
         return data
 
 
@@ -611,9 +521,7 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
         return validate_output_schema(value)
 
     def validate(self, attrs):
-        agent_node = attrs.get("agent_node") or (
-            self.instance and self.instance.agent_node
-        )
+        agent_node = attrs.get("agent_node") or (self.instance and self.instance.agent_node)
         order = attrs.get("order")
 
         if order is None and self.instance:
@@ -624,9 +532,7 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
         for ct in context_tasks:
             if ct.agent_node_id != agent_node.id:
                 raise serializers.ValidationError(
-                    {
-                        "context_tasks": "All referenced tasks must belong to the same agent_node."
-                    }
+                    {"context_tasks": "All referenced tasks must belong to the same agent_node."}
                 )
 
             if order is not None and ct.order >= order:

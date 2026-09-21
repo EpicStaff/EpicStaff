@@ -1,6 +1,5 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -53,8 +52,7 @@ const DROPDOWN_NAV_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Esca
  */
 @Component({
     selector: 'app-variable-highlight-textarea',
-    standalone: true,
-    imports: [CommonModule, TooltipComponent],
+    imports: [TooltipComponent],
     templateUrl: './variable-highlight-textarea.component.html',
     styleUrls: ['./variable-highlight-textarea.component.scss'],
     providers: [
@@ -288,6 +286,32 @@ export class VariableHighlightTextareaComponent implements ControlValueAccessor,
         this.dropdownOpen.set(false);
         this.triggerIndex.set(null);
         this.dropdownFilter.set('');
+    }
+
+    /** Inserts `{name}` at the current caret position (or at the end, if unfocused) — for callers outside the `{`-trigger flow, e.g. a click-to-insert chip list. */
+    insertAtCursor(name: string): void {
+        if (this.isDisabled()) return;
+
+        const textarea = this.textareaRef.nativeElement;
+        const current = this.displayValue();
+        const start = textarea.selectionStart ?? current.length;
+        const end = textarea.selectionEnd ?? current.length;
+        const prevChar = start > 0 ? current.charAt(start - 1) : '';
+        const needsLeadingSpace = prevChar !== '' && !/\s/.test(prevChar);
+        const insertion = `${needsLeadingSpace ? ' ' : ''}{${name}}`;
+        const newValue = current.slice(0, start) + insertion + current.slice(end);
+        const newCursorPosition = start + insertion.length;
+
+        this.displayValue.set(newValue);
+        this.onChange(newValue);
+        this.valueChange.emit(newValue);
+        this.lastCursorPosition = newCursorPosition;
+        this.closeDropdown();
+
+        setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(newCursorPosition, newCursorPosition);
+        });
     }
 
     private insertVariable(name: string): void {

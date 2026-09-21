@@ -131,8 +131,10 @@ class TestTelegramRegistrationReadsSecret:
             NgrokWebhookConfig,
             ProviderType,
             WebhookTrigger,
+            WebhookTriggerAuthKind,
         )
         from tables.services.secrets import secret_service
+        from tables.services.webhook_trigger_service import WebhookTriggerService
 
         graph = Graph.objects.create(name="telegram-with-secret", org=org)
         webhook_trigger = WebhookTrigger.objects.create(
@@ -147,6 +149,19 @@ class TestTelegramRegistrationReadsSecret:
                 text="ngrok-token-test", org=org, name="ngrok-telegram-test-secret"
             ),
         )
+        # register_telegram_trigger requires a user-configured
+        # WebhookTriggerAuth (kind=telegram) -- the secret behind the
+        # `X-Telegram-Bot-Api-Secret-Token` header -- distinct from the bot
+        # API key asserted on below.
+        WebhookTriggerService().set_trigger_auth_secret(
+            webhook_trigger,
+            secret=secret_service.create(
+                text="telegram-secret-token-xxxxxxxxxx",
+                org=org,
+                name="telegram-secret-path-secret",
+            ),
+            kind=WebhookTriggerAuthKind.TELEGRAM,
+        )
         node = TelegramTriggerNode.objects.create(
             graph=graph,
             node_name="telegram_with_secret",
@@ -160,9 +175,9 @@ class TestTelegramRegistrationReadsSecret:
             session_manager_service=SimpleNamespace(),
             webhook_trigger_service=SimpleNamespace(
                 wait_for_tunnel_url_for_trigger=lambda trigger: "https://tunnel.test",
-                # register_telegram_trigger now unconditionally
-                # pushes the WebhookNodeAuth credential before calling
-                # Telegram -- needs this on the stub too.
+                # register_telegram_trigger's WebhookTriggerAuth post_save
+                # signal pushes the credential before calling Telegram --
+                # needs this on the stub too.
                 register_webhooks=lambda: True,
             ),
         )

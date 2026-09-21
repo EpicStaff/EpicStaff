@@ -161,7 +161,7 @@ async def test_audio_browser_calls_pcm16k_to_pcm24k(handler, client):
     delta_b64 = delta_calls[0][0][0]["delta"]
     pcm_bytes = base64.b64decode(delta_b64)
     n_out = len(pcm_bytes) // 2  # int16
-    # 24kHz output should be ~1.5× the 16kHz input
+    # 24kHz output should be ~1.5x the 16kHz input
     assert n_out > n_in
 
 

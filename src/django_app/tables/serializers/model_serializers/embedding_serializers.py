@@ -1,22 +1,22 @@
 from rest_framework import serializers
-
-from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgVisiblePrimaryKeyRelatedField,
-    OrgScopedUniqueValidator,
-)
-from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.models.secret_models import Secret
 from tables.models.embedding_models import (
     EmbeddingConfig,
     EmbeddingModel,
 )
-
+from tables.models.secret_models import Secret
+from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingConfigTagSerializer,
     EmbeddingTagSerializer,
 )
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
+)
+from tables.serializers.utils.mixins import TagHandlingMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
@@ -25,11 +25,34 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
     class Meta:
         model = EmbeddingModel
-        fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        fields = [
+            "id",
+            "name",
+            "embedding_provider",
+            "deployment",
+            "base_url",
+            "is_visible",
+            "predefined",
+            "is_custom",
+            "tags",
+            "org",
+            "created_by",
+        ]
+        read_only_fields = ["org", "created_by", "is_custom", "predefined"]
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=EmbeddingModel.objects.all(),
+                fields=["name", "embedding_provider"],
+                message="A model with this name already exists for this provider.",
+            )
+        ]
 
 
-class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class EmbeddingConfigSerializer(
+    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",

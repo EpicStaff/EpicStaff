@@ -30,28 +30,28 @@
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
-.table-header-cell {
-    display: flex;
-    align-items: center;
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: var(--text-secondary-60);
-    text-transform: uppercase;
-    padding: 0 0.5rem;
-
+.cell {
     &.center {
         justify-content: center;
+
+        .col-label {
+            text-align: center;
+        }
     }
 
     &.end {
         justify-content: flex-end;
+
+        .col-label {
+            text-align: end;
+        }
     }
 }
 
 .col-label {
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: var(--text-secondary-60);
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
+    color: var(--text);
     text-transform: uppercase;
     white-space: nowrap;
 
@@ -62,10 +62,15 @@
         background: transparent;
         cursor: pointer;
         gap: 0.25rem;
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 
-        &:hover {
-            color: var(--text);
-        }
+    &__count {
+        color: var(--accent-color);
+        white-space: nowrap;
     }
 }
 
@@ -127,7 +132,7 @@
     }
 
     &.selected {
-        background: var(--transparent-white-8);
+        background: var(--graphite-750);
     }
 
     &.selectable {
@@ -161,6 +166,24 @@
         > * {
             flex: none;
         }
+    }
+
+    // Positions content a custom appTableCell template left unstretched (cross-scope, so `> *` above doesn't reach it).
+    &.center {
+        justify-content: center;
+    }
+
+    &.end {
+        justify-content: flex-end;
+    }
+
+    // The built-in actions cell IS stretched by `> *` above, so it needs its own justify-content instead.
+    &.center ::ng-deep .actions-cell {
+        justify-content: center;
+    }
+
+    &.end ::ng-deep .actions-cell {
+        justify-content: flex-end;
     }
 }
 
@@ -228,7 +251,7 @@
         justify-content: center;
         padding: 24px 16px;
         color: var(--text-secondary-60);
-        font-size: 14px;
+        font-size: 0.875rem;
         text-align: center;
     }
 
@@ -242,15 +265,15 @@
 
         .empty-title {
             margin: 0;
-            font-size: 1.125rem;
-            font-weight: 500;
+            font-size: var(--text-h4-size);
+            font-weight: var(--text-h4-weight);
             color: var(--text);
         }
 
         .empty-subtitle {
             margin: 0;
-            font-size: 0.875rem;
-            font-weight: 500;
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
             color: var(--text-secondary-60);
         }
     }

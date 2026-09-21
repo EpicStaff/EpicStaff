@@ -1,0 +1,101 @@
+<div class="header">
+    <div class="breadcrumbs">
+        <div
+            class="flows-prefix"
+            routerLink="/flows"
+        >
+            <app-svg-icon
+                icon="arrow-left"
+                size="20px"
+                class="back-arrow"
+            />
+            <span>Flows</span>
+        </div>
+        <span class="slash">/</span>
+        <span
+            class="flow-name project-link"
+            (click)="onFlowClick()"
+            >{{ graphName || '...' }}</span
+        >
+        <span class="slash">/</span>
+        <app-status-badge [sessionStatus]="sessionStatus"></app-status-badge>
+    </div>
+    <div class="view-options"></div>
+    <div class="actions">
+        @if (sessionId) {
+            <app-session-files-button
+                [sessionId]="sessionId"
+                [sessionStatus]="sessionStatus"
+            ></app-session-files-button>
+        }
+        <button
+            mat-button
+            class="sessions-button"
+            (click)="openSessionsDialog()"
+            [disabled]="!graphData"
+        >
+            <span class="btn-label">Sessions</span>
+        </button>
+        <button
+            mat-button
+            class="memories-button"
+            (click)="toggleMemoriesSidebar()"
+        >
+            <span class="btn-label">Memories</span>
+            @if (memoriesCount > 0) {
+                <span
+                    class="memories-badge"
+                    matBadge="{{ memoriesCount }}"
+                    matBadgeColor="accent"
+                ></span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (sessionId) {
+    <div class="session-meta-row">
+        <div class="session-meta-row__left">
+            <span class="session-meta-item">
+                <span class="session-meta-item__label">TYPE:</span>
+                <!-- TODO: TYPE should come from the Telegram node's data, which isn't available yet — wire this up once that data exists -->
+                <span class="session-meta-item__value">Test</span>
+            </span>
+            <span class="session-meta-divider">/</span>
+            <span class="session-meta-item">
+                <span class="session-meta-item__label">CREATED AT:</span>
+                <span class="session-meta-item__value">{{ currentSession?.created_at | date: 'medium' }}</span>
+            </span>
+            <span class="session-meta-divider">/</span>
+            <span class="session-meta-item">
+                <span class="session-meta-item__label">TRIGGER:</span>
+                <span class="trigger-chip">
+                    @if (triggerDisplay.icon) {
+                        <i [class]="triggerDisplay.icon"></i>
+                    }
+                    <span>{{ triggerDisplay.label }}</span>
+                </span>
+            </span>
+        </div>
+        <div class="session-meta-row__right">
+            @if (canStop) {
+                <app-stop-session-button (stopClick)="stopSession.emit()" />
+            }
+            @if (sessions.length > 0) {
+                <app-session-id-switcher
+                    [sessions]="sessions"
+                    [selectedSessionId]="sessionId"
+                    (sessionSelected)="onSessionSelected($event)"
+                />
+            }
+        </div>
+    </div>
+}
+
+<!-- Memories Sidebar Component -->
+<app-memories-sidebar
+    [isOpen]="showMemoriesSidebar"
+    [memories]="memories"
+    (close)="closeSidebar()"
+    (deleteMemoryEvent)="handleDeleteMemory($event)"
+></app-memories-sidebar>

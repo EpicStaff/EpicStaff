@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Inject } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -12,8 +11,7 @@ export interface RestoreWarningsDialogData {
 
 @Component({
     selector: 'app-restore-warnings-dialog',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, ButtonComponent],
     templateUrl: './restore-warnings-dialog.component.html',
     styleUrl: './restore-warnings-dialog.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,

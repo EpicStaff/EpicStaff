@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LabelTreeNode } from '@shared/models';
@@ -58,7 +57,7 @@ interface FlatLabelNode {
  */
 @Component({
     selector: 'app-include-exclude-dialog',
-    imports: [CommonModule, FormsModule, ButtonComponent, AppSvgIconComponent, CheckboxComponent],
+    imports: [FormsModule, ButtonComponent, AppSvgIconComponent, CheckboxComponent],
     templateUrl: './app-include-exclude-dialog.component.html',
     styleUrls: ['./app-include-exclude-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -206,6 +205,6 @@ export class AppIncludeExcludeDialogComponent {
     }
 
     public indentPadding(depth: number): string {
-        return `${0.75 + depth * 1.25}rem`;
+        return `${1 + depth * 1.25}rem`;
     }
 }

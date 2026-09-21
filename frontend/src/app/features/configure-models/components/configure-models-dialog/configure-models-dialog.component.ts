@@ -42,45 +42,52 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.QUICKSTART,
             label: 'Quickstart',
             iconClass: 'ti ti-bolt',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create),
         },
         {
             id: ConfigureModelsTabId.DEFAULT_LLMS,
             label: 'Default LLMs',
             iconClass: 'ti ti-robot',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.LLM_LIBRARY,
             label: 'LLM Library',
             iconClass: 'ti ti-books',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.WEBHOOK_TRIGGERS,
             label: 'Webhook Triggers',
             iconClass: 'ti ti-webhook',
-            isPermitted: this.permissionService.isSuperadmin,
+            isPermitted: () => this.permissionService.can(ResourceCode.Webhooks, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.VOICE_SETTINGS,
             label: 'Voice / Twilio',
             iconClass: 'ti ti-phone',
-            isPermitted: this.permissionService.isSuperadmin,
+            isPermitted: () => this.permissionService.can(ResourceCode.Voice, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.SECRETS,
             label: 'Secrets',
             svgIcon: 'secrets',
-            isPermitted: this.permissionService.can(ResourceCode.Secrets, ActionCode.Read),
+            isPermitted: () =>
+                this.permissionService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
         },
     ];
 
     public readonly activeTabId = signal<ConfigureModelsTabId>(ConfigureModelsTabId.DEFAULT_LLMS);
 
     ngOnInit() {
-        const canCreateConfigs = this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create);
-        this.activeTabId.set(canCreateConfigs ? ConfigureModelsTabId.QUICKSTART : ConfigureModelsTabId.DEFAULT_LLMS);
+        if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create)) {
+            this.activeTabId.set(ConfigureModelsTabId.QUICKSTART);
+        } else if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
+            this.activeTabId.set(ConfigureModelsTabId.DEFAULT_LLMS);
+        } else {
+            const firstPermittedTab = this.tabs.find((tab) => tab.isPermitted());
+            if (firstPermittedTab) this.activeTabId.set(firstPermittedTab.id);
+        }
     }
 
     public selectTab(tabId: ConfigureModelsTabId): void {

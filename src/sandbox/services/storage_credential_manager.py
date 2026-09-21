@@ -1,10 +1,9 @@
 import json
 import posixpath
 import tempfile
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from datetime import timedelta, datetime, timezone
 
-from loguru import logger
 from miniopy_async import MinioAdmin as MinioAdminClient
 from miniopy_async.credentials import StaticProvider
 
@@ -29,15 +28,14 @@ class StorageCredentialManager:
         )
         self._expiration = expiration
 
-
     @staticmethod
     def _split_host(value: str) -> tuple[bool, str]:
-        http, endpoint = value.split('://')
-        return http == 'https', endpoint
+        http, endpoint = value.split("://")
+        return http == "https", endpoint
 
     async def create(self, policy: dict[str, Any]) -> tuple[str, str]:
         """Create a user in minio and return generated credentials"""
-        expiration = (datetime.now(timezone.utc) + self._expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
+        expiration = (datetime.now(UTC) + self._expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
         with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
             json.dump(policy, policy_file)
             policy_file.flush()
@@ -52,13 +50,25 @@ class StorageCredentialManager:
         """Revoke credentials for a user in minio"""
         await self._client.delete_service_account(temp_access_key)
 
-    def build_policy(self, allowed_bucket: str, allowed_folders: set[str]) -> dict[str, Any]:
+    def build_policy(
+        self,
+        allowed_bucket: str,
+        org_prefix: str,
+        allowed_paths: list[str] | None,
+    ) -> dict[str, Any]:
         """Build policy for a minio user"""
-        if not allowed_folders:
-            raise CredentialManagerError("No folders provided.")
+        prefix = self._validate_org_prefix(org_prefix)
+        folders = allowed_paths or ["/"]  # no explicit paths -> whole-org grant
 
         bucket = f"arn:aws:s3:::{allowed_bucket}"
-        prefixes = sorted(f"{self._normalize_path(f)}" for f in allowed_folders)
+
+        prefixes = sorted(
+            self._assert_within_org(
+                self._normalize_path(f"{prefix}/{path.strip().lstrip('/')}"), prefix
+            )
+            for path in folders
+        )
+
         resources = [f"{bucket}/{prefix}" for prefix in prefixes]
         return {
             "Version": "2012-10-17",
@@ -69,37 +79,49 @@ class StorageCredentialManager:
                     "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
                     "Resource": resources,
                 },
-
                 # List folder contents restricted to the allowed prefixes only.
                 {
                     "Effect": "Allow",
                     "Action": ["s3:ListBucket"],
                     "Resource": [bucket],
-                    "Condition": {
-                        "StringLike": {
-                            "s3:prefix": prefixes
-                        }
-                    }
+                    "Condition": {"StringLike": {"s3:prefix": prefixes}},
                 },
-
                 # Let the client's mandatory GET ?location= probe pass.
                 {
                     "Effect": "Allow",
                     "Action": ["s3:GetBucketLocation"],
-                    "Resource": [bucket]
+                    "Resource": [bucket],
                 },
-            ]
+            ],
         }
 
     @staticmethod
+    def _validate_org_prefix(org_prefix: str) -> str:
+        prefix = org_prefix.strip("/")
+        if (
+            not prefix
+            or "/" in prefix
+            or prefix in (".", "..")
+            or posixpath.normpath(prefix) != prefix
+        ):
+            raise CredentialManagerError(f"Invalid organization prefix: '{org_prefix}'")
+        return prefix
+
+    @staticmethod
     def _normalize_path(path: str) -> str:
-        stripped = path.strip()
+        stripped = path.strip().replace("\\", "/")
         normalized = posixpath.normpath(stripped) if stripped else ""
-        if normalized in ("", "."):
+        if normalized in ("", ".", "..", "/"):
             raise CredentialManagerError(
                 "Empty path is not allowed (would grant bucket-wide access)."
             )
-        if normalized.startswith(".."):
-            raise CredentialManagerError(f"Path traversal in path: '{path}'")
+        return f"{normalized}/*" if stripped.endswith("/") else normalized
 
-        return f'{normalized}/*' if stripped.endswith('/') else normalized
+    @staticmethod
+    def _assert_within_org(normalized: str, org_prefix: str) -> str:
+        bare = normalized.removesuffix("/*")
+        if bare != org_prefix and not bare.startswith(f"{org_prefix}/"):
+            raise CredentialManagerError(
+                f"Path escapes organization scope '{org_prefix}': '{normalized}'"
+            )
+        return normalized

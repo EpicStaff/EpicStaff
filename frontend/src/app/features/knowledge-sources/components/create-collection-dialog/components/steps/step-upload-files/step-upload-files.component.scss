@@ -18,11 +18,17 @@
         color: var(--accent-color);
     }
 
+    &__form-input-wrap {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 240px;
+        min-width: 240px;
+    }
+
     &__form-input {
-        flex-grow: 1;
         height: 2.5rem;
         padding: 0 1rem;
-        border-radius: 0.5rem;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -70,8 +76,8 @@
 
     &__content-title {
         padding: 1.25rem 0;
-        font-size: 0.875rem;
-        font-weight: 130;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
 
         &--count {
             color: var(--accent-color);

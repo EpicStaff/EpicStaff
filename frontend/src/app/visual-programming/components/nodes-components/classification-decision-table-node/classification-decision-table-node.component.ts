@@ -7,6 +7,7 @@ import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { splitNodeTitleBadge } from '../../../core/helpers/split-node-title.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { ViewPort } from '../../../core/models/port.model';
@@ -16,7 +17,6 @@ import { FlowService } from '../../../services/flow.service';
     selector: 'app-classification-decision-table-node',
     templateUrl: './classification-decision-table-node.component.html',
     styleUrls: ['./classification-decision-table-node.component.scss'],
-    standalone: true,
     imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, MATERIAL_FORMS],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -64,6 +64,10 @@ export class ClassificationDecisionTableNodeComponent {
         const nodes = this.flowService.nodes();
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
         return node ? node.node_name : idOrName;
+    }
+
+    get titleParts(): { label: string; badge: string | null } {
+        return splitNodeTitleBadge(this.node.node_name || 'Classification Table', this.node.nodeNumber);
     }
 
     get inputPort() {

@@ -1,10 +1,10 @@
-from enum import Enum
-from pydantic import BaseModel
-from typing import Annotated, Literal, Union, List
-from pydantic import Field, ConfigDict
+from enum import StrEnum
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class KnowledgeStatus(str, Enum):
+class KnowledgeStatus(StrEnum):
     """Shared knowledge search / job statuses used across knowledge and crew."""
 
     COMPLETED = "completed"
@@ -47,8 +47,54 @@ class GraphRagLocalSearchParams(BaseModel):
     max_context_tokens: int = 12000
 
 
+class GraphRagGlobalSearchParams(BaseModel):
+    search_method: Literal["global"] = "global"
+    dynamic_community_selection: bool = False
+    map_prompt: str | None = None
+    reduce_prompt: str | None = None
+    knowledge_prompt: str | None = None
+    max_context_tokens: int = 12000
+    data_max_tokens: int = 12000
+    map_max_length: int = 1000
+    reduce_max_length: int = 2000
+    dynamic_search_threshold: int = 1
+    dynamic_search_keep_parent: bool = False
+    dynamic_search_num_repeats: int = 1
+    dynamic_search_use_summary: bool = False
+    dynamic_search_max_level: int = 2
+
+
+class GraphRagDriftSearchParams(BaseModel):
+    search_method: Literal["drift"] = "drift"
+    prompt: str | None = None
+    reduce_prompt: str | None = None
+    data_max_tokens: int = 12000
+    reduce_max_tokens: int | None = None
+    reduce_max_completion_tokens: int | None = None
+    primer_llm_max_tokens: int = 12000
+    local_search_max_data_tokens: int = 12000
+    local_search_llm_max_gen_tokens: int | None = None
+    local_search_llm_max_gen_completion_tokens: int | None = None
+    concurrency: int = 32
+    drift_k_followups: int = 20
+    primer_folds: int = 5
+    n_depth: int = 3
+    community_level: int = 2
+    local_search_text_unit_prop: float = 0.9
+    local_search_community_prop: float = 0.1
+    local_search_top_k_mapped_entities: int = 10
+    local_search_top_k_relationships: int = 10
+    reduce_temperature: float = 0.0
+    local_search_temperature: float = 0.0
+    local_search_top_p: float = 1.0
+    local_search_n: int = 1
+
+
 GraphSearchParams = Annotated[
-    Union[GraphRagBasicSearchParams, GraphRagLocalSearchParams],
+    GraphRagBasicSearchParams
+    | GraphRagLocalSearchParams
+    | GraphRagGlobalSearchParams
+    | GraphRagDriftSearchParams,
     Field(discriminator="search_method"),
 ]
 
@@ -61,7 +107,7 @@ class GraphRagSearchConfig(BaseRagSearchConfig):
 
 
 RagSearchConfig = Annotated[
-    Union[NaiveRagSearchConfig, GraphRagSearchConfig],
+    NaiveRagSearchConfig | GraphRagSearchConfig,
     Field(discriminator="rag_type"),
 ]
 
@@ -79,9 +125,7 @@ class BaseKnowledgeSearchMessage(BaseModel):
     rag_type: Literal["naive", "graph"]  # Type of RAG ("naive", "graph", etc.)
     uuid: str
     query: str
-    rag_search_config: (
-        RagSearchConfig  # Discriminated union automatically handles subtypes
-    )
+    rag_search_config: RagSearchConfig  # Discriminated union automatically handles subtypes
     embedder_api_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -103,10 +147,10 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
     uuid: str
     retrieved_chunks: int
     query: str
-    chunks: List[KnowledgeChunkResponse]
+    chunks: list[KnowledgeChunkResponse]
     rag_search_config: RagSearchConfig
     # Support backwards compatibility
-    results: List[str] = []  # deprecated, use chunks instead
+    results: list[str] = []  # deprecated, use chunks instead
     token_usage: dict = {}
     status: KnowledgeStatus = KnowledgeStatus.COMPLETED
     message: str | None = None  # error detail when status == "failed"

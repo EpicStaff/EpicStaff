@@ -1,8 +1,8 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -29,17 +29,10 @@ import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/
 
 @Component({
     selector: 'app-import-result-dialog',
-    standalone: true,
     imports: [CommonModule, AppIconComponent, MatTooltipModule],
     templateUrl: './import-result-dialog.component.html',
     styleUrls: ['./import-result-dialog.component.scss'],
-    animations: [
-        trigger('collapseExpand', [
-            state('expanded', style({ height: '*', opacity: 1, overflow: 'hidden' })),
-            state('collapsed', style({ height: '0', opacity: 0, overflow: 'hidden' })),
-            transition('expanded <=> collapsed', animate('220ms ease')),
-        ]),
-    ],
+    changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class ImportResultDialogComponent implements AfterViewInit {
     private router = inject(Router);
@@ -205,8 +198,6 @@ export class ImportResultDialogComponent implements AfterViewInit {
     public navigateToEntity(entityType: string, id: number | string): void {
         const routeMap: { [key: string]: string } = {
             Flow: '/flows',
-            Project: '/projects',
-            Agent: '/agents',
         };
 
         const basePath = routeMap[entityType];
@@ -221,7 +212,7 @@ export class ImportResultDialogComponent implements AfterViewInit {
      * Check if entity has navigable route
      */
     public isNavigable(entityType: string): boolean {
-        const navigableTypes = ['Flow', 'Project', 'Agent'];
+        const navigableTypes = ['Flow'];
         return navigableTypes.includes(entityType);
     }
 

@@ -12,15 +12,17 @@
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
                     <div class="form-fields">
-                        <app-custom-input
-                            label="Trigger Name"
-                            tooltipText="Trigger name"
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [required]="true"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                        <div class="field-isolated">
+                            <app-custom-input
+                                label="Trigger Name"
+                                tooltipText="The unique identifier used to reference this Telegram Trigger node. This name must be unique within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [required]="true"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
 
                         <div>
                             <app-select
@@ -48,8 +50,9 @@
                     <div class="webhook-section">
                         <app-webhook-trigger-select
                             formControlName="webhook_trigger"
-                            [allowLocalhost]="false"
-                            disallowedProviderMessage="Localhost webhooks are not supported for Telegram. Use ngrok or a publicly reachable provider."
+                            [disallowedProviderTypes]="['localhost']"
+                            [disallowedAuthKinds]="['webhook', 'twilio']"
+                            disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
                             (triggerResolved)="onTriggerResolved($event)"
                         ></app-webhook-trigger-select>
 

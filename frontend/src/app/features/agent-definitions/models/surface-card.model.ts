@@ -1,12 +1,22 @@
+import { ResourceCode } from '@shared/models';
+
 import { PermTriState } from './surface.model';
 
-export type SurfaceTabId = 'tools' | 'files' | 'collections';
+export type SurfaceTabId = ResourceCode.Tools | ResourceCode.Files | ResourceCode.KnowledgeSources;
+
+export function getFirstAvailableSurfaceTab(canRead: (resource: ResourceCode) => boolean): SurfaceTabId | null {
+    if (canRead(ResourceCode.Tools)) return ResourceCode.Tools;
+    if (canRead(ResourceCode.Files)) return ResourceCode.Files;
+    if (canRead(ResourceCode.KnowledgeSources)) return ResourceCode.KnowledgeSources;
+    return null;
+}
 
 export interface SurfaceToolOption {
     id: number;
     name: string;
     description: string;
     kind: 'python' | 'mcp';
+    built_in?: boolean;
 }
 
 export interface SurfaceCollectionOption {

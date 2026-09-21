@@ -1,8 +1,8 @@
 from django.db import models
-from tables.models.tag_models import EmbeddingModelTag, EmbeddingConfigTag
-from tables.models import DefaultBaseModel
-from tables.models import EmbedderTask
+
+from tables.models.base_models import DefaultBaseModel, EmbedderTask
 from tables.models.rbac_models.org_scoped import OrgScopedModel
+from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 
 
 class EmbeddingModel(OrgScopedModel, models.Model):
@@ -15,15 +15,21 @@ class EmbeddingModel(OrgScopedModel, models.Model):
     base_url = models.TextField(null=True, blank=True, default=None)
     is_visible = models.BooleanField(default=True)
     is_custom = models.BooleanField(default=False)
-    tags = models.ManyToManyField(
-        EmbeddingModelTag, blank=True, related_name="embedding_models"
-    )
+    tags = models.ManyToManyField(EmbeddingModelTag, blank=True, related_name="embedding_models")
 
     class Meta(OrgScopedModel.Meta):
-        unique_together = (
-            "name",
-            "embedding_provider",
-        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name", "embedding_provider"],
+                name="unique_embeddingmodel_name_provider_per_org",
+            ),
+            # Postgres treats NULLs as distinct — see LLMModel.
+            models.UniqueConstraint(
+                fields=["name", "embedding_provider"],
+                condition=models.Q(org__isnull=True),
+                name="unique_embeddingmodel_name_provider_builtin",
+            ),
+        ]
 
 
 class EmbeddingConfig(OrgScopedModel, models.Model):
@@ -40,9 +46,7 @@ class EmbeddingConfig(OrgScopedModel, models.Model):
         related_name="embedding_configs",
     )
     is_visible = models.BooleanField(default=True)
-    tags = models.ManyToManyField(
-        EmbeddingConfigTag, blank=True, related_name="embedding_configs"
-    )
+    tags = models.ManyToManyField(EmbeddingConfigTag, blank=True, related_name="embedding_configs")
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

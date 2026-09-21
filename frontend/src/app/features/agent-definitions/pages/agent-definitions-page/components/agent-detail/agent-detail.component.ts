@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -13,12 +12,14 @@ import {
     signal,
     untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
-import { EnterBlurDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../files/services/storage-api.service';
@@ -52,6 +53,7 @@ export interface AgentSavePayload {
     description: string;
     instructions: string;
     bootIsDoc: boolean;
+    openBootDocInEdit?: boolean;
     llm_config: number | null;
     fcm_llm_config: number | null;
     max_iter?: number;
@@ -85,7 +87,6 @@ interface AgentFormValue {
 @Component({
     selector: 'app-agent-detail',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         AppSvgIconComponent,
         LlmModelSelectorComponent,
@@ -93,6 +94,7 @@ interface AgentFormValue {
         EnterBlurDirective,
         AgentSurfacesPanelComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-detail.component.html',
     styleUrls: ['./agent-detail.component.scss'],
@@ -107,6 +109,7 @@ export class AgentDetailComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly toast: ToastService = inject(ToastService);
+    private readonly permissionService = inject(PermissionsService);
     private readonly realtimeApi = inject(RealtimeAgentDefinitionsApiService);
 
     readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
@@ -121,6 +124,8 @@ export class AgentDetailComponent implements OnInit {
     bootIsDoc = input<boolean>(false);
     surfacesOnly = input<boolean>(false);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
+    /** When true, disables the reactive form and blocks save/delete/duplicate emissions. */
+    readOnly = input<boolean>(false);
 
     readonly save = output<AgentSavePayload>();
     readonly delete = output<AgentDefinition>();
@@ -130,7 +135,7 @@ export class AgentDetailComponent implements OnInit {
     readonly openBootDoc = output<void>();
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
+    readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
@@ -143,11 +148,25 @@ export class AgentDetailComponent implements OnInit {
     readonly surfaceChange = output<{ id: number; patch: PartialUpdateSurfaceRequest }>();
     readonly viewSummary = output<{ place: SurfaceCategoryId; surfaceIds: number[] }>();
 
+    readonly canOpenSettings = computed<boolean>(() => {
+        return (
+            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read) &&
+            this.permissionService.can(ResourceCode.Voice, ActionCode.Read) &&
+            this.permissionService.can(ResourceCode.Agents, ActionCode.Update)
+        );
+    });
+
     readonly form = this.fb.nonNullable.group({
         name: ['', [Validators.required, Validators.maxLength(255)]],
         description: [''],
         instructions: [''],
         llm_config: [null as number | null],
+    });
+
+    // Live (unsaved) LLM selection — the Surfaces panel's RAG config needs this
+    // immediately when creating/editing an agent, not just after autosave round-trips.
+    readonly liveLlmConfigId = toSignal(this.form.controls.llm_config.valueChanges, {
+        initialValue: this.form.controls.llm_config.value,
     });
 
     readonly bootAsDoc = signal<boolean>(false);
@@ -208,6 +227,15 @@ export class AgentDetailComponent implements OnInit {
             if (!this.agent()) return;
             untracked(() => this.sections.set({ basics: false, surfaces: true }));
         });
+
+        // Reflect readOnly on the reactive form so text fields render disabled.
+        effect(() => {
+            if (this.readOnly()) {
+                this.form.disable({ emitEvent: false });
+            } else {
+                this.form.enable({ emitEvent: false });
+            }
+        });
     }
 
     ngOnInit(): void {
@@ -240,6 +268,7 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private persist(fromNameBlur: boolean): void {
+        if (this.readOnly()) return;
         if (this.saving()) return;
         if (this.form.controls.name.hasError('maxlength')) return;
 
@@ -433,7 +462,30 @@ export class AgentDetailComponent implements OnInit {
 
     createBootDoc(): void {
         this.bootAsDoc.set(true);
+
+        if (this.isCreating()) {
+            this.createDraftAgentAsBootDoc();
+            return;
+        }
+
         this.bootDocChange.emit(true);
+    }
+
+    private createDraftAgentAsBootDoc(): void {
+        if (this.saving()) return;
+        const v = this.form.getRawValue();
+        const name = v.name.trim();
+        this.savedSnapshot = { ...v, name };
+        this.save.emit({
+            id: null,
+            name,
+            description: v.description ?? '',
+            instructions: v.instructions ?? '',
+            bootIsDoc: true,
+            openBootDocInEdit: true,
+            llm_config: v.llm_config,
+            fcm_llm_config: null,
+        });
     }
 
     removeBootDoc(): void {
@@ -524,12 +576,17 @@ export class AgentDetailComponent implements OnInit {
     }
 
     onDelete(): void {
+        if (this.readOnly()) return;
         const a = this.agent();
         if (a) this.delete.emit(a);
     }
 
     onDuplicate(): void {
+        if (this.readOnly()) return;
         const a = this.agent();
         if (a) this.duplicate.emit(a);
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

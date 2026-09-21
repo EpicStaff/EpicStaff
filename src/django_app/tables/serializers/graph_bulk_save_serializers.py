@@ -1,11 +1,9 @@
 from rest_framework import serializers
-
 from tables.serializers.model_serializers import (
     AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     ClassificationDecisionTableNodeSerializer,
     ConditionalEdgeSerializer,
-    CrewNodeSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
     EndNodeSerializer,
@@ -17,8 +15,8 @@ from tables.serializers.model_serializers import (
     StartNodeSerializer,
     SubGraphNodeSerializer,
     TaskNodeSerializer,
-    WebhookTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
+    WebhookTriggerNodeSerializer,
 )
 
 
@@ -33,20 +31,8 @@ class BulkSaveEntityMixin:
     def get_fields(self):
         fields = super().get_fields()
         fields["id"] = serializers.IntegerField(required=False, allow_null=True)
-        fields["temp_id"] = serializers.UUIDField(
-            required=False, allow_null=True, default=None
-        )
+        fields["temp_id"] = serializers.UUIDField(required=False, allow_null=True, default=None)
         return fields
-
-
-class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
-    """
-    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
-    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
-    backward compatibility with existing CrewNode rows.
-    """
-
-    pass
 
 
 class PythonNodeBulkSerializer(BulkSaveEntityMixin, PythonNodeSerializer):
@@ -57,9 +43,7 @@ class FileExtractorNodeBulkSerializer(BulkSaveEntityMixin, FileExtractorNodeSeri
     pass
 
 
-class AudioTranscriptionNodeBulkSerializer(
-    BulkSaveEntityMixin, AudioTranscriptionNodeSerializer
-):
+class AudioTranscriptionNodeBulkSerializer(BulkSaveEntityMixin, AudioTranscriptionNodeSerializer):
     pass
 
 
@@ -95,11 +79,7 @@ class ClassificationDecisionTableNodeBulkSerializer(
         # precede inserts inside the atomic _execute_writes transaction.
         from rest_framework.validators import UniqueTogetherValidator
 
-        return [
-            v
-            for v in super().get_validators()
-            if not isinstance(v, UniqueTogetherValidator)
-        ]
+        return [v for v in super().get_validators() if not isinstance(v, UniqueTogetherValidator)]
 
 
 class DecisionTableNodeBulkSerializer(BulkSaveEntityMixin, DecisionTableNodeSerializer):
@@ -114,21 +94,15 @@ class KnowledgeNodeBulkSerializer(BulkSaveEntityMixin, KnowledgeNodeSerializer):
     pass
 
 
-class WebhookTriggerNodeBulkSerializer(
-    BulkSaveEntityMixin, WebhookTriggerNodeSerializer
-):
+class WebhookTriggerNodeBulkSerializer(BulkSaveEntityMixin, WebhookTriggerNodeSerializer):
     pass
 
 
-class TelegramTriggerNodeBulkSerializer(
-    BulkSaveEntityMixin, TelegramTriggerNodeSerializer
-):
+class TelegramTriggerNodeBulkSerializer(BulkSaveEntityMixin, TelegramTriggerNodeSerializer):
     pass
 
 
-class ScheduleTriggerNodeBulkSerializer(
-    BulkSaveEntityMixin, ScheduleTriggerNodeSerializer
-):
+class ScheduleTriggerNodeBulkSerializer(BulkSaveEntityMixin, ScheduleTriggerNodeSerializer):
     pass
 
 
@@ -158,11 +132,7 @@ class EdgeBulkSerializer(BulkSaveEntityMixin, EdgeSerializer):
         # atomic transaction, so we can safely drop these DRF-level validators.
         from rest_framework.validators import UniqueTogetherValidator
 
-        return [
-            v
-            for v in super().get_validators()
-            if not isinstance(v, UniqueTogetherValidator)
-        ]
+        return [v for v in super().get_validators() if not isinstance(v, UniqueTogetherValidator)]
 
     def validate(self, attrs):
         start_id = attrs.get("start_node_id")
@@ -175,9 +145,7 @@ class EdgeBulkSerializer(BulkSaveEntityMixin, EdgeSerializer):
                 "Provide exactly one of start_node_id or start_temp_id."
             )
         if bool(end_id) == bool(end_temp):
-            raise serializers.ValidationError(
-                "Provide exactly one of end_node_id or end_temp_id."
-            )
+            raise serializers.ValidationError("Provide exactly one of end_node_id or end_temp_id.")
         return attrs
 
 
@@ -191,18 +159,12 @@ class ConditionalEdgeBulkSerializer(BulkSaveEntityMixin, ConditionalEdgeSerializ
     """
 
     source_node_id = serializers.IntegerField(required=False, allow_null=True)
-    source_temp_id = serializers.UUIDField(
-        required=False, allow_null=True, default=None
-    )
+    source_temp_id = serializers.UUIDField(required=False, allow_null=True, default=None)
 
     def get_validators(self):
         from rest_framework.validators import UniqueTogetherValidator
 
-        return [
-            v
-            for v in super().get_validators()
-            if not isinstance(v, UniqueTogetherValidator)
-        ]
+        return [v for v in super().get_validators() if not isinstance(v, UniqueTogetherValidator)]
 
     def validate(self, attrs):
         source_id = attrs.get("source_node_id")
@@ -217,9 +179,7 @@ class ConditionalEdgeBulkSerializer(BulkSaveEntityMixin, ConditionalEdgeSerializ
 
 class DeletedEntitiesSerializer(serializers.Serializer):
     # Edge id fields declared explicitly because edges are not in NODE_TYPE_REGISTRY.
-    edge_ids = serializers.ListField(
-        child=serializers.IntegerField(), required=False, default=list
-    )
+    edge_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
     conditional_edge_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, default=list
     )
@@ -245,9 +205,7 @@ class GraphBulkSaveInputSerializer(serializers.Serializer):
     """
 
     save_version = serializers.IntegerField(required=True)
-    edge_list = serializers.ListField(
-        child=serializers.DictField(), required=False, default=list
-    )
+    edge_list = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     conditional_edge_list = serializers.ListField(
         child=serializers.DictField(), required=False, default=list
     )

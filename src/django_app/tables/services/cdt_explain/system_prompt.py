@@ -1,6 +1,6 @@
-from functools import lru_cache
+from collections.abc import Iterable
+from functools import cache
 from pathlib import Path
-from typing import Iterable
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -17,12 +17,12 @@ _BLOCK_SECTIONS = {
 SUPPORTED_BLOCK_TYPES = frozenset(_BLOCK_SECTIONS)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _read(relative: str) -> str:
     return (_PROMPTS_DIR / relative).read_text(encoding="utf-8").strip()
 
 
-@lru_cache(maxsize=None)
+@cache
 def _assemble(sections: tuple[str, ...]) -> str:
     parts = [_read("system.md")]
     parts.extend(_read(f"blocks/{name}") for name in sections)

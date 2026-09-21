@@ -18,8 +18,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from app.llm.client import LLMChunk
 from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
+
+from app.llm.client import LLMChunk
 
 
 class Emitter(ABC):
@@ -84,15 +85,13 @@ class Emitter(ABC):
         implementations that want to label live events with the current
         task (e.g. ``RedisStreamToolEventEmitter``) may override it.
         """
-        return None
+        return
 
-    async def on_task_finish(
-        self, task_name: str, task_order: int, result: LoopResult
-    ) -> None:
+    async def on_task_finish(self, task_name: str, task_order: int, result: LoopResult) -> None:
         """Optional hook for multi-task runs; called after each task completes
         successfully. Default is a no-op.
         """
-        return None
+        return
 
     def register_knowledge_tool(self, name: str) -> None:
         """Optional hook: record that ``name`` is a knowledge-search tool.
@@ -101,13 +100,16 @@ class Emitter(ABC):
         Default is a no-op; implementations that suppress live tool events
         for knowledge tools (e.g. ``RedisStreamToolEventEmitter``) override it.
         """
-        return None
+        return
 
-    async def on_knowledge_search(self, response: object) -> None:
-        """Optional hook: called after a knowledge-search executor gets a
-        successful response, carrying the full structured search result.
+    async def on_knowledge_search(
+        self, target: object, query: str, result: object, error: str | None = None
+    ) -> None:
+        """Optional hook: called after a knowledge-search executor finishes,
+        carrying the search target, query, and result (or ``error`` when the
+        search failed).
 
         Default is a no-op; implementations that publish a dedicated
         ``agent.knowledge_search`` envelope override it.
         """
-        return None
+        return

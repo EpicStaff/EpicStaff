@@ -1,8 +1,11 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { forkJoin, map, Observable, of } from 'rxjs';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 
+import { withPermission } from '../../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { InspectResult } from '../../../../core/models/review-item.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import {
     CreatePythonCodeToolPayload,
@@ -28,10 +31,35 @@ export class CustomToolsService {
         return `${this.configService.apiUrl}python-code-tool/`;
     }
 
-    getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
-        return this.http
-            .get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl)
-            .pipe(map((response) => response.results));
+    getPythonCodeTools(params?: { name?: string }): Observable<GetPythonCodeToolRequest[]> {
+        // TODO: replace the auto-fetch-all behaviour with real pagination.
+        const LIMIT = 50;
+        const fetchSlice = (offset: number) => {
+            let httpParams = new HttpParams().set('limit', String(LIMIT)).set('offset', String(offset));
+            if (params?.name) httpParams = httpParams.set('name', params.name);
+            return this.http.get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl, {
+                params: httpParams,
+                context: withPermission<ApiGetRequest<GetPythonCodeToolRequest>>(ResourceCode.Tools, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            });
+        };
+
+        return fetchSlice(0).pipe(
+            switchMap((first) => {
+                if (first.results.length >= first.count) return of(first.results);
+                const remainingOffsets: number[] = [];
+                for (let offset = LIMIT; offset < first.count; offset += LIMIT) {
+                    remainingOffsets.push(offset);
+                }
+                if (remainingOffsets.length === 0) return of(first.results);
+                const rest$ = remainingOffsets.map((offset) => fetchSlice(offset).pipe(map((slice) => slice.results)));
+                return forkJoin(rest$).pipe(map((slices) => [first.results, ...slices].flat()));
+            })
+        );
     }
 
     createPythonCodeTool(tool: CreatePythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {
@@ -51,10 +79,14 @@ export class CustomToolsService {
         });
     }
 
-    copyPythonCodeTool(toolId: number, body: { name: string }): Observable<GetPythonCodeToolRequest> {
-        return this.http.post<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/copy/`, body, {
-            headers: this.httpHeaders,
-        });
+    copyPythonCodeTool(toolId: number): Observable<GetPythonCodeToolRequest> {
+        return this.http.post<GetPythonCodeToolRequest>(
+            `${this.baseUrl}${toolId}/copy/`,
+            {},
+            {
+                headers: this.httpHeaders,
+            }
+        );
     }
 
     exportPythonCodeTool(toolId: number): Observable<Blob> {
@@ -120,6 +152,12 @@ export class CustomToolsService {
         form.append('file', file);
         form.append('import_labels', String(importLabels));
         return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
+    }
+
+    inspectPythonCodeTool(file: File): Observable<InspectResult> {
+        const form = new FormData();
+        form.append('file', file);
+        return this.http.post<InspectResult>(`${this.baseUrl}import/inspect/`, form);
     }
 
     getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {

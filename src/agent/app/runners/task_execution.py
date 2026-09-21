@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 
+from shared.models.agent_service import AgentSpec, LoopResult, StopReason
+
 from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError
@@ -21,19 +23,18 @@ from app.output.enforcer import StructuredOutputEnforcer
 from app.output.schema import add_usage, as_object_schema
 from app.runners.deps import RunnerDependencies
 from app.tools.registry import ToolRegistry
-from shared.models.agent_service import AgentSpec, LoopResult, StopReason
 
 
 def _default_max_iter() -> int:
-    from settings import load_settings
+    import settings
 
-    return load_settings().agent_default_max_iter
+    return settings.AGENT_DEFAULT_MAX_ITER
 
 
 def _schema_max_retries() -> int:
-    from settings import load_settings
+    import settings
 
-    return load_settings().agent_schema_max_retries
+    return settings.AGENT_SCHEMA_MAX_RETRIES
 
 
 async def run_task_through_loop(
@@ -90,6 +91,7 @@ async def run_task_through_loop(
         enforcement = await enforcer.enforce(context, output_schema, emitter)
         return LoopResult(
             final_text=json.dumps(enforcement.parsed),
+            structured_output=enforcement.parsed,
             tool_invocations=enforcement.tool_invocations,
             iterations=enforcement.iterations,
             stop_reason=StopReason.SCHEMA_SATISFIED.value,
@@ -100,9 +102,7 @@ async def run_task_through_loop(
     result = await deps.loop.run(context, tools, emitter, stop)
 
     if output_schema and result.stop_reason in FAILURE_STOP_REASONS:
-        raise AgentServiceError(
-            result.error or f"agent loop failed ({result.stop_reason})"
-        )
+        raise AgentServiceError(result.error or f"agent loop failed ({result.stop_reason})")
 
     if output_schema:
         enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
@@ -110,10 +110,10 @@ async def run_task_through_loop(
         result = result.model_copy(
             update={
                 "final_text": json.dumps(enforcement.parsed),
+                "structured_output": enforcement.parsed,
                 "token_usage": add_usage(result.token_usage, enforcement.token_usage),
                 "iterations": result.iterations + enforcement.iterations,
-                "tool_invocations": result.tool_invocations
-                + enforcement.tool_invocations,
+                "tool_invocations": result.tool_invocations + enforcement.tool_invocations,
                 "stop_reason": (
                     result.stop_reason
                     if result.stop_reason == StopReason.MAX_CONSECUTIVE_FAILURES.value

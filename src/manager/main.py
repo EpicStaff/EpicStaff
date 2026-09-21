@@ -1,28 +1,28 @@
 import asyncio
-import os
 import signal
 
+import settings
 from db.config import AsyncSessionLocal
+from helpers.logger import logger
+from repositories.session_repository import SessionRepository
+from services.redis_service import RedisService
+from services.schedule_service import ScheduleService
+from services.session_timeout_service import SessionTimeoutService
 from sqlalchemy import text
 
-from repositories.session_repository import SessionRepository
-
-from services.redis_service import RedisService
-from services.session_timeout_service import SessionTimeoutService
-from services.schedule_service import ScheduleService
-from helpers.logger import logger
-
-
-redis_service = RedisService()
+redis_service = RedisService(
+    settings.REDIS_HOST,
+    settings.REDIS_PORT,
+    settings.REDIS_USER,
+    settings.REDIS_PASSWORD,
+)
 
 session_repository = SessionRepository(AsyncSessionLocal)
 
 session_timeout_service = SessionTimeoutService(
     redis_service=redis_service,
-    session_schema_channel=os.environ.get("SESSION_SCHEMA_CHANNEL", "sessions:schema"),
-    session_timeout_channel=os.environ.get(
-        "SESSION_TIMEOUT_CHANNEL", "sessions:timeout"
-    ),
+    session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
+    session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
     session_repository=session_repository,
 )
 
@@ -42,9 +42,7 @@ async def test_database_connection():
             table_exists = result.scalar()
 
             if not table_exists:
-                logger.warning(
-                    "tables_session table does not exist - check your database schema"
-                )
+                logger.warning("tables_session table does not exist - check your database schema")
 
             await session.commit()
 

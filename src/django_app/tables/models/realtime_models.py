@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from tables.models import AbstractDefaultFillableModel, DefaultBaseModel
+from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -86,9 +86,7 @@ class GeminiRealtimeConfig(OrgScopedModel, models.Model):
         on_delete=models.SET_NULL,
         related_name="gemini_realtime_configs",
     )
-    model_name = models.CharField(
-        max_length=250, default="gemini-3.1-flash-live-preview"
-    )
+    model_name = models.CharField(max_length=250, default="gemini-3.1-flash-live-preview")
     voice_recognition_prompt = models.TextField(null=True, blank=True)
 
     def __str__(self):
@@ -111,9 +109,7 @@ class RealtimeAgent(AbstractDefaultFillableModel):
         related_name="realtime_agent",
     )
     wake_word = models.CharField(max_length=255, null=True, blank=True)
-    stop_prompt = models.CharField(
-        default="stop", max_length=255, null=True, blank=True
-    )
+    stop_prompt = models.CharField(default="stop", max_length=255, null=True, blank=True)
     voice = models.CharField(max_length=100, default="alloy")
 
     # Exactly one of these should be non-null; enforced in clean()
@@ -198,12 +194,8 @@ class RealtimeAgentDefinition(AbstractDefaultFillableModel):
         related_name="realtime_agent",
     )
     wake_word = models.CharField(max_length=255, null=True, blank=True)
-    stop_prompt = models.CharField(
-        default="stop", max_length=255, null=True, blank=True
-    )
-    language = models.CharField(
-        max_length=2, null=True, blank=True, help_text="ISO-639-1 format"
-    )
+    stop_prompt = models.CharField(default="stop", max_length=255, null=True, blank=True)
+    language = models.CharField(max_length=2, null=True, blank=True, help_text="ISO-639-1 format")
     voice_recognition_prompt = models.TextField(
         null=True,
         blank=True,
@@ -259,11 +251,7 @@ class RealtimeAgentDefinition(AbstractDefaultFillableModel):
     @property
     def active_provider_config_id(self) -> int | None:
         """Return the id of whichever provider config FK is set, or None."""
-        return (
-            self.openai_config_id
-            or self.elevenlabs_config_id
-            or self.gemini_config_id
-        )
+        return self.openai_config_id or self.elevenlabs_config_id or self.gemini_config_id
 
     @property
     def provider_name(self) -> str | None:
@@ -323,9 +311,7 @@ class RealtimeAgentChat(models.Model):
 
     # Generic snapshot fields (always filled)
     wake_word = models.CharField(max_length=255, null=True, blank=True)
-    stop_prompt = models.CharField(
-        max_length=255, null=True, blank=True, default="stop"
-    )
+    stop_prompt = models.CharField(max_length=255, null=True, blank=True, default="stop")
     voice = models.CharField(max_length=100, default="alloy")
 
     # Provider-specific snapshot text fields (null when not applicable)
@@ -427,9 +413,7 @@ class DefaultRealtimeAgentConfig(DefaultBaseModel):
         db_table = "default_realtime_agent_config"
 
     wake_word = models.CharField(max_length=255, null=True, blank=True)
-    stop_prompt = models.CharField(
-        default="stop", max_length=255, null=True, blank=True
-    )
+    stop_prompt = models.CharField(default="stop", max_length=255, null=True, blank=True)
     voice = models.CharField(max_length=100, default="alloy")
 
     def __str__(self):

@@ -1,12 +1,12 @@
 from typing import Any
 
 from langgraph.types import StreamWriter
-
 from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
+from services.graph.nodes.agent_output_variable import agent_output_variable_value
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
+from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
 from src.shared.models import AgentNodeData
 
@@ -33,32 +33,22 @@ class AgentNode(BaseNode):
         self.agent_task_service = agent_task_service
 
     def get_output_variable_value(self, output: Any) -> Any:
-        return output.get("message") if isinstance(output, dict) else output
+        return agent_output_variable_value(output)
 
-    async def execute(
-        self, state: State, writer: StreamWriter, execution_order: int, input_: Any
-    ):
+    async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         agent_definition = self.agent_node_data.agent_definition
         if agent_definition is None:
-            raise ValueError(
-                f"AgentNode '{self.node_name}' requires an agent_definition"
-            )
+            raise ValueError(f"AgentNode '{self.node_name}' requires an agent_definition")
         if agent_definition.llm is None:
-            raise ValueError(
-                f"AgentNode '{self.node_name}' requires agent_definition.llm"
-            )
+            raise ValueError(f"AgentNode '{self.node_name}' requires agent_definition.llm")
         if not self.agent_node_data.tasks:
             raise ValueError(f"AgentNode '{self.node_name}' has no tasks to execute.")
 
         rendered_tasks = [
-            task.model_copy(
-                update={"instructions": render_instructions(task.instructions, input_)}
-            )
+            task.model_copy(update={"instructions": render_instructions(task.instructions, input_)})
             for task in self.agent_node_data.tasks
         ]
-        agent_node_data = self.agent_node_data.model_copy(
-            update={"tasks": rendered_tasks}
-        )
+        agent_node_data = self.agent_node_data.model_copy(update={"tasks": rendered_tasks})
 
         on_agent_event = AgentStreamEventForwarder(
             custom_session_message_writer=self.custom_session_message_writer,
@@ -75,6 +65,7 @@ class AgentNode(BaseNode):
 
         return {
             "message": result.get("final_text"),
+            "structured_output": result.get("structured_output"),
             "token_usage": result.get("token_usage") or {},
             "stop_reason": result.get("stop_reason"),
             "iterations": result.get("iterations"),
@@ -84,6 +75,7 @@ class AgentNode(BaseNode):
                     "name": task.get("name"),
                     "order": task.get("order"),
                     "message": task.get("final_text"),
+                    "structured_output": task.get("structured_output"),
                     "token_usage": task.get("token_usage") or {},
                     "iterations": task.get("iterations"),
                     "tool_invocations": task.get("tool_invocations"),

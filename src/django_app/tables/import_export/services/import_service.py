@@ -1,15 +1,15 @@
-from typing import List
 from collections import defaultdict
 
 from django.db import transaction
+from loguru import logger
 from rest_framework.exceptions import PermissionDenied
 
-from tables.import_export.id_mapper import IDMapper
-from tables.import_export.registry import EntityRegistry
-from tables.import_export.enums import NodeType, EntityType
 from tables.import_export.constants import DEPENDENCY_ORDER
-from tables.import_export.schemas import ImportSettings
+from tables.import_export.enums import EntityType, NodeType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
+from tables.import_export.registry import EntityRegistry
+from tables.import_export.schemas import ImportSettings
 from tables.models.rbac_models.rbac_enums import Permission
 
 
@@ -22,7 +22,7 @@ class ImportService:
         export_data: dict,
         main_entity: str,
         settings: ImportSettings = None,
-        org_id: int = None,
+        org_id: int | None = None,
         user=None,
         effective_permissions=None,
     ):
@@ -36,6 +36,13 @@ class ImportService:
             ordered_types = self._resolve_import_order(export_data)
 
             for entity_type in ordered_types:
+                if not self.registry.has_strategy(entity_type):
+                    logger.warning(
+                        "Skipping unsupported entity type {} during import (no longer supported)",
+                        entity_type,
+                    )
+                    continue
+
                 entities = export_data.get(entity_type, [])
                 strategy = self.registry.get_strategy(entity_type)
 
@@ -65,15 +72,13 @@ class ImportService:
 
         return id_mapper, self.registry
 
-    def _resolve_import_order(self, export_data: dict) -> List[str]:
+    def _resolve_import_order(self, export_data: dict) -> list[str]:
         """
         Topological sort based on dependencies.
         """
         # Entities will be imported from top to bottom based on this list
         sorted_keys = [
-            entity_type
-            for entity_type in DEPENDENCY_ORDER
-            if entity_type in export_data
+            entity_type for entity_type in DEPENDENCY_ORDER if entity_type in export_data
         ]
 
         return sorted_keys
@@ -102,9 +107,7 @@ class ImportService:
         denied = None
         if was_created and effective_permissions is not None:
             resource = ENTITY_RESOURCE_MAP.get(entity_type)
-            if resource is not None and not effective_permissions.can(
-                resource, Permission.CREATE
-            ):
+            if resource is not None and not effective_permissions.can(resource, Permission.CREATE):
                 denied = resource
 
         kwargs["org_id"] = org_id
@@ -122,7 +125,7 @@ class ImportService:
             id_mapper.map(entity_type, old_id, instance.id, was_created)
         return denied
 
-    def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:
+    def _resolve_graph_order(self, graphs: list[dict]) -> list[dict]:
         """
         Topological sort of graphs based on subgraph dependencies.
         Graphs that are used as subgraphs must be imported first.
@@ -139,7 +142,7 @@ class ImportService:
 
         return self._topological_sort(graphs, dependencies)
 
-    def _extract_subgraph_ids(self, graph_data: dict) -> List[int]:
+    def _extract_subgraph_ids(self, graph_data: dict) -> list[int]:
         """Extract subgraph IDs from subgraph nodes"""
         subgraph_ids = []
 
@@ -150,7 +153,7 @@ class ImportService:
 
         return subgraph_ids
 
-    def _topological_sort(self, graphs: List[dict], dependencies: dict) -> List[dict]:
+    def _topological_sort(self, graphs: list[dict], dependencies: dict) -> list[dict]:
         """Sort graphs so dependencies come first"""
         graph_map = {graph["id"]: graph for graph in graphs}
 

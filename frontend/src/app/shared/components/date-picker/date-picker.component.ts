@@ -63,7 +63,6 @@ function formatDate(date: Date): string {
 
 @Component({
     selector: 'app-date-picker',
-    standalone: true,
     imports: [FormsModule, OverlayModule, TooltipComponent],
     templateUrl: './date-picker.component.html',
     styleUrls: ['./date-picker.component.scss'],

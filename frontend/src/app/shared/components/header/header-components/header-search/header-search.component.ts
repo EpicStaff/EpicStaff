@@ -1,10 +1,8 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 @Component({
     selector: 'app-project-search',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -56,7 +54,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 height: 36px;
                 transition: all 0.2s ease;
                 background-color: rgba(255, 255, 255, 0.04);
-                border-radius: 6px;
+                border-radius: 4px;
 
                 &.projects-page-search-has-content {
                     svg {
@@ -84,7 +82,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                     border: none;
                     background: transparent;
                     outline: none;
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     color: #f9fafb;
                     width: 100%;
                     height: 100%;
@@ -92,8 +90,8 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 
                     &::placeholder {
                         color: #6b7280;
-                        font-weight: 400;
-                        font-size: 14px;
+                        font-weight: var(--text-body-weight);
+                        font-size: var(--text-body-size);
                     }
                 }
             }

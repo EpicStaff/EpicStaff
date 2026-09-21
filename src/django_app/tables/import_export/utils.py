@@ -1,32 +1,34 @@
 import re
-from typing import List, Optional
 
-from tables.models import PythonCode
-from tables.models.label_models import Label
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
 from django.conf import settings
 
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.models import Organization, PythonCode
+from tables.models.label_models import Label
 
 
-def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
+def clean_base_name(base_name: str) -> str:
+    """Strips a trailing "#N" (or "# N") suffix from base_name, if present."""
+    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
+    return match.group(1) if match else base_name.strip()
+
+
+def ensure_unique_identifier(base_name: str, existing_names: list[str]) -> str:
     """
     Creates new unique name from base_name using a trailing "#N" suffix.
 
     If base_name is already unique it is returned unchanged. Otherwise any
     existing "#N" (or "# N") suffix is stripped to get the base, and the lowest
-    free number is appended, e.g. "My Node" -> "My Node #2",
-    "Node #4" -> "Node #5".
+    free number (starting at 2) is appended, e.g. "My Node" -> "My Node #2",
+    "MyAgent #5" -> "MyAgent #2". A freed base name is never reused once a
+    collision has occurred -- the result always carries a number, even if the
+    plain base name itself is free.
     """
     if base_name not in existing_names:
         return base_name
 
-    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
-    if match:
-        clean_base = match.group(1)
-    else:
-        clean_base = base_name.strip()
+    clean_base = clean_base_name(base_name)
 
     existing_numbers = set()
     pattern = re.compile(rf"^{re.escape(clean_base)}\s*#\s*(\d+)$")
@@ -59,7 +61,7 @@ def create_filters(data: dict) -> tuple[dict, dict]:
     return filters, null_filters
 
 
-def resolve_import_organization(org_id: Optional[int]) -> Optional[Organization]:
+def resolve_import_organization(org_id: int | None) -> Organization | None:
     """
     Resolves the organization an imported entity should be stamped with.
 
@@ -80,9 +82,7 @@ def resolve_import_organization(org_id: Optional[int]) -> Optional[Organization]
     if organization is not None:
         return organization
 
-    return Organization.objects.filter(
-        name__iexact=settings.DEFAULT_ORGANIZATION_NAME
-    ).first()
+    return Organization.objects.filter(name__iexact=settings.DEFAULT_ORGANIZATION_NAME).first()
 
 
 def python_code_equal(code_instance: PythonCode, code_data: dict):
@@ -90,8 +90,7 @@ def python_code_equal(code_instance: PythonCode, code_data: dict):
     return all(
         [
             code_instance.libraries == code_data.get("libraries"),
-            (code_instance.code.rstrip() + "\n")
-            == (code_data.get("code").rstrip() + "\n"),
+            (code_instance.code.rstrip() + "\n") == (code_data.get("code").rstrip() + "\n"),
             code_instance.entrypoint == code_data.get("entrypoint"),
             code_instance.global_kwargs == code_data.get("global_kwargs"),
         ]
@@ -108,6 +107,4 @@ def attach_tool_labels(instance, id_mapper: IDMapper, label_ids: list) -> None:
     """
     new_label_ids = [id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids]
     if new_label_ids:
-        instance.labels.add(
-            *Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.TOOL)
-        )
+        instance.labels.add(*Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.TOOL))

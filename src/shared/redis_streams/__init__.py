@@ -3,6 +3,6 @@ from .envelope import StreamEnvelope
 
 __all__ = [
     "RedisStreamClient",
-    "StreamMessage",
     "StreamEnvelope",
+    "StreamMessage",
 ]

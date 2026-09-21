@@ -21,8 +21,8 @@ Hierarchy
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Literal
+from enum import StrEnum
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,7 +46,7 @@ class AgentTaskSpec(BaseModel):
     context: list[str] = []
 
 
-class RunType(str, Enum):
+class RunType(StrEnum):
     """Execution mode for an agent request.
 
     ``SINGLE_TASK`` — one prompt, one ``AgentLoop`` invocation.
@@ -58,7 +58,7 @@ class RunType(str, Enum):
     LIST_OF_TASKS = "LIST_OF_TASKS"
 
 
-class StopReason(str, Enum):
+class StopReason(StrEnum):
     """Terminal reason for one AgentLoop run; travels on LoopResult.stop_reason to crew/FE."""
 
     COMPLETED = "completed"  # agent returned a final answer, stopped calling tools
@@ -67,6 +67,7 @@ class StopReason(str, Enum):
     LLM_ERROR = "llm_error"
     TIMEOUT = "timeout"
     MAX_CONSECUTIVE_FAILURES = "max_consecutive_failures"  # tool loop stopped after N consecutive tool failures; graceful summary produced
+    MAX_TOOL_CALLS_REACHED = "max_tool_calls_reached"  # tool-call budget for the run exhausted; graceful summary produced
 
 
 FAILURE_STOP_REASONS = frozenset({StopReason.LLM_ERROR, StopReason.TIMEOUT})
@@ -79,10 +80,13 @@ class SearchConfigEntry(BaseModel):
     graph-local).  ``AgentResolver`` builds one search tool per entry so the
     LLM can choose the appropriate strategy at runtime.
 
-    ``embedder`` itself is not part of the ``BaseKnowledgeSearchMessage``
-    wire format -- ``ToolRegistryBuilder`` extracts ``embedder.config.api_key``
-    onto ``KnowledgeSearchTarget.embedder_api_key``, which is what actually
-    reaches the wire message.
+    ``ToolRegistryBuilder`` extracts ``embedder.config.api_key`` and
+    ``llm.config.api_key`` onto ``KnowledgeSearchTarget``; both arrive already
+    resolved to plaintext (SecretResolver runs at publish time), the raw
+    credentials the knowledge_new REST search endpoint expects.
+
+    ``llm`` is only populated for graph entries — graph RAG runs LLM calls
+    server-side; naive search leaves it ``None``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -91,6 +95,7 @@ class SearchConfigEntry(BaseModel):
     rag_type: Literal["naive", "graph"]
     search_config: RagSearchConfig
     embedder: EmbedderData
+    llm: LLMData | None = None
 
 
 class CollectionSpec(BaseModel):
@@ -139,7 +144,7 @@ class AgentSpec(BaseModel):
     """Maximum LLM call retry attempts; ``None`` uses the client default."""
     default_temperature: float | None = None
     max_tool_calls: int | None = None
-    """Maximum tool calls executed per loop iteration; ``None`` means unlimited."""
+    """Maximum tool calls executed per agent run; ``None`` means unlimited."""
     tool_timeout: int | None = None
     """Per-tool-call timeout in seconds; ``None`` means no timeout."""
     max_consecutive_failures: int | None = None
@@ -249,6 +254,8 @@ class TaskRunSummary(BaseModel):
     name: str
     order: int
     final_text: str | None = None
+    structured_output: Any = None
+    """Validated output object when the task declared an ``output_schema``; ``None`` otherwise."""
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     iterations: int = 0
     tool_invocations: int = 0
@@ -273,3 +280,5 @@ class LoopResult(BaseModel):
     """Failure detail when stop_reason indicates a failure (llm_error/timeout); None on success."""
     tasks: list[TaskRunSummary] | None = None
     """Per-task summaries for ``LIST_OF_TASKS`` runs; ``None`` for ``SINGLE_TASK`` runs."""
+    structured_output: Any = None
+    """Validated output object when the task declared an ``output_schema``; ``None`` otherwise."""

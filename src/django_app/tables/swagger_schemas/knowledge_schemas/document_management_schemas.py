@@ -1,15 +1,15 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 from tables.serializers.knowledge_serializers import (
     DocumentDetailSerializer,
     DocumentListSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-DOCUMENTS_LIST_GET = dict(
-    summary="List all documents or filter by collection ID",
-    description="List all documents or filter by collection ID",
-    responses={
+DOCUMENTS_LIST_GET = {
+    "summary": "List all documents or filter by collection ID",
+    "description": "List all documents or filter by collection ID",
+    "responses": {
         200: DocumentListSerializer(many=True),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -37,12 +37,12 @@ DOCUMENTS_LIST_GET = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_RETRIEVE_GET = dict(
-    summary="Retrieve a single document by ID",
-    description="Retrieve a single document by ID",
-    responses={
+DOCUMENTS_RETRIEVE_GET = {
+    "summary": "Retrieve a single document by ID",
+    "description": "Retrieve a single document by ID",
+    "responses": {
         200: DocumentDetailSerializer(),
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -58,12 +58,12 @@ DOCUMENTS_RETRIEVE_GET = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_DESTROY_DELETE = dict(
-    summary="Delete a single document",
-    description="Delete a single document",
-    responses={
+DOCUMENTS_DESTROY_DELETE = {
+    "summary": "Delete a single document",
+    "description": "Delete a single document",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Document deleted successfully.",
@@ -106,12 +106,12 @@ DOCUMENTS_DESTROY_DELETE = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_UPLOAD_POST = dict(
-    summary="Upload one or multiple files to a collection",
-    description="Upload one or multiple files to a collection",
-    responses={
+DOCUMENTS_UPLOAD_POST = {
+    "summary": "Upload one or multiple files to a collection",
+    "description": "Upload one or multiple files to a collection",
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents uploaded successfully.",
@@ -180,12 +180,12 @@ DOCUMENTS_UPLOAD_POST = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_BULK_DELETE_POST = dict(
-    summary="Delete multiple documents at once",
-    description="Delete multiple documents at once",
-    responses={
+DOCUMENTS_BULK_DELETE_POST = {
+    "summary": "Delete multiple documents at once",
+    "description": "Delete multiple documents at once",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents deleted successfully.",
@@ -242,12 +242,179 @@ DOCUMENTS_BULK_DELETE_POST = dict(
             ],
         ),
     },
-)
+}
 
-COLLECTION_DOCUMENTS_LIST_GET = dict(
-    summary="List all documents or filter by collection ID",
-    description="List all documents or filter by collection ID.\n\nURL: GET /source-collection/{id}/documents",
-    responses={
+DOCUMENTS_DOWNLOAD_GET = {
+    "summary": "Download one or multiple documents",
+    "description": (
+        "Download documents by ID. A single document is returned as a file; "
+        "multiple documents are bundled into a zip archive."
+    ),
+    "parameters": [
+        OpenApiParameter(
+            name="document_ids",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="Comma-separated list of document IDs (e.g. `1,2,3`).",
+        )
+    ],
+    "responses": {
+        200: OpenApiResponse(
+            response=OpenApiTypes.BINARY,
+            description="File or zip archive attachment.",
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Missing or invalid document_ids parameter.",
+            examples=[
+                OpenApiExample(
+                    name="Missing parameter",
+                    value={"error": "document_ids query parameter is required"},
+                    response_only=True,
+                    status_codes=["400"],
+                )
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="One or more documents not found.",
+            examples=[
+                OpenApiExample(
+                    name="Documents not found",
+                    value={"error": "Documents not found: 5, 6"},
+                    response_only=True,
+                    status_codes=["404"],
+                )
+            ],
+        ),
+    },
+}
+
+DOCUMENTS_PREVIEW_GET = {
+    "summary": "Preview a single document inline",
+    "description": (
+        "Return the raw binary content of a single document for inline preview "
+        "(`Content-Disposition: inline`). The browser can render supported formats "
+        "(pdf, txt, md, json, html, csv) in place; docx has no native preview and "
+        "is downloaded instead. Use the download endpoint to force a file download."
+    ),
+    "responses": {
+        200: OpenApiResponse(
+            response=OpenApiTypes.BINARY,
+            description="Raw file content served inline.",
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Document not found.",
+            examples=[
+                OpenApiExample(
+                    name="Document not found",
+                    value={"detail": "No DocumentMetadata matches the given query."},
+                    response_only=True,
+                    status_codes=["404"],
+                )
+            ],
+        ),
+    },
+}
+
+DOCUMENTS_COPY_POST = {
+    "summary": "Copy documents into a target collection",
+    "description": (
+        "Copy documents into a target collection by ID. Binary content is shared "
+        "(not duplicated): new document records point to the same stored content. "
+        "Documents whose content is already present in the target collection are "
+        "skipped and returned under `skipped`."
+    ),
+    "responses": {
+        201: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Documents copied successfully.",
+            examples=[
+                OpenApiExample(
+                    name="Copied",
+                    value={
+                        "message": (
+                            "Successfully copied 1 document(s), skipped 1 already "
+                            "present in the target collection"
+                        ),
+                        "documents": [
+                            {
+                                "document_id": 10,
+                                "file_name": "report.pdf",
+                                "file_type": "pdf",
+                                "file_size": 204800,
+                                "source_collection": 15,
+                            },
+                        ],
+                        "skipped": [
+                            {
+                                "document_id": 4,
+                                "file_name": "notes.docx",
+                                "file_type": "docx",
+                                "file_size": 51200,
+                                "source_collection": 8,
+                            },
+                        ],
+                    },
+                    response_only=True,
+                    status_codes=["201"],
+                )
+            ],
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Validation error.",
+            examples=[
+                OpenApiExample(
+                    name="Validation error",
+                    value={"document_ids": ["This field is required."]},
+                    response_only=True,
+                    status_codes=["400"],
+                )
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Target collection or one or more documents not found.",
+            examples=[
+                OpenApiExample(
+                    name="Collection not found",
+                    value={"error": "Source collection with id 15 not found"},
+                    response_only=True,
+                    status_codes=["404"],
+                ),
+                OpenApiExample(
+                    name="Documents not found",
+                    value={"error": "Documents not found: 5, 6"},
+                    response_only=True,
+                    status_codes=["404"],
+                ),
+            ],
+        ),
+        500: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Unexpected server error.",
+            examples=[
+                OpenApiExample(
+                    name="Server error",
+                    value={"error": "An unexpected error occurred: <detail>"},
+                    response_only=True,
+                    status_codes=["500"],
+                )
+            ],
+        ),
+    },
+}
+
+COLLECTION_DOCUMENTS_LIST_GET = {
+    "summary": "List all documents or filter by collection ID",
+    "description": "List all documents or filter by collection ID.\n\nURL: GET /source-collection/{id}/documents",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents listed successfully.",
@@ -304,4 +471,4 @@ COLLECTION_DOCUMENTS_LIST_GET = dict(
             ],
         ),
     },
-)
+}

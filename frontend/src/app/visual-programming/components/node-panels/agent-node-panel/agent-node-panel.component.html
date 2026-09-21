@@ -1,21 +1,33 @@
 <div class="panel-container">
-    <div class="panel-content">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
         <form
             [formGroup]="form"
             class="form-container"
         >
             @if (isExpanded()) {
-                <div class="form-layout expanded">
-                    <div class="form-fields">
-                        <app-custom-input
-                            label="Node Name"
-                            [required]="true"
-                            tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                <div
+                    class="form-layout expanded"
+                    [class.form-collapsed]="isFormCollapsed()"
+                >
+                    <div
+                        #formColumn
+                        class="form-fields"
+                        [style.flex-basis.px]="leftColumnWidth.width()"
+                    >
+                        <div class="field-isolated">
+                            <app-custom-input
+                                label="Node Name"
+                                [required]="true"
+                                tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
 
                         <div class="field">
                             <div class="field__label-row">
@@ -60,7 +72,7 @@
                             <div class="field__label-row">
                                 <label class="field__label">Surface (Group of Permissions)</label>
                                 <app-help-tooltip
-                                    text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks."
+                                    text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks. A collection may only appear in one surface per node."
                                     position="right"
                                     size="18px"
                                 />
@@ -105,6 +117,11 @@
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
 
+                        <app-inputs-you-can-use
+                            [names]="inputMapKeys()"
+                            (insert)="insertInputToInstructions($event)"
+                        />
+
                         <app-custom-input
                             label="Output Variable Path"
                             tooltipText="Path where the Agent node output will be stored in flow variables."
@@ -145,13 +162,26 @@
                                 Add Task
                             </button>
 
-                            @if (getTasksErrorMessage()) {
-                                <div class="task-error">{{ getTasksErrorMessage() }}</div>
-                            }
+                            <app-validation-errors [control]="form.get('tasksValidity')!" />
                         </div>
                     </div>
 
-                    <div class="main-editor-pane">
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and instructions columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [minOppositeWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
+
+                    <div
+                        #editorColumn
+                        class="main-editor-pane"
+                    >
                         @if (!selectedTask()) {
                             <div class="main-editor-pane__empty">Add a task to edit its instructions</div>
                         } @else if (effectiveRightPane()?.field === 'schema') {
@@ -220,6 +250,7 @@
                                     ></markdown>
                                 } @else {
                                     <app-variable-highlight-textarea
+                                        #rightInstructionsTextarea
                                         class="main-editor-pane__textarea"
                                         placeholder="Enter task instructions..."
                                         [value]="rightInstructionsValue()"
@@ -233,15 +264,17 @@
                 </div>
             } @else {
                 <div class="form-layout collapsed">
-                    <app-custom-input
-                        label="Node Name"
-                        [required]="true"
-                        tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            [required]="true"
+                            tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
 
                     <div class="field">
                         <div class="field__label-row">
@@ -286,7 +319,7 @@
                         <div class="field__label-row">
                             <label class="field__label">Surface (Group of Permissions)</label>
                             <app-help-tooltip
-                                text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks."
+                                text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks. A collection may only appear in one surface per node."
                                 position="right"
                                 size="18px"
                             />
@@ -331,6 +364,11 @@
                         <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
 
+                    <app-inputs-you-can-use
+                        [names]="inputMapKeys()"
+                        (insert)="insertInputToInstructions($event)"
+                    />
+
                     <app-custom-input
                         label="Output Variable Path"
                         tooltipText="Path where the Agent node output will be stored in flow variables."
@@ -371,9 +409,7 @@
                             Add Task
                         </button>
 
-                        @if (getTasksErrorMessage()) {
-                            <div class="task-error">{{ getTasksErrorMessage() }}</div>
-                        }
+                        <app-validation-errors [control]="form.get('tasksValidity')!" />
                     </div>
                 </div>
             }

@@ -1,6 +1,5 @@
 from django.db import transaction
 from rest_framework import serializers
-
 from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.secret_models import Secret
@@ -12,9 +11,12 @@ from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class McpToolSerializer(serializers.ModelSerializer):
+class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_secret_id",)
+
     auth_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="auth_secret",
@@ -41,7 +43,7 @@ class McpToolSerializer(serializers.ModelSerializer):
     class Meta:
         model = McpTool
         exclude = ["auth_secret"]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at", "updated_at"]
 
     def to_internal_value(self, data):
         if isinstance(data, dict) and data.get("labels") is None:
@@ -50,9 +52,7 @@ class McpToolSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation["labels"] = org_scoped_label_ids(
-            instance, self.context.get("request")
-        )
+        representation["labels"] = org_scoped_label_ids(instance, self.context.get("request"))
         return representation
 
     def create(self, validated_data):

@@ -67,7 +67,7 @@ Every secret in the active org. Includes `usage_count` per row.
     "created_by": 3,
     "created_at": "2026-08-01T10:00:00Z",
     "updated_at": "2026-08-01T10:00:00Z",
-    "usage_count": 3
+    "usage_count": { "readable": 2, "hidden": 1 }
   }
 ]
 ```
@@ -75,10 +75,37 @@ Every secret in the active org. Includes `usage_count` per row.
 `value` is **never** in a response — it is `write_only`. `tail` is the last 4 plaintext
 characters, or `""` for values shorter than 9 characters.
 
-`usage_count` is the number of distinct resources referencing the secret. The whole list
-costs a fixed number of queries regardless of how many secrets the org has — one prepared
-count map is computed per request, not per row. See [secret_usage.md](secret_usage.md) for
-the counting rules and why this is not simply a row count.
+`usage_count` is an **object, not an integer**, and it is filtered by the caller's
+permissions:
+
+| Key | Meaning |
+|---|---|
+| `readable` | distinct resources referencing this secret that the caller holds READ on |
+| `hidden` | distinct resources referencing it that the caller may **not** see |
+
+`readable + hidden` is the total number of distinct resources referencing the secret, and is
+the same for every caller in the org — only the split between the two moves. The field is a
+pair because a secret is typically referenced from several resource kinds at once and a
+caller may hold `flows:READ` without `llm_configs:READ`, so one number cannot say both how
+much is inspectable and how much would break on delete.
+
+Three states the UI has to tell apart:
+
+| Response | Meaning |
+|---|---|
+| `{"readable": 0, "hidden": 0}` | not referenced anywhere |
+| `{"readable": 2, "hidden": 1}` | referenced 3 times; 2 are inspectable |
+| `{"readable": 0, "hidden": 1}` | referenced, but by nothing the caller can see — **not** the same as unused |
+
+**Deletion warnings must use `readable + hidden`, never `readable` alone.** Deleting nulls
+the reference on *every* referencing resource, including the ones the caller cannot see, so a
+warning computed from `readable` would fall silent on exactly the case where it matters most.
+What permission filtering hides is *which* resources, never *whether* there are any.
+
+The whole list costs a fixed number of queries regardless of how many secrets the org has —
+one prepared count map is computed per request, not per row. See
+[secret_usage.md](secret_usage.md) for the counting rules, the readable/hidden split, and why
+this is not simply a row count.
 
 ## `GET /api/secrets/{id}/`
 
@@ -86,7 +113,8 @@ One secret, same shape as a list row. Another org's secret is a **404**, not a 4
 would confirm the row exists.
 
 Unlike the list, this computes the count for that one secret only, in a single query,
-instead of building the whole org's map to read one key out of it.
+instead of building the whole org's map to read one key out of it. It reports the same
+numbers the list reports for that secret.
 
 ## `POST /api/secrets/`
 
@@ -95,7 +123,7 @@ instead of building the whole org's map to read one key out of it.
 ```
 
 `value` is required and write-only. The response is the created row (with
-`usage_count: 0`), and the plaintext is not echoed back.
+`usage_count: {"readable": 0, "hidden": 0}`), and the plaintext is not echoed back.
 
 | Failure | Status | Detail |
 |---|---|---|
@@ -128,12 +156,14 @@ Computes no usage at all, so it costs nothing beyond the lookup.
 
 ## `GET /api/secrets/{id}/usage/`
 
-Every resource in the active org that references this secret, for the deletion-safety
-dialog. `Permission.READ` on `secrets`.
+Every resource in the active org that references this secret **and that the caller holds READ
+on**, for the deletion-safety dialog. `Permission.READ` on `secrets` gets you the endpoint;
+what it *lists* is then filtered per resource type.
 
 ```json
 {
-  "total": 3,
+  "readable_total": 3,
+  "hidden_total": 1,
   "categories": [
     {
       "key": "flows",
@@ -147,18 +177,30 @@ dialog. `Permission.READ` on `secrets`.
         }
       ]
     },
-    { "key": "tools", "items": [{ "name": "Stripe refund" }] },
-    { "key": "llm_configs", "items": [{ "name": "gpt-4o prod" }] }
+    { "key": "tools", "items": [{ "name": "Stripe refund", "type": "mcp_tool" }] },
+    { "key": "llm_configs", "items": [{ "name": "gpt-4o prod", "type": "llm_config" }] }
   ]
 }
 ```
 
-An unused secret returns `{"total": 0, "categories": []}` — a category is present only when
-it has items, so the frontend never renders an empty group.
+`readable_total` is the number of items actually listed across `categories`; `hidden_total`
+counts the referencing resources withheld from it. There is no `total` key — the two
+aggregates are the complete set, and a client wanting the unfiltered figure adds them.
 
-Field meanings, the `total`-vs-node-count distinction, and the `code_field` values are
-documented in [secret_usage.md](secret_usage.md). The response schema and examples are also
-in Swagger (`tables/swagger_schemas/secret_schemas.py`).
+An unused secret returns `{"readable_total": 0, "hidden_total": 0, "categories": []}` — a
+category is present only when it has items, so the frontend never renders an empty group.
+
+**A category the caller cannot read is omitted exactly like an empty one**, never returned
+with an empty `items` array. That is deliberate: this endpoint returns resource *names*, so a
+present-but-empty category would disclose which *kind* of resource is hiding the secret. The
+consequence is that `{"readable_total": 0, "hidden_total": 2, "categories": []}` and
+`{"readable_total": 0, "hidden_total": 0, "categories": []}` differ only in `hidden_total` —
+the UI must read that field to tell "used, invisible to you" from "unused."
+
+Field meanings, the `readable_total`-vs-node-count distinction, the `code_field` values, and
+how visibility is resolved per source are documented in
+[secret_usage.md](secret_usage.md). The response schema and all three examples are also in
+Swagger (`tables/swagger_schemas/secret_schemas.py`).
 
 404 for another org's secret, same as retrieve.
 
@@ -175,8 +217,15 @@ Secrets are selected by **id**, never by sending a plaintext key. Two shapes:
 | `/api/llm-configs/` | `api_key_secret_id` |
 | `/api/embedding-configs/` | `api_key_secret_id` |
 | `/api/realtime-model-configs/`, `/api/realtime-transcription-model-configs/` | `api_key_secret_id` |
+| `/api/openai-realtime-configs/` | `api_key_secret_id`, `transcription_api_key_secret_id` |
+| `/api/elevenlabs-realtime-configs/`, `/api/gemini-realtime-configs/` | `api_key_secret_id` |
 | `/api/mcp-tools/` | `auth_secret_id` |
+| `/api/twilio-channels/` | `auth_token_secret_id` |
+| `/api/webhook-triggers/` | `auth_secret_id` (write-only), `ngrok_config.auth_token_secret_id` |
 | telegram trigger nodes | `telegram_bot_api_key_secret_id` |
+
+`/api/openai-realtime-configs/` is the only one carrying two — a realtime session can use a
+different credential for transcription than for the model itself.
 
 ```json
 POST /api/llm-configs/
@@ -202,6 +251,34 @@ nonexistent one** — `Invalid pk "N" - object does not exist`, revealing nothin
 
 That save-time check is a convenience, not the boundary — the enforced gate runs at session
 start. See [DEV_secrets_backend_guide.md](DEV_secrets_backend_guide.md) §6.
+
+### Changing a reference needs `secrets:USE`
+
+Every field in this section is additionally gated: **changing** which secret a resource
+references requires `Permission.USE` on `secrets`, on top of whatever permission the endpoint
+itself demands. Creating a resource that references a secret counts as a change; so does
+clearing one.
+
+The reference is treated as *state*, not an operation, so the gate only fires on an actual
+delta:
+
+| Payload | Needs `secrets:USE`? |
+|---|---|
+| field omitted | no |
+| field present, same value as persisted | no |
+| field present, different value (including `null`) | **yes** |
+
+That distinction is what makes `POST /api/graphs/{id}/save/` workable — it resubmits the
+whole graph on every save, so a caller editing an unrelated node resends every secret field
+unchanged and needs nothing. Refusals come back as a normal DRF field error:
+
+```json
+{ "auth_secret_id": ["Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it."] }
+```
+
+Enforcement lives in `SecretReferenceGuardMixin` — mechanism, coverage guarantees, and how to
+diverge one request path are in
+[DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
 
 ---
 

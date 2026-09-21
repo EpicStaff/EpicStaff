@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -17,23 +16,18 @@ import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.uti
 
 @Component({
     selector: 'app-monaco-cell-renderer',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div
             class="code-cell"
             #codeContainer
         >
-            <span
-                *ngIf="!value"
-                class="placeholder"
-                >—</span
-            >
-            <span
-                *ngIf="value && !colorized"
-                class="plain-text"
-                >{{ displayText }}</span
-            >
+            @if (!value) {
+                <span class="placeholder">—</span>
+            }
+            @if (value && !colorized) {
+                <span class="plain-text">{{ displayText }}</span>
+            }
         </div>
     `,
     styles: [
@@ -52,7 +46,7 @@ import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.uti
                 padding: 0 8px;
                 cursor: text;
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-                font-size: 12px;
+                font-size: 0.75rem;
                 line-height: 1.4;
                 color: #d4d4d4;
             }

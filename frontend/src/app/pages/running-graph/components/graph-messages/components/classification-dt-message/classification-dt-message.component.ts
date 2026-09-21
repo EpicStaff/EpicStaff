@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     ClassificationPromptMessageData,
     ConditionGroupManipulationMessageData,
@@ -12,31 +12,32 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    standalone: true,
-    imports: [CommonModule],
-    animations: [expandCollapseAnimation],
+    imports: [CommonModule, AppSvgIconComponent],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
-            <div class="dt-flow-container">
+            <div
+                class="dt-flow-container"
+                [ngClass]="conditionResultClass()"
+            >
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div
                         class="icon-container"
                         [ngClass]="conditionResultClass()"
                     >
-                        <i
-                            class="ti"
-                            [ngClass]="conditionResultIcon()"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="conditionResultIcon()"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>{{ getConditionData()?.group_name }}</h3>
@@ -50,8 +51,8 @@ import {
                 </div>
 
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isMessageExpanded"
                 >
                     <div class="dt-content">
                         @if (getConditionData()?.expression) {
@@ -78,13 +79,16 @@ import {
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div class="icon-container prompt-icon">
-                        <i class="ti ti-brain"></i>
+                        <app-svg-icon
+                            icon="brain"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>LLM Classification</h3>
@@ -93,8 +97,8 @@ import {
                 </div>
 
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isMessageExpanded"
                 >
                     <div class="dt-content">
                         <!-- Prompt Text -->
@@ -103,17 +107,19 @@ import {
                                 class="section-heading"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
-                                <i
-                                    class="ti"
-                                    [ngClass]="isPromptExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                                ></i>
+                                <app-svg-icon
+                                    [icon]="isPromptExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
                                 Prompt
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isPromptExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isPromptExpanded"
                             >
-                                <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
+                                <div class="collapsible-inner">
+                                    <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
+                                </div>
                             </div>
                         </div>
 
@@ -123,17 +129,19 @@ import {
                                 class="section-heading"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
-                                <i
-                                    class="ti"
-                                    [ngClass]="isResponseExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                                ></i>
+                                <app-svg-icon
+                                    [icon]="isResponseExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
                                 Raw Response
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isResponseExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isResponseExpanded"
                             >
-                                <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
+                                <div class="collapsible-inner">
+                                    <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
+                                </div>
                             </div>
                         </div>
 
@@ -163,13 +171,16 @@ import {
                     (click)="toggleMessage()"
                 >
                     <div class="play-arrow">
-                        <i
-                            class="ti"
-                            [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1.1rem"
+                        />
                     </div>
                     <div class="icon-container manipulation-icon">
-                        <i class="ti ti-transform"></i>
+                        <app-svg-icon
+                            icon="variable"
+                            size="1.25rem"
+                        />
                     </div>
                     <div class="header-text">
                         <h3>Manipulation</h3>
@@ -178,8 +189,8 @@ import {
                 </div>
 
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isMessageExpanded"
                 >
                     <div class="dt-content">
                         <pre class="code-block">{{ getManipulationDisplay() | json }}</pre>
@@ -188,22 +199,33 @@ import {
             </div>
         }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #a78bfa;
+                padding: 0.5rem 1rem;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--violet-400);
+            }
+
+            .dt-flow-container.matched {
+                --condition-result-color: var(--emerald-400);
+                border-left-color: var(--condition-result-color);
+            }
+
+            .dt-flow-container.not-matched {
+                --condition-result-color: var(--gray-570);
+                border-left-color: var(--condition-result-color);
             }
 
             .prompt-container {
-                border-left-color: #f59e0b;
+                border-left-color: var(--amber-620);
             }
 
             .manipulation-container {
-                border-left-color: #6ee7b7;
+                border-left-color: var(--emerald-300);
             }
 
             .dt-header {
@@ -214,56 +236,56 @@ import {
             }
 
             .play-arrow {
-                margin-right: 16px;
-                display: flex;
-                align-items: center;
-            }
-
-            .play-arrow i {
-                color: #a78bfa;
-                font-size: 1.1rem;
-                transition: transform 0.3s ease;
-            }
-
-            .prompt-container .play-arrow i {
-                color: #f59e0b;
-            }
-
-            .manipulation-container .play-arrow i {
-                color: #6ee7b7;
-            }
-
-            .icon-container {
-                width: 36px;
-                height: 36px;
-                border-radius: 50%;
-                background-color: #a78bfa;
+                width: 1.1rem;
+                margin-right: 8px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 16px;
                 flex-shrink: 0;
+
+                app-svg-icon {
+                    color: var(--condition-result-color);
+                }
             }
 
-            .icon-container i {
-                color: var(--gray-900);
-                font-size: 1.25rem;
+            .prompt-container .play-arrow app-svg-icon {
+                color: var(--amber-620);
+            }
+
+            .manipulation-container .play-arrow app-svg-icon {
+                color: var(--emerald-300);
+            }
+
+            .icon-container {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                background-color: var(--violet-400);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 20px;
+                flex-shrink: 0;
+
+                app-svg-icon {
+                    color: var(--gray-900);
+                }
             }
 
             .icon-container.matched {
-                background-color: #34d399;
+                background-color: var(--condition-result-color);
             }
 
             .icon-container.not-matched {
-                background-color: #6b7280;
+                background-color: var(--condition-result-color);
             }
 
             .prompt-icon {
-                background-color: #f59e0b;
+                background-color: var(--amber-620);
             }
 
             .manipulation-icon {
-                background-color: #6ee7b7;
+                background-color: var(--emerald-300);
             }
 
             .header-text {
@@ -275,42 +297,46 @@ import {
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
-                font-weight: 600;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 margin: 0;
             }
 
             .badge {
-                font-size: 0.75rem;
+                font-size: var(--text-body-small-large-size);
                 padding: 2px 10px;
                 border-radius: 12px;
-                font-weight: 500;
+                font-weight: var(--text-body-small-large-weight);
             }
 
             .badge.matched {
-                background-color: rgba(52, 211, 153, 0.15);
-                color: #34d399;
+                background-color: var(--emerald-400-alpha-15);
+                color: var(--condition-result-color);
             }
 
             .badge.not-matched {
-                background-color: rgba(107, 114, 128, 0.15);
-                color: #9ca3af;
+                background-color: var(--gray-570-alpha-15);
+                color: var(--slate-460);
             }
 
             .prompt-badge {
-                background-color: rgba(245, 158, 11, 0.15);
-                color: #f59e0b;
+                background-color: var(--amber-620-alpha-15);
+                color: var(--amber-620);
             }
 
             .manipulation-badge {
-                background-color: rgba(110, 231, 183, 0.15);
-                color: #6ee7b7;
+                background-color: var(--emerald-300-alpha-15);
+                color: var(--emerald-300);
             }
 
             .dt-content {
-                padding-left: 5.5rem;
-                margin-top: 1rem;
+                padding-left: 4.5rem;
                 overflow: hidden;
+            }
+
+            .dt-content > :first-child {
+                margin-top: 1rem;
             }
 
             .detail-row {
@@ -322,7 +348,7 @@ import {
 
             .detail-label {
                 color: var(--gray-400);
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 font-weight: 500;
                 min-width: 120px;
                 flex-shrink: 0;
@@ -330,7 +356,7 @@ import {
 
             .detail-value {
                 color: var(--gray-200);
-                font-size: 0.9rem;
+                font-size: 0.875rem;
             }
 
             .detail-value.code {
@@ -351,7 +377,9 @@ import {
             }
 
             .section-heading {
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
+                line-height: var(--text-body-medium-line-height);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -360,12 +388,10 @@ import {
                 align-items: center;
             }
 
-            .section-heading i {
+            .section-heading app-svg-icon {
                 margin-right: 8px;
-                color: #f59e0b;
-                font-size: 1.1rem;
+                color: var(--amber-620);
                 margin-left: -3px;
-                transition: transform 0.3s ease;
             }
 
             .code-block {
@@ -377,7 +403,7 @@ import {
                 white-space: pre-wrap;
                 word-break: break-word;
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 margin: 0 0 0 23px;
                 max-height: 300px;
                 overflow-y: auto;
@@ -386,10 +412,6 @@ import {
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
         `,
     ],
@@ -448,7 +470,7 @@ export class ClassificationDtMessageComponent {
     }
 
     conditionResultIcon(): string {
-        return this.getConditionData()?.result ? 'ti-check' : 'ti-x';
+        return this.getConditionData()?.result ? 'check' : 'x';
     }
 
     toggleMessage(): void {

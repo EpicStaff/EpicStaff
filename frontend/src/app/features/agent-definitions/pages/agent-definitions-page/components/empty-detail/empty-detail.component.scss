@@ -12,8 +12,8 @@
     align-items: center;
     gap: 1.75rem;
     color: var(--color-text-secondary);
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
 
     &__icon {
         color: var(--color-text-primary);

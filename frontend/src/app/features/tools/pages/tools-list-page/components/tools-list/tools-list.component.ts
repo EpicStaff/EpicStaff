@@ -21,10 +21,14 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
-import { map, tap } from 'rxjs/operators';
+import { buildPreviewImportResult, extractHttpErrorMessage, ImportFileData } from '@shared/utils';
+import { EMPTY, from, Observable, of } from 'rxjs';
+import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
+import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
 import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
+import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -48,7 +52,11 @@ interface Tool {
     name: string;
     labels: number[];
     is_favorite: boolean;
+    updated_at?: string;
 }
+
+/** Max chips shown in the "Last modified" strip; extras are clipped visually. */
+const RECENT_TOOLS_MAX = 8;
 
 @Component({
     selector: 'app-tools-list',
@@ -89,6 +97,7 @@ export class ToolsListComponent implements OnInit {
             ),
             searchTerm: this.searchTerm().trim().toLowerCase(),
             usage,
+            applySourceFilter: this.port.kind === 'custom',
         };
 
         return this.allTools()
@@ -106,6 +115,19 @@ export class ToolsListComponent implements OnInit {
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
     });
+
+    public readonly recentTools = computed<{ id: number; name: string }[]>(() =>
+        this.allTools()
+            .filter((t) => !this.port.isBuiltIn(t) && !!t.updated_at)
+            .sort((a, b) => new Date(b.updated_at!).getTime() - new Date(a.updated_at!).getTime())
+            .slice(0, RECENT_TOOLS_MAX)
+            .map((t) => ({ id: t.id, name: t.name }))
+    );
+
+    public onRecentToolClick(id: number): void {
+        const tool = this.findToolById(id);
+        if (tool) this.onConfigure(tool);
+    }
 
     constructor() {
         effect(() => {
@@ -207,7 +229,7 @@ export class ToolsListComponent implements OnInit {
                 return;
             case 'duplicate':
                 this.port
-                    .copy(payload.tool.id, { name: payload.tool.name })
+                    .copy(payload.tool.id)
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: (copy) => this.addNewTool(copy),
@@ -321,23 +343,73 @@ export class ToolsListComponent implements OnInit {
         input.onchange = (event: Event) => {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
-            this.port
-                .importFile(file)
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                    next: () => {
-                        this.toastService.success(`${capitalise(this.port.entityLabelPlural)} imported successfully.`);
-                        this.loadTools();
-                        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-                    },
-                    error: (err: HttpErrorResponse) => {
+
+            from(file.text())
+                .pipe(
+                    map((text) => this._parseFileData(text)),
+                    switchMap((fileData) => this._importToolFile(file, fileData)),
+                    catchError((err: HttpErrorResponse) => {
                         this.toastService.error(
-                            err.error?.message || `Failed to import ${this.port.entityLabelPlural}.`
+                            extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
                         );
-                    },
-                });
+                        return EMPTY;
+                    }),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe(() => this._finishToolImport());
         };
         input.click();
+    }
+
+    private _parseFileData(text: string): ImportFileData {
+        try {
+            return JSON.parse(text) as ImportFileData;
+        } catch {
+            return {};
+        }
+    }
+
+    private _importToolFile(file: File, fileData: ImportFileData): Observable<unknown> {
+        return this.port.inspectFile(file).pipe(
+            switchMap((inspection) => {
+                if (!hasReviewableItems(inspection.review_items)) {
+                    return this.port.importFile(file).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            this.toastService.error(
+                                extractHttpErrorMessage(err, `Failed to import ${this.port.entityLabelPlural}.`)
+                            );
+                            return EMPTY;
+                        })
+                    );
+                }
+
+                const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
+                    width: 'calc(100vw - 2rem)',
+                    height: 'calc(100vh - 2rem)',
+                    data: {
+                        importResult: buildPreviewImportResult(fileData),
+                        reviewItems: inspection.review_items,
+                        importFn: () => this.port.importFile(file),
+                    },
+                });
+
+                return dialogRef.closed.pipe(
+                    switchMap((closeResult) => (closeResult?.action === 'imported' ? of(closeResult.result) : EMPTY))
+                );
+            }),
+            catchError((err: HttpErrorResponse) => {
+                this.toastService.error(
+                    extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
+                );
+                return EMPTY;
+            })
+        );
+    }
+
+    private _finishToolImport(): void {
+        this.toastService.success(`${capitalise(this.port.entityLabelPlural)} imported successfully.`);
+        this.loadTools();
+        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public handleBulkExport(ids: number[]): void {
@@ -406,8 +478,7 @@ export class ToolsListComponent implements OnInit {
     private handleBulkDuplicate(): void {
         const ids = Array.from(this.viewState.selectedIds());
         const requests = ids.map((id) => {
-            const source = this.findToolById(id);
-            return this.port.copy(id, { name: source?.name ?? '' });
+            return this.port.copy(id);
         });
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,
@@ -458,7 +529,7 @@ export class ToolsListComponent implements OnInit {
     // --------------------------------------------------------------------- //
 
     public onConfigure(tool: Tool): void {
-        const dialogRef = this.port.openConfigureDialog(this.dialog, tool, this.allTools());
+        const dialogRef = this.port.openConfigureDialog(this.dialog, tool);
         dialogRef.closed
             .pipe(
                 tap((result) => {
@@ -485,12 +556,18 @@ export class ToolsListComponent implements OnInit {
             .subscribe({
                 next: (items) => {
                     const usage = items.find((i) => i.id === tool.id);
-                    const staffCount = usage?.staff_count ?? 0;
-                    const projectsCount = usage?.projects_count ?? 0;
+                    const agentSurfaceCount = usage?.agent_surface_count ?? 0;
+                    const sharedSurfaceCount = usage?.shared_surface_count ?? 0;
+                    const inlineSurfaceCount = usage?.inline_surface_count ?? 0;
                     const confirm$ =
-                        staffCount + projectsCount > 0
+                        agentSurfaceCount + sharedSurfaceCount + inlineSurfaceCount > 0
                             ? this.confirmationDialogService.confirm(
-                                  buildSingleDeleteWithUsageDialog(tool.name, staffCount, projectsCount)
+                                  buildSingleDeleteWithUsageDialog(
+                                      tool.name,
+                                      agentSurfaceCount,
+                                      sharedSurfaceCount,
+                                      inlineSurfaceCount
+                                  )
                               )
                             : this.confirmationDialogService.confirmDelete(tool.name);
                     confirm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
@@ -537,8 +614,9 @@ export class ToolsListComponent implements OnInit {
                         return {
                             id,
                             name: tool?.name ?? '',
-                            staffCount: usage?.staff_count ?? 0,
-                            projectsCount: usage?.projects_count ?? 0,
+                            agentSurfaceCount: usage?.agent_surface_count ?? 0,
+                            sharedSurfaceCount: usage?.shared_surface_count ?? 0,
+                            inlineSurfaceCount: usage?.inline_surface_count ?? 0,
                         };
                     });
                     runBulkDeleteWithConfirm(ids, {

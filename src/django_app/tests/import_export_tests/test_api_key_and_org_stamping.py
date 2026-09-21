@@ -59,7 +59,7 @@ def _build_identity_mapper(export_data):
 @pytest.mark.django_db
 class TestImportedLLMConfigApiKeyNotLeaked:
     def test_create_entity_does_not_copy_api_key_from_existing_config(
-        self, rich_seeded_db, export_service
+        self, rich_seeded_db, exportable_agent_definition, export_service, default_org
     ):
         """
         Another LLMConfig with a credential attached for the same provider exists
@@ -74,14 +74,15 @@ class TestImportedLLMConfigApiKeyNotLeaked:
         )
         existing_config.save()
 
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         mapper = _build_identity_mapper(export_data)
         strategy = entity_registry.get_strategy(EntityType.LLM_CONFIG)
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
 
-        new_config = strategy.create_entity(config_data, mapper)
+        new_config = strategy.create_entity(config_data, mapper, org_id=default_org.id)
 
         assert new_config.api_key_secret_id is None, (
             f"api_key_secret_id={new_config.api_key_secret_id!r} was copied from "
@@ -101,7 +102,9 @@ class TestImportedGraphHasOrganizationStamped:
         graph = rich_seeded_db["graph"]
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
 
-        id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
 
         new_graph_ids = id_mapper.get_new_ids(EntityType.GRAPH)
         assert new_graph_ids, "Expected at least one new Graph to be created"

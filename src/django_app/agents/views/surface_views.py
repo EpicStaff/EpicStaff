@@ -6,13 +6,12 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
-from agents.models.surface_models import Surface
-from tables.models.rbac_models import Organization
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.views.mixins import OrgScopedResolverMixin
+
+from agents.models.surface_models import Surface
 from agents.serializers.surface_serializers import (
     SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
@@ -37,10 +36,9 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         "knowledge__naive_search_config",
         "knowledge__graph_basic_search_config",
         "knowledge__graph_local_search_config",
+        "knowledge__graph_global_search_config",
+        "knowledge__graph_drift_search_config",
     )
-
-    def _get_organization(self):
-        return Organization.objects.get(id=self.get_active_org_id())
 
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
@@ -50,11 +48,11 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         return SurfaceWriteSerializer
 
     def get_queryset(self):
-        return super().get_queryset().filter(organization=self._get_organization())
+        return super().get_queryset().filter(organization_id=self.get_active_org_id())
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organization"] = self._get_organization()
+        context["organization_id"] = self.get_active_org_id()
         return context
 
     @extend_schema(request=SurfaceWriteSerializer, responses=SurfaceReadSerializer)
@@ -115,17 +113,13 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 response=SurfaceReadSerializer,
                 description="Combined surface data merged from the requested surfaces.",
             ),
-            400: OpenApiResponse(
-                description="Invalid surface ids or conflicting RAG configs."
-            ),
+            400: OpenApiResponse(description="Invalid surface ids or conflicting RAG configs."),
         },
     )
     @action(detail=False, methods=["post"], url_path="combine")
     def combine(self, request):
         ctx = self.get_serializer_context()
-        request_serializer = SurfaceCombineRequestSerializer(
-            data=request.data, context=ctx
-        )
+        request_serializer = SurfaceCombineRequestSerializer(data=request.data, context=ctx)
         request_serializer.is_valid(raise_exception=True)
 
         validated_ids = {s.pk for s in request_serializer.validated_data["surface_ids"]}

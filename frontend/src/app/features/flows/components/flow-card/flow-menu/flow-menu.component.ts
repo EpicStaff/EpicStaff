@@ -1,10 +1,11 @@
-import { NgClass, NgIf } from '@angular/common';
+import { NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     effect,
     ElementRef,
     EventEmitter,
+    HostListener,
     inject,
     Input,
     OnDestroy,
@@ -20,8 +21,7 @@ import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component
 
 @Component({
     selector: 'app-flow-menu',
-    standalone: true,
-    imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
+    imports: [NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './flow-menu.component.html',
     styleUrls: ['./flow-menu.component.scss'],
@@ -117,6 +117,13 @@ export class FlowMenuComponent implements OnDestroy {
         // Reset states
         this.isMouseOnButton.set(false);
         this.isMouseOnMenu.set(false);
+    }
+
+    @HostListener('document:click', ['$event'])
+    public onDocumentClick(event: MouseEvent): void {
+        if (!this.isMenuOpen()) return;
+        if (this.elementRef.nativeElement.contains(event.target)) return;
+        this.close();
     }
 
     public onActionClick(event: MouseEvent, action: string): void {

@@ -20,7 +20,6 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 # ────────────────────────────────────────────────`;
 
 @Component({
-    standalone: true,
     selector: 'app-node-storage-section',
     imports: [FormsModule, ToggleSwitchComponent],
     template: `

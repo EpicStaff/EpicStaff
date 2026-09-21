@@ -1,6 +1,5 @@
 from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
-
 from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
 from tables.services.rbac.api_key.principals import PrincipalResolver
@@ -28,6 +27,8 @@ class ApiKeyAuthenticator:
             raise AuthenticationFailed("Invalid API key")
         if key.is_expired:
             raise AuthenticationFailed("API key has expired")
+        if key.created_by is not None and not key.created_by.is_active:
+            raise AuthenticationFailed("API key owner is inactive")
         self._mark_used(key)
         return self._resolver.resolve(key), key
 

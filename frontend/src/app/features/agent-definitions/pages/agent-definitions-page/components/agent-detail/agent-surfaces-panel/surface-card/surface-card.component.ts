@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -29,9 +28,16 @@ import {
     SelectDropdownTab,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { DragHoverDirective, EnterBlurDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import {
+    DragHoverDirective,
+    EnterBlurDirective,
+    HasPermissionDirective,
+    TooltipOnOverflowDirective,
+} from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, switchMap, take } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../../../services/notifications/toast.service';
 import { CreateCustomToolDialogComponent } from '../../../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import {
@@ -59,6 +65,7 @@ import {
     SurfaceStorageItem,
 } from '../../../../../../models/surface.model';
 import {
+    getFirstAvailableSurfaceTab,
     nextPermState,
     SURFACE_FILE_PERM_COLUMNS,
     SurfaceCollectionOption,
@@ -81,7 +88,6 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
 @Component({
     selector: 'app-surface-card',
     imports: [
-        CommonModule,
         FormsModule,
         AppSvgIconComponent,
         MatTooltipModule,
@@ -93,6 +99,7 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
         SurfaceKnowledgeAdvancedComponent,
         CheckboxComponent,
         OverlayModule,
+        HasPermissionDirective,
     ],
     templateUrl: './surface-card.component.html',
     styleUrls: ['./surface-card.component.scss'],
@@ -107,10 +114,14 @@ export class SurfaceCardComponent {
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
+    private readonly permissionService = inject(PermissionsService);
 
     surface = input<Surface | null>(null);
     readOnly = input<boolean>(false);
     showMeta = input<boolean>(false);
+    /** The owning AgentDefinition's llm_config — forwarded to the knowledge-advanced
+     * panel's RAG tab so suggested-params requests know which LLM's context window to use. */
+    llmConfigId = input<number | null>(null);
 
     expanded = model<boolean>(false);
     isShared = input<boolean>(false);
@@ -143,7 +154,7 @@ export class SurfaceCardComponent {
     readonly deleteSurface = output<void>();
     readonly draftContentChanged = output<void>();
 
-    readonly activeTab = signal<SurfaceTabId>('tools');
+    readonly activeTab = model<SurfaceTabId | null>(null);
     readonly instructions = signal<string>('');
     private readonly instructionsFocused = signal<boolean>(false);
     private lastSentInstructions: string | null = null;
@@ -165,9 +176,27 @@ export class SurfaceCardComponent {
     readonly chatChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('chat'));
     readonly realtimeChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('realtime'));
 
-    readonly showAgentSpecificMenu = computed(() => !this.isShared() && !this.readOnly());
-    readonly showSharedInAgentMenu = computed(() => this.isShared() && this.readOnly());
-    readonly showSharedSurfacesMenu = computed(() => this.isShared() && !this.readOnly() && this.showMeta());
+    readonly canCreateSurface = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Create));
+    readonly canUpdateSurface = computed(() => this.permissionService.can(ResourceCode.Surfaces, ActionCode.Update));
+    readonly canUpdateAgent = computed(() => this.permissionService.can(ResourceCode.Agents, ActionCode.Update));
+
+    readonly canViewTools = computed(() => this.permissionService.can(ResourceCode.Tools, ActionCode.Read));
+    readonly canViewFiles = computed(() => this.permissionService.can(ResourceCode.Files, ActionCode.Read));
+    readonly canViewKnowledge = computed(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read)
+    );
+
+    readonly showAgentSpecificMenu = computed(
+        () => !this.isShared() && !this.readOnly() && (this.canCreateSurface() || this.canUpdateSurface())
+    );
+
+    readonly sharedInAgent = computed(() => this.isShared() && !this.showMeta());
+    readonly showSharedInAgentMenu = computed(
+        () => this.sharedInAgent() && (this.canCreateSurface() || this.canUpdateAgent())
+    );
+    readonly showSharedSurfacesMenu = computed(
+        () => this.isShared() && !this.readOnly() && this.showMeta() && this.canCreateSurface()
+    );
     readonly hasMenuItems = computed(
         () => this.showAgentSpecificMenu() || this.showSharedInAgentMenu() || this.showSharedSurfacesMenu()
     );
@@ -336,39 +365,56 @@ export class SurfaceCardComponent {
         return `${t.kind}:${t.id}`;
     }
 
-    readonly toolSubtab = signal<'custom' | 'mcp'>('custom');
+    readonly toolSubtab = signal<'built' | 'custom' | 'mcp'>('custom');
     readonly toolTabs: SelectDropdownTab[] = [
+        { id: 'built', label: 'Built in tools' },
         { id: 'custom', label: 'Custom Tools' },
         { id: 'mcp', label: 'MCP Tools' },
     ];
-    readonly toolHeaderAction = computed<SelectDropdownHeaderAction>(() => ({
-        icon: 'plus',
-        label: this.toolSubtab() === 'custom' ? 'Create custom tool' : 'Add MCP tool',
-    }));
+    readonly toolHeaderAction = computed<SelectDropdownHeaderAction>(() => {
+        const sub = this.toolSubtab();
+        // Built-in tools can't be created; keep the button visible but disabled.
+        return {
+            icon: 'plus',
+            label: '',
+            disabled: sub === 'built',
+        };
+    });
+
+    private readonly toolSearchPlaceholders: Record<'built' | 'custom' | 'mcp', string> = {
+        built: 'Search built-in tools...',
+        custom: 'Search custom tools...',
+        mcp: 'Search MCP tools...',
+    };
+    readonly toolSearchPlaceholder = computed(() => this.toolSearchPlaceholders[this.toolSubtab()]);
 
     private readonly pendingToolKeys = signal<Set<string> | null>(null);
     private readonly effectiveToolKeys = computed(() => this.pendingToolKeys() ?? this.selectedToolKeys());
 
-    private toolItemsOfKind(kind: 'python' | 'mcp'): SelectDropdownListItem<number>[] {
-        return this.toolOptions()
-            .filter((t) => t.kind === kind)
-            .map((t) => ({ name: t.name, value: t.id }));
-    }
-
-    private idsOfKind(keys: Set<string>, kind: 'python' | 'mcp'): number[] {
-        const prefix = `${kind}:`;
-        return [...keys].filter((k) => k.startsWith(prefix)).map((k) => Number(k.split(':')[1]));
-    }
+    /** Options visible in the currently active tab (built-in python, custom python, or MCP). */
+    private readonly activeToolOptions = computed<SurfaceToolOption[]>(() => {
+        const sub = this.toolSubtab();
+        if (sub === 'mcp') return this.catalogs.mcpTools();
+        const wantBuiltIn = sub === 'built';
+        return this.catalogs.pythonTools().filter((t) => Boolean(t.built_in) === wantBuiltIn);
+    });
 
     readonly activeToolItems = computed<SelectDropdownListItem<number>[]>(() =>
-        this.toolItemsOfKind(this.toolSubtab() === 'custom' ? 'python' : 'mcp')
-    );
-    readonly activeToolIds = computed<number[]>(() =>
-        this.idsOfKind(this.effectiveToolKeys(), this.toolSubtab() === 'custom' ? 'python' : 'mcp')
+        this.activeToolOptions().map((t) => ({ name: t.name, value: t.id }))
     );
 
+    readonly activeToolIds = computed<number[]>(() => {
+        const optionIds = new Set(this.activeToolOptions().map((o) => o.id));
+        const kind: 'python' | 'mcp' = this.toolSubtab() === 'mcp' ? 'mcp' : 'python';
+        const prefix = `${kind}:`;
+        return [...this.effectiveToolKeys()]
+            .filter((k) => k.startsWith(prefix))
+            .map((k) => Number(k.split(':')[1]))
+            .filter((id) => optionIds.has(id));
+    });
+
     onToolTabChange(id: string): void {
-        this.toolSubtab.set(id === 'mcp' ? 'mcp' : 'custom');
+        this.toolSubtab.set(id === 'built' ? 'built' : id === 'mcp' ? 'mcp' : 'custom');
     }
 
     onToolsOpenedChange(opened: boolean): void {
@@ -381,9 +427,12 @@ export class SurfaceCardComponent {
     }
 
     private withKindMerged(base: Set<string>, values: unknown[]): Set<string> {
-        const kind: 'python' | 'mcp' = this.toolSubtab() === 'custom' ? 'python' : 'mcp';
+        const kind: 'python' | 'mcp' = this.toolSubtab() === 'mcp' ? 'mcp' : 'python';
+        const currentTabKeys = new Set(this.activeToolOptions().map((t) => this.toolKey(t)));
         const ids = values as number[];
-        const others = [...base].filter((k) => !k.startsWith(`${kind}:`));
+        // Drop only keys that belong to the current tab (built vs. custom python are
+        // separate tabs, so we must not clobber the other tab's selection).
+        const others = [...base].filter((k) => !currentTabKeys.has(k));
         return new Set([...others, ...ids.map((id) => `${kind}:${id}`)]);
     }
 
@@ -591,7 +640,7 @@ export class SurfaceCardComponent {
             if (!this.storageDrag.isDragging()) return;
             if (this.readOnly()) return;
             if (!this.expanded() && !this.hideHeader()) return;
-            this.activeTab.set('files');
+            this.activeTab.set(ResourceCode.Files);
         });
 
         effect(() => {
@@ -623,6 +672,12 @@ export class SurfaceCardComponent {
             // scrollHeight can read the minimal rows height before reflow.
             requestAnimationFrame(() => this.adjustInstructionsHeight(ta));
         });
+
+        this.activeTab.set(this.getFirstAvailableTab());
+    }
+
+    private getFirstAvailableTab(): SurfaceTabId | null {
+        return getFirstAvailableSurfaceTab((resource) => this.permissionService.can(resource, ActionCode.Read));
     }
 
     private catalogsRequested = false;
@@ -633,7 +688,10 @@ export class SurfaceCardComponent {
         this.catalogs.loadPythonTools().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.catalogs.loadMcpTools().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.catalogs.loadCollections().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-        this.refreshStorageRoot();
+
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) {
+            this.refreshStorageRoot();
+        }
     }
 
     private refreshStorageRoot(): void {
@@ -745,7 +803,9 @@ export class SurfaceCardComponent {
 
     openCreateTool(): void {
         if (this.readOnly()) return;
-        if (this.toolSubtab() === 'custom') {
+        const sub = this.toolSubtab();
+        if (sub === 'built') return; // Built-in tools can't be created from here.
+        if (sub === 'custom') {
             this.dialog
                 .open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent)
                 .closed.pipe(take(1))
@@ -756,6 +816,7 @@ export class SurfaceCardComponent {
                             name: tool.name,
                             description: tool.description ?? '',
                             kind: 'python',
+                            built_in: tool.built_in === true,
                         });
                 });
         } else {
@@ -878,7 +939,7 @@ export class SurfaceCardComponent {
     onStorageDragHover(): void {
         if (!this.canAcceptFileDrop()) return;
         if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
-        this.activeTab.set('files');
+        this.activeTab.set(ResourceCode.Files);
     }
 
     onStorageDragOver(event: DragEvent): void {
@@ -905,7 +966,7 @@ export class SurfaceCardComponent {
         this.storageDrag.end();
         if (!dragged) return;
         if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
-        this.activeTab.set('files');
+        this.activeTab.set(ResourceCode.Files);
         this.catalogs
             .loadStorageTree()
             .pipe(take(1), takeUntilDestroyed(this.destroyRef))
@@ -1036,7 +1097,13 @@ export class SurfaceCardComponent {
     }
 
     private hasRag(k: SurfaceKnowledge): boolean {
-        return !!(k.naive_search_config || k.graph_basic_search_config || k.graph_local_search_config);
+        return !!(
+            k.naive_search_config ||
+            k.graph_basic_search_config ||
+            k.graph_local_search_config ||
+            k.graph_global_search_config ||
+            k.graph_drift_search_config
+        );
     }
 
     private revealAdvancedIfRagMissing(): void {
@@ -1090,6 +1157,9 @@ export class SurfaceCardComponent {
         if (row.kind === 'file') return `file:${row.row.id}`;
         return row.row ? `folder:${row.row.id}` : `folder-path:${row.path}`;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
 
 function defaultFilePerms(): SurfaceFilePerms {

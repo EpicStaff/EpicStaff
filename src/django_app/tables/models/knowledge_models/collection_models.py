@@ -2,9 +2,14 @@ import ntpath
 
 from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
-
 from loguru import logger
 
+from tables.models.base_models import (
+    ActiveManager,
+    SoftDeleteFields,
+    SoftDeleteMixin,
+    soft_delete_consistency_constraint,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -24,7 +29,10 @@ def _is_bare_file_name(file_name: str) -> bool:
     return "/" not in file_name and "\\" not in file_name
 
 
-class SourceCollection(OrgScopedModel, models.Model):
+class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
     class SourceCollectionStatus(models.TextChoices):
         """
         Status of SourceCollection
@@ -73,11 +81,15 @@ class SourceCollection(OrgScopedModel, models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "collection_name"],
+                condition=models.Q(is_soft_deleted=False),
                 name="unique_collection_name_per_org",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -117,8 +129,7 @@ class SourceCollection(OrgScopedModel, models.Model):
         if not self.documents.exists():
             self.status = self.SourceCollectionStatus.EMPTY
         else:
-            # TODO: implement status aggregation logic
-            pass
+            self.status = self.SourceCollectionStatus.COMPLETED
         self.save(update_fields=["status", "updated_at"])
 
 
@@ -133,7 +144,7 @@ class DocumentContent(models.Model):
         return f"Content {self.content_id}"
 
 
-class DocumentMetadata(models.Model):
+class DocumentMetadata(SoftDeleteFields):
     """
     Model to store file metadata records
     """
@@ -149,9 +160,7 @@ class DocumentMetadata(models.Model):
 
     document_id = models.AutoField(primary_key=True)
     file_name = models.CharField(max_length=255, blank=True)
-    file_type = models.CharField(
-        max_length=10, choices=DocumentFileType.choices, blank=True
-    )
+    file_type = models.CharField(max_length=10, choices=DocumentFileType.choices, blank=True)
     file_size = models.PositiveIntegerField(help_text="Size in bytes", null=True)
 
     source_collection = models.ForeignKey(
@@ -168,6 +177,9 @@ class DocumentMetadata(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
         indexes = [models.Index(fields=["source_collection"])]
 
     def save(self, *args, **kwargs):
@@ -179,9 +191,7 @@ class DocumentMetadata(models.Model):
         res = super().save(*args, **kwargs)
         collection = self.source_collection
         if collection is None:
-            logger.warning(
-                f"Source collection for document {self.file_name} not found!"
-            )
+            logger.warning(f"Source collection for document {self.file_name} not found!")
         else:
             self.source_collection.update_collection_status()
         return res
@@ -189,9 +199,7 @@ class DocumentMetadata(models.Model):
     def delete(self, using=None, keep_parents=None):
         res = super().delete(using, keep_parents)
         if self.source_collection is None:
-            logger.warning(
-                f"Source collection for document {self.file_name} not found!"
-            )
+            logger.warning(f"Source collection for document {self.file_name} not found!")
         else:
             self.source_collection.update_collection_status()
 
@@ -201,7 +209,7 @@ class DocumentMetadata(models.Model):
         return f"{self.file_name}"
 
 
-class BaseRagType(models.Model):
+class BaseRagType(SoftDeleteFields):
     """
     Purpose: Common interface for all RAG implementations
 
@@ -225,6 +233,9 @@ class BaseRagType(models.Model):
 
     class Meta:
         abstract = False  # This is a concrete model for polymorphism
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
         return f"{self.rag_type}"

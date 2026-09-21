@@ -90,6 +90,99 @@ def test_python_code_tool_serializer_prevents_built_in_update():
 
 
 @pytest.mark.django_db
+def test_python_code_tool_serializer_strips_control_chars_from_description():
+    code = PythonCode.objects.create(code="def main(): pass")
+    tool_data = {
+        "name": "ControlCharTool",
+        # NUL (0x00) is deliberately excluded: DRF's CharField already rejects it
+        # with a 400 before this field is even validated, and Postgres text
+        # columns cannot store it either — both are defenses this test doesn't
+        # need to duplicate.
+        "description": "line one\x1b[2Jinjected\x07 line two",
+        "variables": [],
+        "python_code": {
+            "code": code.code,
+            "entrypoint": code.entrypoint,
+            "libraries": [],
+            "global_kwargs": {},
+        },
+    }
+
+    serializer = PythonCodeToolSerializer(data=tool_data)
+    serializer.is_valid(raise_exception=True)
+    tool = serializer.save()
+
+    assert tool.description == "line one[2Jinjected line two"
+
+
+@pytest.mark.django_db
+def test_python_code_tool_serializer_rejects_nul_byte_in_description():
+    """Documents that NUL never reaches `validate_description`: DRF's CharField
+    rejects it upstream with a clean 400 rather than a 500 from Postgres."""
+    code = PythonCode.objects.create(code="def main(): pass")
+    tool_data = {
+        "name": "NulByteTool",
+        "description": "before\x00after",
+        "variables": [],
+        "python_code": {
+            "code": code.code,
+            "entrypoint": code.entrypoint,
+            "libraries": [],
+            "global_kwargs": {},
+        },
+    }
+
+    serializer = PythonCodeToolSerializer(data=tool_data)
+    assert not serializer.is_valid()
+    assert "description" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_python_code_tool_serializer_truncates_long_description():
+    code = PythonCode.objects.create(code="def main(): pass")
+    long_description = "a" * 2000
+    tool_data = {
+        "name": "LongDescriptionTool",
+        "description": long_description,
+        "variables": [],
+        "python_code": {
+            "code": code.code,
+            "entrypoint": code.entrypoint,
+            "libraries": [],
+            "global_kwargs": {},
+        },
+    }
+
+    serializer = PythonCodeToolSerializer(data=tool_data)
+    serializer.is_valid(raise_exception=True)
+    tool = serializer.save()
+
+    assert len(tool.description) == 1024
+    assert tool.description == "a" * 1024
+
+
+@pytest.mark.django_db
+def test_python_code_tool_copy_service_sanitizes_description():
+    from tables.services.copy_services.python_code_tool_copy_service import (
+        PythonCodeToolCopyService,
+    )
+
+    code = PythonCode.objects.create(code="def main(): pass")
+    tool = PythonCodeTool.objects.create(
+        name="SourceTool",
+        # Bypasses the serializer, like a pre-existing unsanitized row would.
+        # (NUL is excluded — Postgres text columns cannot store it at all.)
+        description="control\x1bchars\x07here",
+        variables=[],
+        python_code=code,
+    )
+
+    copied = PythonCodeToolCopyService().copy(tool)
+
+    assert copied.description == "controlcharshere"
+
+
+@pytest.mark.django_db
 def test_python_code_tool_config_serializer_validation():
     # The config's `tool` FK is org-scoped (hybrid): the serializer needs a request
     # in context and the tool must be visible to the active org.
@@ -135,6 +228,9 @@ def test_python_code_tool_config_serializer_validation():
         "configuration": {"arg1": "val"},
     }
     invalid_data["configuration"]["arg2"] = "not_a_number"
-    serializer = PythonCodeToolConfigSerializer(data=invalid_data)
+    # Needs the same org-resolved context as above — without it, `tool` is
+    # invisible to OrgVisiblePrimaryKeyRelatedField's queryset and DRF raises
+    # its own field-level ValidationError before `validate()` ever runs.
+    serializer = PythonCodeToolConfigSerializer(data=invalid_data, context=context)
     with pytest.raises(PythonCodeToolConfigSerializerError):
         serializer.is_valid(raise_exception=True)

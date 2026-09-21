@@ -30,7 +30,6 @@
         justify-content: center;
         padding: 0.5rem;
         width: 100%;
-        cursor: pointer;
         position: relative;
         margin: 0 auto;
         text-decoration: none;
@@ -82,6 +81,48 @@
         padding-bottom: 0.75rem;
     }
 
+    .org-menu-container {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        padding: 16px 0;
+        border-top: 1px solid var(--color-divider-subtle);
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        .org-menu-wrapper {
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+
+        .org-menu-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease-out;
+
+            .workspace-icon {
+                color: var(--accent-color);
+            }
+
+            &:hover {
+                background-color: var(--white-alpha-5);
+            }
+
+            &.opened {
+                background-color: var(--graphite-750);
+            }
+
+            &.active {
+                background-color: var(--purple-alpha-15);
+            }
+        }
+    }
+
     .sidenav-nav-item {
         width: 100%;
 
@@ -95,7 +136,7 @@
                 align-items: center;
                 justify-content: center;
                 text-decoration: none;
-                color: #fff;
+                color: var(--white);
                 cursor: pointer;
                 width: 2.5rem;
                 height: 2.5rem;
@@ -105,10 +146,10 @@
                 position: relative;
 
                 &:hover {
-                    background-color: rgba(255, 255, 255, 0.05);
+                    background-color: var(--white-alpha-5);
                 }
                 &.active {
-                    background-color: rgba(104, 95, 255, 0.15);
+                    background-color: var(--purple-alpha-15);
                 }
 
                 .sidenav-link-icon {
@@ -117,19 +158,17 @@
                     justify-content: center;
                     width: 1.4rem;
                     height: 1.4rem;
-                    color: #b4b4b4;
+                    color: var(--gray-400);
                     transition: color 0.2s ease-in-out;
                 }
                 &:hover .sidenav-link-icon {
-                    color: #e3e3e3;
+                    color: var(--gray-200);
                 }
                 &.active .sidenav-link-icon {
-                    color: #685fff;
+                    color: var(--accent-color);
                 }
 
                 &.epic-chat-slot {
-                    align-items: flex-start;
-                    padding-top: 0.25rem;
                     overflow: visible;
                 }
             }
@@ -155,19 +194,14 @@
     transition: background-color 0.2s ease-out;
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.05);
+        background-color: var(--white-alpha-5);
     }
 
-    &.active {
-        background-color: rgba(104, 95, 255, 0.15);
+    &.opened {
+        background-color: var(--graphite-750);
     }
 }
 
 .epic-chat-host {
     display: contents;
-}
-
-:host ::ng-deep .epic-chat-host .ep-chat-toggle-button,
-:host ::ng-deep .epic-chat-host .ep-chat-click-area {
-    display: none;
 }

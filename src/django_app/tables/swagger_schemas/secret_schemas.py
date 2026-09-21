@@ -1,18 +1,23 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-SECRET_USAGE_GET = dict(
-    summary="Secret usage",
-    description=(
+SECRET_USAGE_GET = {
+    "summary": "Secret usage",
+    "description": (
         "Every resource in the active organization that references this secret. "
         "A category is present only when it has items, so an unused secret returns "
         "an empty list. Flow entries group their secret-using nodes; `node_type` "
         "values are the frontend node-type identifiers. Items in the other "
         "categories carry a `type` naming which model they are, because a category "
         "can hold several — `llm_configs` folds four and `tools` folds two, and two "
-        "of them may share a name."
+        "of them may share a name. "
+        "Only resources the requesting user has READ permission on are listed; "
+        "`readable_total` counts those, and `hidden_total` counts the referencing "
+        "resources withheld, so a secret that is referenced only by resources the "
+        "caller cannot see reports `readable_total: 0` with a non-zero "
+        "`hidden_total`."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="Usage grouped by category",
@@ -20,7 +25,8 @@ SECRET_USAGE_GET = dict(
                 OpenApiExample(
                     "In use across three categories",
                     value={
-                        "total": 4,
+                        "readable_total": 4,
+                        "hidden_total": 0,
                         "categories": [
                             {
                                 "key": "flows",
@@ -36,16 +42,12 @@ SECRET_USAGE_GET = dict(
                                             },
                                             {
                                                 "name": "classify_tier",
-                                                "node_type": (
-                                                    "classification-decision-table"
-                                                ),
+                                                "node_type": ("classification-decision-table"),
                                                 "code_field": "post_python_code",
                                             },
                                             {
                                                 "name": "classify_tier",
-                                                "node_type": (
-                                                    "classification-decision-table"
-                                                ),
+                                                "node_type": ("classification-decision-table"),
                                                 "code_field": "pre_python_code",
                                             },
                                             {
@@ -70,15 +72,11 @@ SECRET_USAGE_GET = dict(
                             },
                             {
                                 "key": "tools",
-                                "items": [
-                                    {"name": "Stripe refund", "type": "mcp_tool"}
-                                ],
+                                "items": [{"name": "Stripe refund", "type": "mcp_tool"}],
                             },
                             {
                                 "key": "llm_configs",
-                                "items": [
-                                    {"name": "gpt-4o prod", "type": "llm_config"}
-                                ],
+                                "items": [{"name": "gpt-4o prod", "type": "llm_config"}],
                             },
                         ],
                     },
@@ -86,7 +84,20 @@ SECRET_USAGE_GET = dict(
                 ),
                 OpenApiExample(
                     "Unused",
-                    value={"total": 0, "categories": []},
+                    value={
+                        "readable_total": 0,
+                        "hidden_total": 0,
+                        "categories": [],
+                    },
+                    response_only=True,
+                ),
+                OpenApiExample(
+                    "Referenced only by resources the caller cannot read",
+                    value={
+                        "readable_total": 0,
+                        "hidden_total": 2,
+                        "categories": [],
+                    },
                     response_only=True,
                 ),
             ],
@@ -99,4 +110,4 @@ SECRET_USAGE_GET = dict(
             ),
         ),
     },
-)
+}

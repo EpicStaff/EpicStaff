@@ -1,15 +1,15 @@
 from django.db import transaction
+from loguru import logger
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from tables.models import Graph
-from tables.models.rbac_models.rbac_enums import Permission
+from tables.import_export.constants import DEPENDENCY_ORDER
+from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.registry import EntityRegistry
-from tables.import_export.constants import DEPENDENCY_ORDER
-from tables.import_export.enums import EntityType
 from tables.import_export.strategies.graph import GraphStrategy
-
+from tables.models import Graph
+from tables.models.rbac_models.rbac_enums import Permission
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every
@@ -50,7 +50,7 @@ class PartialImportService:
         self,
         export_data: dict,
         graph: Graph,
-        org_id: int = None,
+        org_id: int | None = None,
         user=None,
         effective_permissions=None,
     ) -> IDMapper:
@@ -95,7 +95,7 @@ class PartialImportService:
         self,
         export_data: dict,
         id_mapper: IDMapper,
-        org_id: int = None,
+        org_id: int | None = None,
         user=None,
         effective_permissions=None,
     ) -> None:
@@ -109,14 +109,20 @@ class PartialImportService:
         dep_types = [
             et
             for et in DEPENDENCY_ORDER
-            if et not in _NODE_ENTITY_TYPES
-            and et != EntityType.GRAPH
-            and et in export_data
+            if et not in _NODE_ENTITY_TYPES and et != EntityType.GRAPH and et in export_data
         ]
 
         denied_resources = set()
 
         for entity_type in dep_types:
+            if not self.registry.has_strategy(entity_type):
+                logger.warning(
+                    "Skipping unsupported entity type {} during partial import "
+                    "(no longer supported)",
+                    entity_type,
+                )
+                continue
+
             strategy = self.registry.get_strategy(entity_type)
             for entity_data in export_data.get(entity_type, []):
                 old_id = entity_data["id"]
@@ -138,9 +144,7 @@ class PartialImportService:
 
         if denied_resources:
             names = ", ".join(sorted(r.value for r in denied_resources))
-            raise PermissionDenied(
-                f"Missing CREATE permission on: {names}. No changes were made."
-            )
+            raise PermissionDenied(f"Missing CREATE permission on: {names}. No changes were made.")
 
     def _collect_nodes(self, export_data: dict) -> list:
         """

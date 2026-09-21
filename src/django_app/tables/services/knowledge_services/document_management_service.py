@@ -1,23 +1,25 @@
-from typing import List, Dict, Any
-from django.db import models
-from django.db import transaction
-from django.core.files.uploadedfile import UploadedFile
-from loguru import logger
+from typing import Any
 
-from tables.models import SourceCollection, DocumentMetadata, DocumentContent
+from django.core.files.uploadedfile import UploadedFile
+from django.db import models, transaction
+from loguru import logger
+from rest_framework import serializers
 from tables.constants.knowledge_constants import ALLOWED_FILE_TYPES
 from tables.constants.upload_limits import default_upload_limits
-from rest_framework import serializers
-
 from tables.exceptions import (
+    CollectionNotFoundException,
+    DocumentNotFoundException,
+    DocumentsNotFoundException,
     DocumentUploadException,
     FileSizeExceededException,
-    InvalidFileTypeException,
-    CollectionNotFoundException,
-    NoFilesProvidedException,
-    DocumentNotFoundException,
     InvalidCollectionIdException,
+    InvalidFileTypeException,
+    NoFilesProvidedException,
 )
+from tables.models import DocumentContent, DocumentMetadata, SourceCollection
+from tables.models.knowledge_models import GraphRagDocument, NaiveRag
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.validators.file_upload_validator import FileValidator
 
 
@@ -33,7 +35,7 @@ class DocumentManagementService:
     """
 
     @staticmethod
-    def validate_file(uploaded_file: UploadedFile) -> Dict[str, Any]:
+    def validate_file(uploaded_file: UploadedFile) -> dict[str, Any]:
         """
         Validate a single uploaded file.
 
@@ -65,8 +67,8 @@ class DocumentManagementService:
 
     @staticmethod
     def validate_files_batch(
-        uploaded_files: List[UploadedFile],
-    ) -> List[Dict[str, Any]]:
+        uploaded_files: list[UploadedFile],
+    ) -> list[dict[str, Any]]:
         """
         Validate multiple uploaded files.
 
@@ -95,18 +97,13 @@ class DocumentManagementService:
                     {"index": idx, "uploaded_file": uploaded_file, **validated_data}
                 )
             except (FileSizeExceededException, InvalidFileTypeException) as e:
-                errors.append(
-                    {"index": idx, "file_name": uploaded_file.name, "error": str(e)}
-                )
+                errors.append({"index": idx, "file_name": uploaded_file.name, "error": str(e)})
 
         try:
             FileValidator().validate(uploaded_files)
         except serializers.ValidationError as e:
             detail = e.detail if isinstance(e.detail, list) else [e.detail]
-            errors.extend(
-                {"index": None, "file_name": None, "error": str(item)}
-                for item in detail
-            )
+            errors.extend({"index": None, "file_name": None, "error": str(item)} for item in detail)
 
         # If there are any validation errors, raise exception with all errors
         if errors:
@@ -114,7 +111,7 @@ class DocumentManagementService:
                 f"[{e['index']}] {e['error']}" if e["index"] is not None else e["error"]
                 for e in errors
             ]
-            raise DocumentUploadException(("\n".join(error_messages)))
+            raise DocumentUploadException("\n".join(error_messages))
 
         return validated_files
 
@@ -134,8 +131,8 @@ class DocumentManagementService:
         """
         try:
             return SourceCollection.objects.get(collection_id=collection_id)
-        except SourceCollection.DoesNotExist:
-            raise CollectionNotFoundException(collection_id)
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
 
     @staticmethod
     def create_document_metadata(
@@ -184,9 +181,7 @@ class DocumentManagementService:
 
     @staticmethod
     @transaction.atomic
-    def upload_file(
-        collection_id: int, uploaded_file: UploadedFile
-    ) -> DocumentMetadata:
+    def upload_file(collection_id: int, uploaded_file: UploadedFile) -> DocumentMetadata:
         """
         Upload a single file to a collection.
 
@@ -232,8 +227,8 @@ class DocumentManagementService:
     @staticmethod
     @transaction.atomic
     def upload_files_batch(
-        collection_id: int, uploaded_files: List[UploadedFile]
-    ) -> List[DocumentMetadata]:
+        collection_id: int, uploaded_files: list[UploadedFile]
+    ) -> list[DocumentMetadata]:
         """
         Upload multiple files to a collection in a single transaction.
 
@@ -285,9 +280,7 @@ class DocumentManagementService:
             )
 
         except Exception as e:
-            logger.error(
-                f"Error uploading files to collection {collection_id}: {str(e)}"
-            )
+            logger.error(f"Error uploading files to collection {collection_id}: {e!s}")
             raise
 
         # Collection status will be updated automatically by DocumentMetadata.save()
@@ -296,7 +289,7 @@ class DocumentManagementService:
 
     @staticmethod
     @transaction.atomic
-    def delete_document(document_id: int) -> Dict[str, Any]:
+    def delete_document(document_id: int) -> dict[str, Any]:
         """
         Delete a single document metadata.
         If DocumentContent has no other references, it will be deleted too.
@@ -312,18 +305,36 @@ class DocumentManagementService:
         """
         try:
             document = DocumentMetadata.objects.get(document_id=document_id)
-        except DocumentMetadata.DoesNotExist:
-            raise DocumentNotFoundException(document_id)
+        except DocumentMetadata.DoesNotExist as e:
+            raise DocumentNotFoundException(document_id) from e
 
         file_name = document.file_name
         collection_id = (
-            document.source_collection.collection_id
-            if document.source_collection
-            else None
+            document.source_collection.collection_id if document.source_collection else None
         )
 
         content = document.document_content
+        affected_rags = list(
+            NaiveRag.objects.filter(naive_rag_configs__document=document).distinct()
+        )
+
+        graph_links = GraphRagDocument.objects.filter(document=document).select_related("graph_rag")
+        affected_graph_rags: dict[int, tuple] = {}
+        for link in graph_links:
+            rag = link.graph_rag
+            completed = link.status == GraphRagDocument.Status.COMPLETED
+            existing = affected_graph_rags.get(rag.graph_rag_id)
+            affected_graph_rags[rag.graph_rag_id] = (
+                rag,
+                (existing[1] if existing else False) or completed,
+            )
+
         document.delete()
+
+        for rag in affected_rags:
+            NaiveRagService.sync_rag_status_after_config_removal(rag)
+        for rag, indexed_deleted in affected_graph_rags.values():
+            GraphRagService.sync_status_after_document_removal(rag, indexed_deleted)
 
         if content and not content.metadata_records.exists():
             content.delete()
@@ -339,7 +350,7 @@ class DocumentManagementService:
 
     @staticmethod
     @transaction.atomic
-    def delete_documents_batch(document_ids: List[int]) -> Dict[str, Any]:
+    def delete_documents_batch(document_ids: list[int]) -> dict[str, Any]:
         """
         Delete multiple documents in a single transaction.
         DocumentContent instances with no remaining references are deleted too.
@@ -357,9 +368,9 @@ class DocumentManagementService:
             return {"deleted_count": 0, "document_ids": [], "errors": []}
 
         # Fetch all documents
-        documents = DocumentMetadata.objects.filter(
-            document_id__in=document_ids
-        ).select_related("source_collection", "document_content")
+        documents = DocumentMetadata.objects.filter(document_id__in=document_ids).select_related(
+            "source_collection", "document_content"
+        )
 
         found_ids = [doc.document_id for doc in documents]
         missing_ids = list(set(document_ids) - set(found_ids))
@@ -374,21 +385,42 @@ class DocumentManagementService:
                 "document_id": doc.document_id,
                 "file_name": doc.file_name,
                 "collection_id": (
-                    doc.source_collection.collection_id
-                    if doc.source_collection
-                    else None
+                    doc.source_collection.collection_id if doc.source_collection else None
                 ),
             }
             for doc in documents
         ]
 
-        content_ids = [
-            doc.document_content_id for doc in documents if doc.document_content_id
-        ]
+        content_ids = [doc.document_content_id for doc in documents if doc.document_content_id]
+
+        affected_rags = list(
+            NaiveRag.objects.filter(naive_rag_configs__document_id__in=found_ids).distinct()
+        )
+
+        graph_links = GraphRagDocument.objects.filter(document_id__in=found_ids).select_related(
+            "graph_rag"
+        )
+        affected_graph_rags: dict[int, tuple] = {}
+        for link in graph_links:
+            rag = link.graph_rag
+            completed = link.status == GraphRagDocument.Status.COMPLETED
+            existing = affected_graph_rags.get(rag.graph_rag_id)
+            affected_graph_rags[rag.graph_rag_id] = (
+                rag,
+                (existing[1] if existing else False) or completed,
+            )
 
         # Delete all documents
         _, details = documents.delete()
         deleted_count = details.get(DocumentMetadata._meta.label, 0)
+
+        collection_ids = {d["collection_id"] for d in deleted_info if d["collection_id"]}
+        for collection in SourceCollection.objects.filter(collection_id__in=collection_ids):
+            collection.update_collection_status()
+        for rag in affected_rags:
+            NaiveRagService.sync_rag_status_after_config_removal(rag)
+        for rag, indexed_deleted in affected_graph_rags.values():
+            GraphRagService.sync_status_after_document_removal(rag, indexed_deleted)
 
         # Delete dangling content
         dangling_content = (
@@ -410,7 +442,7 @@ class DocumentManagementService:
         }
 
     @staticmethod
-    def get_documents_list(collection_id: str = None) -> models.QuerySet:
+    def get_documents_list(collection_id: str | None = None) -> models.QuerySet:
         """
         Get list of documents, optionally filtered by collection.
         """
@@ -419,8 +451,8 @@ class DocumentManagementService:
         if collection_id:
             try:
                 collection_id_int = int(collection_id)
-            except (ValueError, TypeError):
-                raise InvalidCollectionIdException(collection_id)
+            except (ValueError, TypeError) as e:
+                raise InvalidCollectionIdException(collection_id) from e
 
             collection_exists = SourceCollection.objects.filter(
                 collection_id=collection_id_int
@@ -434,3 +466,70 @@ class DocumentManagementService:
             logger.info(f"Filtering documents by collection {collection_id_int}")
 
         return queryset
+
+    @staticmethod
+    def get_documents_with_content(
+        document_ids: list[int],
+    ) -> list[DocumentMetadata]:
+        """
+        Fetch documents by ID with their binary content, preserving request order.
+
+        Raises:
+            DocumentsNotFoundException: If any requested document is missing.
+        """
+        documents_by_id = DocumentMetadata.objects.select_related("document_content").in_bulk(
+            document_ids
+        )
+        missing_ids = [doc_id for doc_id in document_ids if doc_id not in documents_by_id]
+        if missing_ids:
+            raise DocumentsNotFoundException(missing_ids)
+
+        return [documents_by_id[doc_id] for doc_id in document_ids]
+
+    @staticmethod
+    @transaction.atomic
+    def copy_documents_to_collection(
+        collection_id: int, document_ids: list[int]
+    ) -> tuple[list[DocumentMetadata], list[DocumentMetadata]]:
+        """Copy documents into a collection without duplicating binary content
+        (new DocumentMetadata rows share the same DocumentContent). Documents
+        already present are skipped, as are duplicate ids and copies into the
+        source collection itself. Returns (copied, skipped).
+
+        Raises:
+            CollectionNotFoundException: target collection missing.
+            DocumentsNotFoundException: a source document missing.
+        """
+        collection = DocumentManagementService.get_collection(collection_id)
+        source_documents = DocumentManagementService.get_documents_with_content(document_ids)
+
+        existing_content_ids = set(
+            DocumentMetadata.objects.filter(source_collection=collection).values_list(
+                "document_content_id", flat=True
+            )
+        )
+
+        copied_documents: list[DocumentMetadata] = []
+        skipped_documents: list[DocumentMetadata] = []
+        for source_doc in source_documents:
+            if source_doc.document_content_id in existing_content_ids:
+                skipped_documents.append(source_doc)
+                continue
+
+            copied_documents.append(
+                DocumentManagementService.create_document_metadata(
+                    collection=collection,
+                    document_content=source_doc.document_content,
+                    file_name=source_doc.file_name,
+                    file_type=source_doc.file_type,
+                    file_size=source_doc.file_size,
+                )
+            )
+            existing_content_ids.add(source_doc.document_content_id)
+
+        logger.info(
+            f"Copied {len(copied_documents)} document(s) into collection "
+            f"{collection_id}, skipped {len(skipped_documents)} already present"
+        )
+
+        return copied_documents, skipped_documents

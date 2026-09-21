@@ -1,14 +1,14 @@
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
-from tables.models import PythonCodeTool, PythonCode
 import yaml
 from django.db import transaction
 from loguru import logger
 from src.shared.models import (
     args_schema_to_variables as _shared_args_schema_to_variables,
 )
+from tables.models import PythonCode, PythonCodeTool
 
 
 @dataclass
@@ -27,9 +27,7 @@ TOOL_DATA_FILE_NAME = "tool_data.yaml"
 
 
 def get_all_tool_paths() -> list[Path]:
-    return [
-        p for p in BASE_FOLDER_PATH.iterdir() if p.is_dir() and p.name.endswith("_tool")
-    ]
+    return [p for p in BASE_FOLDER_PATH.iterdir() if p.is_dir() and p.name.endswith("_tool")]
 
 
 def get_tool_data(tool_path: Path) -> ToolData:
@@ -62,20 +60,18 @@ def get_requirements(tool_path: Path, requirements_file_name: str) -> list[str]:
     if not requirements_file.exists():
         return []
 
-    with open(requirements_file, "r", encoding="utf-8") as f:
+    with open(requirements_file, encoding="utf-8") as f:
         lines = f.readlines()
 
     requirements = [
-        line.strip()
-        for line in lines
-        if line.strip() and not line.strip().startswith("#")
+        line.strip() for line in lines if line.strip() and not line.strip().startswith("#")
     ]
 
     return requirements
 
 
 def get_code_file(tool_path: Path, code_file_name: str) -> str:
-    with open(tool_path / code_file_name, "r", encoding="utf-8") as f:
+    with open(tool_path / code_file_name, encoding="utf-8") as f:
         code = f.read()
     return code
 
@@ -132,9 +128,7 @@ def upload_tools():
                     tool_path=tool_path, args_schema_file_name=tool_data.args_schema
                 )
                 variables = args_schema_to_variables(args_schema)
-                code = get_code_file(
-                    tool_path=tool_path, code_file_name=tool_data.code_file
-                )
+                code = get_code_file(tool_path=tool_path, code_file_name=tool_data.code_file)
                 requirements = get_requirements(
                     tool_path=tool_path, requirements_file_name=tool_data.requirements
                 )
@@ -160,4 +154,9 @@ def upload_tools():
         )
         to_delete = db_tools.difference(tool_name_set)
 
-        PythonCodeTool.objects.filter(name__in=to_delete).delete()
+        # Queryset .delete() bypasses Model.delete() entirely (Django never calls
+        # instance delete() for queryset-level deletes), so it always hard-deletes
+        # regardless of settings.SOFT_DELETE. Delete per-instance instead so
+        # SoftDeleteMixin.delete() (and thus DeleteService) fires.
+        for tool in PythonCodeTool.objects.filter(name__in=to_delete):
+            tool.delete()

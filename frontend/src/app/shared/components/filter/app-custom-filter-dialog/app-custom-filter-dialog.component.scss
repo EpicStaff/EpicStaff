@@ -10,8 +10,8 @@
     padding: 1.25rem 1.5rem;
     color: var(--color-text-primary);
     box-shadow:
-        0 6px 10px rgba(0, 0, 0, 0.15),
-        0 2px 3px rgba(0, 0, 0, 0.3);
+        0 6px 10px var(--black-alpha-15),
+        0 2px 3px var(--black-alpha-30);
 }
 
 .dialog-header {
@@ -117,7 +117,7 @@
         padding: 0.55rem 0.75rem;
         background: var(--color-input-background);
         border: 1px solid var(--color-input-border);
-        border-radius: 6px;
+        border-radius: 4px;
         color: var(--color-text-primary);
         font-size: 0.875rem;
         cursor: pointer;
@@ -145,10 +145,10 @@
         width: 100%;
         background: var(--color-sidenav-background);
         border: 1px solid var(--color-input-border);
-        border-radius: 6px;
+        border-radius: 4px;
         box-shadow:
-            0 6px 10px rgba(0, 0, 0, 0.15),
-            0 2px 3px rgba(0, 0, 0, 0.3);
+            0 6px 10px var(--black-alpha-15),
+            0 2px 3px var(--black-alpha-30);
         z-index: 10;
         padding: 0.25rem;
         max-height: 16rem;
@@ -181,7 +181,7 @@
     padding: 0.55rem 0.75rem;
     background: var(--color-input-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
     width: 100%;
@@ -205,7 +205,7 @@
 .combinator-toggle {
     display: inline-flex;
     border: 1px solid var(--color-input-border);
-    border-radius: 6px;
+    border-radius: 4px;
     overflow: hidden;
     background: var(--color-input-background);
 
@@ -223,7 +223,7 @@
 
         &.active {
             background: var(--accent-color);
-            color: #fff;
+            color: var(--white);
         }
     }
 }

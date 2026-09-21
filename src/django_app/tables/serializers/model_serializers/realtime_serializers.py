@@ -1,15 +1,5 @@
-from rest_framework import serializers
-
-from tables.models.secret_models import Secret
-from tables.models.webhook_models import (
-    LOCAL_ONLY_PROVIDERS,
-    RealtimeChannel,
-    TwilioChannel,
-    WebhookTrigger,
-)
-from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from agents.models.agent_models import AgentDefinition
-from tables.models.llm_models import RealtimeConfig, RealtimeTranscriptionConfig
+from rest_framework import serializers
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -20,27 +10,21 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
+from tables.models.secret_models import Secret
+from tables.models.webhook_models import (
+    LOCAL_ONLY_PROVIDERS,
+    RealtimeChannel,
+    TwilioChannel,
+    WebhookTrigger,
+    WebhookTriggerAuthKind,
+)
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
 )
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_resolver
-
-
-class RealtimeAgentSerializer(serializers.ModelSerializer):
-    # Org isolation: only configs from the caller's active org may be referenced.
-    realtime_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeConfig.objects.all(), required=False, allow_null=True
-    )
-    realtime_transcription_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeTranscriptionConfig.objects.all(),
-        required=False,
-        allow_null=True,
-    )
-
-    class Meta:
-        model = RealtimeAgent
-        exclude = ["agent"]
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -70,16 +54,6 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, attrs):
-        # `agent_definition` is this model's own primary key (a OneToOneField).
-        # It is writable so `create()` can specify which AgentDefinition a new
-        # row belongs to, but on `update()` it must never actually change: if
-        # a caller ever sent a value different from the instance being
-        # updated, `setattr()` + `instance.save()` would attempt an UPDATE
-        # that affects 0 rows, and Django's save() silently falls back to an
-        # INSERT — creating an orphan row while leaving the real target
-        # completely untouched (looks exactly like "the update didn't save").
-        # Reject the mismatch explicitly instead of allowing that silent
-        # fallback.
         if self.instance is not None and "agent_definition" in attrs:
             new_agent_definition = attrs["agent_definition"]
             if new_agent_definition.pk != self.instance.pk:
@@ -93,15 +67,11 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
                     }
                 )
 
-        openai_config = attrs.get(
-            "openai_config", getattr(self.instance, "openai_config", None)
-        )
+        openai_config = attrs.get("openai_config", getattr(self.instance, "openai_config", None))
         elevenlabs_config = attrs.get(
             "elevenlabs_config", getattr(self.instance, "elevenlabs_config", None)
         )
-        gemini_config = attrs.get(
-            "gemini_config", getattr(self.instance, "gemini_config", None)
-        )
+        gemini_config = attrs.get("gemini_config", getattr(self.instance, "gemini_config", None))
 
         set_count = sum(
             [
@@ -132,7 +102,9 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
+class OpenAIRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -163,7 +135,9 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
+class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -185,7 +159,9 @@ class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
+class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("api_key_secret_id",)
+
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="api_key_secret",
@@ -207,15 +183,17 @@ class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class TwilioChannelSerializer(serializers.ModelSerializer):
+class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_token_secret_id",)
+
     webhook_trigger = OrgScopedPrimaryKeyRelatedField(
         queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
     )
     auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
         queryset=Secret.objects.all(),
         source="auth_token_secret",
-        required=False,
-        allow_null=True,
+        required=True,
+        allow_null=False,
     )
 
     class Meta:
@@ -229,6 +207,8 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
+
         wt = attrs.get("webhook_trigger")
         provider_type = wt.provider_type if wt else None
 
@@ -241,6 +221,19 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        auth = getattr(wt, "auth", None) if wt else None
+        if auth is not None and auth.kind not in (WebhookTriggerAuthKind.TWILIO,):
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        f"This trigger's auth is already configured for "
+                        f"kind='{auth.kind}' and cannot be claimed by a "
+                        "Twilio channel."
+                    )
+                }
+            )
+
         return attrs
 
 
@@ -251,17 +244,24 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TwilioChannel
-        fields = ["channel", "account_sid", "auth_token_secret_id", "phone_number", "webhook_trigger"]
+        fields = [
+            "channel",
+            "account_sid",
+            "auth_token_secret_id",
+            "phone_number",
+            "webhook_trigger",
+        ]
 
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
     twilio = _TwilioChannelReadSerializer(read_only=True)
-    realtime_agent = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeAgent.objects.all(),
-        org_lookup="agent__org_id",
-        required=False,
-        allow_null=True,
-    )
+    # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).
+    # Kept read-only, never writable: the only supported destination going
+    # forward is `realtime_agent_definition`. It stays in the response so
+    # operators can see which rows on this org are still stranded on the old
+    # destination. It cannot be dropped from the model because migrations are
+    # frozen on this branch.
+    realtime_agent = serializers.PrimaryKeyRelatedField(read_only=True)
     realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=RealtimeAgentDefinition.objects.all(),
         org_lookup="agent_definition__organization_id",
@@ -275,19 +275,14 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
     def validate(self, attrs):
-        realtime_agent = attrs.get(
-            "realtime_agent", getattr(self.instance, "realtime_agent", None)
-        )
-        realtime_agent_definition = attrs.get(
-            "realtime_agent_definition",
-            getattr(self.instance, "realtime_agent_definition", None),
-        )
-
-        if realtime_agent is not None and realtime_agent_definition is not None:
-            raise serializers.ValidationError(
-                "A RealtimeChannel may have at most one destination set "
-                "(realtime_agent or realtime_agent_definition)."
-            )
+        # `realtime_agent` is read-only, so a caller can no longer set both
+        # destinations at once. But a row created on `main` before this field
+        # existed may already carry a legacy `realtime_agent` in the DB — for
+        # such a stranded row, setting `realtime_agent_definition` is the fix,
+        # not a conflict. Let the new destination win and clear the dead
+        # pointer, rather than rejecting the very repair the caller is making.
+        if "realtime_agent_definition" in attrs:
+            attrs["realtime_agent"] = None
 
         return attrs
 
@@ -311,7 +306,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     auth_token = serializers.SerializerMethodField()
 
     class Meta(_TwilioChannelReadSerializer.Meta):
-        fields = _TwilioChannelReadSerializer.Meta.fields + ["auth_token"]
+        fields = [*_TwilioChannelReadSerializer.Meta.fields, "auth_token"]
 
     def get_auth_token(self, obj) -> str | None:
         if obj.auth_token_secret_id is None:
@@ -382,15 +377,11 @@ class RealtimeAgentWriteSerializer(serializers.ModelSerializer):
         exclude = ["agent"]
 
     def validate(self, attrs):
-        openai_config = attrs.get(
-            "openai_config", getattr(self.instance, "openai_config", None)
-        )
+        openai_config = attrs.get("openai_config", getattr(self.instance, "openai_config", None))
         elevenlabs_config = attrs.get(
             "elevenlabs_config", getattr(self.instance, "elevenlabs_config", None)
         )
-        gemini_config = attrs.get(
-            "gemini_config", getattr(self.instance, "gemini_config", None)
-        )
+        gemini_config = attrs.get("gemini_config", getattr(self.instance, "gemini_config", None))
 
         set_count = sum(
             [

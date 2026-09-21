@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -47,9 +46,7 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
     selector: 'app-flow-sessions-list',
     templateUrl: './flow-sessions-list.component.html',
     styleUrls: ['./flow-sessions-list.component.scss'],
-    standalone: true,
     imports: [
-        CommonModule,
         FlowSessionsTableComponent,
         PaginationControlsComponent,
         FlowSessionNodeFilterDropdownComponent,
@@ -128,12 +125,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
 
     private loadAvailableNodes(): void {
         const groups: NodeGroup[] = [
-            {
-                label: 'Crew Node',
-                icon: 'ti ti-users',
-                color: '#f0a500',
-                nodes: this.extractNodeNames(this.flow?.crew_node_list),
-            },
             {
                 label: 'Python Node',
                 icon: 'ti ti-brand-python',

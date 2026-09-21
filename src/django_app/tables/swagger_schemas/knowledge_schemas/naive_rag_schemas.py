@@ -1,15 +1,18 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 from tables.serializers.naive_rag_serializers import (
-    ChunkPreviewResponseSerializer,
+    ChunkingConfigSerializer,
     ChunkingResponseSerializer,
+    ChunkPreviewResponseSerializer,
+    DocumentConfigBulkUpdateSerializer,
 )
+from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-NAIVE_RAG_DOCUMENT_CONFIGS_GET = dict(
-    summary="List all document configs for a NaiveRag.",
-    description="List all document configs for a NaiveRag.\n\nURL: GET /api/naive-rag/{naive_rag_id}/document-configs/",
-    responses={
+NAIVE_RAG_DOCUMENT_CONFIGS_GET = {
+    "summary": "List all document configs for a NaiveRag.",
+    "description": "List all document configs for a NaiveRag.\n\nURL: GET /api/naive-rag/{naive_rag_id}/document-configs/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Document configs retrieved successfully.",
@@ -81,11 +84,11 @@ NAIVE_RAG_DOCUMENT_CONFIGS_GET = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET = dict(
-    summary="Get chunks for a document config (preview or indexed)",
-    description=(
+NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET = {
+    "summary": "Get chunks for a document config (preview or indexed)",
+    "description": (
         "Get chunks for a document config.\n\n"
         "URL: GET /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/chunks/\n\n"
         "Returns:\n"
@@ -93,7 +96,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET = dict(
         "- Indexed chunks if status is COMPLETED\n\n"
         "Supports pagination for endless scrolling via `limit` and `offset` query parameters."
     ),
-    responses={
+    "responses": {
         200: ChunkPreviewResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -121,12 +124,12 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIG_GET = dict(
-    summary="Get single document config",
-    description="Get single document config.\n\nURL: GET /api/naive-rag/{naive_rag_id}/document-configs/{pk}/",
-    responses={
+NAIVE_RAG_DOCUMENT_CONFIG_GET = {
+    "summary": "Get single document config",
+    "description": "Get single document config.\n\nURL: GET /api/naive-rag/{naive_rag_id}/document-configs/{pk}/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Document config retrieved successfully.",
@@ -159,9 +162,7 @@ NAIVE_RAG_DOCUMENT_CONFIG_GET = dict(
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={
-                        "error": "Document config [1] for naive_rag_id [2] not found"
-                    },
+                    value={"error": "Document config [1] for naive_rag_id [2] not found"},
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -180,12 +181,12 @@ NAIVE_RAG_DOCUMENT_CONFIG_GET = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIG_PUT = dict(
-    summary="Update single document config",
-    description="Update single document config.\n\nURL: PUT /api/naive-rag/{naive_rag_id}/document-configs/{pk}/",
-    responses={
+NAIVE_RAG_DOCUMENT_CONFIG_PUT = {
+    "summary": "Update single document config",
+    "description": "Update single document config.\n\nURL: PUT /api/naive-rag/{naive_rag_id}/document-configs/{pk}/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Document config updated successfully.",
@@ -233,9 +234,7 @@ NAIVE_RAG_DOCUMENT_CONFIG_PUT = dict(
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={
-                        "error": "Document config [1] for naive_rag_id [2] not found"
-                    },
+                    value={"error": "Document config [1] for naive_rag_id [2] not found"},
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -254,12 +253,12 @@ NAIVE_RAG_DOCUMENT_CONFIG_PUT = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIG_DELETE = dict(
-    summary="Delete a single document config",
-    description="Delete a single document config.\n\nURL: DELETE /api/naive-rag/{naive_rag_id}/document-configs/{pk}/",
-    responses={
+NAIVE_RAG_DOCUMENT_CONFIG_DELETE = {
+    "summary": "Delete a single document config",
+    "description": "Delete a single document config.\n\nURL: DELETE /api/naive-rag/{naive_rag_id}/document-configs/{pk}/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Document config deleted successfully.",
@@ -302,11 +301,11 @@ NAIVE_RAG_DOCUMENT_CONFIG_DELETE = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = dict(
-    summary="Bulk update multiple document configs",
-    description=(
+NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = {
+    "summary": "Bulk update multiple document configs",
+    "description": (
         "Bulk update multiple document configs with partial success support.\n"
         "Apply same parameters to selected configs by their config IDs.\n\n"
         "URL: GET /naive-rag/{naive_rag_id}/document-configs/bulk-update/\n\n"
@@ -316,7 +315,8 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = dict(
         "- Returns errors for configs that fail validation\n"
         "- Configs retain their current DB values when validation fails"
     ),
-    responses={
+    "request": DocumentConfigBulkUpdateSerializer(many=True),
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="All configs updated successfully.",
@@ -405,9 +405,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = dict(
                                 "created_at": "2024-01-02T00:00:00Z",
                                 "processed_at": None,
                                 "errors": {
-                                    "chunk_size": [
-                                        "chunk_size must be greater than chunk_overlap"
-                                    ]
+                                    "chunk_size": ["chunk_size must be greater than chunk_overlap"]
                                 },
                             },
                         ],
@@ -457,12 +455,12 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST = dict(
-    summary="Bulk delete multiple document configs",
-    description="Bulk delete multiple document configs by their config IDs.\n\nURL: GET /naive-rag/{naive_rag_id}/document-configs/bulk-delete/",
-    responses={
+NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST = {
+    "summary": "Bulk delete multiple document configs",
+    "description": "Bulk delete multiple document configs by their config IDs.\n\nURL: GET /naive-rag/{naive_rag_id}/document-configs/bulk-delete/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Configs deleted successfully.",
@@ -517,11 +515,11 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST = dict(
-    summary="Initialize document configs for documents without configs",
-    description=(
+NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST = {
+    "summary": "Initialize document configs for documents without configs",
+    "description": (
         "Manually initialize document configs for documents without configs.\n\n"
         "URL: GET /naive-rag/{naive_rag_id}/document-configs/initialize/\n\n"
         "Business Logic:\n"
@@ -532,7 +530,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST = dict(
         "- Existing configs are NOT modified\n"
         "- Idempotent: safe to call multiple times"
     ),
-    responses={
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Configs created successfully.",
@@ -608,12 +606,12 @@ NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_GET = dict(
-    summary="Get detailed NaiveRag info including all document configs",
-    description="Get detailed NaiveRag info including all document configs.\n\nURL: GET /naive-rag/{naive_rag_id}/",
-    responses={
+NAIVE_RAG_GET = {
+    "summary": "Get detailed NaiveRag info including all document configs",
+    "description": "Get detailed NaiveRag info including all document configs.\n\nURL: GET /naive-rag/{naive_rag_id}/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="NaiveRag retrieved successfully.",
@@ -699,12 +697,12 @@ NAIVE_RAG_GET = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DELETE = dict(
-    summary="Delete NaiveRag and all its configurations",
-    description="Delete NaiveRag and all its configurations.\n\nURL: GET /naive-rag/{naive_rag_id}/",
-    responses={
+NAIVE_RAG_DELETE = {
+    "summary": "Delete NaiveRag and all its configurations",
+    "description": "Delete NaiveRag and all its configurations.\n\nURL: GET /naive-rag/{naive_rag_id}/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="NaiveRag deleted successfully.",
@@ -748,13 +746,15 @@ NAIVE_RAG_DELETE = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
-    summary="Trigger document chunking and wait for completion",
-    description=(
+NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = {
+    "summary": "Trigger document chunking and wait for completion",
+    "description": (
         "Trigger document chunking and wait for completion.\n\n"
-        "URL: GET /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chinking/\n\n"
+        "The chunking config (chunk_strategy, chunk_size, chunk_overlap, additional_params) "
+        "must be provided in the request body.\n\n"
+        "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/\n\n"
         "Flow:\n"
         "1. Validate document config exists and belongs to naive_rag\n"
         "2. Generate chunking_job_id (UUID)\n"
@@ -762,7 +762,26 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
         "4. Publish message to Redis and wait for response (50s timeout)\n"
         "5. Return result (completed, failed, cancelled, or timeout)"
     ),
-    responses={
+    "request": ChunkingConfigSerializer,
+    "parameters": [
+        OpenApiParameter(
+            name="naive_rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the NaiveRag whose document should be chunked.",
+        ),
+        OpenApiParameter(
+            name="document_config_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description=(
+                "ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id) to chunk."
+            ),
+        ),
+    ],
+    "responses": {
         200: ChunkingResponseSerializer,
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -818,16 +837,49 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_COLLECTIONS_POST = dict(
-    summary="Create new NaiveRag or update existing one for a collection",
-    description=(
+NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE = {
+    "summary": "Cancel a running document chunking (prechunk)",
+    "description": (
+        "Cancel an in-flight document prechunk for the given NaiveRag.\n\n"
+        "Forwards a cancel request to the knowledge service over HTTP, which stops "
+        "the running prechunk task for the RAG. Idempotent and best-effort: "
+        "always returns 204 whether or not a prechunk was actually running.\n\n"
+        "URL: DELETE /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
+    ),
+    "request": ChunkingConfigSerializer,
+    "parameters": [
+        OpenApiParameter(
+            name="naive_rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the NaiveRag whose prechunk is being cancelled.",
+        ),
+        OpenApiParameter(
+            name="document_config_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id).",
+        ),
+    ],
+    "responses": {
+        204: OpenApiResponse(description="Cancellation accepted (no content)."),
+        401: UNAUTHORIZED_401_RESPONSE,
+    },
+}
+
+
+NAIVE_RAG_COLLECTIONS_POST = {
+    "summary": "Create new NaiveRag or update existing one for a collection",
+    "description": (
         "Create new NaiveRag or update existing one for a collection.\n"
         "Creates BaseRagType + NaiveRag in one step.\n\n"
         "URL: GET /naive-rag/collections/{collection_id}/naive-rag/"
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="NaiveRag configured successfully.",
@@ -895,12 +947,12 @@ NAIVE_RAG_COLLECTIONS_POST = dict(
             ],
         ),
     },
-)
+}
 
-NAIVE_RAG_COLLECTIONS_GET = dict(
-    summary="Get NaiveRag for a collection",
-    description="Get NaiveRag for a collection.\n\nURL: GET /naive-rag/collections/{collection_id}/naive-rag/",
-    responses={
+NAIVE_RAG_COLLECTIONS_GET = {
+    "summary": "Get NaiveRag for a collection",
+    "description": "Get NaiveRag for a collection.\n\nURL: GET /naive-rag/collections/{collection_id}/naive-rag/",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="NaiveRag retrieved successfully.",
@@ -953,16 +1005,33 @@ NAIVE_RAG_COLLECTIONS_GET = dict(
             ],
         ),
     },
-)
+}
 
-PROCESS_RAG_INDEXING_POST = dict(
-    summary="Trigger RAG indexing (chunking + embedding)",
-    description=(
+PROCESS_RAG_INDEXING_POST = {
+    "summary": "Trigger RAG indexing (chunking + embedding)",
+    "description": (
         "Trigger RAG indexing (chunking + embedding).\n"
         "All business logic is handled by IndexingService.\n\n"
+        "Request body identifies the RAG to index:\n"
+        "- `rag_id` (int, required): ID of the specific RAG implementation "
+        "(NaiveRag.naive_rag_id or GraphRag.graph_rag_id).\n"
+        "- `rag_type` (str, required): RAG strategy — one of `naive`, `graph`.\n\n"
         "URL: POST /process-rag-indexing/"
     ),
-    responses={
+    "request": ProcessRagIndexingSerializer,
+    "examples": [
+        OpenApiExample(
+            name="Index naive RAG",
+            value={"rag_id": 1, "rag_type": "naive"},
+            request_only=True,
+        ),
+        OpenApiExample(
+            name="Index graph RAG",
+            value={"rag_id": 3, "rag_type": "graph"},
+            request_only=True,
+        ),
+    ],
+    "responses": {
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Indexing process accepted and queued.",
@@ -995,7 +1064,7 @@ PROCESS_RAG_INDEXING_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "rag_error",
-                        "message": "RagNotReadyForIndexingException: <detail>",
+                        "message": "<detail>",
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -1012,7 +1081,7 @@ PROCESS_RAG_INDEXING_POST = dict(
                     value={
                         "status_code": 400,
                         "code": "rag_error",
-                        "message": "NaiveRagNotFoundException: NaiveRag with id 1 not found",
+                        "message": "NaiveRag with id 1 not found",
                     },
                     response_only=True,
                     status_codes=["404"],
@@ -1020,4 +1089,37 @@ PROCESS_RAG_INDEXING_POST = dict(
             ],
         ),
     },
-)
+}
+
+
+CANCEL_RAG_INDEXING_DELETE = {
+    "summary": "Cancel a running RAG indexing",
+    "description": (
+        "Cancel an in-flight RAG indexing.\n\n"
+        "Forwards a cancel request to the knowledge service over HTTP, which stops "
+        "the running task and marks the RAG as CANCELLED. Idempotent and best-effort: "
+        "always returns 204 whether or not indexing was actually in progress.\n\n"
+        "URL: DELETE /process-rag-indexing/{rag_type}/{rag_id}/cancel/"
+    ),
+    "parameters": [
+        OpenApiParameter(
+            name="rag_type",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.PATH,
+            required=True,
+            enum=["naive", "graph"],
+            description="RAG strategy — one of `naive`, `graph`.",
+        ),
+        OpenApiParameter(
+            name="rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the RAG implementation (NaiveRag.naive_rag_id or GraphRag.graph_rag_id).",
+        ),
+    ],
+    "responses": {
+        204: OpenApiResponse(description="Cancellation accepted (no content)."),
+        401: UNAUTHORIZED_401_RESPONSE,
+    },
+}

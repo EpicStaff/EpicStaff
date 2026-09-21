@@ -1,17 +1,15 @@
-from typing import Optional
-
-from tables.models import EndNode
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.end_node import EndNodeImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.end_node import EndNodeImportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import EndNode
 
 
 class EndNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.END_NODE
     serializer_class = EndNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[EndNode]:
+    def get_instance(self, entity_id: int) -> EndNode | None:
         return EndNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: EndNode) -> dict:

@@ -1,29 +1,23 @@
-from rest_framework import serializers
 from django.db import transaction
-
-from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
+from rest_framework import serializers
 from tables.models.graph_models import (
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     Condition,
-    ConditionGroup,
     ConditionalEdge,
+    ConditionGroup,
     DecisionTableNode,
     EndNode,
+    Graph,
     StartNode,
-    ClassificationDecisionTableNode,
-    ClassificationConditionGroup,
-    ClassificationDecisionTablePrompt,
 )
-from tables.models.python_models import PythonCode
 from tables.models.llm_models import LLMConfig
-from tables.services.copy_services.helpers import (
-    apply_python_code_fields,
-    create_python_code,
-)
-from tables.models.graph_models import Graph
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
+from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
@@ -31,12 +25,17 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
-from tables.services.persistent_variables_service import (
-    PersistentVariablesService,
-)
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
+from tables.services.copy_services.helpers import (
+    apply_python_code_fields,
+    create_python_code,
+)
+from tables.services.persistent_variables_service import (
+    PersistentVariablesService,
+)
+from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 
 class ConditionalEdgeSerializer(
@@ -56,21 +55,14 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = StartNode
-        fields = [
-            "id",
-            "graph",
-            "variables",
-            "node_name",
-        ] + BaseGraphEntityMixin.Meta.common_fields
+        fields = ["id", "graph", "variables", "node_name", *BaseGraphEntityMixin.Meta.common_fields]
         read_only_fields = ["node_name"]
 
     def get_node_name(self, obj):
         return "__start__"
 
     def validate(self, attrs):
-        PersistentVariablesService().validate_start_node_variables(
-            attrs.get("variables")
-        )
+        PersistentVariablesService().validate_start_node_variables(attrs.get("variables"))
         return super().validate(attrs)
 
     @transaction.atomic
@@ -102,7 +94,8 @@ class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
             "graph",
             "output_map",
             "node_name",
-        ] + BaseGraphEntityMixin.Meta.common_fields
+            *BaseGraphEntityMixin.Meta.common_fields,
+        ]
         read_only_fields = ["node_name"]
 
     def get_node_name(self, obj):
@@ -126,9 +119,7 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
         fields = "__all__"
 
 
-class DecisionTableNodeSerializer(
-    ContentHashWritableMixin, serializers.ModelSerializer
-):
+class DecisionTableNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     condition_groups = ConditionGroupSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -164,14 +155,10 @@ def validate_classification_condition_group_names(condition_groups_data) -> list
 
 
 class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
-    classification_decision_table_node = serializers.PrimaryKeyRelatedField(
-        read_only=True
-    )
+    classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     # prompt_key (preferred) links a same-payload prompt by its per-node key;
     # prompt (pk) is back-compat. Both resolve node-locally.
-    prompt = serializers.IntegerField(
-        source="prompt_id", required=False, allow_null=True
-    )
+    prompt = serializers.IntegerField(source="prompt_id", required=False, allow_null=True)
     prompt_key = serializers.CharField(required=False, allow_null=True, write_only=True)
 
     def to_representation(self, instance):
@@ -228,9 +215,7 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
-    prompt_configs = ClassificationDecisionTablePromptSerializer(
-        many=True, required=False
-    )
+    prompt_configs = ClassificationDecisionTablePromptSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     pre_python_code = PythonCodeSerializer(required=False, allow_null=True)
     post_python_code = PythonCodeSerializer(required=False, allow_null=True)
@@ -279,9 +264,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
 
         post_python_code = None
         if post_python_code_data is not None:
-            post_python_code = create_python_code(
-                python_code_data=post_python_code_data
-            )
+            post_python_code = create_python_code(python_code_data=post_python_code_data)
 
         node = ClassificationDecisionTableNode.objects.create(
             pre_python_code=pre_python_code,
@@ -297,14 +280,18 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
 
         return node
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
         prompt_configs_data = validated_data.pop("prompt_configs", None)
+        detached_python_code_ids: set[int] = set()
 
         if "pre_python_code" in validated_data:
             pre_python_code_data = validated_data.pop("pre_python_code")
 
             if pre_python_code_data is None:
+                if instance.pre_python_code_id is not None:
+                    detached_python_code_ids.add(instance.pre_python_code_id)
                 instance.pre_python_code = None
             elif instance.pre_python_code is not None:
                 python_code = instance.pre_python_code
@@ -315,14 +302,14 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
                     python_code=python_code, python_code_data=pre_python_code_data
                 )
             else:
-                instance.pre_python_code = create_python_code(
-                    python_code_data=pre_python_code_data
-                )
+                instance.pre_python_code = create_python_code(python_code_data=pre_python_code_data)
 
         if "post_python_code" in validated_data:
             post_python_code_data = validated_data.pop("post_python_code")
 
             if post_python_code_data is None:
+                if instance.post_python_code_id is not None:
+                    detached_python_code_ids.add(instance.post_python_code_id)
                 instance.post_python_code = None
             elif instance.post_python_code is not None:
                 python_code = instance.post_python_code
@@ -340,6 +327,8 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
+        PythonCodeCleanupService.delete_orphaned(detached_python_code_ids)
 
         sync_classification_decision_table_children(
             instance,

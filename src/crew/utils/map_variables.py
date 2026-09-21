@@ -1,10 +1,11 @@
-from dotdict import DotDict
 import re
+
+from dotdict import DotDict
 from loguru import logger
 
 
 def _clean_value(v):
-    """Recursively convert proxy objects (DotDict, SharedVariables, etc.) to plain types."""
+    """Recursively convert proxy objects (DotDict, etc.) to plain types."""
     if hasattr(v, "model_dump"):
         v = v.model_dump()
     if isinstance(v, dict):
@@ -69,7 +70,6 @@ def map_variables_to_input(
     """
     output_dict = {}
     pattern = re.compile(r"\w+|\[\d+\]")
-    shared_pattern = re.compile(r"variables\.shared\[([^\]]+)\]\.(.+)")
 
     for output_key, input_key in map.items():
         # Check for default value using pipe syntax: path|default
@@ -89,44 +89,10 @@ def map_variables_to_input(
             elif default_value.isdigit():
                 default_value = int(default_value)
 
-        # Check for shared variable pattern: variables.shared[key].name
-        shared_match = shared_pattern.match(input_key)
-
-        if shared_match:
-            access_key = shared_match.group(1).strip("'\"")
-            variable_name = shared_match.group(2)
-
-            # Resolve variable references in access key (e.g. variables.chat_id)
-            if access_key.startswith("variables."):
-                var_keys = pattern.findall(access_key)
-                if var_keys and var_keys[0] == "variables":
-                    resolved = variables
-                    for vk in var_keys[1:]:
-                        resolved = getattr(resolved, vk)
-                    access_key = str(resolved)
-
-            try:
-                scope = variables.shared[access_key]
-                value = getattr(scope, variable_name)
-                if value is None and has_default:
-                    value = default_value
-                output_dict[output_key] = value
-                continue
-            except Exception as e:
-                if has_default:
-                    output_dict[output_key] = default_value
-                elif set_missing_variables:
-                    output_dict[output_key] = "not found"
-                else:
-                    raise
-                continue
-
         # Normal variable path handling
-        keys: list["str"] = pattern.findall(input_key)
+        keys: list[str] = pattern.findall(input_key)
         if keys[0] != "variables":
-            raise ValueError(
-                f"`{input_key}` does not contain name `variables` for {output_key}"
-            )
+            raise ValueError(f"`{input_key}` does not contain name `variables` for {output_key}")
         keys = keys[1:]
 
         value = variables
@@ -152,8 +118,6 @@ def map_variables_to_input(
                         )
                         value = None
                         break
-                except Exception as e:
-                    raise Exception(e)
 
         if hasattr(value, "model_dump"):
             value = value.model_dump()

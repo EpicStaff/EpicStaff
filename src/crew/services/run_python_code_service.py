@@ -1,12 +1,13 @@
-import uuid
 import asyncio
+import uuid
 from typing import Any
 
+import settings
 from loguru import logger
 from services.graph.events import StopEvent
-from utils.singleton_meta import SingletonMeta
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from utils.singleton_meta import SingletonMeta
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
@@ -54,19 +55,17 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
-        await self.redis_service.asubscribe("code_results", subscriber=subscriber)
+        await self.redis_service.asubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
 
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
-        await self.redis_service.apublish(
-            "code_exec_tasks", code_task_data.model_dump()
-        )
+        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
         logger.info("Waiting for code_results")
 
         while True:
             if callback_receiver.results is not None:
-                self.redis_service.unsubscribe("code_results", subscriber=subscriber)
+                self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
                 return callback_receiver.results
             if stop_event is not None:
                 stop_event.check_stop()

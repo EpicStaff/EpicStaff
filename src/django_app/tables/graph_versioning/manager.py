@@ -1,4 +1,3 @@
-import textwrap
 from collections import defaultdict
 from copy import deepcopy
 
@@ -20,11 +19,8 @@ from tables.models import (
     ConditionalEdge,
     Graph,
     PythonCode,
-    PythonCodeTool,
-    PythonNode,
     Secret,
     WebhookTrigger,
-    WebhookTriggerNode,
 )
 from tables.models.graph_models import StartNode, TelegramTriggerNode
 from tables.services.persistent_variables_service import (
@@ -68,9 +64,7 @@ class GraphVersioningManager:
                 if not names:
                     continue
                 if site.model is ConditionalEdge:
-                    conditional_edges.append(
-                        {"source_node_id": row.source_node_id, "names": names}
-                    )
+                    conditional_edges.append({"source_node_id": row.source_node_id, "names": names})
                 else:
                     nodes.setdefault(str(row.pk), {})[site.code_field] = names
 
@@ -112,17 +106,14 @@ class GraphVersioningManager:
         return warnings
 
     @staticmethod
-    def _resolve_names(
-        *, names: list[str], org_id: int
-    ) -> tuple[list[Secret], list[str]]:
+    def _resolve_names(*, names: list[str], org_id: int) -> tuple[list[Secret], list[str]]:
         """Split recorded names into the Secrets that still exist and those gone.
 
         Scoped to one org, so a name that exists only in another organisation
         counts as missing rather than re-linking across the boundary.
         """
         rows = {
-            secret.name: secret
-            for secret in Secret.objects.filter(org_id=org_id, name__in=names)
+            secret.name: secret for secret in Secret.objects.filter(org_id=org_id, name__in=names)
         }
         resolved = [rows[name] for name in names if name in rows]
         missing = [name for name in names if name not in rows]
@@ -147,9 +138,7 @@ class GraphVersioningManager:
                         )
                     )
                     continue
-                row = self._find_site_row(
-                    graph=graph, node_id=new_node_id, code_field=code_field
-                )
+                row = self._find_site_row(graph=graph, node_id=new_node_id, code_field=code_field)
                 if row is None:
                     warnings.extend(
                         self._dropped(
@@ -167,8 +156,7 @@ class GraphVersioningManager:
                         python_code=getattr(row, code_field),
                         names=names,
                         org_id=graph.org_id,
-                        node_name=getattr(row, "node_name", None)
-                        or f"node #{new_node_id}",
+                        node_name=getattr(row, "node_name", None) or f"node #{new_node_id}",
                     )
                 )
         return warnings
@@ -207,24 +195,20 @@ class GraphVersioningManager:
                         names=names,
                         node_name=label,
                         reason_suffix=(
-                            "the edge has no source node, so it cannot be "
-                            "identified after restore."
+                            "the edge has no source node, so it cannot be identified after restore."
                         ),
                     )
                 )
                 continue
 
-            new_source_id = node_mapper.get_or_none(
-                NODE_MAPPING_KEY, int(old_source_id)
-            )
+            new_source_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_source_id))
             if new_source_id is None:
                 warnings.extend(
                     self._dropped(
                         names=names,
                         node_name=label,
                         reason_suffix=(
-                            "its source node was not restored, so the edge "
-                            "cannot be identified."
+                            "its source node was not restored, so the edge cannot be identified."
                         ),
                     )
                 )
@@ -268,9 +252,7 @@ class GraphVersioningManager:
             node = (
                 None
                 if new_node_id is None
-                else TelegramTriggerNode.objects.filter(
-                    pk=new_node_id, graph=graph
-                ).first()
+                else TelegramTriggerNode.objects.filter(pk=new_node_id, graph=graph).first()
             )
             if node is None:
                 warnings.extend(
@@ -345,9 +327,7 @@ class GraphVersioningManager:
         """
         raw_deps = self._graph_strategy.extract_dependencies_from_instance(graph)
         light_deps = {
-            str(entity_type.value): list(ids)
-            for entity_type, ids in raw_deps.items()
-            if ids
+            str(entity_type.value): list(ids) for entity_type, ids in raw_deps.items() if ids
         }
         return light_deps
 
@@ -369,9 +349,7 @@ class GraphVersioningManager:
                 missing_deps[entity_type_value] = []
                 continue
 
-            existing_ids = set(
-                model.objects.filter(id__in=ids).values_list("id", flat=True)
-            )
+            existing_ids = set(model.objects.filter(id__in=ids).values_list("id", flat=True))
 
             # set as missing webhook triggers without any tunnel config
             # (provider_type=None means no NgrokWebhookConfig or LocalhostWebhookConfig attached)
@@ -392,7 +370,6 @@ class GraphVersioningManager:
     def _build_missing_sets(self, missing: dict) -> _MissingSets:
         """Gather all missing dependencies ids into dataclass structure"""
         return _MissingSets(
-            crews=set(missing.get(EntityType.CREW.value, [])),
             subgraphs=set(missing.get(EntityType.GRAPH.value, [])),
             llm_configs=set(missing.get(EntityType.LLM_CONFIG.value, [])),
             webhooks=set(missing.get(EntityType.WEBHOOK_TRIGGER.value, [])),
@@ -427,8 +404,7 @@ class GraphVersioningManager:
                         "node_name": node.get("node_name") or node_type,
                         "node_type": node_type,
                         "reason": (
-                            f"Node type '{node_type}' is no longer supported "
-                            "and was skipped."
+                            f"Node type '{node_type}' is no longer supported and was skipped."
                         ),
                     }
                 )
@@ -677,14 +653,10 @@ class GraphVersioningManager:
         warnings.extend(node_warnings)
 
         warnings.extend(
-            self._clean_decision_table_refs(
-                filtered_snapshot["nodes"], skipped_node_ids
-            )
+            self._clean_decision_table_refs(filtered_snapshot["nodes"], skipped_node_ids)
         )
 
-        warnings.extend(
-            self._clean_agent_task_node_refs(filtered_snapshot["nodes"], missing_sets)
-        )
+        warnings.extend(self._clean_agent_task_node_refs(filtered_snapshot["nodes"], missing_sets))
 
         kept_edges, edge_warnings = self._filter_edges(
             filtered_snapshot.get("edge_list", []), skipped_node_ids
@@ -717,38 +689,15 @@ class GraphVersioningManager:
         return node_mapper
 
     def _wipe_graph_children(self, graph: Graph) -> None:
+        """Wipe all graph related nodes. Orphaned PythonCode rows are reclaimed
+        by the post_delete signal cleanup in tables.signals.python_code_signals.
+        Intentionally hard-deletes and is NOT routed through the soft-delete
+        cascade (DeleteService): this replaces a graph's content during a
+        version restore, it does not delete the graph itself, so soft-delete
+        semantics don't apply here. Do not "fix" this to go through .delete().
         """
-        Wipe all graph related nodes
-        """
-        python_code_ids: set[int] = set()
-        python_code_ids.update(
-            PythonNode.objects.filter(graph=graph).values_list(
-                "python_code_id", flat=True
-            )
-        )
-        python_code_ids.update(
-            ConditionalEdge.objects.filter(graph=graph).values_list(
-                "python_code_id", flat=True
-            )
-        )
-        python_code_ids.update(
-            WebhookTriggerNode.objects.filter(graph=graph).values_list(
-                "python_code_id", flat=True
-            )
-        )
-
         for relation_name in _GRAPH_RELATION_NAMES:
             getattr(graph, relation_name).all().delete()
-
-        if python_code_ids:
-            shared_ids = set(
-                PythonCodeTool.objects.filter(
-                    python_code_id__in=python_code_ids
-                ).values_list("python_code_id", flat=True)
-            )
-            orphan_ids = python_code_ids - shared_ids
-            if orphan_ids:
-                PythonCode.objects.filter(id__in=orphan_ids).delete()
 
     def _update_graph_scalars(self, graph: Graph, snapshot: dict) -> None:
         """
@@ -803,9 +752,7 @@ class GraphVersioningManager:
 
         # make sure no extremely long name allowed
         suggest_name = f"{graph_name} from {version_name}"
-        new_graph_name = (
-            suggest_name[:80] + "..." if len(suggest_name) > 80 else suggest_name
-        )
+        new_graph_name = suggest_name[:80] + "..." if len(suggest_name) > 80 else suggest_name
 
         snapshot_copy["description"] = (
             f'Flow created from "{version_name}" version of "{graph_name}" flow'
@@ -849,9 +796,7 @@ class GraphVersioningManager:
 
         return graph, node_mapper
 
-    def change_old_warnings_ids(
-        self, warning_msgs: list[dict], node_mapper: IDMapper
-    ) -> None:
+    def change_old_warnings_ids(self, warning_msgs: list[dict], node_mapper: IDMapper) -> None:
         for w in warning_msgs:
             old_id = w.get("node_id")
             if not old_id:

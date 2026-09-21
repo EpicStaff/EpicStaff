@@ -2,7 +2,7 @@ import { Directive, EventEmitter, NgZone, OnDestroy, OnInit, Output } from '@ang
 import { fromEvent, Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
-@Directive({ selector: '[appShortcutListener]', standalone: true })
+@Directive({ selector: '[appShortcutListener]' })
 export class ShortcutListenerDirective implements OnInit, OnDestroy {
     @Output() copy = new EventEmitter<void>();
     @Output() paste = new EventEmitter<void>();
@@ -34,6 +34,13 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
 
     constructor(private ngZone: NgZone) {}
 
+    private isEditableTarget(el: HTMLElement): boolean {
+        return (
+            el.matches('input,textarea,select,[contenteditable="true"]') ||
+            !!el.closest('.monaco-editor, .native-edit-context')
+        );
+    }
+
     ngOnInit() {
         this.ngZone.runOutsideAngular(() => {
             this.sub = fromEvent<KeyboardEvent>(window, 'keydown')
@@ -45,7 +52,7 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
                         // Support Ctrl/Cmd + / via event.code to ensure consistent behavior across keyboard layouts
                         if (mod && evt.code === 'Slash') {
                             const el = evt.target as HTMLElement;
-                            if (el.matches('input,textarea,select,[contenteditable="true"]')) {
+                            if (this.isEditableTarget(el)) {
                                 return false;
                             }
                             return true;
@@ -53,7 +60,7 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
 
                         if (mod && evt.code === 'KeyS') {
                             const el = evt.target as HTMLElement;
-                            if (el.matches('input,textarea,select,[contenteditable="true"]')) {
+                            if (this.isEditableTarget(el)) {
                                 return false;
                             }
                             return true;
@@ -71,7 +78,7 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
 
                         // 2) bail if user is typing in a form or contenteditable, except for Escape
                         const el = evt.target as HTMLElement;
-                        if (key !== 'escape' && el.matches('input,textarea,select,[contenteditable="true"]')) {
+                        if (key !== 'escape' && this.isEditableTarget(el)) {
                             return false;
                         }
 

@@ -12,13 +12,14 @@ an auxiliary streaming failure never aborts the run.
 from __future__ import annotations
 
 from loguru import logger
+from shared.knowledge.target import KnowledgeSearchTarget
+from shared.models.agent_service import LoopResult, ToolResult
+from shared.models.knowledge_new import FoundChunk
+from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
 from app.usage import TokenUsageAccumulator
-from shared.models.agent_service import LoopResult, ToolResult
-from shared.models.knowledge import BaseKnowledgeSearchMessageResponse
-from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
 LIVE_CONTENT_MAX_CHARS = 2000
@@ -79,9 +80,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._current_task = {"name": task_name, "order": task_order}
         await self._publish_live("agent.task_start", {"task": self._current_task})
 
-    async def on_task_finish(
-        self, task_name: str, task_order: int, result: LoopResult
-    ) -> None:
+    async def on_task_finish(self, task_name: str, task_order: int, result: LoopResult) -> None:
         """Publish a live ``agent.task_finish`` envelope carrying the task's
         own result, then clear the current-task label and reset the live
         token-usage delta so it doesn't bleed into the next task."""
@@ -123,9 +122,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             await super().on_tool_call(call)
             return
 
-        arguments, truncated = _truncate(
-            call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS
-        )
+        arguments, truncated = _truncate(call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS)
         await self._publish_live(
             "agent.tool_call",
             {
@@ -174,21 +171,36 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._knowledge_tools.add(name)
 
     async def on_knowledge_search(
-        self, response: BaseKnowledgeSearchMessageResponse
+        self,
+        target: KnowledgeSearchTarget,
+        query: str,
+        result: list[FoundChunk] | str,
+        error: str | None = None,
     ) -> None:
         """Publish a live ``agent.knowledge_search`` envelope carrying the
-        full structured knowledge response (crew parity with
-        ``extracted_chunks``)."""
-        await self._publish_live(
-            "agent.knowledge_search",
-            {
-                "collection_id": response.collection_id,
-                "rag_id": response.rag_id,
-                "rag_type": response.rag_type,
-                "retrieved_chunks": response.retrieved_chunks,
-                "knowledge_query": response.query,
-                "rag_search_config": response.rag_search_config.model_dump(),
-                "chunks": [chunk.model_dump() for chunk in response.chunks],
-                "token_usage": response.token_usage,
-            },
-        )
+        structured knowledge response (crew parity with ``extracted_chunks``),
+        whether the search succeeded or failed.
+
+        Naive search yields chunks; graph search yields a synthesised
+        ``answer`` string. Metadata is reconstructed from ``target``/``query``
+        since knowledge_new's REST response carries only ``result``. On
+        failure ``result`` is an empty list and ``error`` carries the message;
+        the ``error`` key is otherwise omitted so the success payload stays
+        byte-for-byte unchanged."""
+        chunks = result if isinstance(result, list) else []
+        payload = {
+            "collection_id": target.collection_id,
+            "rag_id": target.rag_id,
+            "rag_type": target.rag_type,
+            "retrieved_chunks": len(chunks),
+            "knowledge_query": query,
+            "rag_search_config": target.search_config.model_dump(),
+            "chunks": [chunk.model_dump() for chunk in chunks],
+            "answer": result if isinstance(result, str) else None,
+            "token_usage": {},
+        }
+
+        if error is not None:
+            payload["error"] = error
+
+        await self._publish_live("agent.knowledge_search", payload)

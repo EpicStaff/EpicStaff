@@ -1,16 +1,15 @@
 from django.db import models
 
+from tables.models.base_models import TimestampMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class McpTool(OrgScopedModel, models.Model):
+class McpTool(OrgScopedModel, TimestampMixin, models.Model):
     """
     Configuration for a FastMCP client connecting to remote MCP tools via SSE.
     """
 
-    name = models.CharField(
-        max_length=255, help_text="Unique name for mcp configuration"
-    )
+    name = models.CharField(max_length=255, help_text="Unique name for mcp configuration")
 
     transport = models.CharField(
         max_length=2048, help_text="URL of the remote MCP server (SSE). Required."

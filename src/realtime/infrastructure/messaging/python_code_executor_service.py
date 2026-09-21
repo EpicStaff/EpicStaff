@@ -1,12 +1,13 @@
-import uuid
 import asyncio
+import uuid
 from typing import Any
 
-from loguru import logger
-from utils.singleton_meta import SingletonMeta
-from domain.ports.i_redis_messaging_service import IRedisMessagingService
+from core import config
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
+from domain.ports.i_redis_messaging_service import IRedisMessagingService
+from loguru import logger
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from utils.singleton_meta import SingletonMeta
 
 
 class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonMeta):
@@ -40,19 +41,20 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 **additional_global_kwargs,
             },
             use_storage=python_code_data.use_storage,
+            storage_allowed_paths=python_code_data.storage_allowed_paths,
+            storage_org_prefix=python_code_data.storage_org_prefix,
+            org_id=python_code_data.org_id,
             secrets=python_code_data.secrets,
         )
 
-        pubsub = await self.redis_service.async_subscribe("code_results")
+        pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
         await self.redis_service.async_publish(
-            "code_exec_tasks", code_task_data.model_dump()
+            config.CODE_EXEC_CHANNEL, code_task_data.model_dump()
         )
         logger.info("Waiting for code_results")
 
         while True:
-            message = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0
-            )
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message:
                 code_result_data = CodeResultData.model_validate_json(message["data"])
                 if code_result_data.execution_id == unique_task_id:

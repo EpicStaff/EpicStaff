@@ -39,6 +39,8 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
@@ -56,7 +58,6 @@ import { CdtExportImportService } from '../components/node-panels/classification
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
-import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -81,7 +82,7 @@ import {
 } from '../core/helpers/segment-avoidance.helper';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
-import { GraphNoteModel, NodeModel, ProjectNodeModel, StartNodeModel } from '../core/models/node.model';
+import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
@@ -102,7 +103,6 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     selector: 'app-flow-graph',
     templateUrl: './flow-graph.component.html',
     styleUrls: ['../styles/_variables.scss', './flow-graph.component.scss'],
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [
         {
@@ -130,6 +130,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -782,34 +783,33 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    public commitSidePanelToFlow(): void {
-        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
-        if (updatedNode) {
+    public commitSidePanelToFlow(): boolean {
+        if (!this.nodePanelShell?.hasPanelInstance()) {
+            return true;
+        }
+        // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+        // get a node back here — even when their form is invalid — so their own invalid
+        // state can be reported by a flow-wide validation + blocking toast further down
+        // the save pipeline instead of a hard client-side abort. A panel with its own hard
+        // client-side validation that must never reach the backend (e.g. the
+        // schedule-trigger panel's date/timezone checks) can override
+        // `captureForValidation()` to return `null` on failure — which aborts the entire
+        // save right here (no request sent), matching this panel's pre-existing behavior.
+        const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
+        if (updatedNode === null) {
+            return false;
+        }
+        // Skip the writeback if the captured node was removed from the flow
+        // (e.g. during DT→CDT conversion the old panel instance lingers briefly
+        //  before the outlet swaps to the newly-selected node's panel).
+        if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
             this.flowService.updateNode(updatedNode);
         }
+        return true;
     }
 
     public emitSave(): void {
-        if (this.nodePanelShell?.hasPanelInstance()) {
-            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
-            // get a node back here — even when their form is invalid — so their own invalid
-            // state can be reported by a flow-wide validation + blocking toast further down
-            // the save pipeline instead of a hard client-side abort. A panel with its own hard
-            // client-side validation that must never reach the backend (e.g. the
-            // schedule-trigger panel's date/timezone checks) can override
-            // `captureForValidation()` to return `null` on failure — which aborts the entire
-            // save right here (no request sent), matching this panel's pre-existing behavior.
-            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
-            if (updatedNode === null) {
-                return;
-            }
-            // Skip the writeback if the captured node was removed from the flow
-            // (e.g. during DT→CDT conversion the old panel instance lingers briefly
-            //  before the outlet swaps to the newly-selected node's panel).
-            if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
-                this.flowService.updateNode(updatedNode);
-            }
-        }
+        if (!this.commitSidePanelToFlow()) return;
         this.save.emit(this.flowService.getFlowState());
     }
 
@@ -1227,19 +1227,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    public onProjectExpandToggled(project: ProjectNodeModel): void {
-        const dialogRef = this.dialog.open(ProjectDialogComponent, {
-            width: '90vw',
-            height: '90vh',
-            data: {
-                projectId: project.data.id,
-                projectName: project.data.name,
-            },
-        });
-
-        dialogRef.closed.subscribe(() => {});
-    }
-
     public onFlowPointerDown(event: PointerEvent): void {
         this._dragStartClientX = event.clientX;
         this._dragStartClientY = event.clientY;
@@ -1473,7 +1460,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         const body: PartialExportRequest = {
-            crew_node_list: [],
             agent_node_list: [],
             task_node_list: [],
             python_node_list: [],
@@ -1500,11 +1486,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.TASK:
                     body.task_node_list.push(id);
-                    break;
-                case NodeType.TOOL:
-                case NodeType.PROJECT:
-                case NodeType.LLM:
-                    body.crew_node_list.push(id);
                     break;
                 case NodeType.PYTHON:
                     body.python_node_list.push(id);
@@ -1750,4 +1731,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

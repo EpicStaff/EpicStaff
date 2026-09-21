@@ -7,3 +7,7 @@ __pycache__
 *.pyo
 *.pyd
 executions
+**/tests
+**/conftest.py
+**/pytest.ini
+**/.pytest_cache

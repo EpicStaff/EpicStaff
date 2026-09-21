@@ -1,30 +1,5 @@
 from django.db import transaction
 from rest_framework import serializers
-
-from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
-    ConditionalEdgeSerializer,
-    DecisionTableNodeSerializer,
-    EndNodeSerializer,
-    StartNodeSerializer,
-    ClassificationDecisionTableNodeSerializer,
-)
-from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
-    AgentNodeSerializer,
-    AudioTranscriptionNodeSerializer,
-    CrewNodeSerializer,
-    EdgeSerializer,
-    FileExtractorNodeSerializer,
-    KnowledgeNodeReadSerializer,
-    PythonNodeSerializer,
-    SubGraphNodeSerializer,
-    TaskNodeSerializer,
-)
-from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
-    TelegramTriggerNodeSerializer,
-    WebhookTriggerNodeSerializer,
-    ScheduleTriggerNodeSerializer,
-)
-from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
 from tables.models.graph_models import (
     Graph,
     GraphNote,
@@ -34,6 +9,29 @@ from tables.models.graph_models import (
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
+from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
+    AgentNodeSerializer,
+    AudioTranscriptionNodeSerializer,
+    EdgeSerializer,
+    FileExtractorNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    PythonNodeSerializer,
+    SubGraphNodeSerializer,
+    TaskNodeSerializer,
+)
+from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    ClassificationDecisionTableNodeSerializer,
+    ConditionalEdgeSerializer,
+    DecisionTableNodeSerializer,
+    EndNodeSerializer,
+    StartNodeSerializer,
+)
+from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
+    ScheduleTriggerNodeSerializer,
+    TelegramTriggerNodeSerializer,
+    WebhookTriggerNodeSerializer,
+)
+from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -130,9 +128,7 @@ class GraphOrganizationUserSerializer(serializers.ModelSerializer):
 
 class GraphLightBaseSerializer(serializers.ModelSerializer):
     tags = GraphTagSerializer(many=True, read_only=True)
-    label_ids = serializers.PrimaryKeyRelatedField(
-        many=True, read_only=True, source="labels"
-    )
+    label_ids = serializers.PrimaryKeyRelatedField(many=True, read_only=True, source="labels")
 
     class Meta:
         model = Graph
@@ -153,7 +149,7 @@ class GraphLightSerializer(GraphLightBaseSerializer):
     subflows = serializers.SerializerMethodField()
 
     class Meta(GraphLightBaseSerializer.Meta):
-        fields = GraphLightBaseSerializer.Meta.fields + ["subflows"]
+        fields = [*GraphLightBaseSerializer.Meta.fields, "subflows"]
 
     def get_subflows(self, obj):
         graphs = Graph.objects.get_transitive_subflows(obj.id)
@@ -162,12 +158,9 @@ class GraphLightSerializer(GraphLightBaseSerializer):
 
 class GraphSerializer(serializers.ModelSerializer):
     # Reverse relationships
-    crew_node_list = CrewNodeSerializer(many=True, read_only=True)
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
-    audio_transcription_node_list = AudioTranscriptionNodeSerializer(
-        many=True, read_only=True
-    )
+    audio_transcription_node_list = AudioTranscriptionNodeSerializer(many=True, read_only=True)
     edge_list = EdgeSerializer(many=True, read_only=True)
     conditional_edge_list = ConditionalEdgeSerializer(many=True, read_only=True)
     webhook_trigger_node_list = WebhookTriggerNodeSerializer(many=True, read_only=True)
@@ -181,12 +174,8 @@ class GraphSerializer(serializers.ModelSerializer):
     task_node_list = TaskNodeSerializer(many=True, read_only=True)
     agent_node_list = AgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
-    telegram_trigger_node_list = TelegramTriggerNodeSerializer(
-        many=True, read_only=True
-    )
-    schedule_trigger_node_list = ScheduleTriggerNodeSerializer(
-        many=True, read_only=True
-    )
+    telegram_trigger_node_list = TelegramTriggerNodeSerializer(many=True, read_only=True)
+    schedule_trigger_node_list = ScheduleTriggerNodeSerializer(many=True, read_only=True)
     label_ids = OrgScopedPrimaryKeyRelatedField(
         many=True,
         source="labels",
@@ -212,7 +201,6 @@ class GraphSerializer(serializers.ModelSerializer):
             "name",
             "metadata",
             "description",
-            "crew_node_list",
             "python_node_list",
             "file_extractor_node_list",
             "audio_transcription_node_list",
@@ -261,9 +249,7 @@ class GraphSerializer(serializers.ModelSerializer):
         expected_save_version = validated_data.pop("save_version")
 
         with transaction.atomic():
-            Graph.increment_version_if_current(
-                pk=instance.pk, expected=expected_save_version
-            )
+            Graph.increment_version_if_current(pk=instance.pk, expected=expected_save_version)
             instance.refresh_from_db(fields=["save_version"])
             instance = super().update(instance, validated_data)
 

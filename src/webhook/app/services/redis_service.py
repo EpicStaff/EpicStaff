@@ -1,11 +1,11 @@
-import os
-from loguru import logger
-import redis.asyncio as aioredis
-from app.core.settings import settings
-from typing import Dict, Any, Optional
-from redis.client import PubSub
+from typing import Any
 
+import redis.asyncio as aioredis
+from loguru import logger
+from redis.client import PubSub
 from src.shared.models import WebhookEventData
+
+from app.core.settings import settings
 
 
 class RedisService:
@@ -15,18 +15,15 @@ class RedisService:
 
     def __init__(self, host: str, port: int, webhook_channel: str, password: str):
         self.redis_url = f"redis://{host}:{port}"
-        self.client = aioredis.from_url(
-            self.redis_url, password=password, decode_responses=True
-        )
+        self.client = aioredis.from_url(self.redis_url, password=password, decode_responses=True)
         self.webhook_channel = webhook_channel
         logger.info(f"RedisService initialized for {self.redis_url}")
 
     async def publish_webhook(
         self,
         path: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         config_id: str | None = None,
-        auth_principal: str | None = None,
     ):
         """
         Modifies the data and publishes it to a Redis channel.
@@ -35,7 +32,6 @@ class RedisService:
             path=path,
             payload=payload,
             config_id=config_id,
-            auth_principal=auth_principal,
         )
 
         logger.debug(f"Publishing to Redis channel '{self.webhook_channel}'")
@@ -60,21 +56,19 @@ class RedisService:
         return pubsub
 
 
-_redis_service: Optional[RedisService] = None
+_redis_service: RedisService | None = None
 
 
 async def get_redis_service() -> RedisService:
     """FastAPI dependency to get the singleton RedisService."""
     global _redis_service
-    WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
     if _redis_service is None:
         _redis_service = RedisService(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             password=settings.REDIS_PASSWORD,
-            webhook_channel=WEBHOOK_MESSAGE_CHANNEL,
+            webhook_channel=settings.WEBHOOK_MESSAGE_CHANNEL,
         )
-        _redis_service
 
     return _redis_service
 

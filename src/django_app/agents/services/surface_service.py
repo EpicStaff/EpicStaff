@@ -14,7 +14,7 @@ from agents.services.surface_content_service import (
 
 class SurfaceService:
     @staticmethod
-    def validate_surface_data(*, instance, organization, attrs):
+    def validate_surface_data(*, instance, organization_id, attrs):
         if instance is not None:
             candidate = Surface(
                 pk=instance.pk,
@@ -34,26 +34,26 @@ class SurfaceService:
             if field_name in attrs:
                 setattr(candidate, field_name, attrs[field_name])
 
-        candidate.organization = organization
+        candidate.organization_id = organization_id
 
         try:
             candidate.full_clean()
         except dj_exceptions.ValidationError as exc:
             if hasattr(exc, "message_dict"):
-                raise SurfaceValidationError(detail=exc.message_dict)
-            raise SurfaceValidationError(detail=exc.messages)
+                raise SurfaceValidationError(detail=exc.message_dict) from exc
+            raise SurfaceValidationError(detail=exc.messages) from exc
 
         return attrs
 
     @staticmethod
     @transaction.atomic
-    def create_surface(*, organization, validated_data):
+    def create_surface(*, organization_id, validated_data):
         python_tools_data = validated_data.pop("python_tools", [])
         mcp_tools_data = validated_data.pop("mcp_tools", [])
         storage_items_data = validated_data.pop("storage_items", [])
         knowledge_data = validated_data.pop("knowledge", [])
 
-        surface = Surface.objects.create(organization=organization, **validated_data)
+        surface = Surface.objects.create(organization_id=organization_id, **validated_data)
 
         SurfaceService._replace_python_tools(surface, python_tools_data)
         SurfaceService._replace_mcp_tools(surface, mcp_tools_data)
@@ -99,9 +99,7 @@ class SurfaceService:
 
     @staticmethod
     def _replace_python_tools(surface, items):
-        SurfaceContentService.replace_python_tools(
-            surface, items, CATALOG_SURFACE_CONTENT
-        )
+        SurfaceContentService.replace_python_tools(surface, items, CATALOG_SURFACE_CONTENT)
 
     @staticmethod
     def _replace_mcp_tools(surface, items):
@@ -109,9 +107,7 @@ class SurfaceService:
 
     @staticmethod
     def _replace_storage_items(surface, items):
-        SurfaceContentService.replace_storage_items(
-            surface, items, CATALOG_SURFACE_CONTENT
-        )
+        SurfaceContentService.replace_storage_items(surface, items, CATALOG_SURFACE_CONTENT)
 
     @staticmethod
     def _replace_knowledge(surface, items):
