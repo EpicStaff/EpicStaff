@@ -2,8 +2,8 @@ from rest_framework import serializers
 from tables.models.session_models import (
     AgentSessionMessage,
     Session,
-    SessionTrigger,
     SessionPrincipal,
+    SessionTrigger,
     TaskSessionMessage,
     UserSessionMessage,
 )

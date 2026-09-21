@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from tables.models import CrewSessionMessage, GraphOrganizationUser
 
+
 class Session(models.Model):
     class SessionStatus(models.TextChoices):
         PENDING = "pending"
@@ -178,9 +179,7 @@ class SessionPrincipal(models.Model):
         TRIGGER = "trigger"
         UNKNOWN = "unknown"
 
-    session = models.OneToOneField(
-        Session, on_delete=models.CASCADE, related_name="principal"
-    )
+    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="principal")
 
     kind = models.CharField(choices=ActionKind.choices, max_length=32, db_index=True)
 
