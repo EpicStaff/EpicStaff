@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from tables.models import AbstractDefaultFillableModel, DefaultBaseModel
+from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 

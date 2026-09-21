@@ -31,49 +31,37 @@ import settings
 import dynamic_venv_executor_chain as chain_mod
 from dynamic_venv_executor_chain import ExecuteCodeHandler
 
-# In the container epicstaff_secrets/dotdict are installed into the venv;
-# running the generated source directly here needs them on PYTHONPATH instead.
-SHARED_PATH = Path(__file__).resolve().parents[3] / "shared"
+from conftest import copy_shared_libs_into_jail, make_execute_context
 
 
 def _context(tmp_path: Path, **overrides) -> dict[str, Any]:
-    exec_dir = tmp_path / "exec"
-    home_path = exec_dir / "home"
-    tmp_dir = exec_dir / "tmp"
-    for directory in (exec_dir, home_path, tmp_dir):
-        directory.mkdir(parents=True, exist_ok=True)
-
-    context: dict[str, Any] = {
-        "python_executable": sys.executable,
-        "temp_code_path": exec_dir / "code.py",
-        "result_file_path": exec_dir / "output.txt",
-        "home_path": str(home_path),
-        "tmp_path": str(tmp_dir),
-        "work_dir": str(exec_dir),
-        "code": "def main(**kwargs):\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "exec-timeout-test",
-        "use_storage": False,
-        "storage_allowed_paths": None,
-        "storage_org_prefix": None,
-        "secrets": {},
-    }
-    context.update(overrides)
-    return context
+    return make_execute_context(
+        tmp_path,
+        python_executable=sys.executable,
+        execution_id="exec-timeout-test",
+        secrets={},
+        **overrides,
+    )
 
 
 @pytest.fixture(autouse=True)
-def shared_libs_on_path(monkeypatch):
+def shared_libs_on_path(tmp_path, monkeypatch):
     """wrap_code's preamble always imports dotdict and epicstaff_secrets, so
     every execution needs them importable, whether or not the job code
-    itself uses them."""
+    itself uses them. Production installs both into the venv (which sits in
+    jail.py's read_exec), so the real chain is self-contained inside the
+    Landlock jail. These tests skip venv creation, so PYTHONPATH must point
+    somewhere the jail actually allows reading -- src/shared is outside
+    every allowlist entry and gets denied -- so this copies both packages
+    into exec_dir (inside jail.read_write) instead. See
+    copy_shared_libs_into_jail's docstring for the full rationale.
+    """
+    shared_libs_path = copy_shared_libs_into_jail(tmp_path)
     real_build_base_env = chain_mod.build_base_env
     monkeypatch.setattr(
         chain_mod,
         "build_base_env",
-        lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(SHARED_PATH)},
+        lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(shared_libs_path)},
     )
 
 
@@ -99,6 +87,25 @@ def _run_bounded(context: dict[str, Any], bound_seconds: float):
     return asyncio.run(_runner())
 
 
+def _is_zombie(pid: int) -> bool:
+    """True when `pid` was killed but its exit status has not been reaped yet.
+
+    A zombie no longer runs any code and holds no resource other than its
+    exit status, so for "did the kill work" it counts as dead. Whether some
+    ancestor eventually reaps it depends on that ancestor's own reaping
+    behavior (e.g. an orphan reparented to a container's PID 1 with no
+    reaper loop lingers as a zombie indefinitely), which is outside what
+    this test controls or needs to assert on. /proc is Linux-specific, but
+    this whole module is already POSIX/Linux-only (see the pwd importorskip
+    above), so it is always available here.
+    """
+    try:
+        status = Path(f"/proc/{pid}/status").read_text()
+    except FileNotFoundError:
+        return False
+    return "State:\tZ" in status
+
+
 def _wait_until_dead(pid: int, timeout: float = 5.0) -> bool:
     """Poll for a process's death rather than checking once.
 
@@ -111,6 +118,8 @@ def _wait_until_dead(pid: int, timeout: float = 5.0) -> bool:
         try:
             os.kill(pid, 0)
         except (ProcessLookupError, PermissionError):
+            return True
+        if _is_zombie(pid):
             return True
         time.sleep(0.1)
     return False

@@ -69,18 +69,31 @@
             justify-content: center;
 
             i {
-                font-size: 1.375rem;
+                font-size: 1.5625rem;
             }
         }
 
         .title {
-            font-size: 0.9375rem;
+            display: flex;
+            align-items: baseline;
+            gap: 0.25rem;
+            font-size: 1rem;
             font-weight: 500;
-            color: var(--white);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            letter-spacing: 0;
+            color: inherit;
             min-width: 0;
+
+            &__label {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                min-width: 0;
+            }
+
+            &__badge {
+                flex-shrink: 0;
+                white-space: nowrap;
+            }
         }
 
         .blocked-badge {

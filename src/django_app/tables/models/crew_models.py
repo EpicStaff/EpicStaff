@@ -2,8 +2,10 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import CheckConstraint
 
-from tables.models import AbstractDefaultFillableModel, DefaultBaseModel, Process
 from tables.models.base_models import (
+    AbstractDefaultFillableModel,
+    DefaultBaseModel,
+    Process,
     SoftDeleteFields,
     soft_delete_consistency_constraint,
 )

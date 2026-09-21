@@ -30,9 +30,11 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     """Stub the run_session tail (SessionData build + Redis publish) so tests
     don't need a fully built graph or a live Redis connection."""
     sm = session_manager or SessionManagerService()
-    monkeypatch.setattr(sm, "create_session_data", lambda session: _FakeSessionData())
     monkeypatch.setattr(
-        sm.redis_service, "publish_session_data", lambda session_data: 2
+        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+    )
+    monkeypatch.setattr(
+        sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
     )
     return sm
 
@@ -58,7 +60,7 @@ def test_schedule_trigger_creates_session_trigger_row(default_org, monkeypatch):
 @pytest.mark.django_db
 def test_webhook_trigger_creates_session_trigger_row(default_org, monkeypatch):
     graph = Graph.objects.create(name="wh", org=default_org)
-    webhook_trigger = WebhookTrigger.objects.create(path="wpath")
+    webhook_trigger = WebhookTrigger.objects.create(path="wpath", org=default_org)
     python_code = PythonCode.objects.create(code="def main(): return None")
     node = WebhookTriggerNode.objects.create(
         graph=graph,
@@ -86,7 +88,7 @@ def test_telegram_trigger_creates_session_trigger_row_with_chat_id(
     default_org, monkeypatch
 ):
     graph = Graph.objects.create(name="tg", org=default_org)
-    webhook_trigger = WebhookTrigger.objects.create(path="tgpath")
+    webhook_trigger = WebhookTrigger.objects.create(path="tgpath", org=default_org)
     node = TelegramTriggerNode.objects.create(
         graph=graph, node_name="my_telegram", webhook_trigger=webhook_trigger
     )
@@ -94,7 +96,7 @@ def test_telegram_trigger_creates_session_trigger_row_with_chat_id(
     _stub_publish(monkeypatch)
 
     payload = {"message": {"chat": {"id": 555}, "text": "hi"}}
-    TelegramTriggerService().handle_telegram_trigger(url_path="tgpath", payload=payload)
+    TelegramTriggerService().handle_telegram_trigger(path="tgpath", payload=payload)
 
     session = Session.objects.filter(graph=graph).order_by("-id").first()
     trigger = session.trigger
@@ -111,7 +113,7 @@ def test_telegram_trigger_extracts_chat_id_from_callback_query(
     default_org, monkeypatch
 ):
     graph = Graph.objects.create(name="tg2", org=default_org)
-    webhook_trigger = WebhookTrigger.objects.create(path="tgpath2")
+    webhook_trigger = WebhookTrigger.objects.create(path="tgpath2", org=default_org)
     TelegramTriggerNode.objects.create(
         graph=graph, node_name="cb_telegram", webhook_trigger=webhook_trigger
     )
@@ -119,9 +121,7 @@ def test_telegram_trigger_extracts_chat_id_from_callback_query(
     _stub_publish(monkeypatch)
 
     payload = {"callback_query": {"message": {"chat": {"id": 999}}}}
-    TelegramTriggerService().handle_telegram_trigger(
-        url_path="tgpath2", payload=payload
-    )
+    TelegramTriggerService().handle_telegram_trigger(path="tgpath2", payload=payload)
 
     session = Session.objects.filter(graph=graph).order_by("-id").first()
     assert session.trigger.extra == {"chat_id": 999}
@@ -130,7 +130,7 @@ def test_telegram_trigger_extracts_chat_id_from_callback_query(
 @pytest.mark.django_db
 def test_telegram_trigger_omits_chat_id_when_absent(default_org, monkeypatch):
     graph = Graph.objects.create(name="tg3", org=default_org)
-    webhook_trigger = WebhookTrigger.objects.create(path="tgpath3")
+    webhook_trigger = WebhookTrigger.objects.create(path="tgpath3", org=default_org)
     TelegramTriggerNode.objects.create(
         graph=graph, node_name="no_chat_telegram", webhook_trigger=webhook_trigger
     )
@@ -138,7 +138,7 @@ def test_telegram_trigger_omits_chat_id_when_absent(default_org, monkeypatch):
     _stub_publish(monkeypatch)
 
     TelegramTriggerService().handle_telegram_trigger(
-        url_path="tgpath3", payload={"unrelated": True}
+        path="tgpath3", payload={"unrelated": True}
     )
 
     session = Session.objects.filter(graph=graph).order_by("-id").first()
