@@ -1,16 +1,7 @@
 from __future__ import annotations
 
-from loguru import logger
-
 from agents.models import AgentDefinition
-from tables.models.graph_models import GraphStorageFile, StorageFile
-from tables.models.knowledge_models.collection_models import SourceCollection
-from tables.models.knowledge_models.graphrag_models import GraphRag
-from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeTool
-from tables.services.converter_service import ConverterService
-from tables.services.rag_lookup_service import RagLookupService
+from loguru import logger
 from src.shared.models import (
     AgentDefinitionData,
     BaseToolData,
@@ -26,6 +17,14 @@ from src.shared.models import (
     S3FileSpec,
     SearchConfigEntry,
 )
+from tables.models.graph_models import GraphStorageFile, StorageFile
+from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.knowledge_models.graphrag_models import GraphRag
+from tables.models.knowledge_models.naive_rag_models import NaiveRag
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeTool
+from tables.services.converter_service import ConverterService
+from tables.services.rag_lookup_service import RagLookupService
 
 
 class BaseNodePayloadService:
@@ -64,9 +63,7 @@ class BaseNodePayloadService:
             tool_timeout=agent_definition.tool_timeout,
             max_consecutive_failures=agent_definition.max_consecutive_failures,
             schema_max_retries=agent_definition.schema_max_retries,
-            llm=self.converter_service.convert_llm_config_to_pydantic(
-                agent_definition.llm_config
-            ),
+            llm=self.converter_service.convert_llm_config_to_pydantic(agent_definition.llm_config),
             fcm_llm=self.converter_service.convert_llm_config_to_pydantic(
                 agent_definition.fcm_llm_config
             ),
@@ -80,22 +77,16 @@ class BaseNodePayloadService:
         s3_files: list[S3FileSpec],
     ) -> list[BaseToolData]:
         allowed_python_tool_ids = [
-            entry.python_tool
-            for entry in combined_surface.python_tools
-            if entry.mode == "allow"
+            entry.python_tool for entry in combined_surface.python_tools if entry.mode == "allow"
         ]
         allowed_mcp_tool_ids = [
-            entry.mcp_tool
-            for entry in combined_surface.mcp_tools
-            if entry.mode == "allow"
+            entry.mcp_tool for entry in combined_surface.mcp_tools if entry.mode == "allow"
         ]
         surface_storage_paths = [spec.path for spec in s3_files]
 
         tools: list[BaseToolData] = []
 
-        for python_tool in PythonCodeTool.objects.filter(
-            pk__in=allowed_python_tool_ids
-        ):
+        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_python_tool_ids):
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
                     python_tool,
@@ -106,9 +97,7 @@ class BaseNodePayloadService:
             )
 
         for mcp_tool in McpTool.objects.filter(pk__in=allowed_mcp_tool_ids):
-            tools.append(
-                self.converter_service.convert_tool_to_base_tool_pydantic(mcp_tool)
-            )
+            tools.append(self.converter_service.convert_tool_to_base_tool_pydantic(mcp_tool))
 
         return tools
 
@@ -134,8 +123,7 @@ class BaseNodePayloadService:
         allowed_file_ids = [
             file_id
             for file_id, entry in access_flags_by_file_id.items()
-            if "allow"
-            in (entry.can_list, entry.can_view, entry.can_edit, entry.can_delete)
+            if "allow" in (entry.can_list, entry.can_view, entry.can_edit, entry.can_delete)
         ]
 
         storage_files = list(StorageFile.objects.filter(pk__in=allowed_file_ids))
@@ -207,13 +195,9 @@ class BaseNodePayloadService:
         if path in attached_paths:
             return True
 
-        return any(
-            path.startswith(folder_path) for folder_path in attached_folder_paths
-        )
+        return any(path.startswith(folder_path) for folder_path in attached_folder_paths)
 
-    def _build_collection_pool(
-        self, combined_surface: CombinedSurfaceData
-    ) -> list[CollectionSpec]:
+    def _build_collection_pool(self, combined_surface: CombinedSurfaceData) -> list[CollectionSpec]:
         collections: list[CollectionSpec] = []
 
         for knowledge in combined_surface.knowledge:
@@ -266,18 +250,14 @@ class BaseNodePayloadService:
             or knowledge.graph_global_search_config is not None
             or knowledge.graph_drift_search_config is not None
         ):
-            entries.extend(
-                self._build_graph_search_config_entries(collection_id, knowledge)
-            )
+            entries.extend(self._build_graph_search_config_entries(collection_id, knowledge))
 
         return entries
 
     def _build_naive_search_config_entry(
         self, collection_id: int, naive_config
     ) -> SearchConfigEntry | None:
-        naive_rag = RagLookupService.latest_rag(
-            NaiveRag, collection_id, pk_field="naive_rag_id"
-        )
+        naive_rag = RagLookupService.latest_rag(NaiveRag, collection_id, pk_field="naive_rag_id")
         if naive_rag is None:
             logger.warning(
                 "No NaiveRag found for collection {}, skipping naive search config.",
@@ -286,9 +266,7 @@ class BaseNodePayloadService:
             return None
 
         if naive_rag.embedder is None:
-            logger.warning(
-                "NaiveRag {} has no embedder configured, skipping.", naive_rag.pk
-            )
+            logger.warning("NaiveRag {} has no embedder configured, skipping.", naive_rag.pk)
             return None
 
         return SearchConfigEntry(
@@ -306,9 +284,7 @@ class BaseNodePayloadService:
     def _build_graph_search_config_entries(
         self, collection_id: int, knowledge: CombinedSurfaceKnowledgeData
     ) -> list[SearchConfigEntry]:
-        graph_rag = RagLookupService.latest_rag(
-            GraphRag, collection_id, pk_field="graph_rag_id"
-        )
+        graph_rag = RagLookupService.latest_rag(GraphRag, collection_id, pk_field="graph_rag_id")
         if graph_rag is None:
             logger.warning(
                 "No GraphRag found for collection {}, skipping graph search config.",
@@ -317,14 +293,10 @@ class BaseNodePayloadService:
             return []
 
         if graph_rag.embedder is None:
-            logger.warning(
-                "GraphRag {} has no embedder configured, skipping.", graph_rag.pk
-            )
+            logger.warning("GraphRag {} has no embedder configured, skipping.", graph_rag.pk)
             return []
 
-        embedder = self.converter_service.convert_embedding_config_to_pydantic(
-            graph_rag.embedder
-        )
+        embedder = self.converter_service.convert_embedding_config_to_pydantic(graph_rag.embedder)
         llm = self.converter_service.convert_llm_config_to_pydantic(graph_rag.llm)
         entries: list[SearchConfigEntry] = []
 
@@ -375,9 +347,7 @@ class BaseNodePayloadService:
                     rag_id=graph_rag.graph_rag_id,
                     rag_type="graph",
                     search_config=GraphRagSearchConfig(
-                        search_params=GraphRagGlobalSearchParams(
-                            **global_config.model_dump()
-                        )
+                        search_params=GraphRagGlobalSearchParams(**global_config.model_dump())
                     ),
                     embedder=embedder,
                     llm=llm,
@@ -391,9 +361,7 @@ class BaseNodePayloadService:
                     rag_id=graph_rag.graph_rag_id,
                     rag_type="graph",
                     search_config=GraphRagSearchConfig(
-                        search_params=GraphRagDriftSearchParams(
-                            **drift_config.model_dump()
-                        )
+                        search_params=GraphRagDriftSearchParams(**drift_config.model_dump())
                     ),
                     embedder=embedder,
                     llm=llm,

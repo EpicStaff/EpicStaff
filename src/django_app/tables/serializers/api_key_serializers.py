@@ -1,6 +1,5 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-
 from tables.models.rbac_models import ApiKey
 
 
@@ -42,7 +41,7 @@ class ApiKeyCreateResponseSerializer(ApiKeySerializer):
     )
 
     class Meta(ApiKeySerializer.Meta):
-        fields = ApiKeySerializer.Meta.fields + ["api_key"]
+        fields = [*ApiKeySerializer.Meta.fields, "api_key"]
 
 
 class ApiKeyOwnerSerializer(serializers.ModelSerializer):
@@ -60,7 +59,7 @@ class ApiKeyAdminSerializer(ApiKeySerializer):
     org_ids = serializers.SerializerMethodField()
 
     class Meta(ApiKeySerializer.Meta):
-        fields = ApiKeySerializer.Meta.fields + ["owner", "org_ids"]
+        fields = [*ApiKeySerializer.Meta.fields, "owner", "org_ids"]
 
     def get_org_ids(self, key: ApiKey) -> list[int]:
         """Set by ApiKeyManagementService.attach_visible_orgs."""

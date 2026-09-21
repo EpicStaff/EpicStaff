@@ -8,7 +8,6 @@ Tags map to their parent resource; provider models map to LLM_CONFIGS.
 from tables.import_export.enums import EntityType
 from tables.models.rbac_models.rbac_enums import ResourceType
 
-
 ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.AGENT: ResourceType.AGENTS,
     EntityType.AGENT_TAG: ResourceType.AGENTS,

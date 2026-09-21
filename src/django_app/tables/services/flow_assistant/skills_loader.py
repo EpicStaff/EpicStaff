@@ -92,8 +92,7 @@ def _get_cache() -> dict[str, dict[str, str]]:
 def list_skills_summaries() -> list[dict]:
     """Return [{"slug": str, "description": str}, ...] for every vendored skill."""
     return [
-        {"slug": slug, "description": entry["description"]}
-        for slug, entry in _get_cache().items()
+        {"slug": slug, "description": entry["description"]} for slug, entry in _get_cache().items()
     ]
 
 

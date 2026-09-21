@@ -1,5 +1,3 @@
-from typing import Optional
-
 from tables.services.rbac.rbac_exceptions import FormValidationError
 
 ALLOWED_STATUS_FILTERS: tuple[str, ...] = ("active", "expired", "revoked")
@@ -21,9 +19,7 @@ class ApiKeyValidationService:
 
         name = data.get("name")
         if not isinstance(name, str) or not name.strip():
-            errors.append(
-                {"field": "name", "value": name, "reason": "Name is required."}
-            )
+            errors.append({"field": "name", "value": name, "reason": "Name is required."})
         elif len(name.strip()) > self.MAX_NAME_LENGTH:
             errors.append(
                 {
@@ -62,8 +58,8 @@ class ApiKeyValidationService:
         """`GET /api/admin/api-keys/` filters: ?user=&status=&search=."""
         errors: list[dict] = []
 
-        raw_status: Optional[str] = params.get("status")
-        status_value: Optional[str] = raw_status or None
+        raw_status: str | None = params.get("status")
+        status_value: str | None = raw_status or None
         if status_value is not None and status_value not in ALLOWED_STATUS_FILTERS:
             errors.append(
                 {
@@ -73,8 +69,8 @@ class ApiKeyValidationService:
                 }
             )
 
-        raw_owner: Optional[str] = params.get("user")
-        owner_id: Optional[int] = None
+        raw_owner: str | None = params.get("user")
+        owner_id: int | None = None
         if raw_owner not in (None, ""):
             try:
                 owner_id = int(raw_owner)
@@ -90,7 +86,7 @@ class ApiKeyValidationService:
         if errors:
             raise FormValidationError(errors)
 
-        search: Optional[str] = params.get("search")
+        search: str | None = params.get("search")
         return {
             "owner_id": owner_id,
             "status_value": status_value,

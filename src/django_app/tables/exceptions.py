@@ -1,4 +1,5 @@
 from rest_framework.exceptions import APIException
+
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
@@ -62,17 +63,13 @@ class InvalidTaskOrderError(CustomAPIExeption):
 
 class ContentHashConflictError(CustomAPIExeption):
     status_code = 409
-    default_detail = (
-        "Node has been modified by another user. Please refresh and try again."
-    )
+    default_detail = "Node has been modified by another user. Please refresh and try again."
     default_code = "content_hash_conflict"
 
 
 class GraphSaveVersionConflictError(CustomAPIExeption):
     status_code = 409
-    default_detail = (
-        "Graph has been modified by another user. Please refresh and try again."
-    )
+    default_detail = "Graph has been modified by another user. Please refresh and try again."
     default_code = "graph_version_conflict"
 
     def __init__(self, current_version: int | None):
@@ -86,9 +83,7 @@ class GraphSaveVersionConflictError(CustomAPIExeption):
 
 class SubGraphValidationError(CustomAPIExeption):
     status_code = 400
-    default_detail = (
-        "ValidationError occured in SubGraphValidator during subgraph validation"
-    )
+    default_detail = "ValidationError occured in SubGraphValidator during subgraph validation"
 
 
 class BuiltInToolModificationError(CustomAPIExeption):
@@ -121,8 +116,6 @@ class PythonCodeToolConfigSerializerError(CustomAPIExeption):
 class DocumentUploadException(CustomAPIExeption):
     """Base exception for document upload errors."""
 
-    pass
-
 
 class FileSizeExceededException(DocumentUploadException):
     """Raised when file size exceeds the allowed limit."""
@@ -130,9 +123,7 @@ class FileSizeExceededException(DocumentUploadException):
     def __init__(self, file_name, max_size_mb):
         self.file_name = file_name
         self.max_size_mb = max_size_mb
-        super().__init__(
-            f"File '{file_name}' exceeds the maximum allowed size of {max_size_mb}MB"
-        )
+        super().__init__(f"File '{file_name}' exceeds the maximum allowed size of {max_size_mb}MB")
 
 
 class InvalidFileTypeException(DocumentUploadException):
@@ -191,9 +182,7 @@ class InvalidFieldType(CustomAPIExeption):
         self.field_name = field_name
         self.field_value = field_value
         self.expected_type = expected_type
-        super().__init__(
-            f"Invalid {field_name}: '{field_value}'. Must be a valid {expected_type}."
-        )
+        super().__init__(f"Invalid {field_name}: '{field_value}'. Must be a valid {expected_type}.")
 
 
 class RagException(CustomAPIExeption):
@@ -299,8 +288,6 @@ class GraphRagIndexConfigNotFoundException(RagException):
 class InvalidGraphRagParametersException(RagException):
     """Raised when GraphRag parameters are invalid."""
 
-    pass
-
 
 class GraphRagDocumentNotFoundException(RagException):
     """Raised when a document is not linked to the specified GraphRag."""
@@ -311,9 +298,7 @@ class GraphRagDocumentNotFoundException(RagException):
         else:
             self.document_id = document_id
             self.graph_rag_id = graph_rag_id
-            super().__init__(
-                f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
-            )
+            super().__init__(f"Document {document_id} is not linked to GraphRag {graph_rag_id}")
 
 
 class AgentMissingCollectionException(RagException):
@@ -434,8 +419,7 @@ class LLMConfigMissingError(CustomAPIExeption):
 
     status_code = 400
     default_detail = (
-        "No LLM config is set for this flow assistant. "
-        "Please configure one in the settings panel."
+        "No LLM config is set for this flow assistant. Please configure one in the settings panel."
     )
     default_code = "flow_assistant_llm_config_missing"
 

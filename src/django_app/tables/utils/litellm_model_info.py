@@ -26,7 +26,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 for _name in ("LiteLLM", "LiteLLM Proxy", "LiteLLM Router"):
@@ -35,11 +35,11 @@ for _name in ("LiteLLM", "LiteLLM Proxy", "LiteLLM Router"):
     _l.propagate = False
     _l.disabled = True
 
-import httpx  # noqa: E402
-import litellm  # noqa: E402
-from apscheduler.schedulers.background import BackgroundScheduler  # noqa: E402
-from filelock import FileLock, Timeout  # noqa: E402
-from loguru import logger  # noqa: E402
+import httpx
+import litellm
+from apscheduler.schedulers.background import BackgroundScheduler
+from filelock import FileLock, Timeout
+from loguru import logger
 
 litellm.set_verbose = False
 litellm.suppress_debug_info = True
@@ -47,8 +47,7 @@ litellm.suppress_debug_info = True
 FALLBACK_CONTEXT_WINDOW = 16_000
 
 LITELLM_MODEL_PRICES_URL = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
-    "model_prices_and_context_window.json"
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 )
 
 
@@ -86,9 +85,7 @@ def _ensure_snapshot_loaded() -> None:
         data = json.loads(path.read_text(encoding="utf-8"))
         litellm.model_cost.update(data)
         _loaded_snapshot_mtime = mtime
-        logger.info(
-            f"Loaded litellm model_cost snapshot ({len(data)} models) from {path}"
-        )
+        logger.info(f"Loaded litellm model_cost snapshot ({len(data)} models) from {path}")
     except Exception as exc:
         logger.warning(f"Failed to load litellm snapshot {path}: {exc}")
 
@@ -191,7 +188,7 @@ def start_periodic_litellm_refresh() -> None:
         refresh_litellm_model_cost,
         trigger="interval",
         days=1,
-        next_run_time=datetime.now() + timedelta(hours=1),
+        next_run_time=datetime.now(UTC) + timedelta(hours=1),
         id="litellm_model_cost_refresh",
         replace_existing=True,
     )

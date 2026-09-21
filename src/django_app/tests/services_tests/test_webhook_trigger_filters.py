@@ -24,17 +24,24 @@ Three related classes of the same underlying bug:
    than the one in the URL, and no flow may start — even if some other
    trigger elsewhere happens to have that path.
 
-3. C3 (this suite's new coverage): `WebhookTrigger.path` is only unique
-   per-org (`unique_together(org, path, provider_type)`), not globally, so
-   two different orgs can legally register the identical path string.
-   Without an org filter, the legacy no-auth-configured fan-out
-   (`config_id=None`) or a `config_id` missing its org segment could dispatch
-   an inbound event across orgs into the wrong org's graph. `get_trigger_
-   filters` now (a) adds `webhook_trigger__org_id` to the filter dict
-   whenever `config_id` carries a parseable org segment, and (b) fails CLOSED
-   -- returns `None`, no dispatch -- when `config_id` has a recognized
-   provider prefix but a missing/unparseable org segment, rather than
-   silently falling back to an org-unscoped filter.
+3. C3 (this suite's coverage): historically `WebhookTrigger.path` was only
+   unique per-org, so two different orgs could legally register the
+   identical path string, and without an org filter the legacy
+   no-auth-configured fan-out (`config_id=None`) or a `config_id` missing
+   its org segment could dispatch an inbound event across orgs into the
+   wrong org's graph. `get_trigger_filters` still (a) adds
+   `webhook_trigger__org_id` to the filter dict whenever `config_id` carries
+   a parseable org segment, and (b) fails CLOSED -- returns `None`, no
+   dispatch -- when `config_id` has a recognized provider prefix but a
+   missing/unparseable org segment, rather than silently falling back to an
+   org-unscoped filter. `WebhookTrigger.path` is now globally unique (see
+   `WebhookTrigger.Meta`/the `0246` migration), so the specific cross-org
+   *identical-path* collision this defense-in-depth logic originally guarded
+   against can no longer occur at all -- it's prevented structurally at the
+   DB layer instead (see `TestWebhookTriggerGlobalUniqueConstraint` in
+   `tests/model_tests/webhook_trigger_model_test.py`). The org-segment
+   parsing/fail-closed behavior itself remains valuable defense-in-depth and
+   is still covered above with non-colliding paths.
 """
 
 import pytest
@@ -498,16 +505,27 @@ class TestUnrestrictedFanOutAcrossSharedPath:
 
 @pytest.mark.django_db
 class TestCrossOrgPathCollisionIsolation:
-    """C3 (architect follow-up): two different orgs each
-    legally register a `WebhookTrigger` with the IDENTICAL `path` string
-    (`unique_together` is `(org, path, provider_type)`, not globally unique
-    on `path`). An inbound event that resolved to one org's tunnel config
-    must dispatch ONLY into that org's graph, never the other org's, even
-    though both triggers share the same `path`."""
+    """Behavior change: this class used to exercise two different orgs each
+    legally registering a `WebhookTrigger` with the IDENTICAL `path` string
+    (`unique_together` used to be `(org, path, provider_type)`, not globally
+    unique on `path`), then asserting a `config_id`-scoped dispatch only
+    ever reached the matching org's graph despite the shared path.
 
-    def test_org_scoped_config_id_never_dispatches_into_the_other_orgs_graph(
-        self, default_org, monkeypatch
+    `WebhookTrigger.path` is now globally unique (see `WebhookTrigger.Meta`
+    and the `0246` migration), so that setup -- two orgs sharing one path --
+    can no longer be constructed at all; attempting it raises
+    `IntegrityError` at the DB layer before dispatch logic is ever reached.
+    That DB-level guarantee is covered by
+    `TestWebhookTriggerGlobalUniqueConstraint` in
+    `tests/model_tests/webhook_trigger_model_test.py`. This test now asserts
+    that structural guarantee directly, in place of the dispatch-isolation
+    scenario that's no longer reachable."""
+
+    def test_identical_path_across_orgs_is_now_prevented_at_the_db_layer(
+        self, default_org
     ):
+        from django.db import IntegrityError, transaction
+
         other_org = Organization.objects.create(name="est-3862-other-org")
 
         graph_default = Graph.objects.create(
@@ -522,57 +540,15 @@ class TestCrossOrgPathCollisionIsolation:
             path="collision-shared-path",
             provider_type=ProviderType.NGROK,
         )
-        _make_webhook_trigger_node(
-            graph=graph_other,
-            path="collision-shared-path",
-            provider_type=ProviderType.NGROK,
+
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                _make_webhook_trigger_node(
+                    graph=graph_other,
+                    path="collision-shared-path",
+                    provider_type=ProviderType.NGROK,
+                )
+
+        assert (
+            WebhookTrigger.objects.filter(path="collision-shared-path").count() == 1
         )
-
-        _stub_publish(monkeypatch)
-
-        # config_id carries default_org's id -- dispatch must land only in
-        # default_org's graph, never other_org's, despite the identical path.
-        WebhookTriggerService().handle_webhook_trigger(
-            path="collision-shared-path",
-            payload={"m": 1},
-            config_id=f"ngrok:{default_org.id}:collision-shared-path",
-        )
-
-        assert Session.objects.filter(graph=graph_default).count() == 1
-        assert Session.objects.filter(graph=graph_other).count() == 0
-
-    def test_other_orgs_config_id_dispatches_only_into_its_own_graph(
-        self, default_org, monkeypatch
-    ):
-        """Symmetric case: flip which org's config_id is used -- confirms
-        this isn't accidentally order- or default-org-dependent."""
-        other_org = Organization.objects.create(name="est-3862-other-org-2")
-
-        graph_default = Graph.objects.create(
-            name="collision2-default-org-graph", org=default_org
-        )
-        graph_other = Graph.objects.create(
-            name="collision2-other-org-graph", org=other_org
-        )
-
-        _make_webhook_trigger_node(
-            graph=graph_default,
-            path="collision2-shared-path",
-            provider_type=ProviderType.NGROK,
-        )
-        _make_webhook_trigger_node(
-            graph=graph_other,
-            path="collision2-shared-path",
-            provider_type=ProviderType.NGROK,
-        )
-
-        _stub_publish(monkeypatch)
-
-        WebhookTriggerService().handle_webhook_trigger(
-            path="collision2-shared-path",
-            payload={"m": 1},
-            config_id=f"ngrok:{other_org.id}:collision2-shared-path",
-        )
-
-        assert Session.objects.filter(graph=graph_other).count() == 1
-        assert Session.objects.filter(graph=graph_default).count() == 0

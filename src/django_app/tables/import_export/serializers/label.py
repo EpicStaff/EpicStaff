@@ -1,4 +1,5 @@
 from rest_framework import serializers
+
 from tables.models.label_models import Label
 
 
