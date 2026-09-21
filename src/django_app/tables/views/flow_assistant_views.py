@@ -19,6 +19,7 @@ from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tables.exceptions import LLMConfigInvalidError, LLMConfigMissingError
 from tables.models.flow_assistant_models import FlowAssistantConversation
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -32,8 +33,6 @@ from tables.serializers.flow_assistant_serializers import (
 )
 from tables.services.flow_assistant import (
     FlowAssistantService,
-    LLMConfigInvalidError,
-    LLMConfigMissingError,
     build_node_index,
 )
 from tables.services.flow_assistant.helpers import request_cancel

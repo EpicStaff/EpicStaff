@@ -1,6 +1,6 @@
 from django.db import models
 
-from tables.models import DefaultBaseModel, EmbedderTask
+from tables.models.base_models import DefaultBaseModel, EmbedderTask
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 

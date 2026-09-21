@@ -2,7 +2,8 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils import timezone
 
-from tables.models import CrewSessionMessage, GraphOrganizationUser
+from tables.models.base_models import CrewSessionMessage
+from tables.models.graph_models import GraphOrganizationUser
 
 
 class Session(models.Model):

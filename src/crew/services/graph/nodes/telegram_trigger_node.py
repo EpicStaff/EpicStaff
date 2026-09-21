@@ -4,7 +4,7 @@ from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 from src.shared.models import TelegramTriggerNodeFieldData
 from utils import set_output_variables
 

@@ -5,7 +5,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from tables.models import Graph, LLMConfig, LLMModel, Provider
-from tables.models.graph_models import CodeAgentNode
+from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.models.rbac_models.role import RolePermission
@@ -25,10 +25,15 @@ def _partial_client(user, org):
     return c
 
 
-def _code_agent_node_export(code_agent_node):
-    """Partial-export a single CodeAgentNode (pulls its llm_config as a dep)."""
+def _cdt_node_export(cdt_node):
+    """Partial-export a single ClassificationDecisionTableNode (pulls its default_llm_config as a dep)."""
     result = GraphPartialExportService(entity_registry).export(
-        [NodeRef(entity_type=EntityType.CODE_AGENT_NODE, node_id=code_agent_node.id)]
+        [
+            NodeRef(
+                entity_type=EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
+                node_id=cdt_node.id,
+            )
+        ]
     )
     assert not result.has_errors, result.errors
     return result.data
@@ -58,7 +63,7 @@ def org_owning_the_llm_config(db):
 
 
 @pytest.fixture
-def code_agent_node(org_owning_the_llm_config, default_org):
+def cdt_node(org_owning_the_llm_config, default_org):
     provider, _ = Provider.objects.get_or_create(name="openai")
     model = LLMModel.objects.create(
         name="gpt-4o-partial-import-scoping", llm_provider=provider
@@ -70,27 +75,27 @@ def code_agent_node(org_owning_the_llm_config, default_org):
     )
     # The graph itself lives in the org that will run the partial import
     # (view-level org-scoping resolves the graph by the active org); only the
-    # node's llm_config dependency is scoped to a different org, so
+    # node's default_llm_config dependency is scoped to a different org, so
     # `LLMConfigStrategy.find_existing` (org-scoped) never matches it and the
     # dependency is deterministically created fresh on every import.
     graph = Graph.objects.create(name="partial-import-scoping-graph", org=default_org)
-    return CodeAgentNode.objects.create(
-        graph=graph, llm_config=llm_config, node_name="code_agent_node"
+    return ClassificationDecisionTableNode.objects.create(
+        graph=graph, default_llm_config=llm_config, node_name="cdt_node"
     )
 
 
 @pytest.mark.django_db
 class TestPartialImportOrgScoping:
     def test_superadmin_partial_import_stamps_active_org(
-        self, code_agent_node, default_org, superadmin_user
+        self, cdt_node, default_org, superadmin_user
     ):
         # Regression: partial import used to create the dependency with
         # org=None, violating the NOT NULL org constraint (IntegrityError 500).
-        # The node's llm_config is always created (it belongs to a different
-        # org than the one importing, so find_existing never matches), so this
-        # deterministically exercises org stamping.
-        graph = code_agent_node.graph
-        data = _code_agent_node_export(code_agent_node)
+        # The node's default_llm_config is always created (it belongs to a
+        # different org than the one importing, so find_existing never
+        # matches), so this deterministically exercises org stamping.
+        graph = cdt_node.graph
+        data = _cdt_node_export(cdt_node)
         file = data_to_json_file(data=data, filename="nodes.json")
 
         llm_configs_before = LLMConfig.objects.count()
@@ -107,16 +112,16 @@ class TestPartialImportOrgScoping:
         assert not LLMConfig.objects.filter(org__isnull=True).exists()
 
     def test_denied_without_llm_configs_create_permission(
-        self, code_agent_node, default_org, django_user_model
+        self, cdt_node, default_org, django_user_model
     ):
-        # FLOWS.UPDATE passes the view-level gate, but the llm_config
+        # FLOWS.UPDATE passes the view-level gate, but the default_llm_config
         # dependency needs LLM_CONFIGS.CREATE — which this role lacks — so the
         # import is rejected and rolled back (nothing persisted).
         role = _custom_role(default_org, {ResourceType.FLOWS: Permission.UPDATE})
         user = _member(django_user_model, default_org, role, "flows-only@example.com")
 
-        graph = code_agent_node.graph
-        data = _code_agent_node_export(code_agent_node)
+        graph = cdt_node.graph
+        data = _cdt_node_export(cdt_node)
         file = data_to_json_file(data=data, filename="nodes.json")
 
         llm_configs_before = LLMConfig.objects.count()
@@ -132,14 +137,14 @@ class TestPartialImportOrgScoping:
         assert LLMConfig.objects.count() == llm_configs_before  # rolled back
 
     def test_denied_without_flows_update_at_view_gate(
-        self, code_agent_node, default_org, django_user_model
+        self, cdt_node, default_org, django_user_model
     ):
         # Only FLOWS.READ: blocked by HasOrgPermission before the service runs.
         role = _custom_role(default_org, {ResourceType.FLOWS: Permission.READ})
         user = _member(django_user_model, default_org, role, "readonly@example.com")
 
-        graph = code_agent_node.graph
-        data = _code_agent_node_export(code_agent_node)
+        graph = cdt_node.graph
+        data = _cdt_node_export(cdt_node)
         file = data_to_json_file(data=data, filename="nodes.json")
 
         llm_configs_before = LLMConfig.objects.count()
@@ -154,7 +159,7 @@ class TestPartialImportOrgScoping:
         assert LLMConfig.objects.count() == llm_configs_before
 
     def test_org_admin_partial_import_succeeds(
-        self, code_agent_node, default_org, django_user_model
+        self, cdt_node, default_org, django_user_model
     ):
         # Org Admin has CREATE on every workspace resource → import succeeds
         # and the new llm_config is stamped with the active org.
@@ -163,8 +168,8 @@ class TestPartialImportOrgScoping:
             django_user_model, default_org, org_admin_role, "orgadmin@example.com"
         )
 
-        graph = code_agent_node.graph
-        data = _code_agent_node_export(code_agent_node)
+        graph = cdt_node.graph
+        data = _cdt_node_export(cdt_node)
         file = data_to_json_file(data=data, filename="nodes.json")
 
         llm_configs_before = LLMConfig.objects.count()
