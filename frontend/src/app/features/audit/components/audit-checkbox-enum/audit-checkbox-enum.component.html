@@ -4,13 +4,18 @@
         [class.is-disabled]="isDisabled(option.value)"
         [title]="isDisabled(option.value) ? disabledHint() : ''"
     >
-        <input
-            class="checkbox-enum__box"
-            type="checkbox"
+        <app-checkbox
             [checked]="isSelected(option.value)"
             [disabled]="isDisabled(option.value)"
-            (change)="toggle(option.value)"
+            (changed)="toggle(option.value)"
         />
+        @if (option.icon) {
+            <app-svg-icon
+                [class]="'checkbox-enum__icon checkbox-enum__icon--' + option.value"
+                [icon]="option.icon"
+                size="14px"
+            />
+        }
         <span>{{ option.label }}</span>
     </label>
 }

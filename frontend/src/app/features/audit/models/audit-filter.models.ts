@@ -24,6 +24,7 @@ export type AuditFilterOp =
 export interface AuditEnumOption {
     value: string;
     label: string;
+    icon?: string;
 }
 
 export interface AuditFilterLeaf {

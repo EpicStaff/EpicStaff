@@ -7,8 +7,8 @@ export const KIND_OPTIONS: AuditEnumOption[] = [
 ];
 
 export const STATUS_OPTIONS: AuditEnumOption[] = [
-    { value: 'completed', label: 'Completed' },
-    { value: 'failed', label: 'Failed' },
+    { value: 'completed', label: 'Completed', icon: 'check' },
+    { value: 'failed', label: 'Failed', icon: 'x' },
 ];
 
 export const RUN_TYPE_OPTIONS: AuditEnumOption[] = [

@@ -1,3 +1,5 @@
+$panel-width: 420px;
+
 .audit-browser {
     display: flex;
     flex-direction: column;
@@ -47,6 +49,7 @@
     display: flex;
     flex: 1;
     min-height: 0;
+    border-top: 1px solid var(--color-divider-regular);
 }
 
 .audit-browser__main {
@@ -58,7 +61,7 @@
 }
 
 .audit-browser__panel {
-    flex: 0 0 420px;
+    flex: 0 0 $panel-width;
     min-height: 0;
     border-left: 1px solid var(--color-divider-regular);
     background-color: var(--color-sidenav-background);
@@ -69,6 +72,10 @@
     align-items: center;
     gap: 8px;
     padding: 0 20px 12px;
+}
+
+.audit-browser__toolbar--panel-open {
+    padding-right: calc(#{$panel-width} + 21px);
 }
 
 .audit-browser__search {
@@ -148,7 +155,6 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
-    border-top: 1px solid var(--color-divider-regular);
 }
 
 .audit-browser__state {

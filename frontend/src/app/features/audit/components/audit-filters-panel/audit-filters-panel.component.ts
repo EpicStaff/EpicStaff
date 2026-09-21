@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 
 import {
     AuditCondition,
@@ -29,6 +30,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
     selector: 'app-audit-filters-panel',
     standalone: true,
     imports: [
+        AppSvgIconComponent,
         AuditCheckboxEnumComponent,
         AuditFilterGroupComponent,
         AuditFlowFilterComponent,

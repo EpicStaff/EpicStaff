@@ -29,65 +29,68 @@
         <span class="audit-browser__crumb audit-browser__crumb--current">Audit</span>
     </header>
 
+    <div
+        class="audit-browser__toolbar"
+        [class.audit-browser__toolbar--panel-open]="isFiltersPanelOpen()"
+    >
+        <input
+            class="audit-browser__search"
+            type="text"
+            placeholder="Search every field, every level..."
+            disabled
+        />
+        <button
+            class="audit-browser__tool-btn"
+            type="button"
+            [class.is-active]="isFiltersPanelOpen()"
+            (click)="toggleFiltersPanel()"
+        >
+            Filters
+            @if (activeFilterCount() > 0) {
+                <span class="audit-browser__filter-badge">{{ activeFilterCount() }}</span>
+            }
+        </button>
+        <button
+            class="audit-browser__tool-btn"
+            type="button"
+            [class.is-active]="areColumnsExpanded()"
+            (click)="setColumnsExpanded(true)"
+        >
+            Expand All Columns
+        </button>
+        <button
+            class="audit-browser__tool-btn"
+            type="button"
+            [class.is-active]="!areColumnsExpanded()"
+            (click)="setColumnsExpanded(false)"
+        >
+            Collapse All Columns
+        </button>
+        <span class="audit-browser__toolbar-spacer"></span>
+        <button
+            class="audit-browser__tool-btn"
+            type="button"
+            disabled
+        >
+            Export
+        </button>
+    </div>
+
+    @if (appliedChips().length > 0) {
+        <app-audit-filter-chips
+            class="audit-browser__chips"
+            [chips]="appliedChips()"
+            (removed)="removeFilter($event)"
+            (cleared)="clearFilters()"
+        />
+    }
+
+    @if (isPartial()) {
+        <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
+    }
+
     <div class="audit-browser__body">
         <div class="audit-browser__main">
-            <div class="audit-browser__toolbar">
-                <input
-                    class="audit-browser__search"
-                    type="text"
-                    placeholder="Search every field, every level..."
-                    disabled
-                />
-                <button
-                    class="audit-browser__tool-btn"
-                    type="button"
-                    [class.is-active]="isFiltersPanelOpen()"
-                    (click)="toggleFiltersPanel()"
-                >
-                    Filters
-                    @if (activeFilterCount() > 0) {
-                        <span class="audit-browser__filter-badge">{{ activeFilterCount() }}</span>
-                    }
-                </button>
-                <button
-                    class="audit-browser__tool-btn"
-                    type="button"
-                    [class.is-active]="areColumnsExpanded()"
-                    (click)="setColumnsExpanded(true)"
-                >
-                    Expand All Columns
-                </button>
-                <button
-                    class="audit-browser__tool-btn"
-                    type="button"
-                    [class.is-active]="!areColumnsExpanded()"
-                    (click)="setColumnsExpanded(false)"
-                >
-                    Collapse All Columns
-                </button>
-                <span class="audit-browser__toolbar-spacer"></span>
-                <button
-                    class="audit-browser__tool-btn"
-                    type="button"
-                    disabled
-                >
-                    Export
-                </button>
-            </div>
-
-            @if (appliedChips().length > 0) {
-                <app-audit-filter-chips
-                    class="audit-browser__chips"
-                    [chips]="appliedChips()"
-                    (removed)="removeFilter($event)"
-                    (cleared)="clearFilters()"
-                />
-            }
-
-            @if (isPartial()) {
-                <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
-            }
-
             <div class="audit-browser__table-wrap">
                 @if (isLoading()) {
                     <p class="audit-browser__state">Loading...</p>

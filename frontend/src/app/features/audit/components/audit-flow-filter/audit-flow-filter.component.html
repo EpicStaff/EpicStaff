@@ -4,12 +4,19 @@
     (selectedOperatorChange)="onOperatorChange($event)"
 />
 
-<input
-    type="text"
-    placeholder="Search value"
-    [value]="searchText()"
-    (input)="onSearchChange($event)"
-/>
+<div class="flow-filter__search">
+    <app-svg-icon
+        class="flow-filter__search-icon"
+        icon="search"
+        size="14px"
+    />
+    <input
+        type="text"
+        placeholder="Search value"
+        [value]="searchText()"
+        (input)="onSearchChange($event)"
+    />
+</div>
 
 <app-audit-checkbox-enum
     [options]="visibleOptions()"

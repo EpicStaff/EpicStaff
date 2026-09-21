@@ -1,7 +1,10 @@
 :host {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
 }
 
 .checkbox-enum__option {
@@ -13,14 +16,19 @@
     cursor: pointer;
 }
 
+.checkbox-enum__icon {
+    flex-shrink: 0;
+}
+
+.checkbox-enum__icon--completed {
+    color: var(--color-ks-status-completed);
+}
+
+.checkbox-enum__icon--failed {
+    color: var(--color-ks-status-failed);
+}
+
 .checkbox-enum__option.is-disabled {
     color: var(--color-input-text-placeholder);
     cursor: not-allowed;
-}
-
-.checkbox-enum__box {
-    width: 14px;
-    height: 14px;
-    accent-color: var(--accent-color);
-    cursor: inherit;
 }
