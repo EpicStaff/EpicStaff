@@ -2,6 +2,8 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
@@ -18,7 +20,7 @@ import {
     selector: 'app-voice-settings-tab',
     templateUrl: './voice-settings-section.component.html',
     styleUrls: ['./voice-settings-section.component.scss'],
-    imports: [ButtonComponent, LoadingSpinnerComponent],
+    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VoiceSettingsSectionComponent implements OnInit {
@@ -119,4 +121,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ next: (channels) => this.channels.set(channels), error: () => {} });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

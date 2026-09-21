@@ -1,8 +1,10 @@
 import { NgComponentOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, OnChanges, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnChanges, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { HelpTooltipComponent, SelectComponent } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { CHUNK_STRATEGIES_SELECT_ITEMS } from '../../../constants/constants';
 import { ADDITIONAL_PARAMS_FORM_COMPONENT_MAP } from '../../../enums/additional-params-form.map';
 import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
@@ -16,8 +18,14 @@ import { TableDocument } from '../../naive-rag-configuration/configuration-table
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DocumentConfigComponent implements OnChanges {
+    private permissionService = inject(PermissionsService);
+
     document = input.required<TableDocument>();
     ragId = input.required<number>();
+
+    canUpdateKnowledges = computed<boolean>(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update)
+    );
 
     selectedStrategy = signal<NaiveRagChunkStrategy | null>(null);
 
@@ -95,6 +103,7 @@ export class DocumentConfigComponent implements OnChanges {
     componentInputs = computed(() => ({
         parentForm: this.form,
         params: this.additionalFormParams(),
+        canUpdate: this.canUpdateKnowledges(),
     }));
 
     form: FormGroup = new FormGroup({});

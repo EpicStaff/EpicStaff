@@ -1,5 +1,8 @@
 <div class="list">
-    <div class="title">
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="title"
+    >
         <span>
             @if (indexMode() === 'update_new') {
                 Add Files to Config:
@@ -49,6 +52,7 @@
                     <li class="row">
                         <div class="name-column">
                             <app-checkbox
+                                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                                 color="secondary"
                                 [checked]="checkedDocIds().has(item.graph_rag_document_id)"
                                 [disabled]="item.disabled"
@@ -77,6 +81,7 @@
                                 >{{ item.file_size | fileSize }}</span
                             >
                             <app-svg-icon
+                                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                                 icon="close"
                                 class="file-action"
                                 [class.file-action--disabled]="item.disabled"
