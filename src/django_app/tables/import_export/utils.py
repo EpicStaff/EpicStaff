@@ -22,8 +22,10 @@ def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
 
     If base_name is already unique it is returned unchanged. Otherwise any
     existing "#N" (or "# N") suffix is stripped to get the base, and the lowest
-    free number is appended, e.g. "My Node" -> "My Node #2",
-    "Node #4" -> "Node #5".
+    free number (starting at 2) is appended, e.g. "My Node" -> "My Node #2",
+    "MyAgent #5" -> "MyAgent #2". A freed base name is never reused once a
+    collision has occurred -- the result always carries a number, even if the
+    plain base name itself is free.
     """
     if base_name not in existing_names:
         return base_name
