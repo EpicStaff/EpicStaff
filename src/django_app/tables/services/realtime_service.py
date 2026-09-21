@@ -1,15 +1,15 @@
 import uuid
-from django.shortcuts import get_object_or_404
+
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 from tables.models.realtime_models import (
     RealtimeAgentChat,
     RealtimeAgentDefinition,
 )
-
-from utils.logger import logger
-from utils.singleton_meta import SingletonMeta
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
+from utils.logger import logger
+from utils.singleton_meta import SingletonMeta
 
 # `config` (from `InitRealtimeSerializer.config`, a bare `DictField`) is
 # client-supplied and, until this whitelist, was `setattr`'d onto the
@@ -66,9 +66,7 @@ class RealtimeService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.converter_service = converter_service
 
-    def get_rt_agent_definition(
-        self, agent_definition_id: int
-    ) -> RealtimeAgentDefinition:
+    def get_rt_agent_definition(self, agent_definition_id: int) -> RealtimeAgentDefinition:
         rt_agent_definition = get_object_or_404(
             RealtimeAgentDefinition.objects.select_related(
                 "openai_config",
@@ -80,9 +78,7 @@ class RealtimeService(metaclass=SingletonMeta):
         self.validate_rt_agent_definition(rt_agent_definition)
         return rt_agent_definition
 
-    def validate_rt_agent_definition(
-        self, rt_agent_definition: RealtimeAgentDefinition
-    ):
+    def validate_rt_agent_definition(self, rt_agent_definition: RealtimeAgentDefinition):
         if rt_agent_definition.active_provider_config is None:
             raise ValidationError(
                 f"RealtimeAgentDefinition ID {rt_agent_definition.pk} has no "
@@ -102,15 +98,15 @@ class RealtimeService(metaclass=SingletonMeta):
         # language/voice_recognition_prompt fields — snapshot those directly,
         # only falling back to the config's own value when the definition
         # doesn't set one.
-        chat_kwargs = dict(
-            rt_agent_definition=rt_agent_definition,
-            wake_word=rt_agent_definition.wake_word,
-            stop_prompt=rt_agent_definition.stop_prompt,
-            voice=rt_agent_definition.voice,
-            language=rt_agent_definition.language,
-            voice_recognition_prompt=rt_agent_definition.voice_recognition_prompt,
-            connection_key=connection_key,
-        )
+        chat_kwargs = {
+            "rt_agent_definition": rt_agent_definition,
+            "wake_word": rt_agent_definition.wake_word,
+            "stop_prompt": rt_agent_definition.stop_prompt,
+            "voice": rt_agent_definition.voice,
+            "language": rt_agent_definition.language,
+            "voice_recognition_prompt": rt_agent_definition.voice_recognition_prompt,
+            "connection_key": connection_key,
+        }
 
         if rt_agent_definition.openai_config:
             chat_kwargs.update(
@@ -137,15 +133,11 @@ class RealtimeService(metaclass=SingletonMeta):
         org_id: int,
         user_id: int | None = None,
     ) -> str:
-        rt_agent_definition = self.get_rt_agent_definition(
-            agent_definition_id=agent_definition_id
-        )
+        rt_agent_definition = self.get_rt_agent_definition(agent_definition_id=agent_definition_id)
         rt_agent_chat = self.create_rt_agent_definition_chat(rt_agent_definition)
 
-        rt_agent_chat_data = (
-            self.converter_service.convert_rt_agent_definition_chat_to_pydantic(
-                rt_agent_chat=rt_agent_chat, user_id=user_id
-            )
+        rt_agent_chat_data = self.converter_service.convert_rt_agent_definition_chat_to_pydantic(
+            rt_agent_chat=rt_agent_chat, user_id=user_id
         )
         # Override with provided config (whitelisted keys only, see
         # _apply_config_overrides)

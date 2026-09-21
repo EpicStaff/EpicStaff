@@ -7,6 +7,12 @@ from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
 )
 
+# tests/conftest.py has an autouse `heal_builtin_roles` fixture that queries the
+# Role table before every db test. Without this marker, pytest-django never
+# swaps the connection to the test database for tests that only pull db access
+# in transitively through another fixture, so that query hits a blocked connection.
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def role_member(db):

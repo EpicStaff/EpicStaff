@@ -2,7 +2,6 @@ from django.db.models import Q, QuerySet
 from loguru import logger
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
-
 from tables.services.rbac.org_context_service import OrgContextService
 
 
@@ -52,9 +51,7 @@ def _warn_missing_request(field) -> None:
     in context — a programming error (the serializer was built without
     ``context={"request": request}``) that makes the field deny all pks."""
     parent_name = (
-        type(field.parent).__name__
-        if field.parent is not None
-        else "<unbound serializer>"
+        type(field.parent).__name__ if field.parent is not None else "<unbound serializer>"
     )
     logger.warning(
         f"{type(field).__name__} '{field.field_name}' on {parent_name} was resolved "

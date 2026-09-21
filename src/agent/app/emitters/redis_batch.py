@@ -10,12 +10,12 @@ by all runners that declare ``emitter_mode = EmitterMode.BATCH``.
 from __future__ import annotations
 
 from loguru import logger
+from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
+from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk
 from app.logging_utils import redact
-from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
-from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 
 class RedisStreamBatchEmitter(Emitter):
@@ -57,9 +57,7 @@ class RedisStreamBatchEmitter(Emitter):
 
     async def on_tool_result(self, result: ToolResult) -> None:
         """Buffer a tool-result event for inclusion in the final envelope."""
-        self._buffered_events.append(
-            {"event": "tool_result", "data": result.model_dump()}
-        )
+        self._buffered_events.append({"event": "tool_result", "data": result.model_dump()})
 
     async def on_warning(self, message: str) -> None:
         """Buffer an advisory warning; deduplicate identical messages."""

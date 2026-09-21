@@ -2,7 +2,6 @@ import getpass
 import sys
 
 from django.core.management.base import BaseCommand, CommandError
-
 from tables.services.rbac.auth_validation_service import AuthValidationService
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.rbac_exceptions import (
@@ -107,15 +106,11 @@ class Command(BaseCommand):
                 sees every failing field at once.
         """
         try:
-            AuthValidationService().validate_first_setup(
-                {"email": email, "password": password}
-            )
+            AuthValidationService().validate_first_setup({"email": email, "password": password})
         except FormValidationError as exc:
             raise CommandError(
                 "Validation failed:\n  "
-                + "\n  ".join(
-                    f"{item['field']}: {item['reason']}" for item in exc.errors
-                )
+                + "\n  ".join(f"{item['field']}: {item['reason']}" for item in exc.errors)
             ) from exc
 
     def _stream(self, options):

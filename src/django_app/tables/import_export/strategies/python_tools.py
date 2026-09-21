@@ -2,21 +2,21 @@ from copy import deepcopy
 
 from django.db.models import Q
 
-from tables.models import PythonCode, PythonCodeTool
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.utils import attach_tool_labels
-from tables.import_export.serializers.python_tools import (
-    PythonCodeImportSerializer,
-    PythonCodeToolImportSerializer,
-    PythonCodeToolConfigImportSerializer,
-)
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.python_tools import (
+    PythonCodeImportSerializer,
+    PythonCodeToolConfigImportSerializer,
+    PythonCodeToolImportSerializer,
+)
+from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
-    ensure_unique_identifier,
+    attach_tool_labels,
     create_filters,
+    ensure_unique_identifier,
     python_code_equal,
 )
+from tables.models import PythonCode, PythonCodeTool
 
 
 class PythonCodeToolStrategy(EntityImportExportStrategy):
@@ -48,9 +48,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
 
     def export_entity_org_scoped(self, instance: PythonCodeTool, org_id: int) -> dict:
         data = self.serializer_class(instance).data
-        data["labels"] = list(
-            instance.labels.filter(org_id=org_id).values_list("id", flat=True)
-        )
+        data["labels"] = list(instance.labels.filter(org_id=org_id).values_list("id", flat=True))
         return data
 
     def get_org_scope_q(self, org_id: int) -> Q:
@@ -58,9 +56,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
             return Q()
         return Q(built_in=True) | Q(org_id=org_id)
 
-    def create_entity(
-        self, data: dict, id_mapper: IDMapper, **kwargs
-    ) -> PythonCodeTool:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> PythonCodeTool:
         org_id = kwargs.get("org_id")
         import_labels = kwargs.get("import_labels", True)
         python_code_data = data.pop("python_code", {})
@@ -89,16 +85,14 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         python_code_tool = serializer.save()
 
-        self._create_python_tool_config(
-            python_code_tool, python_tool_config_data, org_id
-        )
+        self._create_python_tool_config(python_code_tool, python_tool_config_data, org_id)
 
         if import_labels and labels_data:
             attach_tool_labels(python_code_tool, id_mapper, labels_data)
 
         return python_code_tool
 
-    def find_existing(self, data, id_mapper, org_id: int = None):
+    def find_existing(self, data, id_mapper, org_id: int | None = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("python_code_tool_config", None)
@@ -116,9 +110,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         if not existing_python_tool:
             return None
 
-        code_equal = python_code_equal(
-            existing_python_tool.python_code, python_code_data
-        )
+        code_equal = python_code_equal(existing_python_tool.python_code, python_code_data)
         if code_equal:
             return existing_python_tool
         return None
