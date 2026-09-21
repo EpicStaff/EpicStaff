@@ -88,6 +88,7 @@ RESOURCE_TYPE_METADATA = [
         "group": "workspace",
         "description": "Tool definitions and configurations",
         "applicable_actions": ["create", "read", "update", "delete", "export"],
+        "platform_actions": [],
     },
     {
         "code": ResourceType.SURFACES.value,
@@ -143,6 +144,7 @@ RESOURCE_TYPE_METADATA = [
         "group": "config",
         "description": "Voice model configurations and settings",
         "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
     },
 ]
 
@@ -248,7 +250,6 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
     },
     ResourceType.SECRETS.value: {
         "create": (("secrets", "read"),),
-        "update": (("secrets", "read"),),
         "delete": (("secrets", "read"),),
     },
     ResourceType.VOICE.value: {
