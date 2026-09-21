@@ -2,8 +2,8 @@ import { NodeType } from '@shared/models';
 import { toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { GetWebhookTriggerNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
+import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): WebhookTriggerNodeModel {

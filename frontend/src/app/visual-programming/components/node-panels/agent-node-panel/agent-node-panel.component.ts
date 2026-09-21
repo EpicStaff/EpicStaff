@@ -44,12 +44,12 @@ import {
 } from '../../../../features/agent-definitions/pages/agent-definitions-page/components/surface-summary-dialog/surface-summary-dialog.component';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
-import { AgentNodeTaskUi } from '../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
+import { AgentNodeTaskUi } from '../../../core/models/agent-node.model';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { InlineSurface } from '../../../core/models/task-node.model';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import {

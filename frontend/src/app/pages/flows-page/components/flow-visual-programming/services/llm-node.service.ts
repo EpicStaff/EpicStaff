@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../../../services/config/config.service';
-import { CreateLLMNodeRequest } from '../models/llm-node.model';
+import { CreateLLMNodeRequest } from '../../../../../visual-programming/core/models/llm-node.model';
 
 @Injectable({
     providedIn: 'root',

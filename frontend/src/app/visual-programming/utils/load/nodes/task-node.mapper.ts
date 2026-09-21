@@ -1,8 +1,8 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { TaskNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { TaskNodeModel } from '../../../core/models/node.model';
+import { TaskNode } from '../../../core/models/task-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapTaskNodeToModel(tn: TaskNode): TaskNodeModel {

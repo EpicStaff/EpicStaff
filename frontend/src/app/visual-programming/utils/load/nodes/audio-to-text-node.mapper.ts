@@ -1,7 +1,7 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { GetAudioToTextNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import { GetAudioToTextNodeRequest } from '../../../core/models/audio-to-text.model';
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 

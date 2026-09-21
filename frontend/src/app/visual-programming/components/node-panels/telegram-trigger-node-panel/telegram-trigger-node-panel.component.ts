@@ -18,16 +18,13 @@ import { WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
-import {
-    DisplayedTelegramField,
-    TelegramTriggerNodeField,
-} from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { DisplayedTelegramField, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WebhookStatus } from './webhook-status.model';
 

@@ -1,6 +1,7 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import {
     GetScheduleTriggerNodeRequest,
     ScheduleEndType,
@@ -8,8 +9,7 @@ import {
     ScheduleRunMode,
     ScheduleTriggerNodeData,
     WeekdayCode,
-} from '../../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
+} from '../../../core/models/schedule-trigger.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 function normalizeTimezone(iana: string | null | undefined): string {

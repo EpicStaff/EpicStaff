@@ -2,7 +2,6 @@ import { inject, Injectable } from '@angular/core';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { ScheduleTriggerNodeData } from '../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { DEFAULT_NODE_DATA } from '../core/constants/default-node-data';
 import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode } from '../core/helpers/helpers';
@@ -10,6 +9,7 @@ import { findNearestFreePosition, getCollisionBounds, snapPointToGrid } from '..
 import { getDefaultNodeSize } from '../core/helpers/node-size.util';
 import { NodeModel } from '../core/models/node.model';
 import { ViewPort } from '../core/models/port.model';
+import { ScheduleTriggerNodeData } from '../core/models/schedule-trigger.model';
 import { FlowService } from './flow.service';
 import { FlowSettingsService } from './flow-settings.service';
 

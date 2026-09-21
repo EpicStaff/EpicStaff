@@ -2,8 +2,8 @@ import { NodeType } from '@shared/models';
 import { toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../core/models/classification-decision-table-node.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';

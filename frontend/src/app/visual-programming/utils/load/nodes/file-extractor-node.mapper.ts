@@ -1,7 +1,7 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { GetFileExtractorNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
+import { GetFileExtractorNodeRequest } from '../../../core/models/file-extractor.model';
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 

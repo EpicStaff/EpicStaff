@@ -1,8 +1,8 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { SubGraphNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
+import { SubGraphNode } from '../../../core/models/subgraph-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {

@@ -1,8 +1,8 @@
 import { NODE_COLORS, NodeType } from '@shared/models';
 
-import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
+import { AgentNodeData } from '../models/agent-node.model';
+import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
+import { TaskNodeData } from '../models/task-node.model';
 
 export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     [NodeType.AGENT]: (): AgentNodeData => ({
