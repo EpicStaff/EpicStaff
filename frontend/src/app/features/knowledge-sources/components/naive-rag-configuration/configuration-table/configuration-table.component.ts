@@ -149,6 +149,15 @@ export class ConfigurationTableComponent {
         return this.pendingDocIds().has(documentId);
     }
 
+    onRowKeyDown(documentId: number, event: KeyboardEvent): void {
+        const isUndoCombo =
+            (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z';
+        if (!isUndoCombo || !this.hasPending(documentId)) return;
+
+        event.preventDefault();
+        this.revert(documentId);
+    }
+
     onFileTypeFilterChange(value: unknown[]): void {
         this.fileTypeFilter.set(value.filter((v): v is string => typeof v === 'string'));
     }
