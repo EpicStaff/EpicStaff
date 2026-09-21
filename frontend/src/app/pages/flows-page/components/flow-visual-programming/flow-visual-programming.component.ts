@@ -710,6 +710,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public handleRunFlow(): void {
         if (this.isRunning() || !this.graph?.id) return;
+        if (this.flowGraphComponent && !this.flowGraphComponent.commitSidePanelToFlow()) return;
 
         this.isRunning.set(true);
 
