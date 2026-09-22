@@ -62,7 +62,7 @@
 }
 
 .equals-sign {
-    color: var(--white);
+    color: var(--color-text-tertiary);
     margin: 0 2px;
 }
 
@@ -127,6 +127,7 @@
 
 :host(.is-active) .input-key,
 :host(.is-active) .input-value,
+:host(.is-active) .equals-sign,
 :host(.is-active) .output-label {
     color: var(--color-text-primary);
 }
