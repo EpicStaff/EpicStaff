@@ -26,7 +26,7 @@ from tables.services.secrets.usage_service import secret_usage_service
 
 def _all_readable():
     """An EffectivePermissions that can read every resource type, matching the pre-RBAC behaviour these tests describe."""
-    from tables.services.rbac.effective_permissions import EffectivePermissions
+    from rbac.access.effective import EffectivePermissions
 
     return EffectivePermissions(is_superadmin=True, role=None, by_resource={})
 

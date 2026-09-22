@@ -8,7 +8,7 @@ from rest_framework.test import APIRequestFactory
 from tables.models import Secret
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
-from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
 

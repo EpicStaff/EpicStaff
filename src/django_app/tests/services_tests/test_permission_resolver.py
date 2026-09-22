@@ -4,14 +4,14 @@ import pytest
 
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, Permission
-from tables.services.rbac.effective_permissions import EffectivePermissions
-from tables.services.rbac.org_context_service import OrgContextService
-from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.rbac.rbac_exceptions import (
+from rbac.access.effective import EffectivePermissions
+from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
+from rbac.exceptions import (
     OrgContextRequiredError,
     OrgMembershipRequiredError,
 )
-from tables.services.rbac.utils.permission_bitmask import (
+from rbac.access.bitmask import (
     actions_to_bitmask,
     bitmask_to_actions,
 )

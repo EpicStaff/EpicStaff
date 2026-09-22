@@ -3,14 +3,14 @@ from rest_framework.exceptions import PermissionDenied
 
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.rbac_exceptions import (
+from rbac.exceptions import (
     BuiltInRoleImmutableError,
     OrganizationNotFoundError,
     PermissionEscalationError,
     RoleNameConflictError,
     RoleNotFoundError,
 )
-from tables.services.rbac.role_management_service import RoleManagementService
+from rbac.governance.roles import RoleManagementService
 
 
 @pytest.fixture

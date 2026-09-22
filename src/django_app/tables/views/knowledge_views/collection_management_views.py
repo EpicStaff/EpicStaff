@@ -2,7 +2,10 @@ from django.db.models import Count
 from drf_spectacular.utils import (
     extend_schema,
 )
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.gates import HasOrgPermission
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -19,8 +22,6 @@ from tables.serializers.knowledge_serializers import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permissions import HasOrgPermission
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
@@ -33,7 +34,6 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTION_PUT,
     SOURCE_COLLECTIONS_GET,
 )
-from tables.views.org_scoped_mixins import OrgScopedResolverMixin
 from utils.logger import logger
 
 redis_service = RedisService()

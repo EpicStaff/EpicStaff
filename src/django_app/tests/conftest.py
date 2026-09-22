@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
-from tables.services.rbac.api_key.generator import ApiKeyGenerator
+from rbac.identity.api_keys.generator import ApiKeyGenerator
 
 # Import shared fixtures (graph, agent, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403

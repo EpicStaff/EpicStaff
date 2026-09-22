@@ -14,8 +14,8 @@ import pytest
 
 from rbac.models import Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
-from tables.services.rbac.permission_catalog import grantable_bits_for
+from rbac.access.effective import EffectivePermissions
+from rbac.access.catalog import grantable_bits_for
 
 DELEGATED = [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER]
 

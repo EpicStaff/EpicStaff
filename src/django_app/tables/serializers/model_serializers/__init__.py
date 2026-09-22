@@ -1,3 +1,8 @@
+from rbac.serializers.model_serializers import (
+    OrganizationSerializer,
+    OrganizationUserSerializer,
+)
+
 from .embedding_serializers import (
     EmbeddingConfigSerializer,
     EmbeddingModelSerializer,
@@ -56,10 +61,6 @@ from .python_serializers import (
     PythonCodeSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
-)
-from .rbac_serializers import (
-    OrganizationSerializer,
-    OrganizationUserSerializer,
 )
 from .realtime_serializers import (
     ConversationRecordingSerializer,

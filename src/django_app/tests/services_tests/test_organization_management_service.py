@@ -23,10 +23,10 @@ What is NOT duplicated here:
 import pytest
 
 from rbac.models import Organization
-from tables.services.rbac.organization_management_service import (
+from rbac.governance.organizations import (
     OrganizationManagementService,
 )
-from tables.services.rbac.rbac_exceptions import (
+from rbac.exceptions import (
     LastActiveOrganizationError,
     OrganizationNotFoundError,
 )

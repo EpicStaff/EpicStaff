@@ -11,7 +11,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.schemas import ImportSettings
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 from rbac.models.enums import Permission, ResourceType
 from rbac.models import OrganizationUser, Role
 from rbac.models.role import RolePermission

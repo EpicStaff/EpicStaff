@@ -1,5 +1,5 @@
+from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
-from tables.services.rbac.first_setup_mode import FirstSetupMode
 
 from django_app.settings import BASE_DIR, env
 
@@ -48,9 +48,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
-    {
-        "NAME": "tables.services.rbac.utils.printable_ascii_password_validator.PrintableAsciiPasswordValidator"
-    },
+    {"NAME": "rbac.identity.passwords.validators.PrintableAsciiPasswordValidator"},
 ]
 
 FRONTEND_BASE_URL = env.str("DJANGO_FRONTEND_BASE_URL").rstrip("/")

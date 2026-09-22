@@ -4,7 +4,7 @@ import pytest
 
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.permissions import HasResourcePermissionAnywhere
+from rbac.access.gates import HasResourcePermissionAnywhere
 
 
 def _view(action):

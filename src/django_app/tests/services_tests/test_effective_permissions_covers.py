@@ -10,7 +10,7 @@ import pytest
 
 from rbac.models import Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 
 ROLES = ResourceType.ROLES.value
 FLOWS = ResourceType.FLOWS.value

@@ -22,8 +22,23 @@ from drf_spectacular.utils import (
     extend_schema_view,
     inline_serializer,
 )
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.gates import (
+    DenyApiKeyAuth,
+    HasOrgPermission,
+    IsSystemApiKeyAuthenticated,
+)
+from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
+from rbac.scoping.mixins import (
+    BuiltInWriteProtectedMixin,
+    OrgScopedChildViewSetMixin,
+    OrgScopedHybridViewSetMixin,
+    OrgScopedViewSetMixin,
+    SuperadminWriteMixin,
+)
 from rest_framework import (
     filters as drf_filters,
 )
@@ -202,7 +217,6 @@ from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
 )
-from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.serializers.serializers import (
     BulkExportSerializer,
     GraphNodesPartialExportSerializer,
@@ -220,13 +234,6 @@ from tables.services.copy_services import (
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.rbac.permissions import (
-    DenyApiKeyAuth,
-    HasOrgPermission,
-    IsSystemApiKeyAuthenticated,
-)
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.tools_usage_service import (
@@ -287,13 +294,6 @@ from tables.views.mixins import (
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
-)
-from tables.views.org_scoped_mixins import (
-    BuiltInWriteProtectedMixin,
-    OrgScopedChildViewSetMixin,
-    OrgScopedHybridViewSetMixin,
-    OrgScopedViewSetMixin,
-    SuperadminWriteMixin,
 )
 from utils.logger import logger
 

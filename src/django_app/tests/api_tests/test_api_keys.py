@@ -11,16 +11,16 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.models import ApiKey
-from tables.services.rbac.api_key.generator import (
+from rbac.identity.api_keys.generator import (
     KEY_PREFIX,
     PREFIX_LENGTH,
     ApiKeyGenerator,
 )
-from tables.services.rbac.api_key.principals import (
+from rbac.identity.api_keys.principals import (
     PrincipalResolver,
     SystemServicePrincipal,
 )
-from tables.services.rbac.api_key.system_key_service import SystemKeyService
+from rbac.identity.api_keys.system_key import SystemKeyService
 
 PROFILE_URL = "/api/profile/"
 INTROSPECT_URL = "/api/auth/introspect/"

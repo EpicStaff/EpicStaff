@@ -1,3 +1,4 @@
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.provider import Provider
 from tables.models.secret_models import Secret
@@ -7,7 +8,6 @@ from tables.serializers.model_serializers.embedding_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
 )
-from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 

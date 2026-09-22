@@ -1,5 +1,11 @@
 from drf_spectacular.utils import extend_schema
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.gates import HasOrgPermission
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -28,8 +34,6 @@ from tables.serializers.knowledge_serializers import (
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
 )
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permissions import HasOrgPermission
 from tables.swagger_schemas.knowledge_schemas.document_management_schemas import (
     COLLECTION_DOCUMENTS_LIST_GET,
     DOCUMENTS_BULK_DELETE_POST,
@@ -45,10 +49,6 @@ from tables.utils.document_serving import (
     build_archive_response,
     build_file_response,
     build_preview_response,
-)
-from tables.views.org_scoped_mixins import (
-    OrgScopedChildViewSetMixin,
-    OrgScopedServiceViewSetMixin,
 )
 
 _DOCUMENT_ORG_PATH = "source_collection__org_id"

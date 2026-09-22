@@ -11,7 +11,7 @@ import pytest
 
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
-from tables.services.rbac.role_management_service import RoleManagementService
+from rbac.governance.roles import RoleManagementService
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

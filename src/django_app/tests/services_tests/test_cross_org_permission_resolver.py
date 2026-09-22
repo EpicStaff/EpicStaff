@@ -2,8 +2,8 @@ import pytest
 
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
-from tables.services.rbac.cross_org_permission_resolver import (
+from rbac.access.effective import EffectivePermissions
+from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
 

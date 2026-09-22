@@ -30,7 +30,7 @@ from tables.models.graph_models import (
 from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_service import secret_usage_service
 
@@ -39,7 +39,7 @@ DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
 
 def _all_readable():
     """An EffectivePermissions that can read every resource type, matching the pre-RBAC behaviour these tests describe."""
-    from tables.services.rbac.effective_permissions import EffectivePermissions
+    from rbac.access.effective import EffectivePermissions
 
     return EffectivePermissions(is_superadmin=True, role=None, by_resource={})
 

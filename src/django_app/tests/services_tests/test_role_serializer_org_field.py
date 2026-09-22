@@ -2,7 +2,7 @@ import pytest
 
 from rbac.models import Organization, Role
 from rbac.models.enums import BuiltInRole
-from tables.serializers.permission_serializers import RoleResponseSerializer
+from rbac.serializers.permissions import RoleResponseSerializer
 
 
 @pytest.mark.django_db

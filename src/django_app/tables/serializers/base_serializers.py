@@ -1,5 +1,9 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    resolve_active_org_id,
+)
 from rest_framework import serializers
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
@@ -8,10 +12,6 @@ from tables.models.webhook_models import (
     ProviderType,
     WebhookTrigger,
     WebhookTriggerAuthKind,
-)
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    resolve_active_org_id,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import (
     SecretReferenceGuardMixin,

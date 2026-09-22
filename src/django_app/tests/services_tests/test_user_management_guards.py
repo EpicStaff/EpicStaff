@@ -1,11 +1,11 @@
 import pytest
 
 from rbac.models import OrganizationUser
-from tables.services.rbac.rbac_exceptions import (
+from rbac.exceptions import (
     InactiveUserError,
     SuperadminNotAssignableError,
 )
-from tables.services.rbac.user_management_guards import UserManagementGuards
+from rbac.governance.guards import UserManagementGuards
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

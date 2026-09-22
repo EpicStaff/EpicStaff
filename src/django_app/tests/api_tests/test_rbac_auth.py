@@ -37,14 +37,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.models import Organization, OrganizationUser, PasswordResetToken, Role
 from rbac.models.enums import BuiltInRole
-from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
-from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
-from tables.services.rbac.utils.password_reset_token_repository import (
+from rbac.identity.reset_user import ResetUserService
+from rbac.identity.tickets import sse_ticket_service, ws_ticket_service
+from rbac.identity.refresh_cookie import REFRESH_COOKIE_NAME
+from rbac.identity.passwords.token_repository import (
     PasswordResetTokenRepository,
     hash_token,
 )
-from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
+from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
 OPAQUE_RESET_CODE = "invalid_or_expired_reset_token"
@@ -651,7 +651,7 @@ def test_password_reset_request_email_failure_does_not_break_response(
     under test)."""
     cache.clear()
     with patch(
-        "tables.services.rbac.utils.password_reset_email_sender.send_mail",
+        "rbac.identity.passwords.email_sender.send_mail",
         side_effect=RuntimeError("smtp blew up"),
     ):
         r = api_client.post(
@@ -959,7 +959,7 @@ def test_admin_password_reset_validates_user_id_shape(api_client, superadmin_use
 # ------------------------------------------------------------------
 from django.core.exceptions import ValidationError as _DjangoValidationError
 
-from tables.services.rbac.utils.printable_ascii_password_validator import (
+from rbac.identity.passwords.validators import (
     PrintableAsciiPasswordValidator,
 )
 

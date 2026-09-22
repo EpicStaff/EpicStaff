@@ -4,9 +4,9 @@ from rest_framework.exceptions import PermissionDenied
 
 from rbac.models import ApiKey, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission
-from tables.services.rbac.api_key.management_service import ApiKeyManagementService
-from tables.services.rbac.api_key.validation import ApiKeyValidationService
-from tables.services.rbac.rbac_exceptions import (
+from rbac.governance.api_keys import ApiKeyManagementService
+from rbac.validation.api_key import ApiKeyValidationService
+from rbac.exceptions import (
     ApiKeyNotFoundError,
     FormValidationError,
 )
