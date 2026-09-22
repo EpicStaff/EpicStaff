@@ -25,7 +25,7 @@ import { CreateOrganizationDialogComponent } from '../../../components/create-or
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
+import { rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Active', value: 'active' },

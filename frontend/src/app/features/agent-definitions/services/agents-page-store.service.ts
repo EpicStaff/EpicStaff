@@ -6,7 +6,7 @@ import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
-import { ToastService } from '../../../services/notifications/toast.service';
+import { ToastService } from '../../../services/notifications';
 import {
     AgentDefaultSurface,
     AgentDefinition,

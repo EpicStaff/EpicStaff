@@ -10,12 +10,11 @@ import {
     WebhookTriggerDialogData,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { WebhookTriggerModel } from '../../../../visual-programming/core/models/webhook-trigger.model';
 
 @Component({
     selector: 'app-webhook-triggers-section',

@@ -2,12 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ConfirmationDialogService } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
 import { EMPTY, forkJoin, Subject } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../services/notifications/toast.service';
-import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog';
+import { ToastService } from '../../../services/notifications';
 import {
     AddToFlowDialogComponent,
     AddToFlowDialogData,

@@ -21,13 +21,13 @@ import {
     StopSessionButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
+import { downloadBlob } from '@shared/utils';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { downloadBlob } from '../../../../shared/utils/download-blob.util';
+import { ToastService } from '../../../../services/notifications';
 import { FlowSessionsTableComponent } from '../../components/flow-sessions-dialog/flow-sessions-table.component';
 import { GetGraphLightRequest } from '../../models/graph.model';
 import { FlowsApiService } from '../../services/flows-api.service';
@@ -35,8 +35,6 @@ import {
     DurationFilter,
     GraphSessionLight,
     GraphSessionService,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
     TriggerType,
 } from '../../services/flows-sessions.service';
 

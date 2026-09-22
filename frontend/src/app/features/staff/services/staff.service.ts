@@ -1,14 +1,10 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { GraphSuggestRequest, NaiveSuggestRequest, SuggestResponse } from '@shared/models';
 import { finalize, map, Observable, shareReplay } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
-import { ConfigService } from '../../../services/config/config.service';
-import {
-    GraphSuggestRequest,
-    NaiveSuggestRequest,
-    SuggestResponse,
-} from '../../../shared/models/agent-search-config.model';
+import { ConfigService } from '../../../services/config';
 import {
     CreateAgentRequest,
     GetAgentRequest,

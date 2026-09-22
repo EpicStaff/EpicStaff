@@ -20,8 +20,8 @@ import {
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
-import { GetLlmConfigRequest } from '@shared/models';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
+import { ActionCode, GetLlmConfigRequest, NodeType, ResourceCode } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import {
@@ -67,12 +67,8 @@ import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/comp
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
-import { ConfigService } from '../../../../services/config/config.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
-import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
-import { NodeType } from '../../../../visual-programming/core/enums/node-type';
+import { ConfigService } from '../../../../services/config';
+import { ToastService } from '../../../../services/notifications';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import {
     AgentNodeModel,

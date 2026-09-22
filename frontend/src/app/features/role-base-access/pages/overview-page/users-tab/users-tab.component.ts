@@ -15,7 +15,12 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { HasPermissionInAnyOrgDirective } from '@shared/directives';
+import {
+    HasPermissionInAnyOrgDirective,
+    OverflowBadgeDirective,
+    OverflowItemDirective,
+    OverflowItemsDirective,
+} from '@shared/directives';
 import { ActionCode, FullMembership, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 import { concat, Observable, of } from 'rxjs';
@@ -25,11 +30,6 @@ import { ActiveOrgService } from '../../../../../services/auth/active-org.servic
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
-import {
-    OverflowBadgeDirective,
-    OverflowItemDirective,
-    OverflowItemsDirective,
-} from '../../../../../shared/directives/overflow-items.directive';
 import {
     CreateMembershipDialogComponent,
     MembershipDialogData,
@@ -45,8 +45,7 @@ import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
-import { adminUsersToAggregated, aggregateMembershipsByUser } from '../../../utils/aggregate-users.util';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
+import { adminUsersToAggregated, aggregateMembershipsByUser, rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Online', value: 'online' },

@@ -12,8 +12,8 @@ import {
 } from '@angular/core';
 import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 
-import { AgentNodeTaskUi } from '../../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { ToastService } from '../../../../../services/notifications';
+import { AgentNodeTaskUi } from '../../../../core/models/agent-node.model';
 import { isValidOutputSchema } from '../../../../utils/validation/output-schema.validator';
 import { VariableHighlightTextareaComponent } from '../../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 

@@ -1,16 +1,18 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ValidationErrorsComponent } from '@shared/components';
+import {
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
+    CustomInputComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
-import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';

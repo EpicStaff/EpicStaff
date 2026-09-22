@@ -21,19 +21,12 @@ import {
     StopSessionButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
-import {
-    DurationFilter,
-    GraphSessionLight,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-    SessionTrigger,
-    TriggerType,
-} from '../../services/flows-sessions.service';
+import { DurationFilter, GraphSessionLight, SessionTrigger, TriggerType } from '../../services/flows-sessions.service';
 import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
