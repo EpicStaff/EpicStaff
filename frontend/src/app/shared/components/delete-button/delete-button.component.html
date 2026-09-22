@@ -1,6 +1,7 @@
 <button
     type="button"
     class="delete-btn"
+    [class.delete-btn--default]="variant() === 'default'"
     [disabled]="disabled()"
     [matTooltip]="tooltip()"
     (click)="triggered.emit()"

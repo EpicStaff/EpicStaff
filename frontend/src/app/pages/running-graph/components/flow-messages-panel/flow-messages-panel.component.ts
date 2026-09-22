@@ -13,6 +13,7 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
+import { StopButtonComponent } from '@shared/components';
 import { Subject, takeUntil } from 'rxjs';
 
 import {
@@ -23,7 +24,6 @@ import {
 } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { StopButtonComponent } from '../../../../shared/components/stop-button/stop-button.component';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
 import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-switcher.component';
 

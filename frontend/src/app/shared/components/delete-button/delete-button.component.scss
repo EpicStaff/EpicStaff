@@ -20,4 +20,9 @@
         opacity: 0.4;
         cursor: not-allowed;
     }
+
+    &--default {
+        border-color: var(--color-divider-subtle);
+        color: var(--text-secondary-60);
+    }
 }

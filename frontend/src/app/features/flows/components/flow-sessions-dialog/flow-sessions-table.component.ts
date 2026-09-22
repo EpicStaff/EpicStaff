@@ -18,7 +18,7 @@ import {
     CheckboxComponent,
     IconButtonComponent,
     LoadingSpinnerComponent,
-    StopSessionButtonComponent,
+    StopButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
@@ -50,7 +50,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         FlowSessionStatusBadgeComponent,
         LoadingSpinnerComponent,
         IconButtonComponent,
-        StopSessionButtonComponent,
+        StopButtonComponent,
         GraphMessagesComponent,
         FlowSessionStatusFilterDropdownComponent,
         FlowNameFilterDropdownComponent,
@@ -228,7 +228,10 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                             />
                                         </button>
                                         @if (canStop(session.status)) {
-                                            <app-stop-session-button (stopClick)="stopSession.emit(session.id)" />
+                                            <app-stop-button
+                                                tooltip="Stop session"
+                                                (triggered)="stopSession.emit(session.id)"
+                                            />
                                         }
                                         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
                                             @if (!canStop(session.status)) {

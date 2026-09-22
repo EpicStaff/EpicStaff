@@ -113,13 +113,14 @@
             (click)="$event.stopPropagation()"
         >
             @if (canRevokeRow(row)) {
-                <app-revoke-button
+                <app-stop-button
                     tooltip="Revoke key"
                     (triggered)="onRevokeKey(row)"
                 />
             }
             <app-delete-button
                 tooltip="Delete key"
+                [variant]="row['status'] === ApiKeyStatus.ACTIVE ? 'danger' : 'default'"
                 (triggered)="onDeleteKey(row)"
             />
         </div>

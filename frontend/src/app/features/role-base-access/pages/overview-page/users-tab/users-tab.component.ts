@@ -4,12 +4,14 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+    ActivateButtonComponent,
     AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
     ButtonComponent,
     ConfirmationDialogService,
+    DeleteButtonComponent,
     EditButtonComponent,
     LoadingSpinnerComponent,
     SearchComponent,
@@ -72,6 +74,8 @@ const STATUS_ITEMS: SelectItem[] = [
         OrgAvatarComponent,
         StopButtonComponent,
         EditButtonComponent,
+        ActivateButtonComponent,
+        DeleteButtonComponent,
         OverflowItemsDirective,
         OverflowItemDirective,
         OverflowBadgeDirective,

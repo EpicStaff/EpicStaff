@@ -56,7 +56,6 @@ export * from './password-strength/password-strength.component';
 export * from './radio-button/radio-button.component';
 export * from './rag-selector/rag-selector.component';
 export * from './range-slider/range-slider.component';
-export * from './revoke-button/revoke-button.component';
 export * from './round-button/round-button.component';
 export * from './route-tabs';
 export * from './search/search.component';

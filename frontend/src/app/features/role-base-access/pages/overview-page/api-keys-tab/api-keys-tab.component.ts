@@ -12,9 +12,9 @@ import {
     LoadingSpinnerComponent,
     MultiSelectComponent,
     MultiSelectTriggerDirective,
-    RevokeButtonComponent,
     SearchComponent,
     SelectItem,
+    StopButtonComponent,
     TableRow,
 } from '@shared/components';
 import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
@@ -61,12 +61,12 @@ const STATUS_ITEMS: SelectItem[] = [
         LoadingSpinnerComponent,
         MultiSelectComponent,
         MultiSelectTriggerDirective,
-        RevokeButtonComponent,
         SearchComponent,
         StatusBadgeComponent,
         UserAvatarComponent,
         DatePipe,
         DeleteButtonComponent,
+        StopButtonComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

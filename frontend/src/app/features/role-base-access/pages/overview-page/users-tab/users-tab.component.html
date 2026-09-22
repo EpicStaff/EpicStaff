@@ -159,17 +159,10 @@
                 />
             }
             @if (showReactivate(row)) {
-                <button
-                    type="button"
-                    class="action-btn"
-                    matTooltip="Reactivate account"
-                    (click)="onReactivate(row)"
-                >
-                    <app-svg-icon
-                        icon="refresh"
-                        size="14px"
-                    />
-                </button>
+                <app-activate-button
+                    tooltip="Reactivate account"
+                    (triggered)="onReactivate(row)"
+                />
             }
             @if (showDeactivate(row)) {
                 <app-stop-button
@@ -178,17 +171,10 @@
                 />
             }
             @if (showRemove(row)) {
-                <button
-                    type="button"
-                    class="action-btn danger"
-                    matTooltip="Remove from your organizations"
-                    (click)="onRemoveFromMyOrgs(row)"
-                >
-                    <app-svg-icon
-                        icon="trash"
-                        size="14px"
-                    />
-                </button>
+                <app-delete-button
+                    tooltip="Remove from your organizations"
+                    (triggered)="onRemoveFromMyOrgs(row)"
+                />
             }
         </div>
     </ng-template>

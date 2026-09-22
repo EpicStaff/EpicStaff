@@ -11,7 +11,7 @@ import {
     ButtonComponent,
     ConfirmationDialogService,
     DeleteButtonComponent,
-    RevokeButtonComponent,
+    StopButtonComponent,
     TableRow,
 } from '@shared/components';
 import { ApiKeyStatus, GetMyApiKeyResponse } from '@shared/models';
@@ -45,8 +45,8 @@ import {
         MatTooltip,
         StatusBadgeComponent,
         AppSvgIconComponent,
+        StopButtonComponent,
         DeleteButtonComponent,
-        RevokeButtonComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
