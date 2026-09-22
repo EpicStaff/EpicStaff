@@ -113,6 +113,129 @@ def test_login_returns_access_and_sets_refresh_cookie(api_client, regular_user):
 
 
 @pytest.mark.django_db
+def test_login_remember_me_true_sets_persistent_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": True,
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
+    # Persistent cookie -> Max-Age is set to the configured lifetime.
+    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+    assert int(cookie["max-age"]) == expected
+    # remember_me claim baked into the token so rotation preserves persistence.
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is True
+
+
+@pytest.mark.django_db
+def test_login_remember_me_false_sets_session_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
+    # Session cookie -> no Max-Age / no Expires. Morsel keeps empty strings for
+    # attributes that were not set on the response.
+    assert cookie["max-age"] in ("", None)
+    assert cookie["expires"] in ("", None)
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+
+
+@pytest.mark.django_db
+def test_login_omitting_remember_me_defaults_to_session_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={"email": regular_user.email, "password": "UserStrongPass123!"},
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie["max-age"] in ("", None)
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+
+
+@pytest.mark.django_db
+def test_refresh_preserves_remember_me_persistent(api_client, regular_user):
+    """A persistent session must stay persistent across refresh rotation."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": True,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is True
+
+
+@pytest.mark.django_db
+def test_refresh_preserves_remember_me_session(api_client, regular_user):
+    """A session-only login must stay a session cookie after rotation."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie["max-age"] in ("", None)
+    assert cookie["expires"] in ("", None)
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+
+
+@pytest.mark.django_db
+def test_refresh_without_cookie_returns_401(api_client):
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 401
+
+
+@pytest.mark.django_db
+def test_logout_clears_refresh_cookie(api_client, regular_user, jwt_tokens):
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+
+    r = api_client.post(reverse("logout"))
+    assert r.status_code == status.HTTP_205_RESET_CONTENT
+    # Cookie is cleared: value emptied and Max-Age=0.
+    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    assert cleared.value == ""
+    assert int(cleared["max-age"]) == 0
+
+
+@pytest.mark.django_db
 def test_login_invalid_credentials_returns_401(api_client, regular_user):
     r = api_client.post(
         reverse("login"),

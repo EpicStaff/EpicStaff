@@ -7,8 +7,21 @@ REFRESH_COOKIE_NAME = "auth.refresh"
 REFRESH_COOKIE_PATH = "/api/auth/"
 
 
-def set_refresh_cookie(response: Response, refresh_token: str) -> Response:
-    max_age = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+def set_refresh_cookie(
+    response: Response, refresh_token: str, *, persistent: bool = True
+) -> Response:
+    """Set the refresh-token cookie.
+
+    persistent=True  -> Max-Age is the configured REFRESH_TOKEN_LIFETIME
+                        (cookie survives browser restart).
+    persistent=False -> no Max-Age / Expires => browser session cookie,
+                        dropped when the browser session ends.
+    """
+    max_age = (
+        int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+        if persistent
+        else None
+    )
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=refresh_token,

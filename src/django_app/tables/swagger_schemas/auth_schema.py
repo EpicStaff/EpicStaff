@@ -205,14 +205,19 @@ TOKEN_INTROSPECT_POST = {
 LOGIN_POST = {
     "summary": "Log in and obtain JWT tokens",
     "description": (
-        "Accepts `email` and `password`. Validates both fields are present "
-        "and non-blank before delegating to simplejwt. Returns a short-lived "
-        "access token in the response body. The refresh token is set as an "
-        "HttpOnly cookie (`auth.refresh`, Path=/api/auth/, SameSite=Lax). "
-        "Wrong-credential errors are returned as a flat 401 (no per-field "
-        "detail) to avoid user-enumeration leaks. Throttled to 5 attempts "
-        "per minute per IP+email combination; the 6th attempt returns 429 "
-        "with a `Retry-After` header."
+        "Accepts `email`, `password`, and optional `remember_me` (bool, "
+        "default false). Validates email/password are present and non-blank "
+        "before delegating to simplejwt. Returns a short-lived access token "
+        "in the response body. The refresh token is set as an HttpOnly cookie "
+        "(`auth.refresh`, Path=/api/auth/, SameSite=Lax). When "
+        "`remember_me=true` the cookie is persistent (Max-Age = configured "
+        "refresh lifetime); when `remember_me=false` the cookie is a session "
+        "cookie and is dropped at the end of the browser session. The "
+        "persistence intent is embedded as a claim on the refresh token so it "
+        "survives rotation. Wrong-credential errors are returned as a flat "
+        "401 (no per-field detail) to avoid user-enumeration leaks. Throttled "
+        "to 5 attempts per minute per IP+email combination; the 6th attempt "
+        "returns 429 with a `Retry-After` header."
     ),
     "responses": {
         200: LoginResponseSerializer,

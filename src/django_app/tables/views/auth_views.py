@@ -74,7 +74,16 @@ class LoginView(TokenObtainPairView):
         if response.status_code == 200:
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
-                set_refresh_cookie(response, refresh_token)
+                remember_me = bool(request.data.get("remember_me", False))
+                # Embed the persistence intent as a refresh-token claim so it
+                # survives rotation without any client-visible state.
+                try:
+                    token = RefreshToken(refresh_token)
+                    token["remember_me"] = remember_me
+                    refresh_token = str(token)
+                except TokenError:
+                    pass
+                set_refresh_cookie(response, refresh_token, persistent=remember_me)
         return response
 
 
@@ -176,6 +185,16 @@ class FirstSetupView(APIView):
         )
         tokens = TokenPair.for_user(result.user)
 
+        # First-setup issues a persistent session by default; embed the
+        # matching claim so any later rotation keeps that persistence.
+        refresh_str = tokens.refresh
+        try:
+            refresh_obj = RefreshToken(refresh_str)
+            refresh_obj["remember_me"] = True
+            refresh_str = str(refresh_obj)
+        except TokenError:
+            pass
+
         response = Response(
             {
                 "user": {
@@ -193,7 +212,7 @@ class FirstSetupView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-        set_refresh_cookie(response, tokens.refresh)
+        set_refresh_cookie(response, refresh_str, persistent=True)
         return response
 
 
@@ -398,6 +417,15 @@ class CookieTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # Read the persistence intent from the incoming refresh token BEFORE
+        # rotation. If the token is unreadable at this stage the serializer
+        # below will produce the correct 401 response.
+        remember_me = False
+        try:
+            remember_me = bool(RefreshToken(refresh_value).payload.get("remember_me", False))
+        except TokenError:
+            pass
+
         serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
         try:
             serializer.is_valid(raise_exception=True)
@@ -412,7 +440,15 @@ class CookieTokenRefreshView(APIView):
         response = Response({"access": serializer.validated_data["access"]})
         new_refresh = serializer.validated_data.get("refresh")
         if new_refresh:
-            set_refresh_cookie(response, new_refresh)
+            # Carry the remember_me claim forward on the rotated token so the
+            # next rotation still knows the persistence policy.
+            try:
+                rotated = RefreshToken(new_refresh)
+                rotated["remember_me"] = remember_me
+                new_refresh = str(rotated)
+            except TokenError:
+                pass
+            set_refresh_cookie(response, new_refresh, persistent=remember_me)
         return response
 
 
@@ -433,9 +469,17 @@ class ResetUserView(APIView):
         )
         tokens = TokenPair.for_user(user)
 
+        refresh_str = tokens.refresh
+        try:
+            refresh_obj = RefreshToken(refresh_str)
+            refresh_obj["remember_me"] = True
+            refresh_str = str(refresh_obj)
+        except TokenError:
+            pass
+
         response = Response(
             {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
-        set_refresh_cookie(response, tokens.refresh)
+        set_refresh_cookie(response, refresh_str, persistent=True)
         return response
