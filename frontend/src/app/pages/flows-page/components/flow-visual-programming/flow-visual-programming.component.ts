@@ -1,5 +1,4 @@
 import { Dialog as CdkDialog } from '@angular/cdk/dialog';
-import { Overlay } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -114,6 +113,7 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
         FlowMessagesPanelComponent,
         MatTooltipModule,
         FlowAssistantPanelComponent,
+        VersionHistoryPanelComponent,
     ],
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
@@ -157,6 +157,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public currentSessionId: string | null = null;
     public panelWidthPx = 450;
     public isDragging = false;
+
+    public isVersionHistoryOpen = signal(false);
+    public readonly versionHistoryGraphSaveVersion = (): number | undefined => this.graphState()?.save_version;
+    public readonly versionHistoryHasUnsavedChanges = (): boolean => this.hasUnsavedChanges();
+    public readonly versionHistorySaveCurrentState = (): Observable<void> => this.saveCurrentState();
     private readonly MIN_PANEL_WIDTH = 430;
     private readonly MAX_PANEL_WIDTH_RATIO = 0.7;
     private readonly routeParamMap;
@@ -181,7 +186,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly toastService: ToastService,
         private readonly runGraphService: RunGraphService,
         private readonly dialog: CdkDialog,
-        private readonly overlay: Overlay,
         private readonly configService: ConfigService,
         private readonly elementRef: ElementRef,
         private readonly epicChatService: EpicChatService,
@@ -1087,32 +1091,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public onViewVersionHistory(): void {
         if (!this.graph?.id) return;
+        this.isVersionHistoryOpen.set(true);
+    }
 
-        const positionStrategy = this.overlay.position().global().right('0').top('5rem');
+    public onVersionHistoryClosed(result?: GraphRestoreResponse): void {
+        this.isVersionHistoryOpen.set(false);
+        if (!result?.restored) return;
 
-        const dialogRef = this.dialog.open<GraphRestoreResponse | undefined>(VersionHistoryPanelComponent, {
-            positionStrategy,
-            height: 'calc(100% - 5rem)',
-            width: '380px',
-            data: {
-                graphId: this.graph.id,
-                graphSaveVersion: () => this.graphState()?.save_version,
-                hasUnsavedChanges: () => this.hasUnsavedChanges(),
-                saveCurrentState: () => this.saveCurrentState(),
-            },
-        });
-
-        dialogRef.closed
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                filter((result): result is GraphRestoreResponse => !!result?.restored)
-            )
-            .subscribe((response) => {
-                this.restoreWarnings.set(response.warnings);
-                this.undoRedoService.setUndoStack([]);
-                this.undoRedoService.setRedoStack([]);
-                this.refreshCurrentFlow();
-            });
+        this.restoreWarnings.set(result.warnings);
+        this.undoRedoService.setUndoStack([]);
+        this.undoRedoService.setRedoStack([]);
+        this.refreshCurrentFlow();
     }
 
     public onShowRestoreWarnings(): void {

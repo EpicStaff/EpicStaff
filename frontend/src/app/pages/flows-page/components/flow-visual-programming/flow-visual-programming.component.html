@@ -53,7 +53,7 @@
             [sections]="shortcutSections"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
-        @if (isPanelOpen() || !isPanelOpen()) {
+        @if (!isVersionHistoryOpen()) {
             <div
                 class="drag-handle"
                 [class.dragging]="isDragging"
@@ -75,15 +75,25 @@
                     </span>
                 </button>
             </div>
-            @if (!isPanelCollapsed()) {
-                <app-flow-messages-panel
-                    [style.width.px]="panelWidthPx"
-                    [graphId]="graph.id"
-                    [sessionId]="currentSessionId"
-                    (close)="closeMessagesPanel()"
-                    (sessionSelected)="onSessionSelected($event)"
-                ></app-flow-messages-panel>
-            }
+        }
+        @if (!isPanelCollapsed()) {
+            <app-flow-messages-panel
+                [style.width.px]="panelWidthPx"
+                [graphId]="graph.id"
+                [sessionId]="currentSessionId"
+                (close)="closeMessagesPanel()"
+                (sessionSelected)="onSessionSelected($event)"
+            ></app-flow-messages-panel>
+        }
+        @if (isVersionHistoryOpen()) {
+            <app-version-history-panel
+                [style.width.px]="panelWidthPx"
+                [graphId]="graph.id"
+                [graphSaveVersion]="versionHistoryGraphSaveVersion"
+                [hasUnsavedChanges]="versionHistoryHasUnsavedChanges"
+                [saveCurrentState]="versionHistorySaveCurrentState"
+                (closed)="onVersionHistoryClosed($event)"
+            ></app-version-history-panel>
         }
         @if (isSaving()) {
             <div

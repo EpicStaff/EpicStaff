@@ -1,4 +1,4 @@
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -7,17 +7,18 @@ import {
     DestroyRef,
     ElementRef,
     HostListener,
-    Inject,
     inject,
+    input,
     OnInit,
-    QueryList,
+    output,
     ViewChild,
-    ViewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
+    AppSvgIconComponent,
     ConfirmationDialogService,
     IconButtonComponent,
     SpinnerComponent,
@@ -32,7 +33,15 @@ import { FlowsApiService } from '../../services/flows-api.service';
 
 @Component({
     selector: 'app-version-history-panel',
-    imports: [IconButtonComponent, CommonModule, FormsModule, SpinnerComponent],
+    imports: [
+        IconButtonComponent,
+        CommonModule,
+        FormsModule,
+        SpinnerComponent,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        OverlayModule,
+    ],
     templateUrl: './version-history-panel.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './version-history-panel.component.scss',
@@ -49,19 +58,15 @@ export class VersionHistoryPanelComponent implements OnInit {
     private isSaving = false;
 
     @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement | HTMLTextAreaElement>;
-    @ViewChildren('versionMenu') versionMenus!: QueryList<ElementRef>;
 
     private destroyRef = inject(DestroyRef);
 
-    @HostListener('document:click', ['$event'])
-    onDocumentClick(event: MouseEvent): void {
-        const clickedInsideMenu = this.versionMenus?.some((menuRef) =>
-            menuRef.nativeElement.contains(event.target as Node)
-        );
-        if (!clickedInsideMenu) {
-            this.openMenuId = null;
-        }
-    }
+    public graphId = input.required<number>();
+    public graphSaveVersion = input<() => number | undefined>();
+    public hasUnsavedChanges = input<() => boolean>();
+    public saveCurrentState = input<() => Observable<void>>();
+
+    public closed = output<GraphRestoreResponse | undefined>();
 
     @HostListener('document:mousedown', ['$event'])
     onDocumentMouseDown(event: MouseEvent): void {
@@ -78,14 +83,6 @@ export class VersionHistoryPanelComponent implements OnInit {
         private confirmationDialogService: ConfirmationDialogService,
         private unsavedChangesDialogService: UnsavedChangesDialogService,
         private cdr: ChangeDetectorRef,
-        @Inject(DIALOG_DATA)
-        public data: {
-            graphId: number;
-            graphSaveVersion?: () => number | undefined;
-            hasUnsavedChanges?: () => boolean;
-            saveCurrentState?: () => Observable<void>;
-        },
-        public dialogRef: DialogRef<GraphRestoreResponse | undefined>,
         private router: Router,
         private createGraphWarningsService: CreateGraphWarningsService
     ) {}
@@ -220,7 +217,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     private restore(version: GraphVersionDto): void {
-        const hasUnsaved = this.data.hasUnsavedChanges?.() ?? false;
+        const hasUnsaved = this.hasUnsavedChanges()?.() ?? false;
         const message = hasUnsaved
             ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
             : `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`;
@@ -238,23 +235,15 @@ export class VersionHistoryPanelComponent implements OnInit {
             .pipe(
                 switchMap((result) => {
                     if (result === 'save') {
-                        const save$ = this.data.saveCurrentState?.() ?? of(void 0);
+                        const save$ = this.saveCurrentState()?.() ?? of(void 0);
                         return save$.pipe(
                             switchMap(() =>
-                                this.flowApiService.restoreGraphVersion(
-                                    version.id,
-                                    true,
-                                    this.data.graphSaveVersion?.()
-                                )
+                                this.flowApiService.restoreGraphVersion(version.id, true, this.graphSaveVersion()?.())
                             )
                         );
                     }
                     if (result === 'dont-save') {
-                        return this.flowApiService.restoreGraphVersion(
-                            version.id,
-                            false,
-                            this.data.graphSaveVersion?.()
-                        );
+                        return this.flowApiService.restoreGraphVersion(version.id, false, this.graphSaveVersion()?.());
                     }
                     return EMPTY;
                 }),
@@ -269,7 +258,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                     } else {
                         this.toastService.success('Version restored successfully');
                     }
-                    this.dialogRef.close(response);
+                    this.closed.emit(response);
                 },
                 error: () => this.toastService.error('Failed to restore version'),
             });
@@ -277,7 +266,7 @@ export class VersionHistoryPanelComponent implements OnInit {
 
     private loadVersions(): void {
         this.flowApiService
-            .getGraphVersions(this.data.graphId)
+            .getGraphVersions(this.graphId())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (result) => {
@@ -303,7 +292,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                     if (response.warnings.length) {
                         this.createGraphWarningsService.setPending(response.warnings);
                     }
-                    this.dialogRef.close();
+                    this.closed.emit(undefined);
                     this.router.navigate(['/flows', response.graph_id]);
                 },
                 error: () => this.toastService.error('Failed to create flow'),

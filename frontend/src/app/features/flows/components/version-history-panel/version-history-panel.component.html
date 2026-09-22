@@ -1,13 +1,18 @@
 <div class="dialog-wrapper">
-    <div class="dialog-header">
-        <h2>Version History</h2>
-        <app-icon-button
-            icon="x"
-            size="2rem"
-            ariaLabel="Close dialog"
-            tooltip="Close"
-            (onClick)="dialogRef.close()"
-        ></app-icon-button>
+    <div class="panel-header">
+        <p class="panel-header__title">Version History</p>
+        <button
+            (click)="closed.emit(undefined)"
+            matTooltip="Close"
+            class="panel-header__close"
+        >
+            <div>
+                <app-svg-icon
+                    icon="x"
+                    size="20px"
+                />
+            </div>
+        </button>
     </div>
     <div class="dialog-content">
         @if (isLoading) {
@@ -46,6 +51,7 @@
                             #versionEditInput
                             class="version-edit-input version-edit-textarea"
                             rows="1"
+                            placeholder="Enter description..."
                             [(ngModel)]="editingValue"
                             (keydown)="onEditKeydown($event, version)"
                         ></textarea>
@@ -54,51 +60,67 @@
                     }
                     <div class="version-date">{{ version.created_at | date: 'MMM d, yyyy, h:mm a' }}</div>
                 </div>
-                <div
-                    class="version-menu"
-                    #versionMenu
-                >
+                <div class="version-menu">
                     <app-icon-button
+                        #menuOrigin="cdkOverlayOrigin"
+                        cdkOverlayOrigin
                         icon="dots-vertical"
                         size="1.5rem"
                         ariaLabel="Version options"
                         tooltip="Version options"
                         (onClick)="toggleMenu(version.id)"
                     ></app-icon-button>
-                    @if (openMenuId === version.id) {
-                        <div class="dropdown-menu">
+
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="menuOrigin"
+                        [cdkConnectedOverlayOpen]="openMenuId === version.id"
+                        cdkConnectedOverlayPanelClass="action-dropdown-panel"
+                        [cdkConnectedOverlayPositions]="[
+                            {
+                                originX: 'end',
+                                originY: 'bottom',
+                                overlayX: 'end',
+                                overlayY: 'top',
+                                offsetY: 4,
+                            },
+                        ]"
+                        (overlayOutsideClick)="openMenuId = null"
+                        (detach)="openMenuId = null"
+                    >
+                        <div class="action-dropdown-panel__inner">
                             <button
-                                class="dropdown-item"
+                                class="action-dropdown-panel__item"
                                 (click)="restoreVersion(version, $event)"
                             >
                                 Restore
                             </button>
                             <button
-                                class="dropdown-item"
+                                class="action-dropdown-panel__item"
                                 (click)="createFlowFromVersion(version, $event)"
                             >
                                 Create flow from this
                             </button>
                             <button
-                                class="dropdown-item"
+                                class="action-dropdown-panel__item"
                                 (click)="startEdit(version, 'name')"
                             >
                                 Rename
                             </button>
                             <button
-                                class="dropdown-item"
+                                class="action-dropdown-panel__item"
                                 (click)="startEdit(version, 'description')"
                             >
                                 Change Description
                             </button>
                             <button
-                                class="dropdown-item dropdown-item--danger"
+                                class="action-dropdown-panel__item action-dropdown-panel__item--danger"
                                 (click)="deleteVersion(version, $event)"
                             >
                                 Delete
                             </button>
                         </div>
-                    }
+                    </ng-template>
                 </div>
             </div>
         }
