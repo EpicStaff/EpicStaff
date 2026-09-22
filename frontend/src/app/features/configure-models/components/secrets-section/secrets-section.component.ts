@@ -20,6 +20,7 @@ import {
     ButtonComponent,
     ConfirmationDialogService,
     DeleteButtonComponent,
+    FetchErrorStateComponent,
     LoadingSpinnerComponent,
     SearchComponent,
     SelectComponent,

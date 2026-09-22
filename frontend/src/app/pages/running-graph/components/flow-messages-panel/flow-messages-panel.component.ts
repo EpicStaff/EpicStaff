@@ -14,6 +14,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { StopButtonComponent } from '@shared/components';
+import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
 import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
