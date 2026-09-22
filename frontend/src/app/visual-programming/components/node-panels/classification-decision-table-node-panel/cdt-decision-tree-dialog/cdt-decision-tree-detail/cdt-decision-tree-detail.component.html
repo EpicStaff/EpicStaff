@@ -133,9 +133,21 @@
                             {{ explanationError() }}
                         </p>
                     } @else if (explanationLoading()) {
-                        <p class="cdt-tree-detail__explanation cdt-tree-detail__explanation--muted">
-                            {{ copy.explanationLoading }}
-                        </p>
+                        <!--
+                            Bars rather than a spinner: they stand where the sentences
+                            are about to, so the section does not resize under the
+                            reader when the text lands. No text of its own, so the
+                            label is what a screen reader gets instead.
+                        -->
+                        <div
+                            class="cdt-tree-detail__skeleton"
+                            role="status"
+                            [attr.aria-label]="copy.explanationLoading"
+                        >
+                            <span class="cdt-tree-detail__skeleton-line"></span>
+                            <span class="cdt-tree-detail__skeleton-line"></span>
+                            <span class="cdt-tree-detail__skeleton-line cdt-tree-detail__skeleton-line--short"></span>
+                        </div>
                     } @else {
                         <p class="cdt-tree-detail__explanation cdt-tree-detail__explanation--muted">
                             {{ copy.explanationEmpty }}

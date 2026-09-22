@@ -142,6 +142,22 @@
     pointer-events: auto;
 }
 
+// The same corner as `__outdated`, which it replaces while a pass is running, so
+// a block never carries both. Sized to the spinner it holds: the block's box comes
+// from the layout and is never measured, so anything here that could grow would
+// push past a silhouette that has no room to follow.
+.cdt-tree-block__explaining {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-color);
+    pointer-events: auto;
+}
+
 // Set from `CLICKABLE_BY_KIND` — a block can hold content the search finds and
 // still not be one the design lets you open.
 :host(.cdt-tree-block--clickable) .cdt-tree-block__body {

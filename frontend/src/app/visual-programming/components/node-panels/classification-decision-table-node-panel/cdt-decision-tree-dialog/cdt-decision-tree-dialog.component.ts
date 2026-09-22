@@ -313,6 +313,18 @@ export class CdtDecisionTreeDialogComponent {
         return stepKey ? (this.explanations().get(stepKey) ?? null) : null;
     }
 
+    /**
+     * Whether this step is waiting on the endpoint right now.
+     *
+     * `explainAll` moves every step it is about to ask about into `loading` in one
+     * go, so during a pass this is true well before that step's own chunk is sent —
+     * which is the point: the canvas shows the whole set as pending, not a cursor
+     * crawling down it.
+     */
+    protected isExplaining(blockId: string | null): boolean {
+        return this.explanationOf(blockId)?.status === 'loading';
+    }
+
     /** Outdated = has an explanation whose fingerprint no longer matches the step. */
     protected isOutdated(blockId: string | null): boolean {
         if (!blockId) return false;

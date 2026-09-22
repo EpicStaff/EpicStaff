@@ -31,7 +31,16 @@
     must not be part of what you press. On the host, whose box Foblex sizes to the
     block, so negative offsets reach outside it — nothing in the chain clips.
 -->
-@if (outdated()) {
+@if (explaining()) {
+    <span
+        class="cdt-tree-block__explaining"
+        role="status"
+        [attr.aria-label]="copy.explanationLoading"
+        [matTooltip]="copy.explanationLoading"
+    >
+        <app-spinner2 [size]="12" />
+    </span>
+} @else if (outdated()) {
     <app-svg-icon
         class="cdt-tree-block__outdated"
         icon="clock"

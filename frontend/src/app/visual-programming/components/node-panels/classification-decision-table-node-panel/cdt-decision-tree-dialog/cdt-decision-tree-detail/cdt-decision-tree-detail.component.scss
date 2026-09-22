@@ -328,6 +328,57 @@
     color: var(--color-text-secondary);
 }
 
+// Stand-in for the paragraph that is about to arrive. Line height and gap match
+// `__explanation` (0.875rem at 1.3) so the section is close to its final height
+// before the text lands and barely moves when it does.
+.cdt-tree-detail__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cdt-tree-detail__skeleton-line {
+    height: 12px;
+    background: var(--color-divider-subtle);
+    border-radius: 3px;
+    // Opacity, not a travelling gradient: the window sits over a canvas the user
+    // can still pan, and a background-position animation on three bars repaints
+    // far more than a compositor-only fade.
+    animation: cdt-tree-skeleton-pulse 1.4s ease-in-out infinite;
+
+    &:nth-child(2) {
+        animation-delay: 0.15s;
+    }
+
+    &:nth-child(3) {
+        animation-delay: 0.3s;
+    }
+}
+
+// The last line of a paragraph rarely fills the column; a full-width one reads as
+// a block, not as text.
+.cdt-tree-detail__skeleton-line--short {
+    width: 60%;
+}
+
+@keyframes cdt-tree-skeleton-pulse {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+// Honour a reader who asked for stillness: the bars stay, the pulse stops.
+@media (prefers-reduced-motion: reduce) {
+    .cdt-tree-detail__skeleton-line {
+        animation: none;
+    }
+}
+
 .cdt-tree-detail__explanation--error {
     color: var(--color-error);
 }

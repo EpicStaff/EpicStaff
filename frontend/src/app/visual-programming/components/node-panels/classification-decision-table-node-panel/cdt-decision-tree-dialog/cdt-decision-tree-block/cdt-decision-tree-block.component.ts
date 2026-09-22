@@ -3,6 +3,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
 import {
     CDT_TREE_COPY,
     CDT_TREE_SUBTITLE_CODE_LINES,
@@ -28,7 +29,7 @@ import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-de
     standalone: true,
     // The connector directives are not standalone in @foblex/flow 18.4.0, so they
     // have to come in through the module rather than being imported directly.
-    imports: [FFlowModule, MatTooltipModule, AppSvgIconComponent, CdtDecisionTreeShapeComponent],
+    imports: [FFlowModule, MatTooltipModule, AppSvgIconComponent, Spinner2Component, CdtDecisionTreeShapeComponent],
     templateUrl: './cdt-decision-tree-block.component.html',
     styleUrls: ['./cdt-decision-tree-block.component.scss'],
     host: {
@@ -65,6 +66,15 @@ export class CdtDecisionTreeBlockComponent {
      * builder is pure and knows nothing about explanations.
      */
     public readonly outdated = input<boolean>(false);
+
+    /**
+     * Whether this step's explanation is being generated right now.
+     *
+     * Takes the corner from `outdated` while it is true, rather than sitting beside
+     * it: they share one slot, and a step that is already being refreshed has
+     * nothing left to warn about.
+     */
+    public readonly explaining = input<boolean>(false);
 
     /** Undefined for the region outline, which is not a step and carries no glyph. */
     protected readonly icon = computed<CdtTreeIcon | undefined>(() => ICON_BY_SHAPE[this.block().shape]);
