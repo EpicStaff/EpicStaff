@@ -24,10 +24,7 @@ import {
     TriggerDisplay,
 } from '../../../../features/flows/components/flow-sessions-dialog/trigger-display.constants';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
-import {
-    GraphSessionLight,
-    GraphSessionService,
-} from '../../../../features/flows/services/flows-sessions.service';
+import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { StopButtonComponent } from '../../../../shared/components/stop-button/stop-button.component';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { MemoriesSidebarComponent } from '../memory-sidebar/components/memory-sidebar/memory-sidebar.component';
