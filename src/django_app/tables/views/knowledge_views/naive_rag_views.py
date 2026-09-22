@@ -73,7 +73,7 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
     NAIVE_RAG_GET,
 )
-from tables.views.mixins import (
+from tables.views.org_scoped_mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )

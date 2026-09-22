@@ -17,7 +17,7 @@ import pytest
 from django.core.cache import cache
 from django.urls import reverse
 
-from tables.throttles import PasswordResetConfirmThrottle, TokenRefreshThrottle
+from tables.auth_throttles import PasswordResetConfirmThrottle, TokenRefreshThrottle
 
 CONFIRM_PAYLOAD = {"token": "not-a-real-token", "new_password": "BrandNewPass123!"}
 

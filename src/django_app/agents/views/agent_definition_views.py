@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.rbac.permissions import HasOrgPermission
-from tables.views.mixins import OrgScopedResolverMixin
+from tables.views.org_scoped_mixins import OrgScopedResolverMixin
 
 from agents.models import AgentDefinition
 from agents.serializers.agent_definition_serializers import (

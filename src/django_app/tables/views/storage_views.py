@@ -50,7 +50,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_SWAGGER,
 )
-from tables.views.mixins import OrgScopedResolverMixin
+from tables.views.org_scoped_mixins import OrgScopedResolverMixin
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):

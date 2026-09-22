@@ -29,7 +29,7 @@ from tables.serializers.graph_rag_serializers import (
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permissions import HasOrgPermission
-from tables.views.mixins import OrgScopedServiceViewSetMixin
+from tables.views.org_scoped_mixins import OrgScopedServiceViewSetMixin
 
 # ORM path from a GraphRag up to the owning collection's org.
 _GRAPH_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"

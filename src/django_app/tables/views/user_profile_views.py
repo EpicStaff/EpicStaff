@@ -5,6 +5,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tables.auth_throttles import LoginThrottle
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.serializers.user_profile_serializers import (
     PasswordChangeConfirmRequestSerializer,
@@ -18,7 +19,6 @@ from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthent
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
 from tables.services.rbac.utils.refresh_cookie import set_refresh_cookie
-from tables.throttles import LoginThrottle
 
 
 def _require_user_context(request):

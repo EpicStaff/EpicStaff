@@ -284,14 +284,16 @@ from tables.swagger_schemas.webhook_schemas import (
 from tables.utils.helpers import generate_file_name, natural_sort_key
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.views.mixins import (
-    BuiltInWriteProtectedMixin,
     CopyActionMixin,
     InspectActionMixin,
+    ToolUsageActionsMixin,
+)
+from tables.views.org_scoped_mixins import (
+    BuiltInWriteProtectedMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
-    ToolUsageActionsMixin,
 )
 from utils.logger import logger
 

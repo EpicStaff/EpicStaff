@@ -111,7 +111,7 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.views.mixins import (
+from tables.views.org_scoped_mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )

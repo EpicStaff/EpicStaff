@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permissions import HasOrgPermission
-from tables.views.mixins import OrgScopedResolverMixin
+from tables.views.org_scoped_mixins import OrgScopedResolverMixin
 
 from agents.models.surface_models import Surface
 from agents.serializers.surface_serializers import (

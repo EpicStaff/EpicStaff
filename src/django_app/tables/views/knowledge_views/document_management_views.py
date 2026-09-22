@@ -46,7 +46,7 @@ from tables.utils.document_serving import (
     build_file_response,
     build_preview_response,
 )
-from tables.views.mixins import (
+from tables.views.org_scoped_mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )

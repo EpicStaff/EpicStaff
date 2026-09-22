@@ -39,7 +39,7 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
 from tables.utils.litellm_model_info import resolve_context_window
-from tables.views.mixins import OrgScopedServiceViewSetMixin
+from tables.views.org_scoped_mixins import OrgScopedServiceViewSetMixin
 
 
 def _validation_error_response(exc: ValidationError) -> Response:

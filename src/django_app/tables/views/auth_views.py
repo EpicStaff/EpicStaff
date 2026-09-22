@@ -9,6 +9,12 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from tables.auth_throttles import (
+    LoginThrottle,
+    PasswordResetConfirmThrottle,
+    PasswordResetRequestThrottle,
+    TokenRefreshThrottle,
+)
 from tables.models.rbac_models import ApiKey, OrganizationUser
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
@@ -49,12 +55,6 @@ from tables.swagger_schemas.auth_schema import (
     SWAGGER_TOKEN_POST,
     TOKEN_INTROSPECT_POST,
     WS_TICKET_POST,
-)
-from tables.throttles import (
-    LoginThrottle,
-    PasswordResetConfirmThrottle,
-    PasswordResetRequestThrottle,
-    TokenRefreshThrottle,
 )
 
 

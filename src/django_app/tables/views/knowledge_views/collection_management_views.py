@@ -33,7 +33,7 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTION_PUT,
     SOURCE_COLLECTIONS_GET,
 )
-from tables.views.mixins import OrgScopedResolverMixin
+from tables.views.org_scoped_mixins import OrgScopedResolverMixin
 from utils.logger import logger
 
 redis_service = RedisService()
