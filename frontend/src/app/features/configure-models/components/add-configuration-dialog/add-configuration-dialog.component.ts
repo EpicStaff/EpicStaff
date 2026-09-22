@@ -11,7 +11,6 @@ import {
     InputNumberComponent,
     JsonEditorFormFieldComponent,
     KeyValueListComponent,
-    LlmModelSelectorComponent,
     SelectComponent,
     SelectItem,
     SliderWithStepperComponent,
@@ -23,6 +22,7 @@ import { LlmConfigStorageService, SecretsStorageService } from '@shared/services
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
+import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
