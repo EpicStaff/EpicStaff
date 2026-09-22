@@ -5,7 +5,7 @@ from django_app.settings import BASE_DIR, env
 
 DEBUG = env.bool("DJANGO_DEBUG")
 
-SECRET_KEY = env.str("DJANGO_SECRET_KEY")
+SECRET_KEY = env.secret("DJANGO_SECRET_KEY")
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 

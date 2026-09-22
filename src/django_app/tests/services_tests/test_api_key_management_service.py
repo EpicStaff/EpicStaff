@@ -2,7 +2,8 @@ import pytest
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import ApiKey, OrganizationUser
+from tables.models.rbac_models import ApiKey, OrganizationUser, Role, RolePermission
+from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.api_key.management_service import ApiKeyManagementService
 from tables.services.rbac.api_key.validation import ApiKeyValidationService
 from tables.services.rbac.rbac_exceptions import (
@@ -224,11 +225,30 @@ def test_superadmin_caller_may_revoke_a_superadmin_owned_key(
 
 
 @pytest.mark.django_db
-def test_member_without_the_bit_is_denied(service, member_only, acme_member, make_key):
+def test_member_without_the_bit_is_denied(
+    service, django_user_model, acme, acme_member, make_key
+):
+    """Built-in Member holds no `api_keys` bits at all (migration 0242), so a
+    plain Member can't even see the key -- that's `ApiKeyNotFoundError`,
+    covered by `test_unreachable_key_is_not_found`. This test's own bit
+    (READ makes the key visible, missing DELETE is the honest 403) needs a
+    custom role, mirroring `test_read_without_verb_is_denied` in
+    `test_cross_org_authorize_any_org.py`.
+    """
     key = make_key(acme_member, name="guarded")
+    reader_role = Role.objects.create(
+        name="ApiKeyReaderOnly", org=acme, is_built_in=False
+    )
+    RolePermission.objects.create(
+        role=reader_role, resource_type="api_keys", permissions=int(Permission.READ)
+    )
+    reader = django_user_model.objects.create_user(
+        email="api-key-reader@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=reader, org=acme, role=reader_role)
 
     with pytest.raises(PermissionDenied):
-        service.revoke_key(actor=member_only, key_id=key.pk)
+        service.revoke_key(actor=reader, key_id=key.pk)
 
 
 @pytest.mark.django_db
