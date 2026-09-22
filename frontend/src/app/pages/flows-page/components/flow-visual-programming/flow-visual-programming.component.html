@@ -53,13 +53,13 @@
             [sections]="shortcutSections"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
-        @if (!isVersionHistoryOpen()) {
-            <div
-                class="drag-handle"
-                [class.dragging]="isDragging"
-                [class.collapsed]="isPanelCollapsed()"
-                (mousedown)="onDragStart($event)"
-            >
+        <div
+            class="drag-handle"
+            [class.dragging]="isDragging"
+            [class.collapsed]="isPanelCollapsed()"
+            (mousedown)="onDragStart($event)"
+        >
+            @if (!isVersionHistoryOpen()) {
                 <button
                     class="collapse-toggle"
                     (mousedown)="$event.stopPropagation()"
@@ -74,8 +74,8 @@
                         ></app-svg-icon>
                     </span>
                 </button>
-            </div>
-        }
+            }
+        </div>
         @if (!isPanelCollapsed()) {
             <app-flow-messages-panel
                 [style.width.px]="panelWidthPx"
@@ -87,12 +87,11 @@
         }
         @if (isVersionHistoryOpen()) {
             <app-version-history-panel
-                [style.width.px]="panelWidthPx"
                 [graphId]="graph.id"
-                [graphSaveVersion]="versionHistoryGraphSaveVersion"
-                [hasUnsavedChanges]="versionHistoryHasUnsavedChanges"
-                [saveCurrentState]="versionHistorySaveCurrentState"
-                (closed)="onVersionHistoryClosed($event)"
+                [graphSaveVersion]="versionHistoryGraphSaveVersion()"
+                [hasUnsavedChanges]="hasUnsavedChanges()"
+                (closed)="onVersionHistoryClosed()"
+                (restoreRequested)="onVersionRestoreRequested($event)"
             ></app-version-history-panel>
         }
         @if (isSaving()) {

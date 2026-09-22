@@ -14,8 +14,6 @@
     margin: 0;
     font-weight: var(--text-body-medium-weight);
     font-size: var(--text-body-medium-size);
-    line-height: 1.2;
-    letter-spacing: -0.03em;
 }
 
 .panel-header__close {
@@ -46,10 +44,5 @@
     &[aria-pressed='true'] {
         background-color: var(--accent-color);
         color: var(--color-text-primary);
-    }
-
-    app-svg-icon {
-        display: block;
-        flex-shrink: 0;
     }
 }

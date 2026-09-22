@@ -46,11 +46,6 @@
         color: var(--accent-color);
     }
 
-    .icon app-svg-icon {
-        display: block;
-        flex-shrink: 0;
-    }
-
     .btn-go-to-arrow {
         display: inline-flex;
         align-items: center;
@@ -81,11 +76,6 @@
             background-color: transparent;
             color: var(--accent-color);
             border-color: var(--accent-color);
-        }
-
-        app-svg-icon {
-            display: block;
-            flex-shrink: 0;
         }
 
         .arrow-up-custom {

@@ -55,7 +55,7 @@ import { VersionHistoryPanelComponent } from '../../../../features/flows/compone
 import {
     GetGraphLightRequest,
     GraphDto,
-    GraphRestoreResponse,
+    GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
@@ -159,9 +159,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public isDragging = false;
 
     public isVersionHistoryOpen = signal(false);
-    public readonly versionHistoryGraphSaveVersion = (): number | undefined => this.graphState()?.save_version;
-    public readonly versionHistoryHasUnsavedChanges = (): boolean => this.hasUnsavedChanges();
-    public readonly versionHistorySaveCurrentState = (): Observable<void> => this.saveCurrentState();
+    public readonly versionHistoryGraphSaveVersion = computed<number | undefined>(
+        () => this.graphState()?.save_version
+    );
     private readonly MIN_PANEL_WIDTH = 430;
     private readonly MAX_PANEL_WIDTH_RATIO = 0.7;
     private readonly routeParamMap;
@@ -171,6 +171,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     @ViewChild(FlowGraphComponent)
     private flowGraphComponent?: FlowGraphComponent;
+
+    @ViewChild(VersionHistoryPanelComponent)
+    private versionHistoryPanel?: VersionHistoryPanelComponent;
 
     public get graph(): GraphDto {
         return this.graphState()!;
@@ -907,8 +910,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onDragMove(event: MouseEvent): void {
         if (!this.isDragging) return;
         const hostRect = this.elementRef.nativeElement.getBoundingClientRect();
-        const maxWidth = hostRect.width * this.MAX_PANEL_WIDTH_RATIO;
-        const newWidth = hostRect.right - event.clientX;
+        const versionHistoryWidth = this.getVersionHistoryWidth();
+        const maxWidth = (hostRect.width - versionHistoryWidth) * this.MAX_PANEL_WIDTH_RATIO;
+        const newWidth = hostRect.right - versionHistoryWidth - event.clientX;
         this.panelWidthPx = Math.max(this.MIN_PANEL_WIDTH, Math.min(newWidth, maxWidth));
         this.cdr.markForCheck();
     }
@@ -919,6 +923,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.isDragging = false;
             window.dispatchEvent(new Event('resize'));
         }
+    }
+
+    private getVersionHistoryWidth(): number {
+        const versionHistoryEl = this.elementRef.nativeElement.querySelector('app-version-history-panel');
+        return versionHistoryEl?.getBoundingClientRect().width ?? 0;
+    }
+
+    private clampPanelWidthToViewport(): void {
+        const hostRect = this.elementRef.nativeElement.getBoundingClientRect();
+        const versionHistoryWidth = this.getVersionHistoryWidth();
+        const maxWidth = (hostRect.width - versionHistoryWidth) * this.MAX_PANEL_WIDTH_RATIO;
+        this.panelWidthPx = Math.max(this.MIN_PANEL_WIDTH, Math.min(this.panelWidthPx, maxWidth));
     }
 
     public ngOnDestroy(): void {
@@ -1092,16 +1108,73 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onViewVersionHistory(): void {
         if (!this.graph?.id) return;
         this.isVersionHistoryOpen.set(true);
+        requestAnimationFrame(() => {
+            this.clampPanelWidthToViewport();
+            this.cdr.markForCheck();
+        });
     }
 
-    public onVersionHistoryClosed(result?: GraphRestoreResponse): void {
+    public onVersionHistoryClosed(): void {
         this.isVersionHistoryOpen.set(false);
-        if (!result?.restored) return;
+    }
 
-        this.restoreWarnings.set(result.warnings);
-        this.undoRedoService.setUndoStack([]);
-        this.undoRedoService.setRedoStack([]);
-        this.refreshCurrentFlow();
+    public onVersionRestoreRequested(version: GraphVersionDto): void {
+        const hasUnsaved = this.hasUnsavedChanges();
+        const message = hasUnsaved
+            ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
+            : `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`;
+
+        this.unsavedChangesDialog
+            .confirm({
+                title: 'Restore version',
+                message,
+                saveText: 'Save & Restore',
+                dontSaveText: 'Just Restore',
+                cancelText: 'Cancel',
+                type: 'warning',
+                showDontSave: true,
+            })
+            .pipe(
+                switchMap((result) => {
+                    if (result === 'save') {
+                        return this.saveCurrentState().pipe(
+                            switchMap(() =>
+                                this.flowApiService.restoreGraphVersion(
+                                    version.id,
+                                    true,
+                                    this.versionHistoryGraphSaveVersion()
+                                )
+                            )
+                        );
+                    }
+                    if (result === 'dont-save') {
+                        return this.flowApiService.restoreGraphVersion(
+                            version.id,
+                            false,
+                            this.versionHistoryGraphSaveVersion()
+                        );
+                    }
+                    return EMPTY;
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (response) => {
+                    if (response.warnings.length > 0) {
+                        this.toastService.warning(
+                            `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
+                        );
+                    } else {
+                        this.toastService.success('Version restored successfully');
+                    }
+                    this.isVersionHistoryOpen.set(false);
+                    this.restoreWarnings.set(response.warnings);
+                    this.undoRedoService.setUndoStack([]);
+                    this.undoRedoService.setRedoStack([]);
+                    this.refreshCurrentFlow();
+                },
+                error: () => this.toastService.error('Failed to restore version'),
+            });
     }
 
     public onShowRestoreWarnings(): void {
@@ -1147,6 +1220,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                                 tap(() => {
                                     this.toastService.success(`Version '${result.name}' saved`);
                                     this.warnIfCdtMissingLlmConfig(this.loadedFlowState());
+                                    if (this.isVersionHistoryOpen()) {
+                                        this.versionHistoryPanel?.loadVersions();
+                                    }
                                 }),
                                 catchError(() => {
                                     this.toastService.error('Failed to save version');

@@ -22,12 +22,11 @@ import {
     ConfirmationDialogService,
     IconButtonComponent,
     SpinnerComponent,
-    UnsavedChangesDialogService,
 } from '@shared/components';
-import { EMPTY, filter, Observable, of, switchMap } from 'rxjs';
+import { filter, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { GraphRestoreResponse, GraphVersionDto } from '../../models/graph.model';
+import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
 import { FlowsApiService } from '../../services/flows-api.service';
 
@@ -62,11 +61,11 @@ export class VersionHistoryPanelComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
 
     public graphId = input.required<number>();
-    public graphSaveVersion = input<() => number | undefined>();
-    public hasUnsavedChanges = input<() => boolean>();
-    public saveCurrentState = input<() => Observable<void>>();
+    public graphSaveVersion = input<number | undefined>();
+    public hasUnsavedChanges = input<boolean>(false);
 
-    public closed = output<GraphRestoreResponse | undefined>();
+    public closed = output<void>();
+    public restoreRequested = output<GraphVersionDto>();
 
     @HostListener('document:mousedown', ['$event'])
     onDocumentMouseDown(event: MouseEvent): void {
@@ -81,7 +80,6 @@ export class VersionHistoryPanelComponent implements OnInit {
         private flowApiService: FlowsApiService,
         private toastService: ToastService,
         private confirmationDialogService: ConfirmationDialogService,
-        private unsavedChangesDialogService: UnsavedChangesDialogService,
         private cdr: ChangeDetectorRef,
         private router: Router,
         private createGraphWarningsService: CreateGraphWarningsService
@@ -102,7 +100,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     public restoreVersion(version: GraphVersionDto, event?: MouseEvent): void {
         event?.stopPropagation();
         this.openMenuId = null;
-        this.restore(version);
+        this.restoreRequested.emit(version);
     }
 
     public restoreSelectedVersion(): void {
@@ -114,7 +112,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                 ? this.editingValue.trim()
                 : null;
 
-        this.restore(pendingName ? { ...version, name: pendingName } : version);
+        this.restoreRequested.emit(pendingName ? { ...version, name: pendingName } : version);
     }
 
     public startEdit(version: GraphVersionDto, field: 'name' | 'description'): void {
@@ -216,55 +214,7 @@ export class VersionHistoryPanelComponent implements OnInit {
             });
     }
 
-    private restore(version: GraphVersionDto): void {
-        const hasUnsaved = this.hasUnsavedChanges()?.() ?? false;
-        const message = hasUnsaved
-            ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
-            : `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`;
-
-        this.unsavedChangesDialogService
-            .confirm({
-                title: 'Restore version',
-                message,
-                saveText: 'Save & Restore',
-                dontSaveText: 'Just Restore',
-                cancelText: 'Cancel',
-                type: 'warning',
-                showDontSave: true,
-            })
-            .pipe(
-                switchMap((result) => {
-                    if (result === 'save') {
-                        const save$ = this.saveCurrentState()?.() ?? of(void 0);
-                        return save$.pipe(
-                            switchMap(() =>
-                                this.flowApiService.restoreGraphVersion(version.id, true, this.graphSaveVersion()?.())
-                            )
-                        );
-                    }
-                    if (result === 'dont-save') {
-                        return this.flowApiService.restoreGraphVersion(version.id, false, this.graphSaveVersion()?.());
-                    }
-                    return EMPTY;
-                }),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe({
-                next: (response) => {
-                    if (response.warnings.length > 0) {
-                        this.toastService.warning(
-                            `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
-                        );
-                    } else {
-                        this.toastService.success('Version restored successfully');
-                    }
-                    this.closed.emit(response);
-                },
-                error: () => this.toastService.error('Failed to restore version'),
-            });
-    }
-
-    private loadVersions(): void {
+    public loadVersions(): void {
         this.flowApiService
             .getGraphVersions(this.graphId())
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -292,7 +242,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                     if (response.warnings.length) {
                         this.createGraphWarningsService.setPending(response.warnings);
                     }
-                    this.closed.emit(undefined);
+                    this.closed.emit();
                     this.router.navigate(['/flows', response.graph_id]);
                 },
                 error: () => this.toastService.error('Failed to create flow'),
