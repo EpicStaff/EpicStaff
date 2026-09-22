@@ -110,55 +110,56 @@ USERS_LIST_GET = {
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(description="Caller is not a superadmin."),
     },
-)
+}
 
-USERS_CREATE_POST = dict(
-    summary="Create a user (superadmin)",
-    request=UserCreateRequestSerializer,
-    responses={
+
+USERS_CREATE_POST = {
+    "summary": "Create a user (superadmin)",
+    "request": UserCreateRequestSerializer,
+    "responses": {
         201: UserResponseSerializer,
         400: OpenApiResponse(description="Validation error or duplicate email"),
         404: OpenApiResponse(description="Organization or role not found"),
     },
-)
+}
 
-USERS_GRANT_SUPERADMIN_POST = dict(
-    summary="Grant superadmin (superadmin)",
-    responses={
+USERS_GRANT_SUPERADMIN_POST = {
+    "summary": "Grant superadmin (superadmin)",
+    "responses": {
         200: UserResponseSerializer,
         404: OpenApiResponse(description="User not found"),
     },
-)
+}
 
-USERS_REVOKE_SUPERADMIN_POST = dict(
-    summary="Revoke superadmin (superadmin)",
-    responses={
+USERS_REVOKE_SUPERADMIN_POST = {
+    "summary": "Revoke superadmin (superadmin)",
+    "responses": {
         200: UserResponseSerializer,
         400: OpenApiResponse(description="Cannot revoke last superadmin"),
         404: OpenApiResponse(description="User not found"),
     },
-)
+}
 
-USERS_DEACTIVATE_POST = dict(
-    summary="Deactivate a user account (superadmin)",
-    responses={
+USERS_DEACTIVATE_POST = {
+    "summary": "Deactivate a user account (superadmin)",
+    "responses": {
         200: UserResponseSerializer,
         400: OpenApiResponse(description="Cannot deactivate the last active superadmin"),
         404: OpenApiResponse(description="User not found"),
     },
-)
+}
 
-USERS_REACTIVATE_POST = dict(
-    summary="Reactivate a user account (superadmin)",
-    responses={
+USERS_REACTIVATE_POST = {
+    "summary": "Reactivate a user account (superadmin)",
+    "responses": {
         200: UserResponseSerializer,
         404: OpenApiResponse(description="User not found"),
     },
-)
+}
 
-USERS_DESTROY_DELETE = dict(
-    summary="Permanently delete a user (superadmin)",
-    parameters=[
+USERS_DESTROY_DELETE = {
+    "summary": "Permanently delete a user (superadmin)",
+    "parameters": [
         OpenApiParameter(
             name="dry_run",
             type=OpenApiTypes.BOOL,
@@ -166,7 +167,7 @@ USERS_DESTROY_DELETE = dict(
             description="When true, report what would be deleted and delete nothing.",
         )
     ],
-    responses={
+    "responses": {
         200: DeleteReportSerializer,
         400: OpenApiResponse(
             description=(
@@ -175,4 +176,5 @@ USERS_DESTROY_DELETE = dict(
         ),
         404: OpenApiResponse(description="User not found"),
     },
-)
+}
+
