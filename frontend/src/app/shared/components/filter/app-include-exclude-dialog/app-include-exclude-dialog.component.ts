@@ -130,6 +130,13 @@ export class AppIncludeExcludeDialogComponent {
     public readonly selectedItemCount = computed(() => this.selectedItemIds().size);
     public readonly selectedLabelCount = computed(() => this.selectedLabelIds().size);
 
+    public readonly isAllSelected = computed(() => {
+        if (this.activeTab() === 'primary') {
+            return this.totalItemCount() > 0 && this.selectedItemCount() === this.totalItemCount();
+        }
+        return this.totalLabelCount() > 0 && this.selectedLabelCount() === this.totalLabelCount();
+    });
+
     public setActiveTab(tab: IncludeExcludeTab): void {
         this.activeTab.set(tab);
     }
@@ -173,7 +180,13 @@ export class AppIncludeExcludeDialogComponent {
         });
     }
 
-    public selectAll(): void {
+    public toggleSelectAll(): void {
+        if (this.isAllSelected()) {
+            if (this.activeTab() === 'primary') this.selectedItemIds.set(new Set());
+            else this.selectedLabelIds.set(new Set());
+            return;
+        }
+
         if (this.activeTab() === 'primary') {
             this.selectedItemIds.set(new Set(this.allItems.map((i) => i.id)));
         } else {
