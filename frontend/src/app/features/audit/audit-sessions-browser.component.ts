@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent } from '@shared/components';
 
 import { FlowsApiService } from '../flows/services/flows-api.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
@@ -17,7 +18,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 @Component({
     selector: 'app-audit-sessions-browser',
     standalone: true,
-    imports: [CommonModule, AuditFiltersPanelComponent, AuditFilterChipsComponent],
+    imports: [CommonModule, AppSvgIconComponent, AuditFiltersPanelComponent, AuditFilterChipsComponent],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,9 +40,38 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private nextCursor = signal<string | null>(null);
     protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    private collapsedIds = signal<ReadonlySet<string>>(new Set());
     public flowNames = signal<string[]>([]);
+    public allRows = computed(() => buildAuditRows(this.rawEvents()));
+    public isRowCollapsed(id: string): boolean {
+        return this.collapsedIds().has(id);
+    }
 
-    public rows = computed(() => buildAuditRows(this.rawEvents()));
+    public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
+    public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
+
+    public toggleAllRows(): void {
+        if (this.areAllRowsExpanded()) {
+            this.collapsedIds.set(
+                new Set(
+                    this.allRows()
+                        .filter((row) => row.hasChildren)
+                        .map((row) => row.event.id)
+                )
+            );
+            return;
+        }
+        this.collapsedIds.set(new Set());
+    }
+
+    public rows = computed(() => {
+        const collapsed = this.collapsedIds();
+        if (collapsed.size === 0) {
+            return this.allRows();
+        }
+        return this.allRows().filter((row) => !row.parentIds.some((id) => collapsed.has(id)));
+    });
+
     public appliedChips = computed(() => describeAuditFilter(this.appliedFilter()));
     public activeFilterCount = computed(() => this.appliedChips().length);
     public canGoNewer = computed(() => this.cursorStack().length > 1);
@@ -55,6 +85,16 @@ export class AuditSessionsBrowserComponent implements OnInit {
             events: events.filter((event) => event.kind === 'event').length,
         };
     });
+
+    public toggleRow(id: string): void {
+        this.collapsedIds.update((current) => {
+            const next = new Set(current);
+            if (!next.delete(id)) {
+                next.add(id);
+            }
+            return next;
+        });
+    }
 
     public canDecreasePageSize = computed(() => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) > 0);
     public canIncreasePageSize = computed(
@@ -155,6 +195,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
                     this.nextCursor.set(response.next_cursor);
                     this.isPartial.set(response.partial);
                     this.isLoading.set(false);
+                    this.collapsedIds.set(new Set());
                 },
                 error: () => {
                     this.rawEvents.set([]);

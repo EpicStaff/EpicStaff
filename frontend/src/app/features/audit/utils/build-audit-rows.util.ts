@@ -9,6 +9,10 @@ export interface AuditRow {
     event: AuditSessionEvent;
     depth: number;
     sessionStatus: AuditSessionRowStatus | null;
+    hasChildren: boolean;
+    parentIds: string[];
+    ancestorLines: boolean[];
+    isLastChild: boolean;
 }
 
 function messageType(event: AuditSessionEvent): string | null {
@@ -55,20 +59,37 @@ export function buildAuditRows(events: AuditSessionEvent[]): AuditRow[] {
     const rows: AuditRow[] = [];
 
     // recursive function which pushes event as a row and does it for its every child
-    const walk = (event: AuditSessionEvent, depth: number): void => {
-        rows.push({ event, depth, sessionStatus: resolveSessionStatus(event) });
+    const walk = (
+        event: AuditSessionEvent,
+        depth: number,
+        parentIds: string[],
+        ancestorLines: boolean[],
+        isLastChild: boolean
+    ): void => {
         const children = childrenByParent.get(event.id);
+        rows.push({
+            event,
+            depth,
+            sessionStatus: resolveSessionStatus(event),
+            hasChildren: children !== undefined,
+            parentIds,
+            ancestorLines,
+            isLastChild,
+        });
         if (!children) {
             return;
         }
-        for (const child of [...children].sort((a, b) => a.event_time.localeCompare(b.event_time))) {
-            walk(child, depth + 1);
-        }
+        const nextParents = [...parentIds, event.id];
+        const nextLines = depth === 0 ? [] : [...ancestorLines, !isLastChild];
+        const sorted = [...children].sort((a, b) => a.event_time.localeCompare(b.event_time));
+        sorted.forEach((child, index) => {
+            walk(child, depth + 1, nextParents, nextLines, index === sorted.length - 1);
+        });
     };
 
-    for (const root of roots) {
-        walk(root, 0);
-    }
+    roots.forEach((root, index) => {
+        walk(root, 0, [], [], index === roots.length - 1);
+    });
 
     return rows;
 }
