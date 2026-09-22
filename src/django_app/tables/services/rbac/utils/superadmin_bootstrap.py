@@ -1,11 +1,10 @@
 from dataclasses import dataclass
+from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-
 from loguru import logger
-
 from tables.models.rbac_models import (
     Organization,
     OrganizationUser,
@@ -21,7 +20,7 @@ DEFAULT_ORG_NAME_FALLBACK = "Organization"
 
 @dataclass
 class SuperadminBootstrapResult:
-    user: "User"
+    user: Any
     organization: Organization
     membership: OrganizationUser
     default_org_created: bool
@@ -58,21 +57,17 @@ class SuperadminBootstrap:
         password: str,
         org_name: str | None = None,
     ) -> SuperadminBootstrapResult:
-        UserModel = get_user_model()
+        UserModel = get_user_model()  # noqa: N806
         user = UserModel.objects.create_superuser(email=email, password=password)
 
-        organization, default_org_created = self._get_or_create_default_org(
-            org_name=org_name
-        )
+        organization, default_org_created = self._get_or_create_default_org(org_name=org_name)
 
         role = Role.objects.get(
             name=self.SUPERADMIN_ROLE_NAME,
             is_built_in=True,
             org__isnull=True,
         )
-        membership = OrganizationUser.objects.create(
-            user=user, org=organization, role=role
-        )
+        membership = OrganizationUser.objects.create(user=user, org=organization, role=role)
 
         # API keys are never provisioned here — user keys come only from
         # POST /api/profile/api-keys/, the system key only from

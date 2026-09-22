@@ -1,5 +1,4 @@
 from rest_framework.exceptions import NotFound, PermissionDenied
-
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_resolver import PermissionResolver
 

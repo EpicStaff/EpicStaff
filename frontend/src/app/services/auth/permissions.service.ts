@@ -102,6 +102,8 @@ export class PermissionsService implements StorageService {
     canOpenConfigureModelsDialog(): boolean {
         return (
             this.can(ResourceCode.LlmConfigs, ActionCode.Read) ||
+            this.can(ResourceCode.Voice, ActionCode.Read) ||
+            this.can(ResourceCode.Webhooks, ActionCode.Read) ||
             this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])
         );
     }

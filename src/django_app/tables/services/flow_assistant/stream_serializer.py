@@ -7,11 +7,12 @@ These handlers convert internal StreamEvent dataclasses into the
 view layer stays a thin pass-through.
 """
 
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from asgiref.sync import sync_to_async
-
 from tables.services.llm_clients.base import StructuredEvent
+
 from .tools import resolve_node_display_name, resolve_subgraph_display_name
 
 

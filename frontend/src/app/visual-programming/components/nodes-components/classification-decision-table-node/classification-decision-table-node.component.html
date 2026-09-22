@@ -32,7 +32,12 @@
                 [style.color]="node.color"
             ></i>
         </div>
-        <div class="title">{{ node.node_name || 'Classification Table' }}</div>
+        <div class="title">
+            <span class="title__label">{{ titleParts.label }}</span>
+            @if (titleParts.badge) {
+                <span class="title__badge">{{ titleParts.badge }}</span>
+            }
+        </div>
         @if (errorMessages.length > 0) {
             <div
                 class="blocked-badge"

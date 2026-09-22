@@ -1,5 +1,5 @@
-PARTIAL_IMPORT_SWAGGER = dict(
-    request={
+PARTIAL_IMPORT_SWAGGER = {
+    "request": {
         "multipart/form-data": {
             "type": "object",
             "properties": {
@@ -8,4 +8,4 @@ PARTIAL_IMPORT_SWAGGER = dict(
             "required": ["file"],
         }
     }
-)
+}

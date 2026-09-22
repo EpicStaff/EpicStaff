@@ -32,7 +32,3 @@ transitive-pins = [
 
 [tool.uv]
 package = false
-
-[tool.ruff]
-select = ["E"]
-ignore = ["E402","E501"]

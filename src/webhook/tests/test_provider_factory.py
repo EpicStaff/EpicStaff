@@ -1,6 +1,6 @@
 import pytest
 from src.shared.models import NgrokConfigData, LocalhostConfigData, BaseTunnelConfigData
-from app.providers.provider_factory import get_provider, ProviderNotFoundException
+from app.providers.provider_factory import get_provider, ProviderNotFoundError
 from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
 from app.providers.tunnels.localhost_tunnel import LocalhostTunnel
 from app.core.settings import settings
@@ -75,5 +75,5 @@ def test_unknown_config_raises_provider_not_found():
 
     config = UnknownConfig(name="unknown")
 
-    with pytest.raises(ProviderNotFoundException):
+    with pytest.raises(ProviderNotFoundError):
         get_provider(config)

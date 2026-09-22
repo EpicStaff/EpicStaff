@@ -1,14 +1,14 @@
 import asyncio
 import contextlib
-import os
 import json
-import redis
-import redis.asyncio as async_redis
-from redis.backoff import ExponentialBackoff
-from redis.retry import Retry
+import os
 from threading import Lock
 
+import redis
+import redis.asyncio as async_redis
 from django.conf import settings
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
@@ -18,8 +18,8 @@ from src.shared.models import (
     StopSessionMessage,
 )
 from tables.services.secrets import secret_resolver
-from utils.singleton_meta import SingletonMeta
 from utils.logger import logger
+from utils.singleton_meta import SingletonMeta
 
 
 class RedisService(metaclass=SingletonMeta):
@@ -127,9 +127,7 @@ class RedisService(metaclass=SingletonMeta):
     def publish_realtime_agent_chat(
         self, *, rt_agent_chat_data: RealtimeAgentChatData, org_id: int
     ) -> None:
-        resolved = secret_resolver.resolve_payload(
-            payload=rt_agent_chat_data, org_id=org_id
-        )
+        resolved = secret_resolver.resolve_payload(payload=rt_agent_chat_data, org_id=org_id)
         # Temporary diagnostic checkpoint (visibility only, no behavior
         # change) for the live org_id-null investigation: confirms whether
         # `org_id` is still present on the object at the exact instant it's
@@ -140,7 +138,9 @@ class RedisService(metaclass=SingletonMeta):
             resolved.connection_key,
             resolved.org_id,
         )
-        self.redis_client.publish(settings.REALTIME_AGENTS_SCHEMA_CHANNEL, resolved.model_dump_json())
+        self.redis_client.publish(
+            settings.REALTIME_AGENTS_SCHEMA_CHANNEL, resolved.model_dump_json()
+        )
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
         # Deliberately dumps the UNRESOLVED original: logging `resolved` would
         # write plaintext credentials into the log stream.
@@ -156,18 +156,14 @@ class RedisService(metaclass=SingletonMeta):
         have inbound calls answered for up to a minute.
         """
         message = json.dumps({"token": str(token)})
-        self.redis_client.publish(
-            settings.REALTIME_CHANNELS_INVALIDATE_CHANNEL, message
-        )
+        self.redis_client.publish(settings.REALTIME_CHANNELS_INVALIDATE_CHANNEL, message)
         logger.info(
             "Sent channel invalidation to {}: token={}.",
             settings.REALTIME_CHANNELS_INVALIDATE_CHANNEL,
             token,
         )
 
-    def publish_user_graph_message(
-        self, session_id: int, uuid: str, data: dict
-    ) -> None:
+    def publish_user_graph_message(self, session_id: int, uuid: str, data: dict) -> None:
         channel = os.environ.get("GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update")
 
         message = {
@@ -275,9 +271,7 @@ class RedisService(metaclass=SingletonMeta):
                                 )
                                 return ChunkDocumentMessageResponse.model_validate(data)
                         except json.JSONDecodeError:
-                            logger.warning(
-                                f"Invalid JSON in chunking response: {msg['data']}"
-                            )
+                            logger.warning(f"Invalid JSON in chunking response: {msg['data']}")
                         except Exception as e:
                             logger.warning(f"Error parsing chunking response: {e}")
 

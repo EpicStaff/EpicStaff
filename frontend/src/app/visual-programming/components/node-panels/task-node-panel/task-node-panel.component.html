@@ -117,6 +117,11 @@
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
 
+                        <app-inputs-you-can-use
+                            [names]="inputMapKeys()"
+                            (insert)="insertInputToInstructions($event)"
+                        />
+
                         <app-custom-input
                             label="Output Variable Path"
                             tooltipText="Path where the Task node output will be stored in flow variables."
@@ -195,6 +200,7 @@
                                     </div>
                                 </div>
                                 <app-variable-highlight-textarea
+                                    #instructionsTextareaSchemaView
                                     class="editor-block__textarea"
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
@@ -269,6 +275,7 @@
                                     ></markdown>
                                 } @else {
                                     <app-variable-highlight-textarea
+                                        #instructionsTextareaMainPane
                                         class="main-editor-pane__textarea"
                                         formControlName="instructions"
                                         placeholder="Enter task instructions..."
@@ -404,6 +411,11 @@
                         <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
 
+                    <app-inputs-you-can-use
+                        [names]="inputMapKeys()"
+                        (insert)="insertInputToInstructions($event)"
+                    />
+
                     <app-custom-input
                         label="Output Variable Path"
                         tooltipText="Path where the Task node output will be stored in flow variables."
@@ -425,6 +437,7 @@
                     </div>
 
                     <app-variable-highlight-textarea
+                        #instructionsTextareaCollapsed
                         label="Instructions"
                         [required]="true"
                         tooltipText="Instructions given to the agent describing what this task should accomplish."
