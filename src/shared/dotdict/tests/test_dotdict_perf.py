@@ -29,6 +29,10 @@ def _raise_construction_timeout(signum, frame):
     )
 
 
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGALRM"),
+    reason="POSIX-only: SIGALRM watchdog not available on this platform",
+)
 def test_dotdict_construction_deep_nesting_is_not_exponential():
     """Regression test for exponential blowup in DotDict/DotObject construction.
 

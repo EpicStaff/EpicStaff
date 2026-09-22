@@ -193,6 +193,8 @@ class DotList(list):
 
 
 def DotObject(data):  # noqa: N802
+    """Already-wrapped DotDict/DotList is returned as-is (same instance, not copied) to avoid
+    exponential re-wrapping cost on deep nesting; caller and result then share mutations."""
     if isinstance(data, (DotDict, DotList)):
         return data
     if isinstance(data, Mapping):

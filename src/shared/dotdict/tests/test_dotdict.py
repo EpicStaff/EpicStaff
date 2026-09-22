@@ -291,3 +291,47 @@ def test_pydantic_serialize_non_none_dotlist_field_unchanged():
     m = Model(items=DotList([1, {"x": 2}, [3, {"y": 4}]]))
     dumped = m.model_dump()
     assert dumped == {"items": [1, {"x": 2}, [3, {"y": 4}]]}
+
+
+def test_dotobject_returns_same_instance_for_existing_dotdict():
+    """DotObject short-circuits on an already-constructed DotDict — no copy."""
+    nested = DotDict({"a": 1})
+    result = DotObject(nested)
+    assert result is nested
+
+
+def test_dotobject_returns_same_instance_for_existing_dotlist():
+    """DotObject short-circuits on an already-constructed DotList — no copy."""
+    nested = DotList([1, 2, 3])
+    result = DotObject(nested)
+    assert result is nested
+
+
+def test_nested_dotdict_identity_preserved_on_construction():
+    """Constructing an outer DotDict from data containing an already-built
+    nested DotDict aliases it instead of copying it."""
+    nested = DotDict({"c": 1})
+    outer = DotDict({"b": nested})
+    assert outer.b is nested
+
+
+def test_nested_dotdict_mutation_is_shared_not_copied():
+    nested = DotDict({"c": 1})
+    outer = DotDict({"b": nested})
+    nested.c = 2
+    assert outer.b.c == 2
+
+
+def test_nested_dotlist_identity_preserved_on_construction():
+    """Constructing a DotDict from data containing an already-built nested
+    DotList aliases it instead of copying it."""
+    nested = DotList([1, 2, 3])
+    outer = DotDict({"tags": nested})
+    assert outer.tags is nested
+
+
+def test_nested_dotlist_mutation_is_shared_not_copied():
+    nested = DotList([1, 2])
+    outer = DotDict({"tags": nested})
+    nested.append(3)
+    assert list(outer.tags) == [1, 2, 3]
