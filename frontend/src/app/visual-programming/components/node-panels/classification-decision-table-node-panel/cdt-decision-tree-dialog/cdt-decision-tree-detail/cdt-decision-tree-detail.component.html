@@ -77,43 +77,44 @@
     </header>
 
     <div class="cdt-tree-detail__body">
-        <!--
-            Above the two sections and outside both: it describes the block itself,
-            not its explanation or its data, and it never collapses.
-        -->
-        @if (block().note; as note) {
-            <div class="cdt-tree-detail__note">
-                @if (note.tag) {
-                    <span class="cdt-tree-detail__note-tag">{{ note.tag }}</span>
-                }
-
-                <p class="cdt-tree-detail__note-text">{{ note.text }}</p>
-            </div>
-        }
-
         <section class="cdt-tree-detail__section">
             <!--
                 No `aria-controls` on either section header: the body it would name
                 only exists while the section is open, and the collapse animates on
                 `:enter`/`:leave`, so it cannot stay mounted. `aria-expanded` alone
                 is valid and carries the state.
+
+                The chip sits outside the heading button: it carries its own tooltip
+                and must not collapse the section, and it stays readable while shut.
             -->
-            <h4 class="cdt-tree-detail__section-heading">
-                <button
-                    class="cdt-tree-detail__section-header"
-                    type="button"
-                    [attr.aria-expanded]="explanationOpen()"
-                    (click)="toggleExplanation()"
-                >
-                    <app-svg-icon
-                        class="cdt-tree-detail__caret"
-                        icon="caret-down-filled"
-                        size="0.7rem"
-                        [class.cdt-tree-detail__caret--collapsed]="!explanationOpen()"
-                    />
-                    <span class="cdt-tree-detail__section-title">{{ copy.explanationHeading }}</span>
-                </button>
-            </h4>
+            <div class="cdt-tree-detail__section-row">
+                <h4 class="cdt-tree-detail__section-heading">
+                    <button
+                        class="cdt-tree-detail__section-header"
+                        type="button"
+                        [attr.aria-expanded]="explanationOpen()"
+                        (click)="toggleExplanation()"
+                    >
+                        <app-svg-icon
+                            class="cdt-tree-detail__caret"
+                            icon="caret-down-filled"
+                            size="0.7rem"
+                            [class.cdt-tree-detail__caret--collapsed]="!explanationOpen()"
+                        />
+                        <span class="cdt-tree-detail__section-title">{{ copy.explanationHeading }}</span>
+                    </button>
+                </h4>
+
+                @if (block().note; as note) {
+                    <span
+                        class="cdt-tree-detail__note-tag"
+                        tabindex="0"
+                        [matTooltip]="note.tooltip"
+                        matTooltipPosition="below"
+                        >{{ note.tag }}</span
+                    >
+                }
+            </div>
 
             <!-- `aria-live` here: the text arrives into an open, unfocused section. -->
             <div

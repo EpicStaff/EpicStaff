@@ -188,7 +188,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
             detail: rowExpressionDetail(row),
             chip: chipForSharedRoute(row, routeCodeCounts),
             warning: rowWarning(row),
-            note: rowNote(row, target, isLast),
+            note: rowNote(row, target),
             target,
         });
 
@@ -479,32 +479,24 @@ function rowWarning(row: ConditionGroup): string | null {
 }
 
 /**
- * What the detail window says about leaving a rule.
+ * The detail window's chip for a rule, or null when it has earned none.
  *
- * Always present, so every rule's window reads the same way. A routed rule that
- * also sets Continue picks up a second sentence — that used to be a warning badge,
- * and it is a note now because nothing is wrong: the arrows show where the flow
- * goes, and the badge only added noise to a diagram that was already correct.
+ * Only Continue paired with a route code earns one — that pair is where the engine
+ * surprises people. Everything else a rule does is already drawn by its arrows.
  */
-function rowNote(row: ConditionGroup, target: CdtTreeTarget, isLast: boolean): CdtTreeNote {
-    const noMatch = isLast ? CDT_TREE_COPY.noMatchDefault : CDT_TREE_COPY.noMatchNextRule;
-
+function rowNote(row: ConditionGroup, target: CdtTreeTarget): CdtTreeNote | null {
     const continues = row.continue_flag ?? row.continue ?? false;
-    // A verdict is only earned when Continue is set and the rule also carries a
-    // route code — that pair is where the engine surprises people. Which way it
-    // resolves is the whole point: the engine breaks on `next_node`, so a route
-    // wired to a node wins over Continue, and one wired to nothing does not.
-    if (!continues) return { tag: null, text: noMatch };
+    if (!continues) return null;
 
     if (target.state === 'node') {
-        return { tag: CDT_TREE_COPY.continueIgnoredTag, text: `${noMatch} ${CDT_TREE_COPY.routedContinueNote}` };
+        return { tag: CDT_TREE_COPY.continueIgnoredTag, tooltip: CDT_TREE_COPY.continueIgnoredTooltip };
     }
 
     if (target.state === 'no-capture') {
-        return { tag: CDT_TREE_COPY.continueAppliesTag, text: `${noMatch} ${CDT_TREE_COPY.unconnectedRouteNote}` };
+        return { tag: CDT_TREE_COPY.continueAppliesTag, tooltip: CDT_TREE_COPY.continueAppliesTooltip };
     }
 
-    return { tag: null, text: noMatch };
+    return null;
 }
 
 function compact(ids: readonly (string | null)[]): string[] {
