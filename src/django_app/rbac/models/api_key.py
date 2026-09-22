@@ -36,7 +36,7 @@ class ApiKey(models.Model):
     last_used_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        db_table = "tables_apikey"
+        db_table = "rbac_apikey"
         constraints = [
             models.CheckConstraint(
                 condition=(
