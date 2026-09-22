@@ -5,8 +5,8 @@ import { EMPTY, from, fromEvent, Observable, of, Subject } from 'rxjs';
 import { catchError, delay, map, switchMap, tap } from 'rxjs/operators';
 
 import { AuthService } from '../../../services/auth/auth.service';
-import { ConfigService } from '../../../services/config/config.service';
-import { ToastService } from '../../../services/notifications/toast.service';
+import { ConfigService } from '../../../services/config';
+import { ToastService } from '../../../services/notifications';
 import type { ItemType } from '../libs/openai/client';
 // @ts-ignore
 import { RealtimeClient } from '../libs/openai/client';

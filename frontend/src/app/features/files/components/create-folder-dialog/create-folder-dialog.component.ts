@@ -5,14 +5,16 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, HostListener,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { FileUploaderComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    DragDropAreaComponent,
+    FileUploaderComponent,
+    HelpTooltipComponent,
+    Spinner2Component,
+} from '@shared/components';
 import { EMPTY, of, switchMap } from 'rxjs';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { DragDropAreaComponent } from '../../../../shared/components/drag-drop-area/drag-drop-area.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
+import { ToastService } from '../../../../services/notifications';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageApiService } from '../../services/storage-api.service';
 

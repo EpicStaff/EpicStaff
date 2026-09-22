@@ -17,13 +17,15 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { IconButtonComponent } from '@shared/components';
+import {
+    ConfirmationDialogService,
+    IconButtonComponent,
+    SpinnerComponent,
+    UnsavedChangesDialogService,
+} from '@shared/components';
 import { EMPTY, filter, Observable, of, switchMap } from 'rxjs';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
-import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
+import { ToastService } from '../../../../services/notifications';
 import { GraphRestoreResponse, GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
 import { FlowsApiService } from '../../services/flows-api.service';

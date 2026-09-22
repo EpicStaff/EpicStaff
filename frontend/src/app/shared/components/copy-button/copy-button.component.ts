@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, Input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { ToastService } from '../../../services/notifications/toast.service';
+import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({

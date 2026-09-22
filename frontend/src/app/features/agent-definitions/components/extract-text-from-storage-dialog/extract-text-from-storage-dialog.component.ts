@@ -2,8 +2,8 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StorageApiService } from '../../../files/services/storage-api.service';
 import { getFileExtension } from '../../../files/utils/storage-file.utils';
