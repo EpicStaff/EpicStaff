@@ -3,8 +3,8 @@ from rest_framework.exceptions import NotFound
 
 from tables.models import Graph
 from tables.models.session_models import Session
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
 from tables.services.rbac.session_access import assert_session_org_access
 

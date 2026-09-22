@@ -1,8 +1,8 @@
 import pytest
 from django.db.models import Q
 
-from tables.models.rbac_models import Role
-from tables.models.rbac_models.rbac_enums import ResourceType
+from rbac.models import Role
+from rbac.models.enums import ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import RoleNotFoundError
 

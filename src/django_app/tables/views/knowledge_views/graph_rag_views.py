@@ -1,4 +1,5 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -17,7 +18,6 @@ from tables.models import SourceCollection
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import GraphRag
 from tables.models.llm_models import LLMConfig
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.graph_rag_serializers import (
     GraphRagCreateSerializer,
     GraphRagDetailSerializer,

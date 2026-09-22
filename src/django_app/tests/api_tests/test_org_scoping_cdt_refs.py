@@ -22,8 +22,8 @@ from tables.models.graph_models import (
     StartNode,
 )
 from tables.models.llm_models import LLMConfig
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 CDT_URL = "/api/classification-decision-table-node/"

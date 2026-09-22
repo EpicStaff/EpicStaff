@@ -2,13 +2,13 @@ from django.db.models import Count
 from drf_spectacular.utils import (
     extend_schema,
 )
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.exceptions import CollectionNotFoundException
 from tables.models.knowledge_models.collection_models import SourceCollection
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
     SourceCollectionCreateSerializer,

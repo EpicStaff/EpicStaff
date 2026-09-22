@@ -6,6 +6,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import F
 from loguru import logger
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.exceptions import GraphSaveVersionConflictError
 from tables.models.base_models import (
@@ -21,7 +22,6 @@ from tables.models.base_models import (
 from tables.models.knowledge_models.collection_models import BaseRagType
 from tables.models.knowledge_models.graphrag_models import AgentGraphRag
 from tables.models.label_models import Label
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class GraphManager(ActiveManager):
@@ -549,7 +549,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
     # persistent state is scoped per-org as well
     # TODO refactor to use user_variable for persistent variables
     organization_user = models.ForeignKey(
-        "OrganizationUser",
+        "rbac.OrganizationUser",
         on_delete=models.CASCADE,
         related_name="graph_persistent_states",
     )
@@ -917,7 +917,7 @@ class StorageFile(models.Model):
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
 
     org = models.ForeignKey(
-        "Organization",
+        "rbac.Organization",
         on_delete=models.CASCADE,
         related_name="storage_files",
         help_text="Organization that owns this storage entry.",

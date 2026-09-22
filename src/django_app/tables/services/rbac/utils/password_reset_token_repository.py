@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 
-from tables.models.rbac_models import PasswordResetToken
+from rbac.models import PasswordResetToken
 
 # 32 bytes of entropy, URL-safe so it survives a query string.
 TOKEN_BYTES = 32

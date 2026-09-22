@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema
 from loguru import logger
 from pydantic import ValidationError
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,7 +18,6 @@ from tables.exceptions import (
     NoNaiveRagForCollectionException,
 )
 from tables.models import SourceCollection
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.search_config_serializers import (
     GraphRagSuggestInputSerializer,
     NaiveRagSuggestInputSerializer,

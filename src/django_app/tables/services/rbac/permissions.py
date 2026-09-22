@@ -1,12 +1,13 @@
 from django.core.exceptions import ImproperlyConfigured
 from rest_framework.permissions import SAFE_METHODS, BasePermission
-from tables.models.rbac_models import ApiKey
 from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
 )
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
+
+from rbac.models import ApiKey
 
 
 class IsSuperadmin(BasePermission):

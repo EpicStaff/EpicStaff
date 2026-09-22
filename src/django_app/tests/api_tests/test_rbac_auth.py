@@ -35,13 +35,8 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    PasswordResetToken,
-    Role,
-)
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, PasswordResetToken, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
@@ -481,7 +476,7 @@ def test_reset_user_creates_default_org_membership(superadmin_client):
     org with role 'Superadmin'.
     """
     from django.conf import settings
-    from tables.models.rbac_models import Organization, OrganizationUser
+    from rbac.models import Organization, OrganizationUser
 
     r = superadmin_client.post(
         reverse("reset_user"),
@@ -504,7 +499,7 @@ def test_reset_user_creates_default_org_when_missing(superadmin_client):
     new superadmin's membership lands in the freshly-created org.
     """
     from django.conf import settings
-    from tables.models.rbac_models import Organization, OrganizationUser
+    from rbac.models import Organization, OrganizationUser
 
     Organization.objects.filter(
         name__iexact=settings.DEFAULT_ORGANIZATION_NAME

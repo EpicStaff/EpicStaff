@@ -5,7 +5,7 @@ Used by `HasOrgPermission` when a view does not declare its own
 the fallback only.
 """
 
-from tables.models.rbac_models.rbac_enums import Permission
+from rbac.models.enums import Permission
 
 DEFAULT_ACTION_MAP = {
     "list": Permission.READ,  # TODO: refactor for list permissions

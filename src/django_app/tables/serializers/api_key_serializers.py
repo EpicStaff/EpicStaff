@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
+from rbac.models import ApiKey
 from rest_framework import serializers
-from tables.models.rbac_models import ApiKey
 
 
 class ApiKeySerializer(serializers.ModelSerializer):

@@ -26,7 +26,7 @@ import time
 import pytest
 from django.db import connection
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )

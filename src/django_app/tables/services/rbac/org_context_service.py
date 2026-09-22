@@ -1,9 +1,10 @@
-from tables.models.rbac_models import Organization, OrganizationUser
 from tables.services.rbac.rbac_exceptions import (
     OrganizationNotFoundError,
     OrgContextRequiredError,
     OrgMembershipRequiredError,
 )
+
+from rbac.models import Organization, OrganizationUser
 
 
 class OrgContextService:

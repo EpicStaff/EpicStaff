@@ -1,12 +1,13 @@
 from typing import Any
 
-from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.base_rbac_validator import BaseRBACValidator, FieldError
 from tables.services.rbac.permission_catalog import (
     applicable_actions_for,
     platform_actions_for,
 )
 from tables.services.rbac.utils.permission_bitmask import actions_to_bitmask
+
+from rbac.models.enums import BuiltInRole
 
 _RESERVED_NAMES = frozenset(
     name.lower()

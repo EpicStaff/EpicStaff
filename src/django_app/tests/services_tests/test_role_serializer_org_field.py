@@ -1,7 +1,7 @@
 import pytest
 
-from tables.models.rbac_models import Organization, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, Role
+from rbac.models.enums import BuiltInRole
 from tables.serializers.permission_serializers import RoleResponseSerializer
 
 

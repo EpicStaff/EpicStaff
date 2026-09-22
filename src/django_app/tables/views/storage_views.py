@@ -1,5 +1,6 @@
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
 from rest_framework.decorators import action, parser_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -9,7 +10,6 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,

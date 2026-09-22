@@ -1,6 +1,6 @@
+from rbac.models.organization import Organization
+from rbac.models.organization_user import OrganizationUser
 from rest_framework import serializers
-from tables.models.rbac_models.organization import Organization
-from tables.models.rbac_models.organization_user import OrganizationUser
 
 
 class OrganizationSerializer(serializers.ModelSerializer):

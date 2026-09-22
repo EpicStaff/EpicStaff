@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from tables.models.rbac_models import User
+from tables.models.user import User
 
 
 class OrganizationNestedSerializer(serializers.Serializer):

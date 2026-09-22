@@ -22,7 +22,7 @@ What is NOT duplicated here:
 
 import pytest
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )

@@ -8,7 +8,7 @@ built-in role seed migration (for sanity-checking applicable bits).
 from functools import reduce
 from operator import or_
 
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models.enums import Permission, ResourceType
 
 # Action metadata: ordered as the FE renders the matrix columns. View leads —
 # it is the permission every other one builds on, not bit order.

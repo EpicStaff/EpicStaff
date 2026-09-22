@@ -19,8 +19,8 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.provider import Provider
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.secrets.usage_service import secret_usage_service
 
 

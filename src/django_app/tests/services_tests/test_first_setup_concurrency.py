@@ -5,7 +5,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection
 
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.rbac_exceptions import SetupAlreadyCompletedError
 

@@ -3,13 +3,11 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-)
 from tables.services.rbac.rbac_exceptions import SetupAlreadyCompletedError
 from tables.services.rbac.utils.bootstrap_lock import acquire_bootstrap_lock
 from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
+
+from rbac.models import Organization, OrganizationUser
 
 
 @dataclass

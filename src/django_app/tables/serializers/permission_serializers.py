@@ -1,5 +1,5 @@
+from rbac.models.enums import BuiltInRole
 from rest_framework import serializers
-from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.permission_catalog import applicable_actions_for
 from tables.services.rbac.utils.permission_bitmask import bitmask_to_actions
 

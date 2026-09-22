@@ -1,6 +1,6 @@
 import pytest
 
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 from tables.services.rbac.rbac_exceptions import (
     InactiveUserError,
     SuperadminNotAssignableError,

@@ -1,8 +1,8 @@
 import pytest
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import RoleNotFoundError
 
@@ -38,7 +38,7 @@ def test_resolve_for_write_non_member_raises_not_found(member_only, beta):
 
 @pytest.mark.django_db
 def test_apply_org_scope_forbidden_org_ids_fails_loud(admin_acme, beta):
-    from tables.models.rbac_models import Role
+    from rbac.models import Role
 
     with pytest.raises(PermissionDenied):
         _Svc().apply_org_scope(
@@ -51,7 +51,7 @@ def test_apply_org_scope_forbidden_org_ids_fails_loud(admin_acme, beta):
 
 @pytest.mark.django_db
 def test_apply_org_scope_superadmin_no_filter(superadmin, acme, beta, role_member):
-    from tables.models.rbac_models import Role
+    from rbac.models import Role
 
     Role.objects.create(name="A", org=acme, is_built_in=False)
     Role.objects.create(name="B", org=beta, is_built_in=False)

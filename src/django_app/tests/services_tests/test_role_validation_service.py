@@ -1,6 +1,6 @@
 import pytest
 
-from tables.models.rbac_models.rbac_enums import Permission
+from rbac.models.enums import Permission
 from tables.services.rbac.rbac_exceptions import FormValidationError
 from tables.services.rbac.role_validation_service import RoleValidationService
 

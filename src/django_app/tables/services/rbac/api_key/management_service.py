@@ -4,11 +4,12 @@ from datetime import datetime
 from django.db.models import F, Q, QuerySet
 from django.utils import timezone
 from loguru import logger
-from tables.models.rbac_models import ApiKey, OrganizationUser
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.cross_org_permission_resolver import OrgScope
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import ApiKeyNotFoundError
+
+from rbac.models import ApiKey, OrganizationUser
+from rbac.models.enums import Permission, ResourceType
 
 OWNER_ORG_PATH = "created_by__organization_memberships__org_id"
 

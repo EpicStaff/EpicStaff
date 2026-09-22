@@ -1,10 +1,11 @@
-from tables.models.rbac_models import Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.rbac_exceptions import (
     InactiveUserError,
     InvalidRoleAssignmentError,
     SuperadminNotAssignableError,
 )
+
+from rbac.models import Role
+from rbac.models.enums import BuiltInRole
 
 
 class UserManagementGuards:

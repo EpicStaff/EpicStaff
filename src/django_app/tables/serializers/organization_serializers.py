@@ -1,5 +1,6 @@
+from rbac.models import Organization
 from rest_framework import serializers
-from tables.models.rbac_models import Organization, User
+from tables.models.user import User
 
 
 class OrganizationCreateRequestSerializer(serializers.Serializer):

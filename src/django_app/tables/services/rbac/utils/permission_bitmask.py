@@ -6,7 +6,7 @@ sends action codes (e.g. ["create", "read"]) and the API converts to/from
 bitmask at the boundary.
 """
 
-from tables.models.rbac_models.rbac_enums import Permission
+from rbac.models.enums import Permission
 
 _ACTION_CODE_TO_BIT = {
     "create": Permission.CREATE,

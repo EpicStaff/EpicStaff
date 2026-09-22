@@ -1,12 +1,13 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permission_catalog import (
     RESOURCE_TYPE_METADATA,
     grantable_bits_for,
 )
 from tables.services.rbac.utils.permission_bitmask import bitmask_to_actions
+
+from rbac.models.enums import Permission
 
 
 @dataclass

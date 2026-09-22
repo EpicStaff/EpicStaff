@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rbac.models import ApiKey, OrganizationUser
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -15,7 +16,6 @@ from tables.auth_throttles import (
     PasswordResetRequestThrottle,
     TokenRefreshThrottle,
 )
-from tables.models.rbac_models import ApiKey, OrganizationUser
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,

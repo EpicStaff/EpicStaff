@@ -1,9 +1,9 @@
 from drf_spectacular.utils import extend_schema
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.api_key_serializers import ApiKeyAdminSerializer
 from tables.services.rbac.api_key.management_service import ApiKeyManagementService
 from tables.services.rbac.api_key.validation import ApiKeyValidationService

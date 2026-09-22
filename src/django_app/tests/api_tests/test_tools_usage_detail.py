@@ -17,7 +17,7 @@ from agents.models import (
 from tables.models.graph_models import AgentNode, Graph, TaskNode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role
 
 
 def python_usage_detail_url(tool_id) -> str:

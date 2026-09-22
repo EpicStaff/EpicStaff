@@ -8,6 +8,7 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from loguru import logger
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -35,7 +36,6 @@ from tables.models.knowledge_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.naive_rag_serializers import (
     ChunkingConfigSerializer,
     ChunkSearchRequestSerializer,

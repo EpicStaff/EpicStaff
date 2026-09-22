@@ -1,6 +1,7 @@
-from tables.models.rbac_models import OrganizationUser
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
+
+from rbac.models import OrganizationUser
 
 
 class PermissionResolver:

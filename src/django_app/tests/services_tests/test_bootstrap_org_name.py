@@ -1,7 +1,7 @@
 import pytest
 from django.test import override_settings
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.rbac.first_setup_service import FirstSetupService
 
 

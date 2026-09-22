@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -16,7 +17,6 @@ from tables.exceptions import (
     NoFilesProvidedException,
 )
 from tables.models import DocumentMetadata, SourceCollection
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.knowledge_serializers import (
     CopyDocumentsSerializer,
     DocumentBulkDeleteSerializer,

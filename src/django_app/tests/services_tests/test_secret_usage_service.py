@@ -28,8 +28,8 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
 )
 from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
-from tables.models.rbac_models import Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization
+from rbac.models.enums import Permission, ResourceType
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_service import secret_usage_service

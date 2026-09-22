@@ -2,12 +2,13 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.utils import timezone
-from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
 from tables.services.rbac.rbac_exceptions import (
     ApiKeyLimitExceededError,
     ApiKeyNotFoundError,
 )
+
+from rbac.models import ApiKey
 
 MAX_ACTIVE_KEYS = 5
 

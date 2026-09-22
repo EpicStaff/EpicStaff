@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_resolver import PermissionResolver

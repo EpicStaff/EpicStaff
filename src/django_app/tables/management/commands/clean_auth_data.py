@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from tables.models.rbac_models import ApiKey, Organization
+from rbac.models import ApiKey, Organization
 
 
 class Command(BaseCommand):

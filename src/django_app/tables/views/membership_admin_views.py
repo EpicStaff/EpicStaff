@@ -1,7 +1,7 @@
 from drf_spectacular.utils import extend_schema
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
 from rest_framework.response import Response
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.membership_serializers import (
     AssignableUserSerializer,
     MembershipResponseSerializer,

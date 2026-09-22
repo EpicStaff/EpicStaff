@@ -2,13 +2,14 @@ from collections.abc import Iterable
 
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
-from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
     OrgScope,
 )
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
+
+from rbac.models.enums import Permission
 
 
 class CrossOrgResourceService:

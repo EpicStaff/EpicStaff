@@ -1,7 +1,8 @@
 from django.db import transaction
 from django.utils import timezone
-from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
+
+from rbac.models import ApiKey
 
 
 class SystemKeyService:

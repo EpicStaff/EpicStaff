@@ -3,7 +3,8 @@
 import pytest
 from django.utils import timezone
 
-from tables.models import Organization, Secret
+from rbac.models import Organization
+from tables.models import Secret
 from tables.models.graph_models import Graph, WebhookTriggerNode
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
@@ -221,7 +222,7 @@ def test_twilio_reference_grants_voice_but_not_flows(
 
 def _effective(*, readable_types):
     """An EffectivePermissions granting READ on exactly these resource types."""
-    from tables.models.rbac_models.rbac_enums import Permission
+    from rbac.models.enums import Permission
     from tables.services.rbac.effective_permissions import EffectivePermissions
 
     return EffectivePermissions(

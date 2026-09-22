@@ -1,4 +1,4 @@
-from tables.models.rbac_models import ApiKey
+from rbac.models import ApiKey
 
 
 class SystemServicePrincipal:

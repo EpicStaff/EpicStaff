@@ -13,6 +13,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
@@ -22,7 +23,6 @@ from rest_framework.views import APIView
 from tables.exceptions import LLMConfigInvalidError, LLMConfigMissingError
 from tables.models.flow_assistant_models import FlowAssistantConversation
 from tables.models.graph_models import Graph
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.flow_assistant_serializers import (
     AuditConversationSerializer,
     FlowAssistantConversationSerializer,

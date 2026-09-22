@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rbac",
     "tables",
     "agents",
     "rest_framework",

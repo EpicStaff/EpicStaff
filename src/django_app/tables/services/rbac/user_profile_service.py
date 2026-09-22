@@ -2,8 +2,6 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models.functions import Lower
 from loguru import logger
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import (
@@ -21,6 +19,9 @@ from tables.services.rbac.utils.session_invalidation_service import (
 from tables.services.rbac.utils.user_avatar_storage_service import (
     UserAvatarStorageService,
 )
+
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 class UserProfileService:

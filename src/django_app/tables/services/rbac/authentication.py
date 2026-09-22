@@ -3,8 +3,9 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.authenticator import ApiKeyAuthenticator
+
+from rbac.models import ApiKey
 
 
 class BearerAuthScheme(OpenApiAuthenticationExtension):

@@ -2,8 +2,6 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import (
     EmailAlreadyExistsError,
@@ -13,6 +11,9 @@ from tables.services.rbac.rbac_exceptions import (
     UserNotFoundError,
 )
 from tables.services.rbac.user_management_guards import UserManagementGuards
+
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, ResourceType
 
 
 class UserManagementService(CrossOrgResourceService):

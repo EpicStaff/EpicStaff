@@ -1,7 +1,8 @@
 from rest_framework.exceptions import PermissionDenied
-from tables.models.rbac_models.rbac_enums import Permission
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import PermissionEscalationError
+
+from rbac.models.enums import Permission
 
 _resolver = PermissionResolver()
 

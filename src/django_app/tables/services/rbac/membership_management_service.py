@@ -4,8 +4,6 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Lower
 from loguru import logger
 from rest_framework.exceptions import PermissionDenied
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.permission_assert import assert_within_ceiling
@@ -19,6 +17,9 @@ from tables.services.rbac.rbac_exceptions import (
     UserNotFoundError,
 )
 from tables.services.rbac.user_management_guards import UserManagementGuards
+
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import Permission, ResourceType
 
 
 class MembershipManagementService(CrossOrgResourceService):

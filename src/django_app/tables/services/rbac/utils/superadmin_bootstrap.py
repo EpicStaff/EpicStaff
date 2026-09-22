@@ -5,12 +5,9 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from loguru import logger
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-)
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 # Last-resort organization name. settings.DEFAULT_ORGANIZATION_NAME already
 # coalesces an empty env var, but the fallback is repeated here at the point

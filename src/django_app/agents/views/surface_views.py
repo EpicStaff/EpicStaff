@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.views.org_scoped_mixins import OrgScopedResolverMixin

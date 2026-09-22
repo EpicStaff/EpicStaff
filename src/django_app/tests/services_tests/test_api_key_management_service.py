@@ -2,8 +2,8 @@ import pytest
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import ApiKey, OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission
+from rbac.models import ApiKey, OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission
 from tables.services.rbac.api_key.management_service import ApiKeyManagementService
 from tables.services.rbac.api_key.validation import ApiKeyValidationService
 from tables.services.rbac.rbac_exceptions import (

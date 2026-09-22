@@ -22,6 +22,8 @@ from drf_spectacular.utils import (
     extend_schema_view,
     inline_serializer,
 )
+from rbac.models import ApiKey
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import (
     filters as drf_filters,
 )
@@ -121,8 +123,6 @@ from tables.models.llm_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.rbac_models import ApiKey
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,

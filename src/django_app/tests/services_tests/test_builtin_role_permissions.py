@@ -12,8 +12,8 @@ every Org Admin from assigning Viewer.
 
 import pytest
 
-from tables.models.rbac_models import Role, RolePermission
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
+from rbac.models import Role, RolePermission
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.permission_catalog import grantable_bits_for
 

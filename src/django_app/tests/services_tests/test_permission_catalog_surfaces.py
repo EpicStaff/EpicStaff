@@ -1,4 +1,4 @@
-from tables.models.rbac_models.rbac_enums import ResourceType
+from rbac.models.enums import ResourceType
 from tables.services.rbac.permission_catalog import (
     RESOURCE_TYPE_METADATA,
     applicable_actions_for,

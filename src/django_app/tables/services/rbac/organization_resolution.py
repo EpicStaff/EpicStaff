@@ -15,7 +15,7 @@ Priority order:
 Always selects related 'org' and 'user' on the returned row.
 """
 
-from tables.models.rbac_models.organization_user import OrganizationUser
+from rbac.models.organization_user import OrganizationUser
 
 from .rbac_exceptions import (
     OrganizationContextAmbiguous,

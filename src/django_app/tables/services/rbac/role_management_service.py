@@ -8,13 +8,6 @@ from collections import defaultdict
 from django.db import IntegrityError, transaction
 from django.db.models import Count
 from rest_framework.exceptions import PermissionDenied
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-    RolePermission,
-)
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.permission_assert import assert_within_ceiling
@@ -27,6 +20,9 @@ from tables.services.rbac.rbac_exceptions import (
     SelfRoleDeletionError,
 )
 from tables.services.rbac.user_management_guards import UserManagementGuards
+
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
 
 class RoleManagementService(CrossOrgResourceService):

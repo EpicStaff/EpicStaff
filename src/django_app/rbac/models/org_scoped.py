@@ -12,7 +12,7 @@ class OrgScopedModel(models.Model):
     """
 
     org = models.ForeignKey(
-        "Organization",
+        "rbac.Organization",
         on_delete=models.CASCADE,
         related_name="%(app_label)s_%(class)s_set",
         null=True,

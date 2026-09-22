@@ -9,8 +9,8 @@ counted at all.
 
 import pytest
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.rbac.role_management_service import RoleManagementService
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403

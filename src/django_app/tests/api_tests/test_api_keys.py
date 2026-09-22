@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import ApiKey
+from rbac.models import ApiKey
 from tables.services.rbac.api_key.generator import (
     KEY_PREFIX,
     PREFIX_LENGTH,

@@ -6,8 +6,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory
 
 from tables.models import Secret
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import Permission, ResourceType
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
@@ -64,7 +64,7 @@ def secret_b(org):
 
 def _request_for(django_user_model, org, *, secrets_bitmask, email):
     """An authenticated request whose role holds exactly `secrets_bitmask` on secrets."""
-    from tables.models.rbac_models import RolePermission
+    from rbac.models import RolePermission
 
     role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
     RolePermission.objects.create(

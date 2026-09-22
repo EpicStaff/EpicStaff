@@ -48,7 +48,7 @@ import pytest
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.python_models import PythonCode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.models.session_models import Session
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,

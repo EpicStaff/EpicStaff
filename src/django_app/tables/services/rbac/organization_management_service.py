@@ -1,13 +1,15 @@
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
-from tables.models.rbac_models import Organization, OrganizationUser, User
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
+from tables.models.user import User
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import (
     LastActiveOrganizationError,
     OrganizationNameConflictError,
     OrganizationNotFoundError,
 )
+
+from rbac.models import Organization, OrganizationUser
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
 
 class OrganizationManagementService(CrossOrgResourceService):

@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 
 from django.db.models.functions import Lower
-from tables.models.rbac_models import Organization, OrganizationUser
 from tables.services.rbac.effective_permissions import EffectivePermissions
+
+from rbac.models import Organization, OrganizationUser
 
 
 @dataclass

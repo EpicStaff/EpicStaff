@@ -11,6 +11,8 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema_view,
 )
+from rbac.models import ApiKey
+from rbac.models.enums import Permission, ResourceType
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -39,8 +41,6 @@ from tables.models.graph_models import (
     PythonNode,
 )
 from tables.models.knowledge_models import GraphRag, NaiveRag
-from tables.models.rbac_models import ApiKey
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.model_serializers import (
     SessionLightSerializer,
     SessionSerializer,
