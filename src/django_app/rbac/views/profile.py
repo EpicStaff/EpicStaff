@@ -5,7 +5,6 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from tables.graph_collab.notifications import GraphEditNotifier
 
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.refresh_cookie import set_refresh_cookie
@@ -18,6 +17,7 @@ from rbac.serializers.profile import (
     ProfilePatchRequestSerializer,
     ProfileResponseSerializer,
 )
+from rbac.signals import profile_updated
 from rbac.throttles import LoginThrottle
 from rbac.validation.user import UserValidationService
 
@@ -74,7 +74,7 @@ class ProfileView(APIView):
             user = self._service.update_display_name(user, cleaned["display_name"])
         user = self._service.get_profile(user)
         if "display_name" in cleaned:
-            GraphEditNotifier.notify_profile_updated(user)
+            profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
 
@@ -108,7 +108,7 @@ class ProfileAvatarView(APIView):
         uploaded = self._validator.validate_avatar_upload(request.data)
         user = self._service.update_avatar(request.user, uploaded)
         user = self._service.get_profile(user)
-        GraphEditNotifier.notify_profile_updated(user)
+        profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
     @extend_schema(
@@ -119,7 +119,7 @@ class ProfileAvatarView(APIView):
         _require_user_context(request)
         self._service.clear_avatar(request.user)
         user = self._service.get_profile(request.user)
-        GraphEditNotifier.notify_profile_updated(user)
+        profile_updated.send(sender=type(user), user=user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

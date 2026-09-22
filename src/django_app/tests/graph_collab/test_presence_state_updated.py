@@ -177,7 +177,7 @@ async def test_presence_state_updated_handler_forwards_event_to_client(
 @pytest.mark.django_db
 def test_profile_patch_display_name_triggers_notify(auth_client, regular_user, mocker):
     notify_mock = mocker.patch(
-        "rbac.views.profile.GraphEditNotifier.notify_profile_updated"
+        "tables.signals.profile_signals.GraphEditNotifier.notify_profile_updated"
     )
     from django.urls import reverse
     from rest_framework import status
@@ -194,7 +194,7 @@ def test_profile_patch_without_display_name_does_not_trigger_notify(
 ):
     """PATCH that sends no display_name field should not trigger a broadcast."""
     notify_mock = mocker.patch(
-        "rbac.views.profile.GraphEditNotifier.notify_profile_updated"
+        "tables.signals.profile_signals.GraphEditNotifier.notify_profile_updated"
     )
     from django.urls import reverse
     from rest_framework import status
@@ -209,7 +209,7 @@ def test_profile_patch_without_display_name_does_not_trigger_notify(
 @pytest.mark.django_db
 def test_avatar_delete_triggers_notify(auth_client, regular_user, mocker):
     notify_mock = mocker.patch(
-        "rbac.views.profile.GraphEditNotifier.notify_profile_updated"
+        "tables.signals.profile_signals.GraphEditNotifier.notify_profile_updated"
     )
     from django.urls import reverse
     from rest_framework import status
@@ -223,7 +223,7 @@ def test_avatar_delete_triggers_notify(auth_client, regular_user, mocker):
 @pytest.mark.django_db
 def test_avatar_post_triggers_notify(auth_client, regular_user, mocker):
     notify_mock = mocker.patch(
-        "rbac.views.profile.GraphEditNotifier.notify_profile_updated"
+        "tables.signals.profile_signals.GraphEditNotifier.notify_profile_updated"
     )
     mocker.patch(
         "rbac.views.profile.UserProfileService.update_avatar",
