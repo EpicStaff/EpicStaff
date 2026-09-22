@@ -1,9 +1,10 @@
 <div
     class="fetch-error-state"
+    [class.fetch-error-state--small]="mod() === 'small'"
     role="alert"
 >
     <app-svg-icon
-        size="3rem"
+        [size]="mod() === 'small' ? '2rem' : '3rem'"
         icon="warning"
     />
 

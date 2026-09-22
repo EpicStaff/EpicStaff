@@ -6,6 +6,19 @@
     gap: 1.5rem;
     min-height: 40vh;
     color: var(--color-text-secondary);
+
+    &--small {
+        gap: 0.75rem;
+        min-height: 10rem;
+
+        .title {
+            font-size: 1rem;
+        }
+
+        .message {
+            font-size: 0.75rem;
+        }
+    }
 }
 
 .message-wrapper {

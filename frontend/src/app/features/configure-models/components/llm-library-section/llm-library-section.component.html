@@ -23,7 +23,6 @@
             <app-button
                 class="add-btn"
                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                [disabled]="status() === 'error'"
                 (click)="onAddModel()"
                 leftIcon="plus"
             >
@@ -32,40 +31,43 @@
         </div>
     </header>
 
-    @if (status() === 'error') {
-        <app-fetch-error-state
-            title="Failed to load configurations"
-            message="Your search and filters are still applied. Check your connection and try again."
-            (retry)="retry()"
-        />
-    } @else if (status() !== 'loaded') {
+    @if (status() !== 'loaded') {
         <app-loading-spinner message="Loading Configurations data" />
     } @else {
         @for (section of groupedByType(); track section.type) {
             <div class="section">
                 <h4 class="section-title">{{ section.label }} Configs:</h4>
 
-                @for (group of section.groups; track group.id) {
-                    <div class="provider-group">
-                        <div class="provider-header">
-                            <app-svg-icon
-                                [icon]="group.providerIconPath"
-                                size="22px"
-                                [ariaLabel]="group.providerName"
-                            />
-                            <span class="provider-name">{{ group.providerName }}</span>
-                        </div>
+                @if (section.hasError) {
+                    <app-fetch-error-state
+                        mod="small"
+                        title="Failed to load {{ section.label }} configurations"
+                        message="Check your connection and try again."
+                        (retry)="retrySection(section.key)"
+                    />
+                } @else {
+                    @for (group of section.groups; track group.id) {
+                        <div class="provider-group">
+                            <div class="provider-header">
+                                <app-svg-icon
+                                    [icon]="group.providerIconPath"
+                                    size="22px"
+                                    [ariaLabel]="group.providerName"
+                                />
+                                <span class="provider-name">{{ group.providerName }}</span>
+                            </div>
 
-                        <div class="grid">
-                            @for (model of group.models; track model.configType + '-' + model.id) {
-                                <app-llm-library-card
-                                    [model]="model"
-                                    (editClick)="onEdit($event)"
-                                    (deleteClick)="onDelete($event)"
-                                ></app-llm-library-card>
-                            }
+                            <div class="grid">
+                                @for (model of group.models; track model.configType + '-' + model.id) {
+                                    <app-llm-library-card
+                                        [model]="model"
+                                        (editClick)="onEdit($event)"
+                                        (deleteClick)="onDelete($event)"
+                                    ></app-llm-library-card>
+                                }
+                            </div>
                         </div>
-                    </div>
+                    }
                 }
             </div>
         }
@@ -76,7 +78,14 @@
                 <div class="section-header">
                     <h4 class="section-title">{{ provider.label }}:</h4>
                 </div>
-                @if (provider.configs.length === 0) {
+                @if (provider.hasError) {
+                    <app-fetch-error-state
+                        mod="small"
+                        title="Failed to load {{ provider.label }}"
+                        message="Check your connection and try again."
+                        (retry)="retrySection(provider.key)"
+                    />
+                } @else if (provider.configs.length === 0) {
                     <p class="empty-hint">No {{ provider.label }} yet.</p>
                 } @else {
                     <div class="grid">

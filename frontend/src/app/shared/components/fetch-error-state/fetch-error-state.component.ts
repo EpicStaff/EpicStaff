@@ -14,5 +14,6 @@ export class FetchErrorStateComponent {
     public readonly title = input.required<string>();
     public readonly message = input<string>('Check your connection and try again.');
     public readonly retryLabel = input<string>('Retry');
+    public readonly mod = input<'default' | 'small'>('default');
     public readonly retry = output<void>();
 }
