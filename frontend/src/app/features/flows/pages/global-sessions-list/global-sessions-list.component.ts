@@ -18,7 +18,7 @@ import {
     PaginationControlsComponent,
     SelectComponent,
     SelectItem,
-    StopSessionButtonComponent,
+    StopButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
@@ -49,7 +49,7 @@ import {
         ActionDropdownButtonComponent,
         SelectComponent,
         HasPermissionDirective,
-        StopSessionButtonComponent,
+        StopButtonComponent,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],

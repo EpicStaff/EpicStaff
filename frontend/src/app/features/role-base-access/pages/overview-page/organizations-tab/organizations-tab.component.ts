@@ -4,15 +4,17 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+    ActivateButtonComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
-    AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
+    EditButtonComponent,
     LoadingSpinnerComponent,
     SearchComponent,
     SelectItem,
+    StopButtonComponent,
     TableRow,
 } from '@shared/components';
 import { ActionCode, GetOrganizationResponse, ResourceCode } from '@shared/models';
@@ -45,6 +47,9 @@ const STATUS_ITEMS: SelectItem[] = [
         StatusBadgeComponent,
         OrgAvatarComponent,
         AdminsCellComponent,
+        StopButtonComponent,
+        EditButtonComponent,
+        ActivateButtonComponent,
         DatePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -63,37 +68,22 @@ export class OrganizationsTabComponent implements OnInit {
     /** Superadmin-only: create/deactivate/reactivate are platform actions per catalog. */
     readonly isSuperadmin = this.permissionsService.isSuperadmin;
 
-    private readonly rowActions: AppTableRowAction[] = [
-        {
-            icon: 'edit',
-            tooltip: 'Edit organization',
-            hidden: (row) => !this.canEditRow(row),
-            onClick: (row) => this.onEditOrganization(row),
-        },
-        {
-            icon: 'stop',
-            tooltip: 'Deactivate organization',
-            variant: 'danger',
-            hidden: (row) => !this.isSuperadmin || row['status'] !== 'active',
-            onClick: (row) => this.onDeactivateOrganization(row),
-        },
-        {
-            icon: 'play',
-            tooltip: 'Activate organization',
-            variant: 'muted',
-            hidden: (row) => !this.isSuperadmin || row['status'] === 'active',
-            onClick: (row) => this.onReactivateOrganization(row),
-        },
-    ];
-
     readonly columns: AppTableColumnDef[] = [
         { key: 'organization', label: 'Organization', width: 'minmax(180px, 2fr)' },
         { key: 'admin', label: 'Admin', width: 'minmax(180px, 2fr)' },
         { key: 'members', label: 'Members', width: 'minmax(90px, 1fr)' },
         { key: 'created', label: 'Created', width: 'minmax(120px, 1.5fr)' },
         { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'Actions', width: '130px', align: 'end', actions: this.rowActions },
+        { key: 'actions', label: 'Actions', width: '130px', align: 'end' },
     ];
+
+    showDeactivateOrg(row: TableRow): boolean {
+        return this.isSuperadmin && row['status'] === 'active';
+    }
+
+    showReactivateOrg(row: TableRow): boolean {
+        return this.isSuperadmin && row['status'] !== 'active';
+    }
 
     organizations = this.organizationStorage.organizations;
 
@@ -187,7 +177,7 @@ export class OrganizationsTabComponent implements OnInit {
             });
     }
 
-    private canEditRow(row: TableRow): boolean {
+    canEditRow(row: TableRow): boolean {
         return this.permissionsService.canInOrg(row['id'] as number, ResourceCode.Organizations, ActionCode.Update);
     }
 
