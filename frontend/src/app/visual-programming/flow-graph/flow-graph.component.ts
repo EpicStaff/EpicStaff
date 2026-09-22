@@ -69,6 +69,7 @@ import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
 import {
+    CollisionBounds,
     findNearestFreePosition,
     getCollisionBounds,
     getExactBounds,
@@ -169,7 +170,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @ViewChild('ioOverlayLayer', { static: true })
     private ioOverlayLayerRef?: ElementRef<HTMLDivElement>;
 
+    private nodesContainerEl: Element | null = null;
+    private overlayNodesObserver: MutationObserver | null = null;
+
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
+    private readonly MIN_HORIZONTAL_NODE_GAP = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
     protected readonly CONNECTION_DELETE_BUTTON_POSITION = 0.56;
@@ -314,7 +319,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         // `f-canvas` uses selective content projection and drops any element that
         // doesn't match one of its slots, so the overlay layer is rendered outside
         // `<f-flow>` and moved in here once the canvas's internal containers exist.
-        afterNextRender(() => this.moveOverlayLayerIntoCanvas(), { injector: this.injector });
+        afterNextRender(
+            () => {
+                this.moveOverlayLayerIntoCanvas();
+                this.setupOverlayTransformSync();
+            },
+            { injector: this.injector }
+        );
     }
 
     private moveOverlayLayerIntoCanvas(): void {
@@ -324,6 +335,53 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (!layer || !canvas || !nodesContainer) return;
 
         canvas.insertBefore(layer, nodesContainer);
+        this.nodesContainerEl = nodesContainer;
+    }
+
+    // foblex rewrites a dragged node's inline `transform` continuously; mirroring it onto
+    // the matching overlay (instead of binding the overlay to `node.position`) is the only
+    // way the overlay tracks the node mid-drag rather than jumping on drop.
+    private setupOverlayTransformSync(): void {
+        const nodesContainer = this.nodesContainerEl;
+        if (!nodesContainer) return;
+
+        this.overlayNodesObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes' && mutation.target instanceof HTMLElement) {
+                    this.syncOverlayTransform(mutation.target);
+                } else if (mutation.type === 'childList') {
+                    this.syncAllOverlayTransforms();
+                }
+            }
+        });
+        this.overlayNodesObserver.observe(nodesContainer, {
+            attributes: true,
+            attributeFilter: ['style'],
+            subtree: true,
+            childList: true,
+        });
+
+        this.syncAllOverlayTransforms();
+    }
+
+    private syncOverlayTransform(nodeEl: HTMLElement): void {
+        const layer = this.ioOverlayLayerRef?.nativeElement;
+        const nodeId = nodeEl.getAttribute('data-f-node-id');
+        if (!layer || !nodeId) return;
+
+        const overlayEl = layer.querySelector<HTMLElement>(`[data-overlay-node-id="${nodeId}"]`);
+        if (!overlayEl) return;
+
+        overlayEl.style.transform = nodeEl.style.transform;
+    }
+
+    private syncAllOverlayTransforms(): void {
+        const nodesContainer = this.nodesContainerEl;
+        if (!nodesContainer) return;
+
+        nodesContainer
+            .querySelectorAll<HTMLElement>('[data-f-node-id]')
+            .forEach((nodeEl) => this.syncOverlayTransform(nodeEl));
     }
 
     public ngOnInit(): void {
@@ -359,6 +417,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (this.arrangeAnimationId !== null) {
             cancelAnimationFrame(this.arrangeAnimationId);
         }
+        this.overlayNodesObserver?.disconnect();
         this.destroy$.next();
         this.destroy$.complete();
     }
@@ -1015,16 +1074,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             const otherNodes = currentNodes.filter((n) => n.id !== id);
 
-            // Part 1: resolve genuine overlaps using the node's real bounds (no padding),
-            // so a node dropped flush against another node is left in place instead of
-            // "bouncing" away from an artificial margin. Node creation/paste are unaffected —
-            // they still go through getCollisionBounds() elsewhere.
-            let resolvedPosition = findNearestFreePosition(
-                current.position,
-                getExactBounds(current),
-                otherNodes,
-                getExactBounds
-            );
+            // Part 1: exact bounds vertically; horizontally padded by MIN_HORIZONTAL_NODE_GAP so a
+            // connection arrow always has room. Node creation/paste are unaffected — they still
+            // go through getCollisionBounds() elsewhere.
+            const draggedBounds = this.getHorizontallyPaddedBounds(current);
+            let resolvedPosition = findNearestFreePosition(current.position, draggedBounds, otherNodes, getExactBounds);
 
             // Part 2: magnetic snap to a connected Decision Table (plain or Classification) row.
             // Only the y axis is ever touched, and only within the snap threshold; a snap that
@@ -1032,7 +1086,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const snappedY = computeRowSnapY(current, resolvedPosition, currentNodes, this.flowService.connections());
             if (snappedY !== null) {
                 const snappedPosition = { x: resolvedPosition.x, y: snappedY };
-                if (!hasCollision(snappedPosition, getExactBounds(current), otherNodes, getExactBounds)) {
+                if (!hasCollision(snappedPosition, draggedBounds, otherNodes, getExactBounds)) {
                     resolvedPosition = snappedPosition;
                 }
             }
@@ -1057,6 +1111,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.fFlowComponent?.redraw();
             }
         }, 100);
+    }
+
+    private getHorizontallyPaddedBounds(node: NodeModel): CollisionBounds {
+        const bounds = getExactBounds(node);
+        return {
+            ...bounds,
+            width: bounds.width + 2 * this.MIN_HORIZONTAL_NODE_GAP,
+            offsetX: bounds.offsetX - this.MIN_HORIZONTAL_NODE_GAP,
+        };
     }
 
     public onNodePositionChanged(newPos: IPoint, node: NodeModel): void {

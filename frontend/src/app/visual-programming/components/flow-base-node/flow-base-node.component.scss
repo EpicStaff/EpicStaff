@@ -214,7 +214,7 @@
             }
 
             .actions {
-                @include mixins.node-action-bar-delete-chip(var(--color-divider-regular), 1px);
+                @include mixins.node-action-bar-delete-chip(var(--color-divider-regular), 4px);
                 right: 0;
             }
         }
@@ -239,7 +239,7 @@
         }
 
         .actions {
-            @include mixins.node-action-bar-delete-chip(var(--color-divider-subtle), 3px);
+            @include mixins.node-action-bar-delete-chip(var(--color-divider-subtle), 4px);
             right: 0;
         }
     }

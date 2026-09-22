@@ -246,10 +246,10 @@
             <app-flow-node-variables-overlay
                 [node]="node"
                 [showVariables]="flowSettings.showInputsOutputs()"
-                [style.transform]="'translate(' + node.position.x + 'px,' + node.position.y + 'px)'"
+                [attr.data-overlay-node-id]="node.id"
                 [style.width.px]="node.size.width"
                 [style.height.px]="node.size.height"
-                [style.z-index]="node.id === hoveredNodeId() ? 1 : -1"
+                [style.z-index]="node.id === hoveredNodeId() ? 1 : 0"
                 [class.is-active]="node.id === hoveredNodeId()"
             ></app-flow-node-variables-overlay>
         }
