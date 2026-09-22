@@ -65,6 +65,7 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
         LoadingSpinnerComponent,
         MatTooltip,
         HasPermissionDirective,
+        FetchErrorStateComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -90,7 +91,6 @@ export class SecretsSectionComponent implements OnInit {
     public readonly selectedRows = signal<TableRow[]>([]);
 
     public readonly status = signal<LoadingState>(LoadingState.IDLE);
-    public readonly errorMessage = signal<string | null>(null);
 
     public readonly hasSecrets = computed(() => this.secretsStorageService.secrets().length > 0);
 
@@ -166,10 +166,7 @@ export class SecretsSectionComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => this.status.set(LoadingState.LOADED),
-                error: () => {
-                    this.errorMessage.set('Failed to load secrets. Please try again.');
-                    this.status.set(LoadingState.ERROR);
-                },
+                error: () => this.status.set(LoadingState.ERROR),
             });
     }
 

@@ -16,12 +16,7 @@ import { Router } from '@angular/router';
 import { StopButtonComponent } from '@shared/components';
 import { Subject, takeUntil } from 'rxjs';
 
-import {
-    GraphSessionLight,
-    GraphSessionService,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-} from '../../../../features/flows/services/flows-sessions.service';
+import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';

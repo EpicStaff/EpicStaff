@@ -14,6 +14,8 @@ import {
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
+import { AppSvgIconComponent, StatusBadgeComponent, StopSessionButtonComponent } from '@shared/components';
+import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';

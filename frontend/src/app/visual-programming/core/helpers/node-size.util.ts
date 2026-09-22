@@ -1,4 +1,5 @@
-import { NodeType } from '../enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { DecisionTableNodeModel, NodeModel } from '../models/node.model';
 
 const HEADER_HEIGHT = 62;

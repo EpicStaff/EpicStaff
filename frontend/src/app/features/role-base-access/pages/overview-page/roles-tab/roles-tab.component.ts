@@ -34,7 +34,7 @@ import {
 import { RoleInfoDialogComponent } from '../../../components/role-info-dialog/role-info-dialog.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { RolesService } from '../../../services/admin/roles.service';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
+import { rbacErrorMessage } from '../../../utils';
 
 @Component({
     selector: 'app-roles-tab',

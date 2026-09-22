@@ -38,8 +38,8 @@ import {
     getAdminRevokeConfirmationData,
     getBulkDeleteConfirmationData,
     getBulkRevokeConfirmationData,
+    rbacErrorMessage,
 } from '../../../utils';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'All', value: null },
