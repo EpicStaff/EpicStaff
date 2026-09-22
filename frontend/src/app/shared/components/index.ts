@@ -20,7 +20,6 @@ export * from './date-range-picker/date-range-picker.component';
 export * from './drag-drop-area/drag-drop-area.component';
 export * from './dual-slider/dual-slider.component';
 export * from './dynamic-table/dynamic-table.component';
-export type { TableColumnDef } from './dynamic-table/dynamic-table.models';
 export * from './embedding-model-selector';
 export * from './file-uploader/file-uploader.component';
 export * from './filter';

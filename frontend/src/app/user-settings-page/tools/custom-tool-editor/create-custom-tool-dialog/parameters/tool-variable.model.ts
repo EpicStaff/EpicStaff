@@ -1,4 +1,4 @@
-import { TableColumnDef } from '@shared/components';
+import { TableColumnDef } from '../../../../../shared/components/dynamic-table/dynamic-table.models';
 
 export type VariableInputType = 'user_input' | 'agent_input' | 'mixed';
 

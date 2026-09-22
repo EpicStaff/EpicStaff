@@ -1,6 +1,6 @@
 import { Validators } from '@angular/forms';
-import { TableColumnDef } from '@shared/components';
 
+import { TableColumnDef } from '../../../../../shared/components/dynamic-table/dynamic-table.models';
 import {
     DESCRIPTION_MAX_LENGTH,
     NAME_MAX_LENGTH,
