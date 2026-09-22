@@ -17,7 +17,11 @@ from tables.serializers.user_profile_serializers import (
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
-from tables.services.rbac.utils.refresh_cookie import set_refresh_cookie
+from tables.services.rbac.utils.refresh_cookie import (
+    get_refresh_from_cookie,
+    read_remember_me_claim,
+    set_refresh_cookie,
+)
 from tables.throttles import LoginThrottle
 
 
@@ -169,6 +173,11 @@ class PasswordChangeConfirmView(APIView):
         tokens = self._service.password_change_confirm(
             request.user, cleaned["ticket"], cleaned["new_password"]
         )
+        # Carry the caller's original persistence intent onto the rotated
+        # cookie so a password change does not silently downgrade a
+        # persistent session to a session-only one. Missing/unreadable
+        # cookies fall through to the safe session-only default.
+        remember_me = read_remember_me_claim(get_refresh_from_cookie(request))
         response = Response({"access": tokens.access})
-        set_refresh_cookie(response, tokens.refresh)
+        set_refresh_cookie(response, tokens.refresh, remember_me=remember_me)
         return response

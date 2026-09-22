@@ -100,6 +100,12 @@ export class AuthService {
         );
     }
 
+    invalidatetoken() {
+        this.accessTokenSignal.set(
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc5MDY4NzU3NywiaWF0IjoxNzkwMDgyNzc3LCJqdGkiOiJlYzMxNWYwYWZhYzk0ZWMwYmIxNTA2OWUwZTEzMGIwYyIsInVzZXJfaWQiOjIsImVtYWlsIjoiYm9oZGFuLnN5ZGlyQGh5cy1lbnRlcnByaXNlLmNvbSIsImlzX3N1cGVyYWRtaW4iOnRydWUsInJlbWVtYmVyX21lIjpmYWxzZX0.ZHs0sQs3wFL69kHwH4y2PKHE1WiKVNMo01meDxEXDdd'
+        );
+    }
+
     requestResetPassword(data: ResetPasswordRequest): Observable<ResetPasswordResponse> {
         return this.http
             .post<ResetPasswordResponse>(`${this.baseUrl}password-reset/request/`, data)
