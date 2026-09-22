@@ -4,15 +4,19 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+    ActivateButtonComponent,
+    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
-    AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
+    DeleteButtonComponent,
+    EditButtonComponent,
     LoadingSpinnerComponent,
     SearchComponent,
     SelectItem,
+    StopButtonComponent,
     TableRow,
 } from '@shared/components';
 import {
@@ -60,12 +64,17 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        AppSvgIconComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
         StatusBadgeComponent,
         UserAvatarComponent,
         OrgAvatarComponent,
+        StopButtonComponent,
+        EditButtonComponent,
+        ActivateButtonComponent,
+        DeleteButtonComponent,
         OverflowItemsDirective,
         OverflowItemDirective,
         OverflowBadgeDirective,
@@ -123,47 +132,6 @@ export class UsersTabComponent implements OnInit {
         });
     });
 
-    /** Actions are permission-aware:
-     *  - Superadmin: Deactivate (`POST /admin/users/{id}/deactivate/`) on active rows; Reactivate on inactive rows.
-     *  - Delegated admin: Remove membership(s) from every row-org where the caller holds `users:delete`.
-     *    Hidden when the caller has no such membership overlap. */
-    private readonly rowActions = computed<AppTableRowAction[]>(() => {
-        const isSA = this.permissionsService.isSuperadmin;
-        const currentUserId = this.profileService.currentUserSignal()?.id;
-        const editAction: AppTableRowAction = {
-            icon: 'edit',
-            tooltip: 'Edit user',
-            onClick: (row) => this.onEditUser(row['id'] as number),
-            hidden: (row) =>
-                (!isSA && this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0) ||
-                currentUserId === row['id'],
-        };
-        if (isSA) {
-            const deactivateAction: AppTableRowAction = {
-                icon: 'trash',
-                tooltip: 'Deactivate account',
-                variant: 'danger',
-                hidden: (row) => row['isActive'] !== true || currentUserId === row['id'],
-                onClick: (row) => this.onDeactivate(row),
-            };
-            const reactivateAction: AppTableRowAction = {
-                icon: 'refresh',
-                tooltip: 'Reactivate account',
-                hidden: (row) => row['isActive'] !== false,
-                onClick: (row) => this.onReactivate(row),
-            };
-            return [editAction, deactivateAction, reactivateAction];
-        }
-        const removeAction: AppTableRowAction = {
-            icon: 'trash',
-            tooltip: 'Remove from your organizations',
-            variant: 'danger',
-            hidden: (row) => this.membershipsIManage(row['id'] as number, ActionCode.Delete).length === 0,
-            onClick: (row) => this.onRemoveFromMyOrgs(row),
-        };
-        return [editAction, removeAction];
-    });
-
     columns = computed<AppTableColumnDef[]>(() => [
         { key: 'user', label: 'USER', width: 'minmax(200px, 2fr)' },
         {
@@ -183,8 +151,38 @@ export class UsersTabComponent implements OnInit {
         },
         { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
         { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'end', actions: this.rowActions() },
+        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'end' },
     ]);
+
+    /** Permission-aware; rendered together in the ACTIONS cell (see `actions` ng-template). */
+    isEditHidden(row: TableRow): boolean {
+        const currentUserId = this.profileService.currentUserSignal()?.id;
+        if (currentUserId === row['id']) return true;
+        if (this.permissionsService.isSuperadmin) return false;
+        return this.membershipsIManage(row['id'] as number, ActionCode.Update).length === 0;
+    }
+
+    /** Superadmin-only; hidden for own row (self-deactivation is blocked server-side). */
+    showDeactivate(row: TableRow): boolean {
+        return (
+            this.permissionsService.isSuperadmin &&
+            row['isActive'] === true &&
+            this.profileService.currentUserSignal()?.id !== row['id']
+        );
+    }
+
+    /** Superadmin-only; shown for deactivated rows. */
+    showReactivate(row: TableRow): boolean {
+        return this.permissionsService.isSuperadmin && row['isActive'] === false;
+    }
+
+    /** Delegated admin only; requires `users:delete` on at least one of the row's orgs. */
+    showRemove(row: TableRow): boolean {
+        return (
+            !this.permissionsService.isSuperadmin &&
+            this.membershipsIManage(row['id'] as number, ActionCode.Delete).length > 0
+        );
+    }
 
     ngOnInit(): void {
         this.loadReadableOrgs();
@@ -225,7 +223,7 @@ export class UsersTabComponent implements OnInit {
     }
 
     /** Superadmin: confirm + deactivate account (global). */
-    private onDeactivate(row: TableRow): void {
+    onDeactivate(row: TableRow): void {
         const userId = row['id'] as number;
         const label = (row['name'] as string) || (row['email'] as string) || 'this account';
         this.confirmation
@@ -256,7 +254,7 @@ export class UsersTabComponent implements OnInit {
     }
 
     /** Superadmin: confirm + reactivate previously-deactivated account. */
-    private onReactivate(row: TableRow): void {
+    onReactivate(row: TableRow): void {
         const userId = row['id'] as number;
         const label = (row['name'] as string) || (row['email'] as string) || 'this account';
         this.confirmation
@@ -286,7 +284,7 @@ export class UsersTabComponent implements OnInit {
     }
 
     /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */
-    private onRemoveFromMyOrgs(row: TableRow): void {
+    onRemoveFromMyOrgs(row: TableRow): void {
         const userId = row['id'] as number;
         const memberships = this.membershipsIManage(userId, ActionCode.Delete);
         if (memberships.length === 0) return;
@@ -340,8 +338,8 @@ export class UsersTabComponent implements OnInit {
         );
     }
 
-    onEditUser(userId: number): void {
-        const user = this.aggregatedUsers().find((u) => u.id === userId);
+    onEditUser(row: TableRow): void {
+        const user = this.aggregatedUsers().find((u) => u.id === row['id']);
         if (user) {
             this.openUserDialog(user);
         }

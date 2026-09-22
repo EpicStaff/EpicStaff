@@ -10,7 +10,10 @@
     </div>
 
     @if (canStopSelectedSession) {
-        <app-stop-session-button (stopClick)="onStopSession()" />
+        <app-stop-button
+            tooltip="Stop session"
+            (triggered)="onStopSession()"
+        />
     }
 
     <app-session-id-switcher

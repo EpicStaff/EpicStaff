@@ -1,0 +1,13 @@
+<button
+    type="button"
+    class="edit-btn"
+    [disabled]="disabled()"
+    [matTooltip]="tooltip()"
+    (click)="triggered.emit()"
+>
+    <app-svg-icon
+        icon="edit-pencil"
+        width="11px"
+        height="11px"
+    />
+</button>
