@@ -1,7 +1,6 @@
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { NODE_COLORS, NODE_ICONS } from '../enums/node-config';
-import { NodeType } from '../enums/node-type';
 import { ClassificationDecisionTableData } from '../models/classification-decision-table.model';
 import { ConditionGroup } from '../models/decision-table.model';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel } from '../models/node.model';

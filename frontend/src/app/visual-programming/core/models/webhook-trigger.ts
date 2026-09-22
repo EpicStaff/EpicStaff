@@ -1,8 +1,9 @@
-import { CreatePythonCodeRequest, GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
 import {
+    CreatePythonCodeRequest,
+    GetPythonCodeRequest,
     WebhookTriggerModel,
     WebhookTriggerWrite,
-} from '../../../../../visual-programming/core/models/webhook-trigger.model';
+} from '@shared/models';
 
 export interface GetWebhookTriggerNodeRequest {
     id: number;

@@ -1,14 +1,18 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import {
+    ButtonComponent,
+    ConfirmationDialogService,
+    FetchErrorStateComponent,
+    LoadingSpinnerComponent,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, RealtimeChannel, ResourceCode } from '@shared/models';
+import { RealtimeChannelService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { RealtimeChannel } from '../../../../shared/models/realtime-voice/realtime-channel.model';
-import { RealtimeChannelService } from '../../../../shared/services/realtime-channel.service';
 import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
 import {
@@ -20,7 +24,7 @@ import {
     selector: 'app-voice-settings-tab',
     templateUrl: './voice-settings-section.component.html',
     styleUrls: ['./voice-settings-section.component.scss'],
-    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective],
+    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective, FetchErrorStateComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VoiceSettingsSectionComponent implements OnInit {
@@ -46,6 +50,10 @@ export class VoiceSettingsSectionComponent implements OnInit {
         this.channelService.channelsChanged$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshChannels());
+    }
+
+    retry(): void {
+        this.loadAll();
     }
 
     private loadAll(): void {

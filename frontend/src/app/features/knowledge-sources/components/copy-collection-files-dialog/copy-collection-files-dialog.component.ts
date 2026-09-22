@@ -1,8 +1,13 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent } from '@shared/components';
-import { AppSvgIconComponent, MultiSelectComponent, MultiSelectTriggerDirective, SelectItem } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    MultiSelectComponent,
+    MultiSelectTriggerDirective,
+    SelectItem,
+} from '@shared/components';
 
 import { GetCollectionRequest } from '../../models/collection.model';
 import { CollectionDocument } from '../../models/document.model';

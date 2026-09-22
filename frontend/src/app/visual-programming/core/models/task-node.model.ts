@@ -3,7 +3,7 @@ import {
     SurfaceMcpTool,
     SurfacePythonTool,
     SurfaceStorageItem,
-} from '../../../../../features/agent-definitions/models/surface.model';
+} from '../../../features/agent-definitions/models/surface.model';
 
 /**
  * Write-shape entries used by `InlineSurface`'s tool/storage/knowledge lists.

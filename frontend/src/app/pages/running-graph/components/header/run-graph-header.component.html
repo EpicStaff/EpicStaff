@@ -79,7 +79,10 @@
         </div>
         <div class="session-meta-row__right">
             @if (canStop) {
-                <app-stop-session-button (stopClick)="stopSession.emit()" />
+                <app-stop-button
+                    tooltip="Stop session"
+                    (triggered)="stopSession.emit()"
+                />
             }
             @if (sessions.length > 0) {
                 <app-session-id-switcher

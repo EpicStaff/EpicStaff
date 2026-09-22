@@ -2,7 +2,7 @@ import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 
-import { ToastService } from '../../services/notifications/toast.service';
+import { ToastService } from '../../services/notifications';
 import { FlowsStorageService } from '../flows/services/flows-storage.service';
 import {
     ActionItem,

@@ -3,10 +3,13 @@ import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import {
     LlmModelSelectorComponent,
     ToggleSwitchComponent,
+    TOOLS_SOURCE,
     ToolsSelectorComponent,
     TooltipComponent,
 } from '@shared/components';
 import { FullLLMConfig } from '@shared/services';
+
+import { ToolsSourceService } from '../../../../../../../../tools/services/tools-source.service';
 @Component({
     selector: 'app-general-tab',
     templateUrl: './general-tab-component.html',
@@ -20,6 +23,7 @@ import { FullLLMConfig } from '@shared/services';
         ToggleSwitchComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [{ provide: TOOLS_SOURCE, useExisting: ToolsSourceService }],
 })
 export class GeneralTabComponent {
     form = input.required<FormGroup>();

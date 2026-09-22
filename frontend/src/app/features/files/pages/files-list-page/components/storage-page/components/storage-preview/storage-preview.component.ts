@@ -1,13 +1,11 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, BlobPreviewComponent, ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
-import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { BlobPreviewComponent } from '../../../../../../../../shared/components/blob-preview/blob-preview.component';
-import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
 import { StorageItem } from '../../../../../../models/storage.models';
 import { StorageApiService } from '../../../../../../services/storage-api.service';
 

@@ -11,12 +11,10 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { ElevenLabsRealtimeConfig, GeminiRealtimeConfig, OpenAIRealtimeConfig } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
-import { ElevenLabsRealtimeConfig } from '../../../../shared/models/realtime-voice/elevenlabs-realtime-config.model';
-import { GeminiRealtimeConfig } from '../../../../shared/models/realtime-voice/gemini-realtime-config.model';
-import { OpenAIRealtimeConfig } from '../../../../shared/models/realtime-voice/openai-realtime-config.model';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
