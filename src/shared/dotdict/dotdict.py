@@ -193,8 +193,10 @@ class DotList(list):
 
 
 def DotObject(data):  # noqa: N802
+    if isinstance(data, (DotDict, DotList)):
+        return data
     if isinstance(data, Mapping):
-        return DotDict({k: DotObject(v) for k, v in data.items()})
+        return DotDict(data)
     elif isinstance(data, (list, tuple, set)):
-        return DotList(DotObject(v) for v in data)
+        return DotList(data)
     return data
