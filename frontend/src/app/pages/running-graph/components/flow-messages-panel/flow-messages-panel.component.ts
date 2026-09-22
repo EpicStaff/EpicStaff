@@ -13,17 +13,12 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
+import { AppSvgIconComponent, StopSessionButtonComponent } from '@shared/components';
+import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
-import {
-    GraphSessionLight,
-    GraphSessionService,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-} from '../../../../features/flows/services/flows-sessions.service';
+import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { StopSessionButtonComponent } from '../../../../shared/components/buttons/stop-session-button/stop-session-button.component';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
 import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-switcher.component';
 

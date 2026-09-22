@@ -1,9 +1,9 @@
 import { inject, Injectable, signal } from '@angular/core';
+import { GraphSessionStatus } from '@shared/models';
 import { Subscription } from 'rxjs';
 
-import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
 import { SseTicketService } from '../../../services/auth/sse-ticket.service';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import { Memory } from '../components/memory-sidebar/models/memory.model';
 import { GraphMessage } from '../models/graph-session-message.model';
 

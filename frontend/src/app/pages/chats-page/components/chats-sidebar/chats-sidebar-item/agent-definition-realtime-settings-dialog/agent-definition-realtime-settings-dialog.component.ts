@@ -2,7 +2,14 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { RadioButtonComponent, SelectComponent, SelectItem } from '@shared/components';
+import {
+    HelpTooltipComponent,
+    RadioButtonComponent,
+    SelectComponent,
+    SelectItem,
+    VoiceSelectorComponent,
+} from '@shared/components';
+import { AVAILABLE_LANGUAGES, AVAILABLE_VOICES } from '@shared/constants';
 import { finalize } from 'rxjs';
 
 import {
@@ -13,11 +20,7 @@ import { RealtimeAgentDefinitionsApiService } from '../../../../../../features/a
 import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/openai-realtime-config-storage.service';
-import { ToastService } from '../../../../../../services/notifications/toast.service';
-import { HelpTooltipComponent } from '../../../../../../shared/components/help-tooltip/help-tooltip.component';
-import { VoiceSelectorComponent } from '../../../../../../shared/components/voice-selector/voice-selector.component';
-import { AVAILABLE_LANGUAGES } from '../../../../../../shared/constants/languages-selector.constants';
-import { AVAILABLE_VOICES } from '../../../../../../shared/constants/realtime-voice.constants';
+import { ToastService } from '../../../../../../services/notifications';
 import { LanguageSelectorComponent } from '../realtime-selectors/language-selector/language-selector.component';
 
 export type RealtimeProvider = 'openai' | 'elevenlabs' | 'gemini';

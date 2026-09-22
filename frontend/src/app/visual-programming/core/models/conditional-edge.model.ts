@@ -1,5 +1,4 @@
-import { CustomPythonCode, GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
-
+import { CustomPythonCode, GetPythonCodeRequest } from '@shared/models';
 export interface ConditionalEdge {
     id: number;
     graph: number;

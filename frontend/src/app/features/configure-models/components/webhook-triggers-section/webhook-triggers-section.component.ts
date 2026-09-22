@@ -4,23 +4,23 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     ButtonComponent,
     ConfirmationDialogService,
+    FetchErrorStateComponent,
     LoadingSpinnerComponent,
     WebhookTriggerDialogComponent,
     WebhookTriggerDialogData,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { WebhookTriggerModel } from '../../../../visual-programming/core/models/webhook-trigger.model';
 
 @Component({
     selector: 'app-webhook-triggers-section',
     templateUrl: './webhook-triggers-section.component.html',
     styleUrls: ['./webhook-triggers-section.component.scss'],
-    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective],
+    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective, FetchErrorStateComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WebhookTriggersSectionComponent implements OnInit {
@@ -49,6 +49,10 @@ export class WebhookTriggersSectionComponent implements OnInit {
     ngOnInit(): void {
         this.loadTriggers();
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refresh());
+    }
+
+    retry(): void {
+        this.loadTriggers();
     }
 
     private loadTriggers(): void {

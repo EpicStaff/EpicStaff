@@ -1,11 +1,11 @@
 import { inject, Injectable } from '@angular/core';
-
 import {
     CreateGeminiRealtimeConfigRequest,
     GeminiRealtimeConfig,
     UpdateGeminiRealtimeConfigRequest,
-} from '../../../../shared/models/realtime-voice/gemini-realtime-config.model';
-import { GeminiRealtimeConfigService } from '../../../../shared/services/realtime-llms/gemini-realtime-config.service';
+} from '@shared/models';
+import { GeminiRealtimeConfigService } from '@shared/services';
+
 import { BaseRealtimeConfigStorageService } from './base-realtime-config-storage.service';
 
 @Injectable({ providedIn: 'root' })

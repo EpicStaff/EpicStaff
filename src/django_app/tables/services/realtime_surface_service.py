@@ -68,7 +68,8 @@ class RealtimeSurfaceService:
         combined_surface = self._build_combined_surface(agent_definition)
 
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_grants(
-            combined_surface["storage_items"]
+            combined_surface["storage_items"],
+            org_id=agent_definition.organization_id,
         )
         tools = self._resolve_python_tools(
             combined_surface["python_tools"],
@@ -128,7 +129,7 @@ class RealtimeSurfaceService:
         ]
 
     def _resolve_storage_grants(
-        self, storage_item_entries: list[dict]
+        self, storage_item_entries: list[dict], org_id: int | None
     ) -> tuple[list[str], str | None]:
         """Resolve allowed storage paths + org prefix from the agent-definition's
         own surface, mirroring the inclusion rule in
@@ -147,16 +148,15 @@ class RealtimeSurfaceService:
                 entry.get("can_delete", "unset"),
             )
         ]
-        if not allowed_file_ids:
+        if not allowed_file_ids or org_id is None:
             return [], None
 
-        storage_files = list(StorageFile.objects.filter(pk__in=allowed_file_ids))
+        storage_files = list(StorageFile.objects.filter(pk__in=allowed_file_ids, org_id=org_id))
         if not storage_files:
             return [], None
 
         allowed_paths = [storage_file.path for storage_file in storage_files]
-        org_id = storage_files[0].org_id
-        storage_org_prefix = f"org_{org_id}" if org_id is not None else None
+        storage_org_prefix = f"org_{org_id}"
         return allowed_paths, storage_org_prefix
 
     def _warn_on_mcp_tools(self, mcp_tool_entries: list[dict]) -> None:

@@ -20,32 +20,37 @@ import {
     Validators,
 } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ValidationErrorsComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ChipsInputComponent,
+    ConfirmationDialogService,
+    CustomInputComponent,
+    HelpTooltipComponent,
+    JsonEditorComponent,
+    JsonError,
+    TextareaComponent,
+    ToggleSwitchComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    CreatePythonCodeToolPayload,
+    GetPythonCodeToolRequest,
+    ResourceCode,
+    toSecretIds,
+    toSecretNames,
+} from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
-import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
-import {
-    CreatePythonCodeToolPayload,
-    GetPythonCodeToolRequest,
-} from '../../../../features/tools/models/python-code-tool.model';
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { ChipsInputComponent } from '../../../../shared/components/chips-input/chips-input.component';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
-import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
 import {
