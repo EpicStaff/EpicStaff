@@ -6,6 +6,26 @@ import { NodeModel } from '../models/node.model';
 import { ViewPort } from '../models/port.model';
 import { computeSegmentAvoidanceWaypoints, getPortPosition, pathSelfIntersects } from './segment-avoidance.helper';
 
+// Axis-aligned segment vs. a node's true (unpadded) body — used to assert the route never
+// visually cuts through a node, as opposed to grazing its routing-collision padding.
+function segmentEntersBody(a: IPoint, b: IPoint, n: NodeModel): boolean {
+    const box = {
+        left: n.position.x,
+        top: n.position.y,
+        right: n.position.x + n.size.width,
+        bottom: n.position.y + n.size.height,
+    };
+    if (a.x === b.x) {
+        if (a.x <= box.left || a.x >= box.right) return false;
+        return Math.max(a.y, b.y) > box.top && Math.min(a.y, b.y) < box.bottom;
+    }
+    if (a.y === b.y) {
+        if (a.y <= box.top || a.y >= box.bottom) return false;
+        return Math.max(a.x, b.x) > box.left && Math.min(a.x, b.x) < box.right;
+    }
+    return false;
+}
+
 function pt(x: number, y: number): IPoint {
     return { x, y };
 }
@@ -38,6 +58,39 @@ function dtTableNode(
         size: { width: 330, height },
         ports,
         data: { name: id, table: { condition_groups: groupNames.map((name, i) => dtGroup(name, i)) } },
+    } as unknown as NodeModel;
+}
+
+function cdtRouteGroup(routeCode: string, order: number) {
+    return {
+        group_name: routeCode,
+        group_type: 'simple',
+        expression: null,
+        conditions: [],
+        manipulation: null,
+        next_node: null,
+        valid: true,
+        dock_visible: true,
+        route_code: routeCode,
+        order,
+    };
+}
+
+function cdtTableNode(
+    id: string,
+    x: number,
+    y: number,
+    height: number,
+    routeCodes: string[],
+    ports: { id: string; role: string; position: string }[]
+): NodeModel {
+    return {
+        id,
+        type: NodeType.CLASSIFICATION_TABLE,
+        position: { x, y },
+        size: { width: 330, height },
+        ports,
+        data: { name: id, table: { condition_groups: routeCodes.map((code, i) => cdtRouteGroup(code, i)) } },
     } as unknown as NodeModel;
 }
 
@@ -141,7 +194,7 @@ describe('computeSegmentAvoidanceWaypoints', () => {
         expect(pathSelfIntersects(fullPath)).toBe(false);
     });
 
-    it('routes over the top of the source node when a right-port source sits directly above a west-of-it left-port target, even with no third-node blocker in between', () => {
+    it('detours around the source node instead of cutting through it when a right-port source sits directly above a west-of-it left-port target, taking the shorter of the two clearances (under, in this geometry), even with no third-node blocker in between', () => {
         const source = node('source', 100, 100, 330, 60, [{ id: 'source_out', position: 'right' }]);
         const target = node('target', 100, 240, 330, 60, [{ id: 'target_in', position: 'left' }]);
 
@@ -172,6 +225,18 @@ describe('computeSegmentAvoidanceWaypoints', () => {
                 Math.max(fullPath[i].x, fullPath[i + 1].x) > 100
         );
         expect(cutsThroughSource).toBe(false);
+
+        // The over-the-top route is valid too, but loses the length tie-break: 950 vs 750.
+        const detoursBelowSource = fullPath.some(
+            (p, i) =>
+                i < fullPath.length - 1 &&
+                fullPath[i].y === fullPath[i + 1].y &&
+                fullPath[i].y > 160 &&
+                Math.min(fullPath[i].x, fullPath[i + 1].x) < 100 &&
+                Math.max(fullPath[i].x, fullPath[i + 1].x) > 430
+        );
+        expect(detoursBelowSource).toBe(true);
+
         expect(pathSelfIntersects(fullPath)).toBe(false);
     });
 
@@ -364,5 +429,123 @@ describe('getPortPosition — plain Decision Table row geometry', () => {
         const inputPort = ports[0] as unknown as ViewPort;
 
         expect(getPortPosition(dt, inputPort)).toEqual({ x: 100, y: 228 });
+    });
+});
+
+describe('computeSegmentAvoidanceWaypoints — flow-4 regression (python #3 -> DT#10)', () => {
+    it(
+        'takes the plain two-bend corridor route instead of dead-ending into null when the only ' +
+            'near miss is a port-adjacent sibling grazing the exit stub',
+        () => {
+            const dtPorts = [{ id: 'dt10_table-in', role: 'table-in', position: 'left' }];
+            const dt10 = dtTableNode('dt10', 2140, 390, 300, ['g1', 'g2'], dtPorts);
+
+            const p3 = node('p3', 1580, 290, 330, 60, [{ id: 'p3_out', position: 'right' }]);
+            const end = node('end', 1580, 390, 330, 60);
+            const audioToText = node('audio9', 2140, 270, 330, 60);
+            const fileExtractor = node('file8', 2140, 170, 330, 60);
+            const n1 = node('n1', 1580, 170, 330, 60);
+            // Zero vertical gap to p3 (230+60=290=p3's top) — its padded bottom edge grazes p3's
+            // output-port height exactly, which is the near-miss this fixture reproduces.
+            const n2 = node('n2', 1580, 230, 330, 60);
+            const cdt11 = node('cdt11', 920, 110, 330, 360);
+            const n7 = node('n7', 400, 250, 330, 60);
+            const start = node('start', 100, 250, 125, 60);
+            const n4 = node('n4', 2800, 450, 330, 60);
+            const n5 = node('n5', 2800, 510, 330, 60);
+            const n6 = node('n6', 2800, 570, 330, 60);
+
+            const allNodes = [p3, dt10, end, audioToText, fileExtractor, n1, n2, cdt11, n7, start, n4, n5, n6];
+
+            const connection = {
+                id: 'conn-p3-dt10',
+                sourceNodeId: 'p3',
+                targetNodeId: 'dt10',
+                sourcePortId: 'p3_out',
+                targetPortId: 'dt10_table-in',
+            } as unknown as ConnectionModel;
+
+            const waypoints = computeSegmentAvoidanceWaypoints(connection, allNodes, undefined);
+
+            expect(waypoints).not.toBeNull();
+            expect(waypoints).toEqual([]);
+
+            const sourcePt = getPortPosition(p3, p3.ports![0] as unknown as ViewPort);
+            const targetPt = getPortPosition(dt10, dtPorts[0] as unknown as ViewPort);
+            const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+
+            for (let i = 1; i < fullPath.length; i++) {
+                expect(fullPath[i].x).toBeGreaterThanOrEqual(fullPath[i - 1].x);
+            }
+
+            for (const p of fullPath) {
+                expect(p.x).toBeGreaterThanOrEqual(sourcePt.x);
+                expect(p.x).toBeLessThanOrEqual(targetPt.x);
+            }
+
+            const otherNodes = allNodes.filter((n) => n.id !== 'p3' && n.id !== 'dt10');
+            for (let i = 1; i < fullPath.length; i++) {
+                for (const n of otherNodes) {
+                    expect(segmentEntersBody(fullPath[i - 1], fullPath[i], n)).toBe(false);
+                }
+            }
+        }
+    );
+});
+
+describe('computeSegmentAvoidanceWaypoints — CDT Default row to an End node below and right', () => {
+    it('routes underneath the blockers instead of climbing back over the whole table', () => {
+        const cdtPorts = [
+            { id: 'cdt_table-in', role: 'table-in', position: 'left' },
+            { id: 'cdt_decision-route-a', role: 'decision-route-a', position: 'right' },
+            { id: 'cdt_decision-route-b', role: 'decision-route-b', position: 'right' },
+            { id: 'cdt_decision-route-c', role: 'decision-route-c', position: 'right' },
+            { id: 'cdt_decision-route-d', role: 'decision-route-d', position: 'right' },
+            { id: 'cdt_decision-default', role: 'decision-default', position: 'right' },
+            { id: 'cdt_decision-error', role: 'decision-error', position: 'right' },
+        ];
+        const cdt = cdtTableNode('cdt', 80, 130, 420, ['a', 'b', 'c', 'd'], cdtPorts);
+        const end = node('end', 1000, 740, 330, 60, [{ id: 'end_in', position: 'left' }]);
+        const py1 = node('py1', 560, 500, 330, 60);
+        const py2 = node('py2', 560, 570, 330, 60);
+        const py3 = node('py3', 560, 640, 330, 60);
+        const allNodes = [cdt, end, py1, py2, py3];
+
+        const connection = {
+            id: 'conn-default-end',
+            sourceNodeId: 'cdt',
+            targetNodeId: 'end',
+            sourcePortId: 'cdt_decision-default',
+            targetPortId: 'end_in',
+        } as unknown as ConnectionModel;
+
+        const waypoints = computeSegmentAvoidanceWaypoints(connection, allNodes, undefined);
+
+        expect(waypoints).not.toBeNull();
+        expect(waypoints!.length).toBeGreaterThan(0);
+
+        const sourcePt = getPortPosition(cdt, cdtPorts[5] as unknown as ViewPort);
+        const targetPt = getPortPosition(end, end.ports![0] as unknown as ViewPort);
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+
+        const tableTop = cdt.position.y;
+        for (const p of fullPath) {
+            expect(p.y).toBeGreaterThanOrEqual(tableTop);
+        }
+
+        const manhattan = Math.abs(targetPt.x - sourcePt.x) + Math.abs(targetPt.y - sourcePt.y);
+        const length = fullPath
+            .slice(0, -1)
+            .reduce((s, p, i) => s + Math.abs(fullPath[i + 1].x - p.x) + Math.abs(fullPath[i + 1].y - p.y), 0);
+        expect(length).toBeLessThanOrEqual(manhattan * 1.8);
+
+        expect(pathSelfIntersects(fullPath)).toBe(false);
+
+        const otherNodes = allNodes.filter((n) => n.id !== 'cdt' && n.id !== 'end');
+        for (let i = 1; i < fullPath.length; i++) {
+            for (const n of otherNodes) {
+                expect(segmentEntersBody(fullPath[i - 1], fullPath[i], n)).toBe(false);
+            }
+        }
     });
 });

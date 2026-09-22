@@ -144,6 +144,35 @@ function countPathIntersections(path: IPoint[], allNodes: NodeModel[], excludeId
     return count;
 }
 
+// Same as countPathIntersections, but the first/last segment (the exit/entry stub) is scored
+// against stubExcludeIds instead of excludeIds — mirrors the main loop's segmentExcludeIds so a
+// stub grazing a port-adjacent node's padding isn't treated as a real block.
+function countDirectRouteIntersections(
+    path: IPoint[],
+    allNodes: NodeModel[],
+    excludeIds: string[],
+    stubExcludeIds: string[]
+): number {
+    const lastSeg = path.length - 2;
+    let count = 0;
+
+    for (const node of allNodes) {
+        if (node.type === NodeType.NOTE) continue;
+        const rect = getNodeRect(node);
+
+        for (let i = 0; i <= lastSeg; i++) {
+            const ids = i === 0 || i === lastSeg ? stubExcludeIds : excludeIds;
+            if (ids.includes(node.id)) continue;
+            if (segmentIntersectsRect(path[i], path[i + 1], rect)) {
+                count++;
+                break;
+            }
+        }
+    }
+
+    return count;
+}
+
 function pathIntersectsNode(path: IPoint[], node: NodeModel): boolean {
     const rect = getNodeRect(node);
 
@@ -205,6 +234,10 @@ function findSegmentBlockers(a: IPoint, b: IPoint, allNodes: NodeModel[], exclud
     }
 
     return result;
+}
+
+function routeLength(pts: IPoint[]): number {
+    return pts.slice(0, -1).reduce((s, p, i) => s + Math.abs(pts[i + 1].x - p.x) + Math.abs(pts[i + 1].y - p.y), 0);
 }
 
 function pathCost(pts: IPoint[]): number {
@@ -430,22 +463,32 @@ function buildForwardVerticalStackRoute(
 
     const blockerTop =
         blockers.length > 0 ? Math.min(...blockers.map((node) => getNodeRect(node).nTop)) : sourceRect.nTop;
+    const blockerBottom =
+        blockers.length > 0 ? Math.max(...blockers.map((node) => getNodeRect(node).nBottom)) : sourceRect.nBottom;
     const exitX = sourceRect.nRight + GAP;
     const entryX = targetRect.nLeft - GAP;
-    const routeY = Math.min(sourceRect.nTop, blockerTop) - GAP;
 
-    const candidate = simplifyRoute([
-        sourcePt,
-        { x: exitX, y: sourcePt.y },
-        { x: exitX, y: routeY },
-        { x: entryX, y: routeY },
-        { x: entryX, y: targetPt.y },
-        targetPt,
-    ]);
+    const buildAtRouteY = (routeY: number): IPoint[] =>
+        simplifyRoute([
+            sourcePt,
+            { x: exitX, y: sourcePt.y },
+            { x: exitX, y: routeY },
+            { x: entryX, y: routeY },
+            { x: entryX, y: targetPt.y },
+            targetPt,
+        ]);
 
-    const score = countPathIntersections(candidate, allNodes, excludeIds);
+    const overTheTop = buildAtRouteY(Math.min(sourceRect.nTop, blockerTop) - GAP);
+    const underneath = buildAtRouteY(Math.max(sourceRect.nBottom, blockerBottom) + GAP);
 
-    return score === 0 ? candidate : null;
+    const valid = [overTheTop, underneath].filter(
+        (candidate) => countPathIntersections(candidate, allNodes, excludeIds) === 0
+    );
+
+    if (valid.length === 0) return null;
+
+    // Strict `<` keeps the over-the-top route on a tie — it is the pre-existing behaviour.
+    return valid.reduce((best, candidate) => (routeLength(candidate) < routeLength(best) ? candidate : best));
 }
 
 export function computeSegmentAvoidanceWaypoints(
@@ -604,6 +647,27 @@ export function computeSegmentAvoidanceWaypoints(
     const ya = Math.min(sourcePt.y, targetPt.y);
     const yb = Math.max(sourcePt.y, targetPt.y);
     const corridorPad = 8;
+
+    // If the plain two-bend route is already collision-free, take it and skip every detour
+    // pass below — a blocked route never reaches this branch (score > 0 falls through unchanged).
+    const directRoute = simplifyRoute([
+        sourcePt,
+        { x: defaultMidX, y: sourcePt.y },
+        { x: defaultMidX, y: targetPt.y },
+        targetPt,
+    ]);
+    const directRouteStubExcludeIds = portAdjacentIds.length > 0 ? [...excludeIds, ...portAdjacentIds] : excludeIds;
+
+    if (
+        countDirectRouteIntersections(directRoute, allNodes, excludeIds, directRouteStubExcludeIds) === 0 &&
+        !pathSelfIntersects(directRoute) &&
+        isTableTargetTopSafe(directRoute) &&
+        isSourceExitSafe(directRoute) &&
+        isSourceTableTopSafe(directRoute) &&
+        isExitEntryDirectionSafe(directRoute)
+    ) {
+        return [];
+    }
 
     const vertBlockers = allNodes.filter((n) => {
         if (excludeIds.includes(n.id)) return false;
