@@ -8,7 +8,7 @@ here; KNOWN_FIELDS is a plain lookup used only to reject unknown
 field/op combinations early (400, before ever reaching OpenSearch). The
 separate question of "is this field a top-level OpenSearch column or a
 dotted flat_object path" belongs entirely to the OpenSearch compiler
-(repositories/opensearch_query_compiler.py) - this module never answers it.
+(repositories/compiler.py) - this module never answers it.
 
 FilterNode shape:
     {"op": "and" | "or", "children": [FilterNode, ...]}
@@ -16,95 +16,24 @@ FilterNode shape:
   | {"field": str, "op": str, "value": Any}   # leaf
 """
 
-from typing import Any, Iterator, NamedTuple
+from __future__ import annotations
+
+from typing import Any, Iterator, NamedTuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.domains.base import FieldCatalog
 
 FilterNode = dict[str, Any]
-
-FLAT_OBJECT_ROOTS = frozenset({"input", "output", "details"})
-
-# Canonical leaf op vocabulary. The query-language parser normalizes its
-# symbols (=, !=, :, !:, >, <, >=, <=) onto these same names, so the AST
-# never has to care which front-end produced a leaf.
-_TEXT_CONDITION_OPS = frozenset(
-    {
-        "equals",
-        "contains",
-        "starts_with",
-        "ends_with",
-        "not_contains",
-        "not_equal",
-        "is_empty",
-        "is_not_empty",
-    }
-)
-
-_FLATTENED_OPS = frozenset(
-    {
-        "equals",
-        "key_exists",
-        "key_not_exists",
-        "key_equals_value",
-        "key_not_equals",
-        "contains",
-        "starts_with",
-        "ends_with",
-        "not_contains",
-        "lt",
-        "gt",
-        "lte",
-        "gte",
-        "null",
-        "not_null",
-    }
-)
-
-_SELECT_OPS = frozenset({"in", "not_in", "equals", "not_equal"})
-
-_RANGE_OPS = frozenset({"equals", "gt", "lt", "gte", "lte"})
-
-_DURATION_OPS = frozenset(
-    {"gt", "lt", "gte", "lte", "equals", "is_empty", "is_not_empty"}
-)
-
-
-_STATUS_VALUES = frozenset({"completed", "failed"})
 
 
 class FieldSpec(NamedTuple):
     allowed_ops: frozenset[str]
     # True only for `duration` - not translatable to OpenSearch DSL at all;
-    # split_duration_filter() must remove every leaf using this field before
-    # the remainder AST reaches the OpenSearch compiler.
+    # split_computed_leaves() (app/filtering/computed.py) must remove every
+    # leaf using this field before the remainder AST reaches the OpenSearch
+    # compiler.
     computed: bool = False
     allowed_values: frozenset[str] | None = None
-
-
-KNOWN_FIELDS: dict[str, FieldSpec] = {
-    # main fields
-    "id": FieldSpec(_RANGE_OPS | _SELECT_OPS),
-    "session_id": FieldSpec(_SELECT_OPS | _RANGE_OPS),
-    "session_message_id": FieldSpec(_SELECT_OPS),
-    "status": FieldSpec(_SELECT_OPS, allowed_values=_STATUS_VALUES),
-    "kind": FieldSpec(_SELECT_OPS),
-    "name": FieldSpec(_TEXT_CONDITION_OPS),
-    "flow_name": FieldSpec(_SELECT_OPS | _TEXT_CONDITION_OPS),
-    "node_type": FieldSpec(_SELECT_OPS),
-    "run_type": FieldSpec(_SELECT_OPS),
-    "event_time": FieldSpec(_RANGE_OPS),
-    "error": FieldSpec(_TEXT_CONDITION_OPS),
-    # additional fields
-    "agent": FieldSpec(_SELECT_OPS),
-    "tool": FieldSpec(_SELECT_OPS),
-    "task": FieldSpec(_TEXT_CONDITION_OPS),
-    "prompt": FieldSpec(_TEXT_CONDITION_OPS),
-    "message_text": FieldSpec(_TEXT_CONDITION_OPS),
-    "message_thought": FieldSpec(_TEXT_CONDITION_OPS),
-    "duration": FieldSpec(_DURATION_OPS, computed=True),
-    # special fields
-    "__text__": FieldSpec(frozenset({"contains"})),
-}
-
-_FLATTENED_PATH_SPEC = FieldSpec(_FLATTENED_OPS)
 
 
 class FilterError(Exception):
@@ -119,29 +48,29 @@ class FilterParseError(FilterError):
     pass
 
 
-def _resolve_field_spec(field: str, *, path: str) -> FieldSpec:
-    lower = field.lower()
-    if lower in KNOWN_FIELDS:
-        return KNOWN_FIELDS[lower]
-    # Either a bare flat_object root (`input : est3285` - search anywhere in
-    # the whole blob) or a dotted path into one (`input.prompt` - a specific
-    # key) - both resolve to the same op set; the OpenSearch compiler is what
-    # tells them apart when building the actual query.
-    root = lower.split(".", 1)[0]
-    if root in FLAT_OBJECT_ROOTS:
-        return _FLATTENED_PATH_SPEC
-    raise FilterValidationError(f"{path}: {field!r} is not a known filterable field")
+def _resolve_field_spec(catalog: "FieldCatalog", field: str, *, path: str) -> FieldSpec:
+    specs = catalog.field_spec(field)
+    if specs is None:
+        raise FilterValidationError(
+            f"{path}: {field!r} is not a known filterable field"
+        )
+    return specs
 
 
 def validate_filter_node(
-    node: FilterNode, *, allow_computed: bool = True, _path: str = "filters"
+    catalog: "FieldCatalog",
+    node: FilterNode,
+    *,
+    allow_computed: bool = True,
+    _path: str = "filters",
 ) -> None:
     """
     Recursive structural + field/op whitelist check. Raises
     FilterValidationError on the first problem found, with a path-qualified
     message. `allow_computed=False` is used by the OpenSearch-compiler entry
-    point to assert no `duration` leaves reach it after split_duration_filter
-    has run - defensive, since the splitter is what actually removes them.
+    point to assert no `duration` leaves reach it after split_computed_leaves
+    (app/filtering/computed.py) has run - defensive, since the splitter is
+    what actually removes them.
     """
     if not isinstance(node, dict):
         raise FilterValidationError(
@@ -158,7 +87,10 @@ def validate_filter_node(
             )
         for i, child in enumerate(children):
             validate_filter_node(
-                child, allow_computed=allow_computed, _path=f"{_path}.children[{i}]"
+                catalog,
+                child,
+                allow_computed=allow_computed,
+                _path=f"{_path}.children[{i}]",
             )
         return
 
@@ -167,7 +99,7 @@ def validate_filter_node(
         if child is None:
             raise FilterValidationError(f"{_path}: 'not' requires a 'child'")
         validate_filter_node(
-            child, allow_computed=allow_computed, _path=f"{_path}.child"
+            catalog, child, allow_computed=allow_computed, _path=f"{_path}.child"
         )
         return
 
@@ -178,11 +110,11 @@ def validate_filter_node(
     if not isinstance(leaf_op, str) or not leaf_op:
         raise FilterValidationError(f"{_path}: leaf node missing an 'op' string")
 
-    spec = _resolve_field_spec(field, path=_path)
+    spec = _resolve_field_spec(catalog, field, path=_path)
     if spec.computed and not allow_computed:
         raise FilterValidationError(
             f"{_path}: field {field!r} is computed and cannot reach the OpenSearch "
-            "compiler directly - it must be extracted by split_duration_filter first"
+            "compiler directly - it must be extracted by split_computed_leaves first"
         )
     if leaf_op not in spec.allowed_ops:
         raise FilterValidationError(
@@ -204,7 +136,7 @@ def validate_filter_node(
 
 def iter_leaves(node: FilterNode) -> Iterator[FilterNode]:
     """Flatten every leaf out of an AST, depth-first. Reused by the
-    OpenSearch compiler (to check field usage) and split_duration_filter."""
+    OpenSearch compiler (to check field usage) and split_computed_leaves."""
     op = node.get("op")
     if op in ("and", "or"):
         for child in node.get("children", []):

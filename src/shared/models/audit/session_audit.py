@@ -1,12 +1,12 @@
-from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from .base import BaseAuditEvent
 
 
-class SessionAuditEvent(BaseModel):
+class SessionAuditEvent(BaseAuditEvent):
     # OpenSearch columns
-    id: str
     parent_id: str = ""
 
     # Postgres columns
@@ -19,21 +19,12 @@ class SessionAuditEvent(BaseModel):
     name: str = ""
     flow_name: str = ""
     node_type: str = ""
-    # Verbatim TriggerSpec.trigger_type (manual/schedule/webhook/telegram/
-    # parent_flow), stamped on the session identity doc and "Session End" -
-    # the "Run: Manual/API" filter buckets non-"manual" as "API" in the UI.
+
     run_type: str = ""
 
     input: dict[str, Any] | None = None
     output: dict[str, Any] | None = None
     error: str | None = None
     details: dict[str, Any] = {}
-
-    event_time: datetime
-    record_time: datetime | None = None
-
-    org_id: int
-
-    filter_matched: bool = False
 
     model_config = ConfigDict(from_attributes=True)

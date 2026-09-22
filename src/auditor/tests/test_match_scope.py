@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.services.match_scope import mark_filter_matched
+from app.services.matching import mark_filter_matched
 from src.shared.models import SessionAuditEvent
 
 

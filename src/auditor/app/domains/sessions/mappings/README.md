@@ -1,7 +1,7 @@
 # Index setup
 
 `runner.py` runs from `entrypoint.sh` on every `auditor` boot and creates
-`audit_events` from `0001_create_audit_events_index.json` if it does not already
+`audit_events` from `0001_audit_events.json` if it does not already
 exist. Creating an index that exists is a safe no-op, so this is idempotent and
 stays correct if `auditor` is ever scaled to N replicas.
 

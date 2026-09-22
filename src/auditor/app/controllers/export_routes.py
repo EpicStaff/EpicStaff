@@ -11,27 +11,21 @@ from fastapi.responses import FileResponse, Response
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 
-from src.shared.models import SessionAuditEvent
 from app.core.security import require_audit_action
 from app.core.settings import settings
-from app.repositories.base import SessionAuditRepository
-from app.repositories.opensearch_query_compiler import compile as compile_filters
-from app.filtering.ast import FilterNode, validate_filter_node
-from app.filtering.query_language import parse_query
-from app.services.duration_filter import (
-    _resolve_durations,
-    split_duration_filter,
-    DurationCondition,
-)
-from app.services.export_job_service import ExportJobService, JobStatus
-from app.services.match_scope import MatchScope, expand_and_mark
-from app.swagger_schemas import (
+from app.domains.base import AuditDomain
+from app.domains.sessions.docs import (
     FILTERS_FIELD_DESCRIPTION,
-    QUERY_FIELD_DESCRIPTION,
     MATCH_SCOPE_FIELD_DESCRIPTION,
 )
-
-router = APIRouter(tags=["Export"])
+from app.domains.sessions.expansion import MatchScope
+from app.filtering.ast import FilterNode
+from app.filtering.query_language import parse_query
+from app.repositories.base import AuditRepository
+from app.repositories.compiler import QueryCompiler
+from app.services.export_job_service import ExportJobService, JobStatus
+from app.services.search_pipeline import SearchPipeline
+from app.swagger_schemas import QUERY_FIELD_DESCRIPTION
 
 
 class ExportRequest(BaseModel):
@@ -76,174 +70,13 @@ async def _get_owned_job(
     return job
 
 
-@router.post("/api/audit/export")
-async def start_export(
-    body: ExportRequest,
-    background_tasks: BackgroundTasks,
-    request: Request,
-    claims: dict = Depends(require_audit_action("export")),
-):
-    repository = request.app.state.session_audit_repository
-    job_service = request.app.state.export_job_service
-    job_id = str(uuid.uuid4())
-
-    await job_service.create_job(
-        job_id=job_id,
-        org_id=claims["org_id"],
-        user_id=claims["user_id"],
-        ttl_seconds=settings.EXPORT_FILE_TTL_SECONDS,
-        format=body.format,
-    )
-
-    background_tasks.add_task(
-        _run_export,
-        job_id,
-        body,
-        claims,
-        repository,
-        job_service,
-    )
-    return {"job_id": job_id}
-
-
-@router.get("/api/audit/export/{job_id}")
-async def get_export(
-    job_id: str,
-    request: Request,
-    claims: dict = Depends(require_audit_action("export")),
-):
-    job_service = request.app.state.export_job_service
-    job = await _get_owned_job(job_service, job_id, claims)
-    if job["status"] == JobStatus.FAILED.value:
-        raise HTTPException(status_code=500, detail="Export job failed")
-    if job["status"] != JobStatus.COMPLETED.value:
-        return {"status": job["status"]}
-
-    path = pathlib.Path(job["file_path"])
-    if not path.exists():
-        raise HTTPException(status_code=410, detail="Export file has expired")
-    ext = path.suffix.lstrip(".")
-    media_type = "text/csv" if ext == "csv" else "application/json"
-
-    return FileResponse(
-        path, media_type=media_type, filename=f"audit-export-{job_id}.{ext}"
-    )
-
-
-@router.get("/api/audit/export")
-async def get_jobs(
-    request: Request, claims: dict = Depends(require_audit_action("export"))
-):
-    job_service = request.app.state.export_job_service
-    jobs = await job_service.get_jobs_by_user(claims["org_id"], claims["user_id"])
-
-    return list(jobs)
-
-
-@router.delete("/api/audit/export/{job_id}")
-async def delete_export(
-    job_id: str,
-    request: Request,
-    claims: dict = Depends(require_audit_action("export")),
-):
-    job_service = request.app.state.export_job_service
-    job = await _get_owned_job(job_service, job_id, claims)
-
-    if job.get("file_path"):
-        pathlib.Path(job["file_path"]).unlink(missing_ok=True)
-
-    await job_service.delete_job(job_id, claims["org_id"], claims["user_id"])
-    return Response(status_code=204)
-
-
-async def _run_export(
-    job_id: str,
-    body: ExportRequest,
-    claims: dict,
-    repository: SessionAuditRepository,
-    job_service: ExportJobService,
-) -> None:
-    try:
-        org_id = claims["org_id"]
-        retention_days = claims["retention_days"]
-
-        filter_node = body.resolve_filter_node()
-        if filter_node is not None:
-            validate_filter_node(filter_node)
-
-        remainder_node, duration_cond = split_duration_filter(filter_node)
-        compiled = compile_filters(
-            remainder_node, org_id=org_id, retention_days=retention_days
-        )
-
-        if duration_cond is None:
-            events = await _collect_all(repository, compiled)
-        else:
-            events = await _collect_all_matching_duration(
-                repository,
-                compiled,
-                duration_cond,
-                org_id=org_id,
-                retention_days=retention_days,
-            )
-
-        events = await expand_and_mark(
-            repository,
-            events,
-            body.match_scope,
-            org_id=org_id,
-            retention_days=retention_days,
-        )
-
-        await _write_export_output(job_id, events, body.format, job_service)
-
-    except Exception as e:
-        logger.exception(f"Export job {job_id} failed: {e}")
-        await job_service.mark_failed(job_id, str(e)[:500])
-
-
-async def _collect_all(
-    repository: SessionAuditRepository, compiled_query: dict
-) -> list:
-    events = []
-    cursor = None
-    while True:
-        page, cursor = await repository.query(compiled_query, cursor=cursor, size=200)
-        events.extend(page)
-        if cursor is None or not page:
-            break
-    return events
-
-
-async def _collect_all_matching_duration(
-    repository: SessionAuditRepository,
-    compiled_query: dict,
-    duration_cond: DurationCondition,
-    *,
-    org_id: int,
-    retention_days: int,
-) -> list:
-    kept = []
-    cursor = None
-    while True:
-        page, cursor = await repository.query(compiled_query, cursor=cursor, size=200)
-        if not page:
-            break
-        durations = await _resolve_durations(
-            repository, page, org_id=org_id, retention_days=retention_days
-        )
-        kept.extend(c for c in page if duration_cond.matches(durations.get(c.id)))
-        if cursor is None:
-            break
-    return kept
-
-
-def _to_csv(rows: list[dict]) -> bytes:
-    # Columns come from the model, not from rows[0]: an empty result set used
-    # to produce a zero-byte file with no header row at all, which reads as a
-    # broken download rather than "no matching events".
+def _to_csv(rows: list[dict], event_model: type[BaseModel]) -> bytes:
+    # Columns come from the domain's own event model, not from rows[0]: an
+    # empty result set used to produce a zero-byte file with no header row
+    # at all, which reads as a broken download rather than "no matching
+    # events".
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=list(SessionAuditEvent.model_fields))
+    writer = csv.DictWriter(output, fieldnames=list(event_model.model_fields))
     writer.writeheader()
     for row in rows:
         writer.writerow(
@@ -260,9 +93,12 @@ async def _write_export_output(
     events: list,
     format: Literal["json", "csv"],
     job_service: ExportJobService,
+    event_model: type[BaseModel],
 ) -> None:
     rows = [e.model_dump(mode="json") for e in events]
-    content = _to_csv(rows) if format == "csv" else json.dumps(rows).encode()
+    content = (
+        _to_csv(rows, event_model) if format == "csv" else json.dumps(rows).encode()
+    )
 
     os.makedirs(settings.EXPORT_DATA_DIR, exist_ok=True)
     file_path = os.path.join(settings.EXPORT_DATA_DIR, f"{job_id}.{format}")
@@ -274,3 +110,126 @@ async def _write_export_output(
 
     if not was_recorded:
         pathlib.Path(file_path).unlink(missing_ok=True)
+
+
+def build_export_router(domain: AuditDomain) -> APIRouter:
+    """Mounts one domain's export endpoints. Deliberately NOT namespaced
+    under `/api/audit/{domain.name}/...` (unlike the search router) - the
+    export/ingest paths predate the domain abstraction and this refactor
+    must not move them. A future second domain would get its own
+    `/api/audit/{domain.name}/export...` paths; sessions keeps its current,
+    already-inconsistent, flat ones."""
+    router = APIRouter(tags=["Export"])
+    pipeline = SearchPipeline(
+        catalog=domain.fields,
+        compiler=QueryCompiler(catalog=domain.fields, scoping=domain.scoping),
+        computed=domain.computed,
+        expander=domain.expander,
+        event_model=domain.event_model,
+    )
+
+    async def _run_export(
+        job_id: str,
+        body: ExportRequest,
+        claims: dict,
+        repository: AuditRepository,
+        job_service: ExportJobService,
+    ) -> None:
+        try:
+            org_id = claims["org_id"]
+            retention_days = claims["retention_days"]
+
+            filter_node = body.resolve_filter_node()
+            events = await pipeline.scan(
+                repository,
+                filter_node,
+                body.match_scope,
+                org_id=org_id,
+                retention_days=retention_days,
+            )
+
+            await _write_export_output(
+                job_id, events, body.format, job_service, pipeline.event_model
+            )
+
+        except Exception as e:
+            logger.exception(f"Export job {job_id} failed: {e}")
+            await job_service.mark_failed(job_id, str(e)[:500])
+
+    @router.post("/api/audit/export")
+    async def start_export(
+        body: ExportRequest,
+        background_tasks: BackgroundTasks,
+        request: Request,
+        claims: dict = Depends(require_audit_action("export")),
+    ):
+        repository = request.app.state.session_audit_repository
+        job_service = request.app.state.export_job_service
+        job_id = str(uuid.uuid4())
+
+        await job_service.create_job(
+            job_id=job_id,
+            org_id=claims["org_id"],
+            user_id=claims["user_id"],
+            ttl_seconds=settings.EXPORT_FILE_TTL_SECONDS,
+            format=body.format,
+        )
+
+        background_tasks.add_task(
+            _run_export,
+            job_id,
+            body,
+            claims,
+            repository,
+            job_service,
+        )
+        return {"job_id": job_id}
+
+    @router.get("/api/audit/export/{job_id}")
+    async def get_export(
+        job_id: str,
+        request: Request,
+        claims: dict = Depends(require_audit_action("export")),
+    ):
+        job_service = request.app.state.export_job_service
+        job = await _get_owned_job(job_service, job_id, claims)
+        if job["status"] == JobStatus.FAILED.value:
+            raise HTTPException(status_code=500, detail="Export job failed")
+        if job["status"] != JobStatus.COMPLETED.value:
+            return {"status": job["status"]}
+
+        path = pathlib.Path(job["file_path"])
+        if not path.exists():
+            raise HTTPException(status_code=410, detail="Export file has expired")
+        ext = path.suffix.lstrip(".")
+        media_type = "text/csv" if ext == "csv" else "application/json"
+
+        return FileResponse(
+            path, media_type=media_type, filename=f"audit-export-{job_id}.{ext}"
+        )
+
+    @router.get("/api/audit/export")
+    async def get_jobs(
+        request: Request, claims: dict = Depends(require_audit_action("export"))
+    ):
+        job_service = request.app.state.export_job_service
+        jobs = await job_service.get_jobs_by_user(claims["org_id"], claims["user_id"])
+
+        return list(jobs)
+
+    @router.delete("/api/audit/export/{job_id}")
+    async def delete_export(
+        job_id: str,
+        request: Request,
+        claims: dict = Depends(require_audit_action("export")),
+    ):
+        job_service = request.app.state.export_job_service
+        job = await _get_owned_job(job_service, job_id, claims)
+
+        if job.get("file_path"):
+            pathlib.Path(job["file_path"]).unlink(missing_ok=True)
+
+        await job_service.delete_job(job_id, claims["org_id"], claims["user_id"])
+        return Response(status_code=204)
+
+    return router

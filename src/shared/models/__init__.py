@@ -15,6 +15,9 @@ from .agents import (
     AgentData,
     RealtimeAgentChatData,
 )
+from .audit.base import (
+    BaseAuditEvent,
+)
 from .audit.session_audit import (
     SessionAuditEvent,
 )
@@ -163,6 +166,7 @@ __all__ = [
     "AgentData",
     "RealtimeAgentChatData",
     # session_audit
+    "BaseAuditEvent",
     "SessionAuditEvent",
     # ai_providers
     "LLMConfigData",

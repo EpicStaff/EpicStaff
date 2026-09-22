@@ -21,14 +21,20 @@ from fakeredis import FakeAsyncRedis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.controllers import export_routes
+from app.controllers.export_routes import build_export_router
 from app.core.security import verify_user_jwt
 from app.core.settings import settings
+from app.domains.sessions.domain import SESSIONS
 from app.services.export_job_service import ExportJobService
 from src.shared.models import SessionAuditEvent
 from tests._fakes import InMemoryFakeRepository
 
-DEFAULT_CLAIMS = {"org_id": 7, "user_id": 42, "actions": ["export"], "retention_days": 0}
+DEFAULT_CLAIMS = {
+    "org_id": 7,
+    "user_id": 42,
+    "actions": ["export"],
+    "retention_days": 0,
+}
 
 
 class FakeRepository:
@@ -53,7 +59,7 @@ def _make_event(session_id: int = 1, org_id: int = 7) -> SessionAuditEvent:
 
 def _build_app(events=None) -> FastAPI:
     app = FastAPI()
-    app.include_router(export_routes.router)
+    app.include_router(build_export_router(SESSIONS))
     app.state.session_audit_repository = FakeRepository(events)
     app.state.export_job_service = ExportJobService(
         FakeAsyncRedis(decode_responses=True)
@@ -203,7 +209,11 @@ async def test_conflicting_filters_and_query_is_rejected(app_and_client):
     _, client = app_and_client
     resp = await client.post(
         "/api/audit/export",
-        json={"format": "json", "filters": {"field": "status", "op": "equals", "value": "failed"}, "query": "status=failed"},
+        json={
+            "format": "json",
+            "filters": {"field": "status", "op": "equals", "value": "failed"},
+            "query": "status=failed",
+        },
     )
     assert resp.status_code == 422
 
@@ -285,7 +295,7 @@ def _tree_events(org_id: int = 7) -> list[SessionAuditEvent]:
 
 def _build_match_scope_app(events: list[SessionAuditEvent]) -> FastAPI:
     app = FastAPI()
-    app.include_router(export_routes.router)
+    app.include_router(build_export_router(SESSIONS))
     app.state.session_audit_repository = InMemoryFakeRepository(events)
     app.state.export_job_service = ExportJobService(
         FakeAsyncRedis(decode_responses=True)

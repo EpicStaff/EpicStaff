@@ -19,8 +19,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from opensearchpy.exceptions import RequestError as OpenSearchRequestError
 
-from app.controllers import query_routes
+from app.controllers.query_routes import build_search_router
 from app.core.security import verify_user_jwt
+from app.domains.sessions.domain import SESSIONS
 from app.filtering.ast import FilterError
 from app.main import _extract_opensearch_reason
 from src.shared.models import SessionAuditEvent
@@ -66,7 +67,7 @@ class RaisingRepository:
 
 def _build_app(exc: Exception) -> FastAPI:
     app = FastAPI()
-    app.include_router(query_routes.router)
+    app.include_router(build_search_router(SESSIONS))
 
     @app.exception_handler(FilterError)
     async def _filter_error_handler(request, exc):
@@ -99,11 +100,15 @@ async def client_with_exc():
 
 @pytest.mark.asyncio
 async def test_malformed_date_filter_returns_400_not_500(client_with_exc):
-    exc = OpenSearchRequestError(400, "search_phase_execution_exception", DATE_FORMAT_ERROR_BODY)
+    exc = OpenSearchRequestError(
+        400, "search_phase_execution_exception", DATE_FORMAT_ERROR_BODY
+    )
     async with await client_with_exc(exc) as client:
         resp = await client.post(
             "/api/audit/sessions/search",
-            json={"filters": {"field": "event_time", "op": "lt", "value": "2026.09.09"}},
+            json={
+                "filters": {"field": "event_time", "op": "lt", "value": "2026.09.09"}
+            },
         )
 
     assert resp.status_code == 400
@@ -204,7 +209,7 @@ def _tree_events() -> list[SessionAuditEvent]:
 
 def _build_search_app(events: list[SessionAuditEvent]) -> FastAPI:
     app = FastAPI()
-    app.include_router(query_routes.router)
+    app.include_router(build_search_router(SESSIONS))
     app.state.session_audit_repository = InMemoryFakeRepository(events)
     app.dependency_overrides[verify_user_jwt] = lambda: dict(DEFAULT_CLAIMS)
     return app

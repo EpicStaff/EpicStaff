@@ -7,13 +7,17 @@ from loguru import logger
 from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from opensearchpy.exceptions import RequestError as OpenSearchRequestError
 
-from app.controllers import export_routes, health_routes, ingest_routes, query_routes
+from app.controllers import health_routes
+from app.controllers.domain_router import build_domain_router
 from app.core.settings import settings
+from app.domains.registry import DOMAINS
+from app.domains.sessions.index import SESSIONS_INDEX
 from app.filtering.ast import FilterError
-from app.repositories.factory import build_session_audit_repository
+from app.repositories.factory import build_audit_repository
 from app.db.redis_client import build_redis_client
 from app.services.export_job_service import ExportJobService
 from app.swagger_schemas import OPENAPI_TAGS
+from src.shared.models import SessionAuditEvent
 
 
 def _extract_opensearch_reason(exc: OpenSearchRequestError) -> str:
@@ -53,7 +57,9 @@ def _extract_opensearch_reason(exc: OpenSearchRequestError) -> str:
 async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
 
-    app.state.session_audit_repository = build_session_audit_repository(settings)
+    app.state.session_audit_repository = build_audit_repository(
+        settings, index=SESSIONS_INDEX, model=SessionAuditEvent
+    )
     app.state.export_job_service = ExportJobService(build_redis_client(settings))
 
     yield
@@ -109,8 +115,7 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(health_routes.router)
-    app.include_router(ingest_routes.router)
-    app.include_router(query_routes.router)
-    app.include_router(export_routes.router)
+    for domain in DOMAINS.values():
+        app.include_router(build_domain_router(domain))
 
     return app

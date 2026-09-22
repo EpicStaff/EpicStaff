@@ -1,15 +1,17 @@
 import pytest
 
+from app.domains.sessions.computed import SESSIONS_COMPUTED
+from app.domains.sessions.fields import SESSIONS_FIELDS
 from app.filtering.ast import (
     FilterValidationError,
     validate_filter_node,
 )
+from app.filtering.computed import split_computed_leaves
 from app.filtering.query_language import (
     ast_to_query_text,
     parse_query,
     tokenize,
 )
-from app.services.duration_filter import split_duration_filter
 
 
 def test_tokenize_operators():
@@ -30,12 +32,18 @@ def test_tokenize_operators():
 
 
 def test_parse_status_in_or_tool_in():
-    ast = parse_query('status in ["error", "warning"] or tool in ["Web Search Tool", "Notification Tool"]')
+    ast = parse_query(
+        'status in ["error", "warning"] or tool in ["Web Search Tool", "Notification Tool"]'
+    )
     assert ast == {
         "op": "or",
         "children": [
             {"field": "status", "op": "in", "value": ["error", "warning"]},
-            {"field": "tool", "op": "in", "value": ["Web Search Tool", "Notification Tool"]},
+            {
+                "field": "tool",
+                "op": "in",
+                "value": ["Web Search Tool", "Notification Tool"],
+            },
         ],
     }
 
@@ -71,7 +79,9 @@ def test_parse_input_contains_and_output_contains():
 
 
 def test_in_accepts_both_paren_and_bracket_spelling():
-    assert parse_query('status in ("error", "warning")') == parse_query('status in ["error", "warning"]')
+    assert parse_query('status in ("error", "warning")') == parse_query(
+        'status in ["error", "warning"]'
+    )
 
 
 @pytest.mark.parametrize(
@@ -90,33 +100,53 @@ def test_roundtrip_ast_to_query_text(query):
 
 
 def test_bare_word_is_free_text():
-    assert parse_query("serper") == {"field": "__text__", "op": "contains", "value": "serper"}
+    assert parse_query("serper") == {
+        "field": "__text__",
+        "op": "contains",
+        "value": "serper",
+    }
 
 
 def test_text_prefix_free_text():
-    assert parse_query('text: serper') == {"field": "__text__", "op": "contains", "value": "serper"}
+    assert parse_query("text: serper") == {
+        "field": "__text__",
+        "op": "contains",
+        "value": "serper",
+    }
 
 
 def test_validate_filter_node_rejects_unknown_field():
     with pytest.raises(FilterValidationError):
-        validate_filter_node({"field": "org_id", "op": "equals", "value": 1})
+        validate_filter_node(
+            SESSIONS_FIELDS, {"field": "org_id", "op": "equals", "value": 1}
+        )
 
 
 def test_validate_filter_node_rejects_bad_op_for_field():
     with pytest.raises(FilterValidationError):
-        validate_filter_node({"field": "duration", "op": "contains", "value": 5})
+        validate_filter_node(
+            SESSIONS_FIELDS, {"field": "duration", "op": "contains", "value": 5}
+        )
 
 
 def test_validate_filter_node_allows_flattened_dotted_path():
-    validate_filter_node({"field": "details.tool", "op": "equals", "value": "Web Search Tool"})
+    validate_filter_node(
+        SESSIONS_FIELDS,
+        {"field": "details.tool", "op": "equals", "value": "Web Search Tool"},
+    )
 
 
 def test_validate_filter_node_allows_flow_name_contains():
-    validate_filter_node({"field": "flow_name", "op": "contains", "value": "Onboarding"})
+    validate_filter_node(
+        SESSIONS_FIELDS, {"field": "flow_name", "op": "contains", "value": "Onboarding"}
+    )
 
 
 def test_validate_filter_node_allows_flow_name_not_contains():
-    validate_filter_node({"field": "flow_name", "op": "not_contains", "value": "Onboarding"})
+    validate_filter_node(
+        SESSIONS_FIELDS,
+        {"field": "flow_name", "op": "not_contains", "value": "Onboarding"},
+    )
 
 
 def test_parse_flow_name_contains_query_language_syntax():
@@ -133,44 +163,56 @@ def test_validate_filter_node_rejects_status_value_outside_whitelist():
     rejected here (400) rather than reaching OpenSearch and later crashing
     pydantic deserialization on the read path."""
     with pytest.raises(FilterValidationError):
-        validate_filter_node({"field": "status", "op": "equals", "value": "error"})
+        validate_filter_node(
+            SESSIONS_FIELDS, {"field": "status", "op": "equals", "value": "error"}
+        )
 
 
 def test_validate_filter_node_rejects_status_in_list_with_bad_value():
     with pytest.raises(FilterValidationError):
         validate_filter_node(
-            {"field": "status", "op": "in", "value": ["completed", "warning"]}
+            SESSIONS_FIELDS,
+            {"field": "status", "op": "in", "value": ["completed", "warning"]},
         )
 
 
 def test_validate_filter_node_allows_known_status_values():
-    validate_filter_node({"field": "status", "op": "equals", "value": "completed"})
-    validate_filter_node({"field": "status", "op": "not_equal", "value": "failed"})
     validate_filter_node(
-        {"field": "status", "op": "in", "value": ["completed", "failed"]}
+        SESSIONS_FIELDS, {"field": "status", "op": "equals", "value": "completed"}
+    )
+    validate_filter_node(
+        SESSIONS_FIELDS, {"field": "status", "op": "not_equal", "value": "failed"}
+    )
+    validate_filter_node(
+        SESSIONS_FIELDS,
+        {"field": "status", "op": "in", "value": ["completed", "failed"]},
     )
 
 
-def test_split_duration_filter_rejects_or():
+def test_split_computed_leaves_rejects_or():
     with pytest.raises(FilterValidationError):
-        split_duration_filter(
+        split_computed_leaves(
             {
                 "op": "or",
                 "children": [
                     {"field": "status", "op": "equals", "value": "failed"},
                     {"field": "duration", "op": "gt", "value": 5},
                 ],
-            }
+            },
+            computed=SESSIONS_COMPUTED,
         )
 
 
-def test_split_duration_filter_rejects_not():
+def test_split_computed_leaves_rejects_not():
     with pytest.raises(FilterValidationError):
-        split_duration_filter({"op": "not", "child": {"field": "duration", "op": "gt", "value": 5}})
+        split_computed_leaves(
+            {"op": "not", "child": {"field": "duration", "op": "gt", "value": 5}},
+            computed=SESSIONS_COMPUTED,
+        )
 
 
-def test_split_duration_filter_combines_and_leaves():
-    remainder, condition = split_duration_filter(
+def test_split_computed_leaves_combines_and_leaves():
+    remainder, conditions = split_computed_leaves(
         {
             "op": "and",
             "children": [
@@ -178,9 +220,11 @@ def test_split_duration_filter_combines_and_leaves():
                 {"field": "duration", "op": "gt", "value": 10},
                 {"field": "duration", "op": "lt", "value": 100},
             ],
-        }
+        },
+        computed=SESSIONS_COMPUTED,
     )
     assert remainder == {"field": "status", "op": "equals", "value": "failed"}
+    condition = conditions["duration"]
     assert condition.matches(50)
     assert not condition.matches(5)
     assert not condition.matches(200)

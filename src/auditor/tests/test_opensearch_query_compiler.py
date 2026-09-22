@@ -1,8 +1,29 @@
-from app.repositories.opensearch_query_compiler import compile as compile_filters
+from app.domains.base import DEFAULT_SCOPING
+from app.domains.sessions.fields import SESSIONS_FIELDS
+from app.repositories.compiler import QueryCompiler
+
+_compiler = QueryCompiler(SESSIONS_FIELDS, DEFAULT_SCOPING)
+
+
+def compile_filters(node, *, org_id, retention_days):
+    """Thin wrapper so every test below (written against the old free
+    `compile()` function) keeps working unchanged against the new
+    QueryCompiler(catalog, scoping).compile(...) instance-method shape."""
+    return _compiler.compile(node, org_id=org_id, retention_days=retention_days)
 
 
 def _filter_clauses(query: dict) -> list[dict]:
     return query["bool"]["filter"]
+
+
+def _scripted_clause(clauses: list[dict]) -> dict:
+    """ScopingPolicy puts the caller's compiled clause(s) first in the
+    filter array and always appends org_id/retention scoping clauses after
+    them (see app/domains/base.py::ScopingPolicy.__call__) - so `[-1]` is
+    never a safe way to grab "the leaf's own compiled clause" once org/
+    retention scoping is injected. Locate the script clause by shape
+    instead of by position."""
+    return next(c for c in clauses if "script" in c)
 
 
 def test_compile_always_injects_org_and_retention():
@@ -27,7 +48,7 @@ def test_compile_structured_field_uses_filter_clause():
 def test_compile_contains_op_uses_wildcard_not_term():
     node = {"field": "name", "op": "contains", "value": "Session"}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {
         "wildcard": {"name": {"value": "*Session*", "case_insensitive": True}}
     }
@@ -36,7 +57,7 @@ def test_compile_contains_op_uses_wildcard_not_term():
 def test_compile_flow_name_contains_uses_wildcard_not_term():
     node = {"field": "flow_name", "op": "contains", "value": "Onboarding"}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {
         "wildcard": {"flow_name": {"value": "*Onboarding*", "case_insensitive": True}}
     }
@@ -45,7 +66,7 @@ def test_compile_flow_name_contains_uses_wildcard_not_term():
 def test_compile_flow_name_not_contains_negates_wildcard():
     node = {"field": "flow_name", "op": "not_contains", "value": "Onboarding"}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {
         "bool": {
             "must_not": [
@@ -62,7 +83,7 @@ def test_compile_flow_name_not_contains_negates_wildcard():
 def test_compile_error_contains_targets_error_raw_not_error():
     node = {"field": "error", "op": "contains", "value": "AuthenticationError"}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert "error.raw" in compiled_leaf["wildcard"]
     assert "error" not in compiled_leaf["wildcard"]
 
@@ -74,7 +95,7 @@ def test_compile_flattened_numeric_op_uses_runtime_script_not_range():
     node = {"field": "output.tokens", "op": "gt", "value": 500}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = clauses[-1]
+    scripted = _scripted_clause(clauses)
     assert "script" in scripted
     assert scripted["script"]["script"]["params"]["value"] == 500.0
     assert {"exists": {"field": "output"}} in clauses
@@ -87,7 +108,7 @@ def test_compile_numeric_flattened_filter_reads_via_doc_not_source():
     node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = clauses[-1]
+    scripted = _scripted_clause(clauses)
     source = scripted["script"]["script"]["source"]
 
     assert "params._source" not in source
@@ -111,7 +132,7 @@ def test_compile_numeric_deeply_nested_flattened_filter_has_no_full_path_exists_
     }
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = clauses[-1]
+    scripted = _scripted_clause(clauses)
 
     assert "script" in scripted
     assert {"exists": {"field": "output"}} in clauses
@@ -131,7 +152,7 @@ def test_compile_key_exists_deep_path_uses_script_not_native_exists():
     node = {"field": "output.token_usage.completion_tokens", "op": "key_exists"}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = clauses[-1]
+    scripted = _scripted_clause(clauses)
 
     assert not any("exists" in c for c in clauses)
     assert "script" in scripted
@@ -151,7 +172,7 @@ def test_compile_key_not_exists_deep_path_uses_script_not_native_must_not_exists
     node = {"field": "output.token_usage.completion_tokens", "op": "key_not_exists"}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = clauses[-1]
+    scripted = _scripted_clause(clauses)
 
     assert not any("exists" in c for c in clauses)
     assert not any("must_not" in c.get("bool", {}) for c in clauses)
@@ -174,9 +195,8 @@ def test_compile_not_null_and_null_aliases_use_same_key_existence_script():
     exists_via_canonical = compile_filters(
         {"field": "details.a.b", "op": "key_exists"}, org_id=1, retention_days=0
     )
-    assert (
-        _filter_clauses(exists_via_alias)[-1]
-        == _filter_clauses(exists_via_canonical)[-1]
+    assert _scripted_clause(_filter_clauses(exists_via_alias)) == _scripted_clause(
+        _filter_clauses(exists_via_canonical)
     )
 
     not_exists_via_alias = compile_filters(
@@ -185,9 +205,8 @@ def test_compile_not_null_and_null_aliases_use_same_key_existence_script():
     not_exists_via_canonical = compile_filters(
         {"field": "details.a.b", "op": "key_not_exists"}, org_id=1, retention_days=0
     )
-    assert (
-        _filter_clauses(not_exists_via_alias)[-1]
-        == _filter_clauses(not_exists_via_canonical)[-1]
+    assert _scripted_clause(_filter_clauses(not_exists_via_alias)) == _scripted_clause(
+        _filter_clauses(not_exists_via_canonical)
     )
 
 
@@ -199,7 +218,7 @@ def test_compile_key_exists_shallow_path_also_uses_script():
     clauses = _filter_clauses(query)
 
     assert not any("exists" in c for c in clauses)
-    assert "script" in clauses[-1]
+    assert "script" in _scripted_clause(clauses)
 
 
 def test_compile_numeric_flattened_filter_script_semantics_simulated():
@@ -214,7 +233,7 @@ def test_compile_numeric_flattened_filter_script_semantics_simulated():
     key's entry by that prefix before parsing the value."""
     node = {"field": "details.tokens_used", "op": "gt", "value": 5000}
     query = compile_filters(node, org_id=1, retention_days=0)
-    params = _filter_clauses(query)[-1]["script"]["script"]["params"]
+    params = _scripted_clause(_filter_clauses(query))["script"]["script"]["params"]
     threshold = params["value"]
     prefix = f"{params['root']}.{params['path']}="
 
@@ -330,7 +349,7 @@ def test_compile_never_lets_client_ast_touch_org_id():
 def test_compile_free_text_uses_wildcard_and_query_string():
     node = {"field": "__text__", "op": "contains", "value": "est3285"}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     should = compiled_leaf["bool"]["should"]
     assert any("query_string" in c for c in should)
     assert any("name" in c.get("wildcard", {}) for c in should)
@@ -339,14 +358,14 @@ def test_compile_free_text_uses_wildcard_and_query_string():
 def test_compile_flattened_alias_in_op_uses_terms():
     node = {"field": "agent", "op": "in", "value": ["some_id"]}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {"terms": {"details.agent_id": ["some_id"]}}
 
 
 def test_compile_flattened_alias_not_in_op_uses_must_not_terms():
     node = {"field": "agent", "op": "not_in", "value": ["some_id", "other_id"]}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {
         "bool": {"must_not": [{"terms": {"details.agent_id": ["some_id", "other_id"]}}]}
     }
@@ -355,14 +374,14 @@ def test_compile_flattened_alias_not_in_op_uses_must_not_terms():
 def test_compile_tool_alias_in_op_uses_terms():
     node = {"field": "tool", "op": "in", "value": ["Web Search"]}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {"terms": {"details.tool": ["Web Search"]}}
 
 
 def test_compile_tool_alias_not_in_op_uses_must_not_terms():
     node = {"field": "tool", "op": "not_in", "value": ["Web Search"]}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {
         "bool": {"must_not": [{"terms": {"details.tool": ["Web Search"]}}]}
     }
@@ -371,12 +390,12 @@ def test_compile_tool_alias_not_in_op_uses_must_not_terms():
 def test_compile_session_id_in_op_uses_structured_terms():
     node = {"field": "session_id", "op": "in", "value": [8, 9]}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {"terms": {"session_id": [8, 9]}}
 
 
 def test_compile_session_message_id_in_op_uses_structured_terms():
     node = {"field": "session_message_id", "op": "in", "value": [1, 2, 3]}
     query = compile_filters(node, org_id=1, retention_days=0)
-    compiled_leaf = _filter_clauses(query)[-1]
+    compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {"terms": {"session_message_id": [1, 2, 3]}}

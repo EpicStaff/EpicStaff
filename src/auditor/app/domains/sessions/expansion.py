@@ -1,15 +1,15 @@
 """
-Match-scope orchestration: reshapes which query/queries run once a base
-search has matched, per the four match-scope toggles. Lives outside the
-repository (its contract is "one query in, one page out"; this needs
-multiple round-trips) and outside the AST/compiler (these toggles are
-structural - they change which rows come back, not filter conditions).
+Match-scope expansion for the sessions domain: reshapes which rows come
+back once a base search has matched, per the four match-scope toggles.
+Session-tree-shaped (kind="session"/"node"/"event", parent_id/session_id
+semantics) - not a generic concept, hence living under
+app/domains/sessions/ rather than app/services/.
 """
 
 from pydantic import BaseModel, Field
 
-from app.repositories.base import SessionAuditRepository
-from app.repositories.opensearch_query_compiler import scoped_query
+from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs
+from app.repositories.base import AuditRepository
 from src.shared.models import SessionAuditEvent
 
 _MAX_ROWS_BEFORE = 20
@@ -49,13 +49,8 @@ class MatchScope(BaseModel):
         )
 
 
-def _dedupe_and_sort(events: list[SessionAuditEvent]) -> list[SessionAuditEvent]:
-    by_id: dict[str, SessionAuditEvent] = {e.id: e for e in events}
-    return sorted(by_id.values(), key=lambda e: (e.event_time, e.id), reverse=True)
-
-
 async def _fetch_all(
-    repository: SessionAuditRepository,
+    repository: AuditRepository,
     clauses: list[dict],
     *,
     org_id: int,
@@ -68,7 +63,9 @@ async def _fetch_all(
     actually has."""
     events: list[SessionAuditEvent] = []
     cursor: str | None = None
-    query = scoped_query(clauses, org_id=org_id, retention_days=retention_days)
+    query = DEFAULT_SCOPING(
+        clauses, BaseScopeArgs(org_id=org_id, retention_days=retention_days)
+    )
     while True:
         page, cursor = await repository.query(
             query, cursor=cursor, size=_FETCH_PAGE_SIZE
@@ -80,7 +77,7 @@ async def _fetch_all(
 
 
 async def _expand_full_session_history(
-    repository: SessionAuditRepository,
+    repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     *,
     org_id: int,
@@ -98,7 +95,7 @@ async def _expand_full_session_history(
 
 
 async def _expand_ancestors(
-    repository: SessionAuditRepository,
+    repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     *,
     org_id: int,
@@ -130,7 +127,7 @@ async def _expand_ancestors(
 
 
 async def _expand_children(
-    repository: SessionAuditRepository,
+    repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     *,
     org_id: int,
@@ -170,7 +167,7 @@ async def _expand_children(
 
 
 async def _expand_rows_before(
-    repository: SessionAuditRepository,
+    repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     rows_before: int,
     *,
@@ -189,14 +186,16 @@ async def _expand_rows_before(
             {"term": {"session_id": event.session_id}},
             {"range": {"event_time": {"lte": event.event_time.isoformat()}}},
         ]
-        query = scoped_query(clauses, org_id=org_id, retention_days=retention_days)
+        query = DEFAULT_SCOPING(
+            clauses, BaseScopeArgs(org_id=org_id, retention_days=retention_days)
+        )
         page, _ = await repository.query(query, cursor=None, size=rows_before + 1)
         extra.extend(row for row in page if row.id != event.id)
     return extra
 
 
 async def expand_matches(
-    repository: SessionAuditRepository,
+    repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     match_scope: MatchScope,
     *,
@@ -243,29 +242,22 @@ async def expand_matches(
     return _dedupe_and_sort(matched_events + extra)
 
 
-async def mark_filter_matched(
-    events: list[SessionAuditEvent], matched_ids: set[str]
-) -> list[SessionAuditEvent]:
-    for event in events:
-        event.filter_matched = event.id in matched_ids
-    return events
+def _dedupe_and_sort(events: list[SessionAuditEvent]) -> list[SessionAuditEvent]:
+    # TODO: derive from IndexSpec.sort_keys instead of a hardcoded copy of
+    # the fixed sort order (same knowledge already lives in
+    # OpenSearchAuditRepository._execute) - flagged, not fixed, during the
+    # domain-abstraction restructure.
+    by_id: dict[str, SessionAuditEvent] = {e.id: e for e in events}
+    return sorted(by_id.values(), key=lambda e: (e.event_time, e.id), reverse=True)
 
 
-async def expand_and_mark(
-    repository: SessionAuditRepository,
-    events: list[SessionAuditEvent],
-    match_scope: MatchScope,
-    *,
-    org_id: int,
-    retention_days: int,
-) -> list[SessionAuditEvent]:
-    """Shared by search and export: expand per match_scope, then flag which
-    rows in the final list were original matches vs. pulled in by expansion.
-    id-based (not identity-based) because full_session_history re-fetches
-    fresh objects for the same ids - see mark_filter_matched."""
-    matched_ids = {e.id for e in events}
-    if not match_scope.is_noop():
-        events = await expand_matches(
-            repository, events, match_scope, org_id=org_id, retention_days=retention_days
+class SessionTreeExpander:
+    """MatchExpander implementation (see app/domains/base.py) for the
+    sessions domain."""
+
+    async def expand(
+        self, repository, events, scope, *, org_id: int, retention_days: int
+    ) -> list[SessionAuditEvent]:
+        return await expand_matches(
+            repository, events, scope, org_id=org_id, retention_days=retention_days
         )
-    return await mark_filter_matched(events, matched_ids)

@@ -1,5 +1,5 @@
 """
-Unit tests for OpenSearchSessionAuditRepository against a mocked OpenSearch
+Unit tests for OpenSearchAuditRepository against a mocked OpenSearch
 client (no live cluster needed - see test_search_integration.py for the
 real-cluster equivalents, skipped automatically when unreachable).
 """
@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.repositories.opensearch_repository import OpenSearchSessionAuditRepository
+from app.domains.sessions.index import SESSIONS_INDEX
+from app.repositories.opensearch_repository import OpenSearchAuditRepository
+from src.shared.models import SessionAuditEvent
 
 
 def _hit(_id: str, source: dict, sort: list | None = None) -> dict:
@@ -47,7 +49,7 @@ async def test_query_skips_malformed_status_without_raising():
     client = _FakeOpenSearchClient(
         [_hit("evt-good", _VALID_SOURCE), _hit("evt-bad", bad_source)]
     )
-    repository = OpenSearchSessionAuditRepository(client)
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
 
     events, _ = await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
 
@@ -57,9 +59,12 @@ async def test_query_skips_malformed_status_without_raising():
 @pytest.mark.asyncio
 async def test_query_returns_all_events_when_none_malformed():
     client = _FakeOpenSearchClient(
-        [_hit("evt-good", _VALID_SOURCE), _hit("evt-good-2", dict(_VALID_SOURCE, id="evt-good-2"))]
+        [
+            _hit("evt-good", _VALID_SOURCE),
+            _hit("evt-good-2", dict(_VALID_SOURCE, id="evt-good-2")),
+        ]
     )
-    repository = OpenSearchSessionAuditRepository(client)
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
 
     events, _ = await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
 
@@ -74,7 +79,7 @@ async def test_query_next_cursor_still_advances_when_a_row_is_skipped():
     bad_source = dict(_VALID_SOURCE, id="evt-bad", status="warning")
     hits = [_hit("evt-good", _VALID_SOURCE), _hit("evt-bad", bad_source)]
     client = _FakeOpenSearchClient(hits)
-    repository = OpenSearchSessionAuditRepository(client)
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
 
     events, next_cursor = await repository.query(
         {"bool": {"filter": []}}, cursor=None, size=2
@@ -91,7 +96,7 @@ async def test_query_disables_exact_total_hit_tracking():
     OpenSearch to visit every matching document (worst case on broad
     negation queries) just to produce a number nobody reads."""
     client = _FakeOpenSearchClient([_hit("evt-good", _VALID_SOURCE)])
-    repository = OpenSearchSessionAuditRepository(client)
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
 
     await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
 

@@ -1,15 +1,13 @@
 import asyncio
 import json
-from pathlib import Path
 
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
 from app.core.settings import settings
 from app.db.opensearch_client import build_opensearch_client
-from app.repositories.opensearch_repository import SESSION_AUDIT_EVENTS_INDEX
-
-MAPPING_PATH = Path(__file__).parent / "0001_create_audit_events_index.json"
+from app.domains.base import IndexSpec
+from app.domains.registry import DOMAINS
 
 
 _OPENSEARCH_WAIT_ATTEMPTS = 60
@@ -35,28 +33,32 @@ async def wait_for_opensearch(client: AsyncOpenSearch) -> None:
     )
 
 
-async def ensure_session_audit_index(client: AsyncOpenSearch) -> None:
+async def ensure_index(client: AsyncOpenSearch, index: IndexSpec) -> None:
     """
-    Idempotent: creates the session-audit index if it doesn't exist yet.
-    Safe to run on every boot - creating an already-existing index is a
-    no-op, so no advisory-lock/race concern even with multiple replicas.
+    Idempotent: creates `index` if it doesn't exist yet. Safe to run on
+    every boot - creating an already-existing index is a no-op, so no
+    advisory-lock/race concern even with multiple replicas.
+
+    Additive mapping changes (PUT new fields onto an existing index,
+    hard-fail on type drift) are explicitly out of scope here - deferred to
+    its own follow-up piece of work, not part of this idempotent
+    create-if-absent behavior.
     """
-    if await client.indices.exists(index=SESSION_AUDIT_EVENTS_INDEX):
-        logger.info(
-            f"Index '{SESSION_AUDIT_EVENTS_INDEX}' already exists, skipping creation."
-        )
+    if await client.indices.exists(index=index.name):
+        logger.info(f"Index '{index.name}' already exists, skipping creation.")
         return
 
-    mapping = json.loads(MAPPING_PATH.read_text())
-    await client.indices.create(index=SESSION_AUDIT_EVENTS_INDEX, body=mapping)
-    logger.info(f"Created index '{SESSION_AUDIT_EVENTS_INDEX}'.")
+    mapping = json.loads(index.mapping_path.read_text())
+    await client.indices.create(index=index.name, body=mapping)
+    logger.info(f"Created index '{index.name}'.")
 
 
 async def main() -> None:
     client = build_opensearch_client(settings)
     try:
         await wait_for_opensearch(client)
-        await ensure_session_audit_index(client)
+        for domain in DOMAINS.values():
+            await ensure_index(client, domain.index)
     finally:
         await client.close()
 

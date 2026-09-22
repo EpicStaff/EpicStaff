@@ -14,12 +14,32 @@ import pytest_asyncio
 
 from app.core.settings import settings
 from app.db.opensearch_client import build_opensearch_client
+from app.domains.base import DEFAULT_SCOPING
+from app.domains.sessions.computed import SESSIONS_COMPUTED
+from app.domains.sessions.fields import SESSIONS_FIELDS
+from app.domains.sessions.index import SESSIONS_INDEX
 from app.index_setup import runner as index_setup_runner
-from app.repositories.opensearch_repository import OpenSearchSessionAuditRepository
-from app.repositories.opensearch_query_compiler import compile as compile_filters
+from app.repositories.opensearch_repository import OpenSearchAuditRepository
+from app.repositories.compiler import QueryCompiler
+from app.filtering.computed import split_computed_leaves
 from app.filtering.query_language import parse_query
-from app.services.duration_filter import apply_duration_filter, split_duration_filter
+from app.services.duration_filter import apply_duration_filter
 from src.shared.models import SessionAuditEvent
+
+_compiler = QueryCompiler(SESSIONS_FIELDS, DEFAULT_SCOPING)
+_DURATION_FIELD = SESSIONS_COMPUTED[0]
+
+
+def compile_filters(node, *, org_id, retention_days):
+    return _compiler.compile(node, org_id=org_id, retention_days=retention_days)
+
+
+def split_duration_filter(node):
+    """Adapts the old (remainder, DurationCondition | None) return shape to
+    the current split_computed_leaves(node, computed=...) -> (remainder,
+    {field_name: condition}) shape, for this file's own call sites."""
+    remainder, conditions = split_computed_leaves(node, computed=SESSIONS_COMPUTED)
+    return remainder, conditions.get("duration")
 
 
 @pytest_asyncio.fixture
@@ -32,14 +52,16 @@ async def opensearch_client():
     if not reachable:
         await client.close()
         pytest.skip("OpenSearch is not reachable - bring up the dev stack first")
-    await index_setup_runner.ensure_session_audit_index(client)
+    await index_setup_runner.ensure_index(client, SESSIONS_INDEX)
     yield client
     await client.close()
 
 
 @pytest.fixture
 def repository(opensearch_client):
-    return OpenSearchSessionAuditRepository(opensearch_client)
+    return OpenSearchAuditRepository(
+        opensearch_client, SESSIONS_INDEX, SessionAuditEvent
+    )
 
 
 ORG_A, ORG_B = 90001, 90002
@@ -138,6 +160,7 @@ async def test_duration_filter_includes_and_excludes_correctly(
     events, _, partial = await apply_duration_filter(
         repository,
         query,
+        _DURATION_FIELD,
         duration_cond,
         org_id=ORG_A,
         retention_days=0,
@@ -153,6 +176,7 @@ async def test_duration_filter_includes_and_excludes_correctly(
     events2, _, _ = await apply_duration_filter(
         repository,
         query2,
+        _DURATION_FIELD,
         duration_cond2,
         org_id=ORG_A,
         retention_days=0,

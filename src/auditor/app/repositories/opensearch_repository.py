@@ -6,15 +6,13 @@ from typing import Any
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 from opensearchpy.helpers import async_bulk
-from pydantic import ValidationError
-
+from pydantic import ValidationError, BaseModel
 import binascii
 
 from app.filtering.ast import FilterError
-from app.repositories.base import SessionAuditRepository
+from app.repositories.base import AuditRepository
 from src.shared.models import SessionAuditEvent
-
-SESSION_AUDIT_EVENTS_INDEX = "audit_events"
+from app.domains.base import IndexSpec
 
 
 def _encode_cursor(sort_values: list) -> str:
@@ -28,13 +26,17 @@ def _decode_cursor(cursor: str) -> list:
         raise FilterError("invalid or malformed cursor") from exc
 
 
-class OpenSearchSessionAuditRepository(SessionAuditRepository):
-    """SessionAuditRepository implementation backed by OpenSearch."""
+class OpenSearchAuditRepository(AuditRepository):
+    """AuditRepository implementation backed by OpenSearch."""
 
-    def __init__(self, client: AsyncOpenSearch):
+    def __init__(
+        self, client: AsyncOpenSearch, index: IndexSpec, model: type[BaseModel]
+    ):
         self._client = client
+        self._index = index
+        self._model = model
 
-    async def write_batch(self, events: list[SessionAuditEvent]) -> None:
+    async def write_batch(self, events: list[BaseModel]) -> None:
         if not events:
             return
 
@@ -42,7 +44,7 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
         actions = (
             {
                 "_op_type": "index",
-                "_index": SESSION_AUDIT_EVENTS_INDEX,
+                "_index": self._index.name,
                 "_id": event.id,
                 "_source": event.model_copy(
                     update={"record_time": record_time}
@@ -61,7 +63,7 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
             )
         logger.info(
             f"OpenSearch bulk write: {success_count}/{len(events)} event(s) indexed "
-            f"into {SESSION_AUDIT_EVENTS_INDEX}"
+            f"into {self._index.name}"
         )
 
     async def query(
@@ -71,7 +73,7 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
         size: int = 50,
     ) -> tuple[list[SessionAuditEvent], str | None]:
         """`query` is a fully-compiled OpenSearch query clause (see
-        opensearch_query_compiler.py) - org_id/retention_days/the AST are
+        compiler.py) - org_id/retention_days/the AST are
         already baked in. Shares _execute() with `query()` so the fixed sort
         order (event_time desc, id desc) stays enforced in exactly one place."""
         return await self._execute(query, cursor=cursor, size=size)
@@ -81,7 +83,7 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
     ) -> tuple[list[SessionAuditEvent], str | None]:
         body: dict[str, Any] = {
             "query": query,
-            "sort": [{"event_time": "desc"}, {"id": "desc"}],
+            "sort": [{field: direction} for field, direction in self._index.sort_keys],
             "size": size,
             # Pagination here is search_after/next_cursor-based, and the API
             # response never surfaces a hit count (see SessionSearchResponse
@@ -92,16 +94,14 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
         if cursor:
             body["search_after"] = _decode_cursor(cursor)
 
-        response = await self._client.search(
-            index=SESSION_AUDIT_EVENTS_INDEX, body=body
-        )
+        response = await self._client.search(index=self._index.name, body=body)
         hits = response["hits"]["hits"]
         logger.info(f"Audit query -> {len(hits)} hit(s)")
 
         events = []
         for hit in hits:
             try:
-                events.append(SessionAuditEvent.model_validate(hit["_source"]))
+                events.append(self._model.model_validate(hit["_source"]))
             except ValidationError as exc:
                 logger.warning(
                     "Skipping malformed audit_events document id={doc_id!r}: {exc}",
