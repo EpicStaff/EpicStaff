@@ -50,14 +50,31 @@
         </button>
     </div>
 
-    @if (appliedChips().length > 0) {
-        <app-audit-filter-chips
-            class="audit-browser__chips"
-            [chips]="appliedChips()"
-            (removed)="removeFilter($event)"
-            (cleared)="clearFilters()"
-        />
-    }
+    <div class="audit-browser__subbar">
+        <button
+            class="audit-browser__expand-toggle"
+            type="button"
+            [disabled]="!hasCollapsibleRows()"
+            (click)="toggleAllRows()"
+        >
+            <app-svg-icon
+                class="audit-browser__expand-caret"
+                [class.is-collapsed]="!areAllRowsExpanded()"
+                icon="caret-down-filled"
+                size="10px"
+            />
+            {{ areAllRowsExpanded() ? 'Collapse' : 'Expand' }}
+        </button>
+
+        @if (appliedChips().length > 0) {
+            <app-audit-filter-chips
+                class="audit-browser__chips"
+                [chips]="appliedChips()"
+                (removed)="removeFilter($event)"
+                (cleared)="clearFilters()"
+            />
+        }
+    </div>
 
     @if (isPartial()) {
         <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
@@ -78,10 +95,10 @@
                         [class.audit-table--expanded]="areColumnsExpanded()"
                     >
                         <colgroup>
-                            <col style="width: 28px" />
-                            <col style="width: 120px" />
+                            <col style="width: 56px" />
+                            <col style="width: 80px" />
                             <col style="width: 60px" />
-                            <col style="width: 170px" />
+                            <col style="width: 182px" />
                             <col style="width: 140px" />
                             <col style="width: 120px" />
                             <col style="width: 96px" />
@@ -94,7 +111,7 @@
                         <thead>
                             <tr>
                                 <th class="audit-table__gutter"></th>
-                                <th>Kind</th>
+                                <th class="audit-table__kind">Kind</th>
                                 <th>ID</th>
                                 <th>Name</th>
                                 <th>Flow</th>
@@ -113,14 +130,47 @@
                                     [class]="'audit-row--' + row.event.kind"
                                     [class.audit-row--matched]="row.event.filter_matched"
                                 >
-                                    <td class="audit-table__gutter"></td>
-                                    <td>
-                                        <span
-                                            class="audit-kind"
-                                            [style.margin-left.px]="row.depth * 14"
-                                        >
-                                            {{ row.event.kind | titlecase }}
+                                    <td class="audit-table__gutter">
+                                        <span class="audit-tree">
+                                            @for (line of row.ancestorLines; track $index) {
+                                                <span
+                                                    class="audit-tree__rail"
+                                                    [class.audit-tree__rail--line]="line"
+                                                ></span>
+                                            }
+                                            @if (row.depth > 0) {
+                                                <span
+                                                    class="audit-tree__elbow"
+                                                    [class.audit-tree__elbow--tee]="!row.isLastChild"
+                                                ></span>
+                                            }
+                                            <span
+                                                class="audit-tree__node"
+                                                [class.audit-tree__node--open]="
+                                                    row.hasChildren && !isRowCollapsed(row.event.id)
+                                                "
+                                            >
+                                                @if (row.hasChildren) {
+                                                    <button
+                                                        class="audit-disclosure"
+                                                        type="button"
+                                                        [class.is-collapsed]="isRowCollapsed(row.event.id)"
+                                                        (click)="toggleRow(row.event.id)"
+                                                        [attr.aria-label]="
+                                                            isRowCollapsed(row.event.id) ? 'Expand row' : 'Collapse row'
+                                                        "
+                                                    >
+                                                        <app-svg-icon
+                                                            icon="caret-down-filled"
+                                                            size="12px"
+                                                        />
+                                                    </button>
+                                                }
+                                            </span>
                                         </span>
+                                    </td>
+                                    <td class="audit-table__kind">
+                                        <span class="audit-kind">{{ row.event.kind | titlecase }}</span>
                                     </td>
                                     <td>{{ row.event.session_id }}</td>
                                     <td>{{ row.event.name }}</td>
