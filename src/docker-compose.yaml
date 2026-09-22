@@ -606,10 +606,11 @@ volumes:
     external: true
   media_data:
     external: true
+  opensearch_data: 
+    external: true
   redis_data: {}
   code_instances: {}
   minio_data: {}
-  opensearch_data: {}
   auditor_data: {}
 
 networks:

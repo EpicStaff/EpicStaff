@@ -96,6 +96,7 @@ init:
 	@docker volume create crew_pgdata        || true
 	@docker volume create media_data         || true
 	@docker volume create graph_data         || true
+	@docker volume create opensearch_data    || true
 	@docker network create mcp-network       || true
 	@echo "--- Done ---"
 

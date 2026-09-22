@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "EpicStaff audit trail service"
 authors = [
     { name = "EpicStaff" },
+    { name = "Nikita Zaloha"}
 ]
 requires-python = "==3.12.10"
 dependencies = [

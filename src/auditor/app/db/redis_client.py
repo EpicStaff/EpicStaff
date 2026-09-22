@@ -16,7 +16,7 @@ def build_redis_client(settings: Settings) -> Redis:
     return Redis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD or None,
+        password=settings.REDIS_PASSWORD,
         db=settings.AUDITOR_REDIS_DB,
         decode_responses=True,
     )

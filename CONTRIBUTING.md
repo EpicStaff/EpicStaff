@@ -85,6 +85,7 @@ These steps start the dev stack with Docker Compose directly. If you prefer `mak
     docker volume create crew_pgdata
     docker volume create media_data
     docker volume create graph_data
+    docker volume create opensearch_data
     docker network create mcp-network
     ```
 6.  **Start the stack.** Run from the `src/` directory:
