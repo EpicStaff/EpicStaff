@@ -7,6 +7,7 @@
         <app-button
             *appHasPermission="[ResourceCode.Webhooks, ActionCode.Create]"
             type="primary"
+            [disabled]="status() === 'error'"
             (click)="onAdd()"
             >Add Trigger</app-button
         >
@@ -17,9 +18,10 @@
             <app-loading-spinner />
         </div>
     } @else if (status() === 'error') {
-        <div class="tab__loading-state tab__loading-state--error">
-            <p>Failed to load webhook triggers.</p>
-        </div>
+        <app-fetch-error-state
+            title="Failed to load webhook triggers"
+            (retry)="retry()"
+        />
     } @else if (triggers().length === 0) {
         <div class="tab__empty-state">
             <p>No webhook triggers yet. Click <strong>Add Trigger</strong> to create one.</p>
