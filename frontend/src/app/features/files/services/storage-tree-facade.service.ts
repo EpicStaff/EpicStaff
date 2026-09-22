@@ -45,6 +45,7 @@ export class StorageTreeFacade {
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
+    readonly error = signal<string | null>(null);
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
     readonly selectedItems = signal<StorageItem[]>([]);
@@ -113,6 +114,7 @@ export class StorageTreeFacade {
 
     loadTree(): void {
         this.isLoading.set(true);
+        this.error.set(null);
         this.storageApiService
             .list('')
             .pipe(
@@ -124,7 +126,7 @@ export class StorageTreeFacade {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
                     this.afterTreeLoad?.();
                 },
-                error: () => this.toastService.error('Failed to load storage files'),
+                error: () => this.error.set('Failed to load storage files'),
             });
     }
 

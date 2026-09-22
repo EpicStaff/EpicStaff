@@ -94,6 +94,8 @@ export class AgentsPageStore {
     readonly agents = signal<AgentDefinition[]>([]);
     readonly surfaces = signal<Surface[]>([]);
     readonly loading = signal<boolean>(false);
+    readonly agentsError = signal<string | null>(null);
+    readonly surfacesError = signal<string | null>(null);
     readonly saving = signal<boolean>(false);
     readonly agentSaveErrorTick = signal<number>(0);
     // Bumped when a specific surface's save fails; carries the surface id so only that
@@ -413,27 +415,49 @@ export class AgentsPageStore {
 
     load(): void {
         this.loading.set(true);
-        forkJoin({
-            agents: this.agentsApi.getAgentDefinitions(),
-            surfaces: this.surfacesApi.getSurfaces(),
-        }).subscribe({
-            next: ({ agents, surfaces }) => {
-                const agentsOk = Array.isArray(agents);
-                const surfacesOk = Array.isArray(surfaces);
-                this.agents.set(agentsOk ? agents : []);
-                this.surfaces.set(surfacesOk ? surfaces : []);
-                this.loading.set(false);
-                if (!agentsOk || !surfacesOk) {
-                    this.toast.error('Failed to load agents and surfaces');
-                }
-            },
-            error: (err) => {
-                this.agents.set([]);
-                this.surfaces.set([]);
-                this.loading.set(false);
-                this.toast.error(this.extractError(err, 'Failed to load agents and surfaces'));
-            },
+        this.agentsError.set(null);
+        this.surfacesError.set(null);
+
+        const agents$ = this.agentsApi.getAgentDefinitions().pipe(
+            catchError((err) => {
+                this.agentsError.set(this.extractError(err, 'Failed to load agents'));
+                return of<AgentDefinition[]>([]);
+            })
+        );
+        const surfaces$ = this.surfacesApi.getSurfaces().pipe(
+            catchError((err) => {
+                this.surfacesError.set(this.extractError(err, 'Failed to load surfaces'));
+                return of<Surface[]>([]);
+            })
+        );
+
+        forkJoin({ agents: agents$, surfaces: surfaces$ }).subscribe(({ agents, surfaces }) => {
+            this.agents.set(Array.isArray(agents) ? agents : []);
+            this.surfaces.set(Array.isArray(surfaces) ? surfaces : []);
+            this.loading.set(false);
         });
+    }
+
+    retryAgents(): void {
+        this.agentsError.set(null);
+        this.agentsApi
+            .getAgentDefinitions()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (agents) => this.agents.set(Array.isArray(agents) ? agents : []),
+                error: (err) => this.agentsError.set(this.extractError(err, 'Failed to load agents')),
+            });
+    }
+
+    retrySurfaces(): void {
+        this.surfacesError.set(null);
+        this.surfacesApi
+            .getSurfaces()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (surfaces) => this.surfaces.set(Array.isArray(surfaces) ? surfaces : []),
+                error: (err) => this.surfacesError.set(this.extractError(err, 'Failed to load surfaces')),
+            });
     }
 
     combineSurfaces(surfaceIds: number[]): Observable<CombinedSurface | null> {

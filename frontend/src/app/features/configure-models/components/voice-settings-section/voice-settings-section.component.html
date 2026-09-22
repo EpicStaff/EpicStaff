@@ -7,6 +7,7 @@
         <app-button
             *appHasPermission="[ResourceCode.Voice, ActionCode.Create]"
             type="primary"
+            [disabled]="status() === 'error'"
             (click)="onAddChannel()"
             >Add Channel</app-button
         >
@@ -17,9 +18,10 @@
             <app-loading-spinner />
         </div>
     } @else if (status() === 'error') {
-        <div class="tab__loading-state tab__loading-state--error">
-            <p>Failed to load channels.</p>
-        </div>
+        <app-fetch-error-state
+            title="Failed to load channels"
+            (retry)="retry()"
+        />
     } @else if (channels().length === 0) {
         <div class="tab__empty-state">
             <p>No channels configured. Click <strong>Add Channel</strong> to create one.</p>

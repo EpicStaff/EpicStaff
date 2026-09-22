@@ -14,7 +14,12 @@ import {
     viewChildren,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { ConfirmationDialogService, ConfirmationResult, LoadingSpinnerComponent } from '@shared/components';
+import {
+    ConfirmationDialogService,
+    ConfirmationResult,
+    FetchErrorStateComponent,
+    LoadingSpinnerComponent,
+} from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
 
@@ -34,7 +39,14 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './my-flows.component.html',
     styleUrls: ['./my-flows.component.scss'],
-    imports: [FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
+    imports: [
+        FlowCardComponent,
+        LoadingSpinnerComponent,
+        DialogModule,
+        RouterLink,
+        DragScrollDirective,
+        FetchErrorStateComponent,
+    ],
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);

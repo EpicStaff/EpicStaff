@@ -51,6 +51,20 @@ class SurfaceValidator:
             )
 
     @staticmethod
+    def validate_storage_items_org(storage_items_data, org_id):
+        mismatched = [
+            item["storage_file"].pk
+            for item in storage_items_data
+            if item["storage_file"].org_id != org_id
+        ]
+        if mismatched:
+            raise SurfaceValidationError(
+                detail={
+                    "storage_items": f"StorageFile ids {mismatched} do not belong to organization {org_id}"
+                }
+            )
+
+    @staticmethod
     def validate_knowledge(knowledge_data):
         ids = [item["collection"].pk for item in knowledge_data]
         duplicates = SurfaceValidator._find_duplicate_ids(ids)

@@ -24,10 +24,16 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    DateRangeFilter,
+    GraphSessionStatus,
+    isTerminalSessionStatus,
+    NodeGroup,
+    ResourceCode,
+} from '@shared/models';
 import { downloadBlob } from '@shared/utils';
 import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
-import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';

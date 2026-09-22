@@ -21,6 +21,7 @@ export * from './drag-drop-area/drag-drop-area.component';
 export * from './dual-slider/dual-slider.component';
 export * from './dynamic-table/dynamic-table.component';
 export * from './embedding-model-selector';
+export * from './fetch-error-state/fetch-error-state.component';
 export * from './file-uploader/file-uploader.component';
 export * from './filter';
 export * from './filters-list/filters-list.component';

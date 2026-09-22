@@ -17,6 +17,7 @@ import {
     AppIncludeExcludeDialogData,
     AppIncludeExcludeDialogResult,
     ConfirmationDialogService,
+    FetchErrorStateComponent,
     IncludeExcludeTab,
     LoadingSpinnerComponent,
 } from '@shared/components';
@@ -62,7 +63,7 @@ const RECENT_TOOLS_MAX = 8;
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './tools-list.component.html',
     styleUrls: ['./tools-list.component.scss'],
-    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule],
+    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule, FetchErrorStateComponent],
 })
 export class ToolsListComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
@@ -84,6 +85,7 @@ export class ToolsListComponent implements OnInit {
 
     public readonly loadingMessage = computed(() => `Loading ${this.port.entityLabelPlural}...`);
     public readonly emptyMessage = computed(() => `No ${this.port.entityLabelPlural} found.`);
+    public readonly errorTitle = computed(() => `Failed to load ${this.port.entityLabelPlural}`);
 
     public readonly cards = computed<ToolCardVM[]>(() => {
         const usage = this.usageById();

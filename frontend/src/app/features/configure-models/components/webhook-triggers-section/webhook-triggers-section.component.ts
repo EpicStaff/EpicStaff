@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     ButtonComponent,
     ConfirmationDialogService,
+    FetchErrorStateComponent,
     LoadingSpinnerComponent,
     WebhookTriggerDialogComponent,
     WebhookTriggerDialogData,
@@ -19,7 +20,7 @@ import { ToastService } from '../../../../services/notifications';
     selector: 'app-webhook-triggers-section',
     templateUrl: './webhook-triggers-section.component.html',
     styleUrls: ['./webhook-triggers-section.component.scss'],
-    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective],
+    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective, FetchErrorStateComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WebhookTriggersSectionComponent implements OnInit {
@@ -48,6 +49,10 @@ export class WebhookTriggersSectionComponent implements OnInit {
     ngOnInit(): void {
         this.loadTriggers();
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refresh());
+    }
+
+    retry(): void {
+        this.loadTriggers();
     }
 
     private loadTriggers(): void {
