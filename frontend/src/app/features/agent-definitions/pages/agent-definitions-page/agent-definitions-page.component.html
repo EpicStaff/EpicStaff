@@ -37,13 +37,7 @@
         }
 
         <div class="body__detail">
-            @if (store.error()) {
-                <app-fetch-error-state
-                    title="Failed to load agents and surfaces"
-                    message="Check your connection and try again."
-                    (retry)="store.load()"
-                />
-            } @else if (store.isStorageSelected()) {
+            @if (store.isStorageSelected()) {
                 <app-storage-preview
                     *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
                     [item]="storageFacade.selectedFile()"

@@ -13,7 +13,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AppSvgIconComponent, ButtonComponent, FetchErrorStateComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
@@ -77,7 +77,6 @@ import {
         AppSvgIconComponent,
         OverlayModule,
         HasPermissionDirective,
-        FetchErrorStateComponent,
     ],
     templateUrl: './agent-definitions-page.component.html',
     styleUrls: ['./agent-definitions-page.component.scss'],
