@@ -1,4 +1,4 @@
-import { GetGraphLightRequest } from '../../../../../features/flows/models/graph.model';
+import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 
 export interface SubGraphNode {
     id: number;

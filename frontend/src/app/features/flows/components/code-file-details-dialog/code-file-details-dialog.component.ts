@@ -1,9 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { CopyFieldComponent } from '@shared/components';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent, CopyFieldComponent } from '@shared/components';
 
 export interface CodeFileDetailsDialogData {
     entrypoint: string;

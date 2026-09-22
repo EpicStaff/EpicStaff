@@ -1,4 +1,4 @@
-import { ConfirmationDialogData } from '../../../shared/components/cofirm-dialog/confirmation-dialog.component';
+import { ConfirmationDialogData } from '@shared/components';
 
 export type SurfaceBundleClearKind = 'tools' | 'collections' | 'files';
 

@@ -10,8 +10,8 @@ import {
     signal,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ValuePreviewTooltipComponent } from './value-preview-tooltip/value-preview-tooltip.component';
 
 export interface AutocompleteItem {

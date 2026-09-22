@@ -22,6 +22,7 @@ class ClientEventHandler:
             "input_audio_buffer.commit": self.handle_input_audio_buffer_commit,
             "input_audio_buffer.append": self.handle_input_audio_buffer_append,
             "conversation.item.create": self.handle_conversation_item_create,
+            "conversation.item.truncate": self.handle_conversation_item_truncate,
             "response.create": self.handle_response_create,
             "response.cancel": self.handle_response_cancel,
             "session.update": self.handle_session_update,
@@ -55,6 +56,9 @@ class ClientEventHandler:
         await self.client.send_server(data)
 
     async def handle_conversation_item_create(self, data):
+        await self.client.send_server(data)
+
+    async def handle_conversation_item_truncate(self, data):
         await self.client.send_server(data)
 
     async def handle_response_create(self, data):

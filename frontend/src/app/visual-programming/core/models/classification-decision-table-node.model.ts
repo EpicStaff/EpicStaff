@@ -1,5 +1,4 @@
-import { DeclaredSecretRef } from '../../../../../features/tools/models/python-code.model';
-
+import { DeclaredSecretRef } from '@shared/models';
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;

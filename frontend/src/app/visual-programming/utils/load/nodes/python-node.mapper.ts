@@ -1,9 +1,8 @@
+import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { toSecretIds, toSecretNames } from '../../../../features/tools/models/python-code.model';
-import { PythonNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
-import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
+import { PythonNode } from '../../../core/models/python-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {

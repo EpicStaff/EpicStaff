@@ -14,6 +14,8 @@ import {
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
+import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
+import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
@@ -22,15 +24,8 @@ import {
     TriggerDisplay,
 } from '../../../../features/flows/components/flow-sessions-dialog/trigger-display.constants';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
-import {
-    GraphSessionLight,
-    GraphSessionService,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-} from '../../../../features/flows/services/flows-sessions.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { StopSessionButtonComponent } from '../../../../shared/components/buttons/stop-session-button/stop-session-button.component';
-import { StatusBadgeComponent } from '../../../../shared/components/status-badge/status-badge.component';
+import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
+import { StopButtonComponent } from '../../../../shared/components/stop-button/stop-button.component';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { MemoriesSidebarComponent } from '../memory-sidebar/components/memory-sidebar/memory-sidebar.component';
 import { MemoryService } from '../memory-sidebar/service/memory.service';
@@ -48,7 +43,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
         StatusBadgeComponent,
         MemoriesSidebarComponent,
         SessionFilesButtonComponent,
-        StopSessionButtonComponent,
+        StopButtonComponent,
         SessionIdSwitcherComponent,
     ],
     templateUrl: './run-graph-header.component.html',

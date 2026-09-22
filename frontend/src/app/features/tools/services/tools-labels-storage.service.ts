@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
+import { BaseLabelsStore } from '@shared/services';
 
-import { BaseLabelsStore } from '../../../shared/services/base-labels-store.service';
 import { ToolsLabelsService } from './tools-labels.service';
 
 /**

@@ -18,9 +18,11 @@ import {
     AppSvgIconComponent,
     DualSliderComponent,
     InputNumberComponent,
+    KnowledgeSelectorCollection,
     KnowledgeSelectorComponent,
     RadioButtonComponent,
     RagSelectorComponent,
+    RagSelectorItem,
     SelectItem,
     SliderWithStepperComponent,
     SuggestedValueComponent,
@@ -28,13 +30,9 @@ import {
     ToggleSwitchComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { RAG_SUGGEST_API } from '@shared/services';
 import { Subscription } from 'rxjs';
 
-import {
-    GetCollectionRagsResponse,
-    GetCollectionRequest,
-} from '../../../../../features/knowledge-sources/models/collection.model';
-import { AgentsService } from '../../../../../features/staff/services/staff.service';
 import {
     AgentSearchConfigs,
     GraphBasicSearchConfig,
@@ -43,8 +41,8 @@ import {
     GraphLocalSearchConfig,
     GraphSearchMethod,
     SuggestResponse,
-} from '../../../../models';
-import { TooltipComponent } from '../../../tooltip/tooltip.component';
+} from '../../models';
+import { TooltipComponent } from '../tooltip/tooltip.component';
 
 type SuggestKey = GraphSearchMethod | 'naive';
 
@@ -149,7 +147,7 @@ export const GRAPH_DRIFT_DEFAULTS: GraphDriftSearchConfig = {
 @Component({
     selector: 'app-rag-tab',
     templateUrl: './rag-tab.component.html',
-    styleUrls: ['../tab.component.scss'],
+    styleUrls: ['./rag-tab.component.scss'],
     imports: [
         ReactiveFormsModule,
         MatTooltipModule,
@@ -172,12 +170,12 @@ export const GRAPH_DRIFT_DEFAULTS: GraphDriftSearchConfig = {
 export class RagTabComponent implements OnInit {
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
-    private agentsService = inject(AgentsService);
+    private ragSuggestApi = inject(RAG_SUGGEST_API);
     private cdr = inject(ChangeDetectorRef);
 
     form = input.required<FormGroup>();
-    allKnowledgeSources = input.required<GetCollectionRequest[]>();
-    agentRags = input.required<GetCollectionRagsResponse[]>();
+    allKnowledgeSources = input.required<KnowledgeSelectorCollection[]>();
+    agentRags = input.required<RagSelectorItem[]>();
     searchConfigs = input.required<AgentSearchConfigs | null>();
     loadingKnowledgeSources = input<boolean>(false);
     loadingRags = input<boolean>(false);
@@ -789,7 +787,7 @@ export class RagTabComponent implements OnInit {
         // earlier request could otherwise still land after a newer one.
         const token = ++this.fetchToken;
 
-        this.agentsService
+        this.ragSuggestApi
             .suggestGraphSearchParams({
                 knowledge_collection_id: collectionId,
                 ...(llmConfigId != null ? { llm_config_id: llmConfigId } : {}),
@@ -852,10 +850,10 @@ export class RagTabComponent implements OnInit {
 
         const request$ =
             key === 'naive'
-                ? this.agentsService.suggestNaiveSearchParams({
+                ? this.ragSuggestApi.suggestNaiveSearchParams({
                       knowledge_collection_id: collectionId,
                   })
-                : this.agentsService.suggestGraphSearchParams({
+                : this.ragSuggestApi.suggestGraphSearchParams({
                       knowledge_collection_id: collectionId,
                       ...(llmConfigId != null ? { llm_config_id: llmConfigId } : {}),
                       search_method: key,
@@ -984,10 +982,10 @@ export class RagTabComponent implements OnInit {
         const token = ++this.fetchToken;
         const request$ =
             ragType === 'naive'
-                ? this.agentsService.suggestNaiveSearchParams({
+                ? this.ragSuggestApi.suggestNaiveSearchParams({
                       knowledge_collection_id: collectionId,
                   })
-                : this.agentsService.suggestGraphSearchParams({
+                : this.ragSuggestApi.suggestGraphSearchParams({
                       knowledge_collection_id: collectionId,
                       ...(llmConfigId != null ? { llm_config_id: llmConfigId } : {}),
                       search_method: method,
