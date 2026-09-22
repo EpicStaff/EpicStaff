@@ -111,12 +111,6 @@
             background-color: var(--color-ks-transparent-red);
             color: var(--color-ks-status-failed);
         }
-
-        &--warning {
-            border-left-color: var(--color-ks-status-warning);
-            background-color: var(--color-ks-transparent-yellow);
-            color: var(--color-ks-status-warning);
-        }
     }
 
     &__header {
