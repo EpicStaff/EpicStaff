@@ -15,6 +15,7 @@ import {
     RUN_TYPE_OPTIONS,
     STATUS_OPTIONS,
 } from '../models/audit-filter-options';
+import { formatAuditDay } from './format-audit-day.util';
 
 export interface AuditFilterChip {
     key: string;
@@ -75,6 +76,19 @@ function describeConditions(conditions: AuditCondition[]): string | null {
     return text;
 }
 
+function describeDate(from: string | null, to: string | null): string | null {
+    if (from && to) {
+        return `${formatAuditDay(from)} - ${formatAuditDay(to)}`;
+    }
+    if (from) {
+        return `from ${formatAuditDay(from)}`;
+    }
+    if (to) {
+        return `until ${formatAuditDay(to)}`;
+    }
+    return null;
+}
+
 export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
 
@@ -127,6 +141,11 @@ export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] 
         chips.push({ key: 'details', label: 'Details', value: detailsText });
     }
 
+    const dateValue = describeDate(state.dateFrom, state.dateTo);
+    if (dateValue !== null) {
+        chips.push({ key: 'date', label: 'Date', value: dateValue });
+    }
+
     return chips;
 }
 
@@ -152,6 +171,8 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
             return { ...state, error: [createAuditCondition()] };
         case 'details':
             return { ...state, details: [createAuditCondition()] };
+        case 'date':
+            return { ...state, dateFrom: null, dateTo: null };
         default:
             return state;
     }

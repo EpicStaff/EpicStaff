@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { DateRangeFilter } from 'src/app/shared/models';
 
 import {
     AuditCondition,
@@ -20,6 +21,7 @@ import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from 
 import { allowedKinds, isFieldEnabled } from '../../utils/audit-filter-compatibility.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditConditionFilterComponent } from '../audit-condition-filter/audit-condition-filter.component';
+import { AuditDateFilterComponent } from '../audit-date-filter/audit-date-filter.component';
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
@@ -36,6 +38,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
         AuditFlowFilterComponent,
         AuditIdFilterComponent,
         AuditConditionFilterComponent,
+        AuditDateFilterComponent,
     ],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
@@ -88,6 +91,15 @@ export class AuditFiltersPanelComponent {
     public disabledRunTypes = computed(() =>
         this.isRunTypeEnabled() ? [] : this.runTypeOptions.map((option) => option.value)
     );
+
+    public readonly dateRange = computed<DateRangeFilter>(() => ({
+        after: this.filter().dateFrom,
+        before: this.filter().dateTo,
+    }));
+
+    public setDateRange(range: DateRangeFilter): void {
+        this.filter.update((current) => ({ ...current, dateFrom: range.after, dateTo: range.before }));
+    }
 
     public setKinds(kinds: string[]): void {
         this.filter.update((current) => ({ ...current, kinds: kinds as AuditEventKind[] }));

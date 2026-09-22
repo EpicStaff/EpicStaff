@@ -168,6 +168,13 @@
                         [operators]="jsonOperators"
                     />
                 </app-audit-filter-group>
+
+                <app-audit-filter-group label="Date">
+                    <app-audit-date-filter
+                        [range]="dateRange()"
+                        (rangeChange)="setDateRange($event)"
+                    />
+                </app-audit-filter-group>
             </div>
         }
     </div>

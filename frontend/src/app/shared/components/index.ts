@@ -27,6 +27,7 @@ export * from './form-controls';
 export * from './json-viewer/json-viewer.component';
 export * from './llm-dialogs';
 //export * from './form-field-label/form-field-label.component';
+export * from './date-range-picker/date-range-picker.component';
 export * from './form-input/form-input.component';
 export * from './form-select/form-select.component';
 export * from './forms';
