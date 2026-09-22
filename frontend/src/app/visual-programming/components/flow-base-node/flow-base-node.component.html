@@ -100,10 +100,7 @@
                         [style.color]="node.color"
                     ></i>
                 </div>
-                <div
-                    class="title"
-                    [title]="getNodeTitle()"
-                >
+                <div class="title">
                     @if (isScheduleTriggerActive) {
                         <span class="active-dot"></span>
                     }
@@ -238,10 +235,4 @@
             </div>
         }
     </div>
-}
-@if (showVariables) {
-    <app-flow-node-variables-overlay
-        [node]="node"
-        [showVariables]="showVariables"
-    ></app-flow-node-variables-overlay>
 }

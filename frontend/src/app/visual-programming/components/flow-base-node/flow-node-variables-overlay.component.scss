@@ -1,29 +1,39 @@
+:host {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
 .inputs-overlay {
     position: absolute;
     left: -18rem;
-    bottom: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
     min-width: 120px;
     width: 18rem;
-    background: var(--graphite-875-alpha-92);
-    color: var(--color-text-primary);
-    border-radius: 8px;
-    box-shadow: 0 2px 8px var(--black-alpha-18);
+    background: var(--graphite-950);
+    color: var(--color-text-tertiary);
+    border-radius: 4px;
     padding: 8px 12px;
     z-index: 30;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border: 1.5px solid var(--color-divider-subtle);
+    border: 1px solid var(--graphite-900);
     max-height: 220px;
     overflow-y: auto;
     pointer-events: none;
+    transition:
+        background 0.2s ease,
+        box-shadow 0.2s ease;
 }
 
 .inputs-title {
     font-size: 0.6875rem;
     font-weight: 500;
     letter-spacing: 0.5px;
-    color: var(--gray-450);
+    color: var(--color-text-tertiary);
 }
 
 .inputs-list {
@@ -42,8 +52,8 @@
 }
 
 .input-key {
-    font-weight: 500;
-    color: var(--color-text-primary);
+    font-weight: 400;
+    color: var(--color-text-tertiary);
     max-width: 5rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -57,7 +67,7 @@
 }
 
 .input-value {
-    color: var(--color-text-secondary);
+    color: var(--color-text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -68,37 +78,60 @@
     width: 12rem;
     position: absolute;
     right: -12rem;
-    bottom: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
     min-width: 100px;
-    background: var(--graphite-875-alpha-92);
-    color: var(--color-text-primary);
-    border-radius: 8px;
-    box-shadow: 0 2px 8px var(--black-alpha-18);
+    background: var(--graphite-950);
+    color: var(--color-text-tertiary);
+    border-radius: 4px;
     padding: 8px 12px;
     z-index: 30;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     pointer-events: none;
-    border: 1.5px solid var(--color-divider-subtle);
+    border: 1px solid var(--graphite-900);
     max-height: 220px;
     overflow-y: auto;
+    transition:
+        background 0.2s ease,
+        box-shadow 0.2s ease;
 }
 
 .output-title {
     font-size: 0.6875rem;
     font-weight: 500;
     letter-spacing: 0.5px;
-    color: var(--gray-450);
+    color: var(--fog-alpha-30);
     margin-bottom: 4px;
 }
 
 .output-label {
     font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-text-primary);
+    font-weight: 400;
+    color: var(--color-text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     display: inline-block;
+}
+
+:host(.is-active) .inputs-overlay,
+:host(.is-active) .output-overlay {
+    background: var(--graphite-970);
+    box-shadow:
+        0px 0px 52px 0px var(--black-alpha-16),
+        0px 0px 28px 0px var(--black-alpha-16),
+        0px 0px 18px 0px var(--black-alpha-16);
+}
+
+:host(.is-active) .input-key,
+:host(.is-active) .input-value,
+:host(.is-active) .output-label {
+    color: var(--color-text-primary);
+}
+
+:host(.is-active) .inputs-title,
+:host(.is-active) .output-title {
+    color: var(--color-text-tertiary);
 }

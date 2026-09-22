@@ -5,6 +5,18 @@
     overflow: hidden;
 }
 
+// Must stay z-index/transform/isolation-free: it is moved inside `f-canvas`'s
+// stacking context, and any stacking context of its own would trap its
+// children's z-index instead of letting it compete with `.f-nodes-container`.
+.node-overlays-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
 ::ng-deep app-flow-graph {
     .f-magnetic-lines {
         .f-line {

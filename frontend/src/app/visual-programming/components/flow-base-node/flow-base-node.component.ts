@@ -44,7 +44,6 @@ import { ClassificationDecisionTableNodeComponent } from '../nodes-components/cl
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
-import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -59,7 +58,6 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         DecisionTableNodeComponent,
         ClassificationDecisionTableNodeComponent,
         GraphNoteComponent,
-        FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
@@ -82,7 +80,6 @@ export class FlowBaseNodeComponent {
     @Output() deleteClicked = new EventEmitter<NodeModel>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
-    @Input() showVariables: boolean = false;
     multiSelectActive = input<boolean>(false);
 
     @Output() portMouseenter = new EventEmitter<void>();

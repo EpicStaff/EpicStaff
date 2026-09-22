@@ -111,7 +111,6 @@
             @for (node of flowService.nodes(); track node.id) {
                 <app-flow-base-node
                     [node]="node"
-                    [showVariables]="flowSettings.showInputsOutputs()"
                     [multiSelectActive]="multiSelectActive()"
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
@@ -238,6 +237,23 @@
         <f-selection-area [fTrigger]="selectionAreaTrigger"></f-selection-area>
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
+
+    <div
+        #ioOverlayLayer
+        class="node-overlays-layer"
+    >
+        @for (node of flowService.nodes(); track node.id) {
+            <app-flow-node-variables-overlay
+                [node]="node"
+                [showVariables]="flowSettings.showInputsOutputs()"
+                [style.transform]="'translate(' + node.position.x + 'px,' + node.position.y + 'px)'"
+                [style.width.px]="node.size.width"
+                [style.height.px]="node.size.height"
+                [style.z-index]="node.id === hoveredNodeId() ? 1 : -1"
+                [class.is-active]="node.id === hoveredNodeId()"
+            ></app-flow-node-variables-overlay>
+        }
+    </div>
 
     <div class="top-left-actions">
         <div class="top-left-actions__column">

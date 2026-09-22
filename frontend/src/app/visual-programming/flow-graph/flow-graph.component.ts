@@ -49,6 +49,7 @@ import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-sv
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
+import { FlowNodeVariablesOverlayComponent } from '../components/flow-base-node/flow-node-variables-overlay.component';
 import { FlowExportImportButtonComponent } from '../components/flow-export-import-button/flow-export-import-button.component';
 import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-files-button.component';
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
@@ -121,6 +122,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         FZoomDirective,
         FormsModule,
         FlowBaseNodeComponent,
+        FlowNodeVariablesOverlayComponent,
         ShortcutListenerDirective,
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
@@ -163,6 +165,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private nodePanelShell?: NodePanelShellComponent;
 
     @ViewChild('arrangeBtnRef') private arrangeBtnRef?: ElementRef<HTMLButtonElement>;
+
+    @ViewChild('ioOverlayLayer', { static: true })
+    private ioOverlayLayerRef?: ElementRef<HTMLDivElement>;
 
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
@@ -293,6 +298,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly injector = inject(Injector);
+    private readonly hostElementRef = inject(ElementRef<HTMLElement>);
 
     private lastSeenFullSaveRequest = 0;
 
@@ -304,6 +310,20 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.emitSave();
             }
         });
+
+        // `f-canvas` uses selective content projection and drops any element that
+        // doesn't match one of its slots, so the overlay layer is rendered outside
+        // `<f-flow>` and moved in here once the canvas's internal containers exist.
+        afterNextRender(() => this.moveOverlayLayerIntoCanvas(), { injector: this.injector });
+    }
+
+    private moveOverlayLayerIntoCanvas(): void {
+        const layer = this.ioOverlayLayerRef?.nativeElement;
+        const canvas = this.hostElementRef.nativeElement.querySelector('f-canvas');
+        const nodesContainer = canvas?.querySelector('.f-nodes-container');
+        if (!layer || !canvas || !nodesContainer) return;
+
+        canvas.insertBefore(layer, nodesContainer);
     }
 
     public ngOnInit(): void {
