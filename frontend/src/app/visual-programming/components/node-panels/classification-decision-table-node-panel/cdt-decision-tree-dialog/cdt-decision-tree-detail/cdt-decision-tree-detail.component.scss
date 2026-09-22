@@ -200,6 +200,42 @@
     }
 }
 
+// The block's own line, above the sections. It takes the section's horizontal
+// padding so the left edge lines up, and a vertical one of its own: nothing but
+// this padding separates it from the Explanation rule underneath, so without the
+// bottom half the text sits straight on the divider.
+.cdt-tree-detail__note {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 20px 30px;
+}
+
+// The verdict, on its own line above the reason rather than inline: the sentence
+// wraps to two or three lines here, and a chip inside that flow reads as part of
+// it instead of as the heading it is. Built like the `Outdated` badge in the
+// header — same 6% tint and 4px radius — so the window has one badge idiom.
+.cdt-tree-detail__note-tag {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent-color);
+    white-space: nowrap;
+    background: color-mix(in srgb, var(--accent-color) 6%, transparent);
+    border-radius: 4px;
+}
+
+.cdt-tree-detail__note-text {
+    margin: 0;
+    // 13px / 400 / 140%
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+}
+
 .cdt-tree-detail__section-row {
     display: flex;
     gap: 0.5rem;
@@ -254,11 +290,10 @@
     }
 }
 
-.cdt-tree-detail__section-body {
-    // The collapse interpolates this element's height, so it has to clip. It also
-    // carries no padding of its own — see the section rule above.
-    overflow: hidden;
-}
+// `.cdt-tree-detail__section-body` needs no rule of its own: collapsing is the
+// global `grid-collapsible` helper, whose defaults (180ms ease-in-out, matching
+// the caret above) already apply, and which clips through its own child rule.
+// The padding stays on the section so that it does not animate with the body.
 
 .cdt-tree-detail__explanation {
     margin: 0;

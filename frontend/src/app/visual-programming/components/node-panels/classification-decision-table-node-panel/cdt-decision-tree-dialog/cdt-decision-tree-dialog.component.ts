@@ -1,4 +1,3 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -90,18 +89,6 @@ function explainErrorMessage(error: HttpErrorResponse): string {
     ],
     templateUrl: './cdt-decision-tree-dialog.component.html',
     styleUrls: ['./cdt-decision-tree-dialog.component.scss'],
-    animations: [
-        /**
-         * The detail window's slide-in. `width`, not `transform: translateX`: the
-         * window is a flex sibling, so translating would collapse the canvas in one
-         * frame and only then slide the window into the gap. Declared here because
-         * this component owns the `@if` and needs the `done` callback.
-         */
-        trigger('panelSlide', [
-            transition(':enter', [style({ width: '0' }), animate('200ms ease-out', style({ width: '*' }))]),
-            transition(':leave', [animate('160ms ease-in', style({ width: '0' }))]),
-        ]),
-    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtDecisionTreeDialogComponent {
@@ -878,8 +865,14 @@ export class CdtDecisionTreeDialogComponent {
      * Re-centre the selected block once the window has finished sliding: opening it
      * narrows the canvas and can push the just-clicked block out of view. Fitting
      * the diagram instead would throw away the zoom the user arrived with.
+     *
+     * `animationend` bubbles, so an animation inside the window would land here
+     * too — hence the target check. On the way out there is nothing selected, so
+     * the slide-out falls through it harmlessly.
      */
-    protected onDetailSettled(): void {
+    protected onDetailSettled(event: AnimationEvent): void {
+        if (event.target !== event.currentTarget) return;
+
         const id = this.selectedBlockId();
         if (id) this.fCanvas()?.centerGroupOrNode(id, true);
     }

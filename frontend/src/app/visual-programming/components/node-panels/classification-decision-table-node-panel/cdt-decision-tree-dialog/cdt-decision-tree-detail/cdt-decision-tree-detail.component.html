@@ -77,6 +77,20 @@
     </header>
 
     <div class="cdt-tree-detail__body">
+        <!--
+            Above the two sections and outside both: it describes the block itself,
+            not its explanation or its data, and it never collapses.
+        -->
+        @if (block().note; as note) {
+            <div class="cdt-tree-detail__note">
+                @if (note.tag) {
+                    <span class="cdt-tree-detail__note-tag">{{ note.tag }}</span>
+                }
+
+                <p class="cdt-tree-detail__note-text">{{ note.text }}</p>
+            </div>
+        }
+
         <section class="cdt-tree-detail__section">
             <!--
                 No `aria-controls` on either section header: the body it would name
@@ -101,13 +115,13 @@
                 </button>
             </h4>
 
-            @if (explanationOpen()) {
-                <!-- `aria-live` here: the text arrives into an open, unfocused section. -->
-                <div
-                    class="cdt-tree-detail__section-body"
-                    aria-live="polite"
-                    [@sectionExpand]
-                >
+            <!-- `aria-live` here: the text arrives into an open, unfocused section. -->
+            <div
+                class="cdt-tree-detail__section-body grid-collapsible"
+                aria-live="polite"
+                [class.expanded]="explanationOpen()"
+            >
+                <div class="grid-collapsible__inner">
                     @if (explanationReady(); as ready) {
                         <p class="cdt-tree-detail__explanation">{{ ready.text }}</p>
                         <p class="cdt-tree-detail__generated">
@@ -128,7 +142,7 @@
                         </p>
                     }
                 </div>
-            }
+            </div>
         </section>
 
         @if (block().detail; as detail) {
@@ -157,17 +171,15 @@
                     />
                 </div>
 
-                @if (dataOpen()) {
-                    <div
-                        class="cdt-tree-detail__section-body"
-                        [@sectionExpand]
-                    >
-                        <app-cdt-decision-tree-code
-                            [body]="detail.body"
-                            [language]="detail.language"
-                        />
-                    </div>
-                }
+                <div
+                    class="cdt-tree-detail__section-body grid-collapsible"
+                    [class.expanded]="dataOpen()"
+                >
+                    <app-cdt-decision-tree-code
+                        [body]="detail.body"
+                        [language]="detail.language"
+                    />
+                </div>
             </section>
         }
     </div>

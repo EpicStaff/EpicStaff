@@ -395,6 +395,39 @@
     flex: 0 0 auto;
 }
 
+// The detail window's slide-in. `width`, not `transform: translateX`: the window
+// is a flex sibling, so translating would collapse the canvas in one frame and
+// only then slide the window into the gap.
+//
+// One keyframe each, so neither has to name a width: the other end is the
+// window's own `--cdt-detail-width`, which it sets on its host.
+@keyframes cdt-tree-detail-enter {
+    from {
+        width: 0;
+    }
+}
+
+@keyframes cdt-tree-detail-leave {
+    to {
+        width: 0;
+    }
+}
+
+.cdt-tree-detail-enter {
+    animation: cdt-tree-detail-enter 200ms ease-out;
+}
+
+.cdt-tree-detail-leave {
+    animation: cdt-tree-detail-leave 160ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cdt-tree-detail-enter,
+    .cdt-tree-detail-leave {
+        animation-duration: 1ms;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Legend
 // ---------------------------------------------------------------------------

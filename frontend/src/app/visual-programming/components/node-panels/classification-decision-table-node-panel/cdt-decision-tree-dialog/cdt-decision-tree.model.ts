@@ -134,6 +134,20 @@ export type CdtTreePortSide = 'top' | 'right' | 'bottom' | 'left';
 
 export type CdtTreeEdgeKind = 'flow' | 'yes' | 'no' | 'default' | 'error' | 'continue';
 
+/**
+ * The detail window's line about how the flow leaves a block.
+ *
+ * Two parts rather than one sentence so the conclusion can be read first: `tag`
+ * is the verdict, rendered as a chip, and `text` is the reason behind it. Keeping
+ * them apart is also what lets the chip be styled — a phrase buried in an
+ * interpolated string cannot be.
+ */
+export interface CdtTreeNote {
+    /** Null when the sentence carries no verdict worth pulling out of it. */
+    readonly tag: string | null;
+    readonly text: string;
+}
+
 /** Full content of a block, shown in the read-only detail window. */
 export interface CdtTreeDetail {
     readonly heading: string;
@@ -176,6 +190,14 @@ export interface CdtTreeBlock {
     readonly target: CdtTreeTarget | null;
     /** Non-null renders a warning badge carrying this text as its tooltip. */
     readonly warning: string | null;
+    /**
+     * How the flow leaves this block, shown in the detail window and nowhere else.
+     *
+     * Deliberately not `warning`: that badge marks a mistake and belongs on the
+     * canvas, while this only spells out what the arrows already draw, for a reader
+     * who has the window open and is not tracing lines.
+     */
+    readonly note: CdtTreeNote | null;
     /** Small chip rendered next to the title, e.g. a shared route code. */
     readonly chip: string | null;
     /** Lowercased title + subtitle + detail body, matched by the toolbar search. */

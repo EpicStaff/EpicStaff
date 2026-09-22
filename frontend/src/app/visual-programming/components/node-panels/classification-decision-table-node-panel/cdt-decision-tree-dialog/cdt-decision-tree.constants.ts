@@ -190,10 +190,29 @@ export const CDT_TREE_COPY = {
      */
     unsavedTargetWarning: 'This rule has a target but no route code, so the target is never saved.',
     /**
-     * Only when the route actually resolves: the engine breaks on `next_node`, so
-     * a route that points nowhere still lets `continue` through.
+     * The decision block's note in the detail window — never a badge.
+     *
+     * First sentence: where the `no` arrow goes. That is drawn on the canvas already,
+     * but the window is read without tracing lines, so it is said here too.
+     *
+     * Second sentence: what a match does, and only when that is worth saying. The
+     * engine breaks on `next_node`, not on `route_code` — a route code with nothing
+     * wired to it never reaches the engine as a target, so the same table can show
+     * either sentence depending on what the canvas actually connects.
      */
-    routedContinueWarning: 'This rule routes, so Continue is ignored — an explicit route ends evaluation.',
+    noMatchNextRule: 'If this condition does not match, evaluation moves on to the next rule.',
+    noMatchDefault: 'This is the last rule, so if it does not match, the table default applies.',
+    /**
+     * Chip then reason. The chip carries the verdict because that is what a reader
+     * checking this rule came for; the sentence behind it says why, and never
+     * repeats the chip's words.
+     */
+    continueIgnoredTag: 'Continue is ignored',
+    routedContinueNote:
+        'This rule routes to a connected node, and a route ends evaluation as soon as the rule matches.',
+    continueAppliesTag: 'Continue still applies',
+    unconnectedRouteNote:
+        'Its route code has nothing connected to it, so the engine is given no target and a match does not end evaluation.',
     ruleFallback: (oneBased: number): string => `Rule ${oneBased}`,
     /**
      * Headings of the search dropdown. The number counts drawn rules, not grid

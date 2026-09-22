@@ -28,6 +28,7 @@ import {
     CdtTreeEdgeKind,
     CdtTreeGroup,
     CdtTreeNodeRef,
+    CdtTreeNote,
     CdtTreePortSide,
     CdtTreeTarget,
 } from './cdt-decision-tree.model';
@@ -186,7 +187,8 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
             subtitle: rowExpressionSubtitle(row),
             detail: rowExpressionDetail(row),
             chip: chipForSharedRoute(row, routeCodeCounts),
-            warning: rowWarning(row, target),
+            warning: rowWarning(row),
+            note: rowNote(row, target, isLast),
             target,
         });
 
@@ -471,15 +473,38 @@ function terminatorContent(
  * read — the tick does nothing, and without a badge the diagram simply ignores
  * it in silence.
  */
-function rowWarning(row: ConditionGroup, target: CdtTreeTarget): string | null {
+function rowWarning(row: ConditionGroup): string | null {
     const routed = !!row.route_code?.trim();
-    if (!routed && !!row.next_node) return CDT_TREE_COPY.unsavedTargetWarning;
+    return !routed && !!row.next_node ? CDT_TREE_COPY.unsavedTargetWarning : null;
+}
+
+/**
+ * What the detail window says about leaving a rule.
+ *
+ * Always present, so every rule's window reads the same way. A routed rule that
+ * also sets Continue picks up a second sentence — that used to be a warning badge,
+ * and it is a note now because nothing is wrong: the arrows show where the flow
+ * goes, and the badge only added noise to a diagram that was already correct.
+ */
+function rowNote(row: ConditionGroup, target: CdtTreeTarget, isLast: boolean): CdtTreeNote {
+    const noMatch = isLast ? CDT_TREE_COPY.noMatchDefault : CDT_TREE_COPY.noMatchNextRule;
 
     const continues = row.continue_flag ?? row.continue ?? false;
-    // `target.state === 'node'` rather than the mere presence of a route code:
-    // the engine breaks on a resolved target, and a route that resolves to
-    // nothing does let `continue` through.
-    return target.state === 'node' && continues ? CDT_TREE_COPY.routedContinueWarning : null;
+    // A verdict is only earned when Continue is set and the rule also carries a
+    // route code — that pair is where the engine surprises people. Which way it
+    // resolves is the whole point: the engine breaks on `next_node`, so a route
+    // wired to a node wins over Continue, and one wired to nothing does not.
+    if (!continues) return { tag: null, text: noMatch };
+
+    if (target.state === 'node') {
+        return { tag: CDT_TREE_COPY.continueIgnoredTag, text: `${noMatch} ${CDT_TREE_COPY.routedContinueNote}` };
+    }
+
+    if (target.state === 'no-capture') {
+        return { tag: CDT_TREE_COPY.continueAppliesTag, text: `${noMatch} ${CDT_TREE_COPY.unconnectedRouteNote}` };
+    }
+
+    return { tag: null, text: noMatch };
 }
 
 function compact(ids: readonly (string | null)[]): string[] {
@@ -567,6 +592,7 @@ function block(sink: CdtTreeBlock[], partial: Partial<CdtTreeBlock> & { id: stri
         clickable: CLICKABLE_BY_KIND[partial.kind] && detail !== null,
         target: partial.target ?? null,
         warning: partial.warning ?? null,
+        note: partial.note ?? null,
         chip: partial.chip ?? null,
         searchText: [title, subtitle, detail?.body]
             .filter((part) => !!part)

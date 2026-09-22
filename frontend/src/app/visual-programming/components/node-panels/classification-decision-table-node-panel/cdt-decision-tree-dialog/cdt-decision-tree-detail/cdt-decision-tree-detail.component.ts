@@ -1,4 +1,3 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -25,23 +24,6 @@ import { CdtExplanationState } from '../cdt-explain.model';
     imports: [AppSvgIconComponent, CopyButtonComponent, MatTooltipModule, CdtDecisionTreeCodeComponent],
     templateUrl: './cdt-decision-tree-detail.component.html',
     styleUrls: ['./cdt-decision-tree-detail.component.scss'],
-    animations: [
-        /**
-         * Not the shared `expandCollapseAnimation`: its expanded state caps at
-         * `max-height: 1000px`, and both sections here can exceed that.
-         *
-         * `:enter`/`:leave` rather than named states, because the engine drops the
-         * inline styles it applied once the transition ends. A `state()` leaves a
-         * measured pixel height behind, which clips when the text rewraps.
-         */
-        trigger('sectionExpand', [
-            transition(':enter', [
-                style({ height: '0', opacity: 0 }),
-                animate('180ms ease-in-out', style({ height: '*', opacity: 1 })),
-            ]),
-            transition(':leave', [animate('180ms ease-in-out', style({ height: '0', opacity: 0 }))]),
-        ]),
-    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtDecisionTreeDetailComponent {

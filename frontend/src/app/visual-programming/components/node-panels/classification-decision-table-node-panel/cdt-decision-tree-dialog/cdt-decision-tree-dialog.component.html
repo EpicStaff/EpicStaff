@@ -305,13 +305,14 @@
         @if (selectedBlock(); as block) {
             <app-cdt-decision-tree-detail
                 class="cdt-tree__detail"
-                [@panelSlide]
+                animate.enter="cdt-tree-detail-enter"
+                animate.leave="cdt-tree-detail-leave"
                 [block]="block"
                 [explanation]="selectedExplanation()"
                 [explainAvailable]="canExplainSelected()"
                 [explainMenuOpen]="isExplainMenuOpen()"
                 [outdated]="selectedOutdated()"
-                (@panelSlide.done)="onDetailSettled()"
+                (animationend)="onDetailSettled($event)"
                 (closed)="closeDetail()"
                 (explainRequested)="explainSelectedBlock()"
                 (explainMenuRequested)="openExplainMenu($event, 'step')"
