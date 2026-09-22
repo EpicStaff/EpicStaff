@@ -59,7 +59,7 @@
 
     @if (!readonly()) {
         <div
-            class="related-banner"
+            class="related-banner top"
             [class.is-open]="globalPendingCount() > 0"
         >
             <span class="text"> Related permissions needed — {{ globalPendingCount() }} pending </span>
@@ -164,12 +164,7 @@
                                                 color="secondary"
                                                 [checked]="isChecked(resource.code, action.code)"
                                                 [disabled]="isCellDisabled(resource.code, action.code)"
-                                                (checkedChange)="
-                                                    permissionToggle.emit({
-                                                        resourceType: resource.code,
-                                                        action: action.code,
-                                                    })
-                                                "
+                                                (checkedChange)="onPermissionCellToggle(resource.code, action.code)"
                                             />
                                         }
                                     } @else {
@@ -180,10 +175,10 @@
                         </div>
 
                         @if (!readonly()) {
-                            @let rec = recommendedByResource().get(resource.code);
+                            @let rec = recommendationFor(resource.code);
                             <div
                                 class="related-banner"
-                                [class.is-open]="!isBannerDismissed(resource.code) && !!rec"
+                                [class.is-open]="!!rec"
                             >
                                 @if (rec) {
                                     <app-svg-icon
