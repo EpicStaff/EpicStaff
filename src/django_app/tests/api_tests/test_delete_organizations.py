@@ -13,7 +13,7 @@ def _stub_storage(mocker):
     backend = mocker.MagicMock()
     backend.list_all_objects.return_value = [("a.txt", 10, "")]
     return mocker.patch(
-        "tables.services.rbac.delete.organization_strategy.get_storage_backend",
+        "tables.services.rbac.organization_management_service.get_storage_backend",
         return_value=backend,
     )
 
@@ -98,21 +98,30 @@ def test_dry_run_returns_a_report_and_deletes_nothing(
     response = client.delete(f"{url(doomed_org.pk)}?dry_run=true")
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["dry_run"] is True
-    assert response.data["target"]["name"] == "Doomed API Org"
+    assert response.data["organization_id"] == doomed_org.pk
     assert Organization.objects.filter(pk=doomed_org.pk).exists()
     assert Graph.objects.filter(org_id=doomed_org.pk).exists()
 
 
 @pytest.mark.django_db
 def test_report_is_stable_across_calls(superadmin, doomed_org, surviving_org):
-    """Two calls against the same target return identical database and field_updates blocks."""
+    """Two calls against the same target return an identical affected_resources block."""
+    from tables.models.crew_models import Agent, Crew, Task
+    from tables.models.knowledge_models.collection_models import SourceCollection
+
+    # Enriched with a SourceCollection and a Task linked to the org -- both
+    # swept outside the Collector's own closure -- so this exercises the
+    # merged-count report path over the HTTP surface, not just the service.
+    SourceCollection.objects.create(org=doomed_org, collection_name="api-stability-docs")
+    crew = Crew.objects.create(org=doomed_org, name="api-stability-crew")
+    agent = Agent.objects.create(org=doomed_org, role="r", goal="g", backstory="b")
+    Task.objects.create(crew=crew, agent=agent, name="t", instructions="i", expected_output="e")
+
     client = APIClient()
     client.force_authenticate(user=superadmin)
     preview = client.delete(f"{url(doomed_org.pk)}?dry_run=true").data
     actual = client.delete(url(doomed_org.pk)).data
-    assert preview["database"] == actual["database"]
-    assert preview["field_updates"] == actual["field_updates"]
+    assert preview["affected_resources"] == actual["affected_resources"]
 
 
 @pytest.mark.django_db
@@ -125,8 +134,12 @@ def test_real_delete_removes_the_org_and_its_content(
 
     assert response.status_code == status.HTTP_200_OK
     assert not Organization.objects.filter(pk=doomed_org.pk).exists()
-    assert not Graph.objects.filter(org_id=doomed_org.pk).exists()
-    assert not Label.objects.filter(org_id=doomed_org.pk).exists()
+    assert not Graph.all_objects.filter(org_id=doomed_org.pk).exists()
+    # Label has no soft-delete capability, so _base_manager is identical to
+    # .objects here -- unlike the Graph.all_objects check above, this isn't
+    # closing a real soft-delete blind spot, just matching the file's
+    # _base_manager convention for consistency.
+    assert not Label._base_manager.filter(org_id=doomed_org.pk).exists()
 
 
 @pytest.mark.django_db
@@ -169,3 +182,23 @@ def test_unknown_org_is_404(superadmin):
     response = client.delete(url(999999))
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.data["code"] == "organization_not_found"
+
+
+@pytest.mark.django_db
+def test_unrecognized_dry_run_value_performs_a_real_delete(superadmin, doomed_org, surviving_org):
+    """Only `true`/`1` previews; any other value, like `RoleAdminViewSet`, is treated as a real delete."""
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(f"{url(doomed_org.pk)}?dry_run=maybe")
+    assert response.status_code == status.HTTP_200_OK
+    assert not Organization.objects.filter(pk=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_bare_dry_run_flag_performs_a_real_delete(superadmin, doomed_org, surviving_org):
+    """A `?dry_run` flag with no value is falsy, same as `RoleAdminViewSet._is_truthy`."""
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(f"{url(doomed_org.pk)}?dry_run")
+    assert response.status_code == status.HTTP_200_OK
+    assert not Organization.objects.filter(pk=doomed_org.pk).exists()

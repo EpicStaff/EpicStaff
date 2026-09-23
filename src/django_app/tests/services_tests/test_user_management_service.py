@@ -13,10 +13,19 @@ What is NOT duplicated here:
     covered in TestLastSuperadminGuard.test_revoke_last_superadmin_400.
 """
 
+import threading
+
 import pytest
 from django.contrib.auth import get_user_model
 
-from tables.services.rbac.rbac_exceptions import LastSuperadminError, UserNotFoundError
+from tables.models.graph_models import Graph
+from tables.models.rbac_models import Organization, OrganizationUser, Role
+from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.services.rbac.rbac_exceptions import (
+    LastSuperadminError,
+    SelfAccountDeletionError,
+    UserNotFoundError,
+)
 from tables.services.rbac.user_management_service import UserManagementService
 
 UserModel = get_user_model()
@@ -166,3 +175,332 @@ def test_set_user_active_false_on_plain_user_does_not_raise_last_superadmin(
     # active_superadmin is the only active superadmin; plain_user is not one
     service.set_user_active(actor=None, target_user_id=plain_user.pk, value=False)
     # reaching here without exception is the assertion
+
+
+# ---------------------------------------------------------------------------
+# delete_user
+# ---------------------------------------------------------------------------
+
+
+def test_build_affected_resources_sums_two_labels_mapping_to_the_same_name():
+    from tables.services.rbac.delete_collector import ModelCount
+
+    by_model = [
+        ModelCount(model="tables.PythonCodeTool", count=2),
+        ModelCount(model="tables.McpTool", count=3),
+    ]
+    result = UserManagementService._build_affected_resources(by_model)
+    assert result == {"tools": 5}
+
+
+def test_build_affected_resources_excludes_a_known_excluded_label():
+    from tables.services.rbac.delete_collector import ModelCount
+
+    by_model = [ModelCount(model="tables.StartNode", count=4)]
+    result = UserManagementService._build_affected_resources(by_model)
+    assert result == {}
+
+
+def test_build_affected_resources_folds_in_a_nonzero_external_count():
+    result = UserManagementService._build_affected_resources([], external_counts={"avatar": 1})
+    assert result == {"avatar": 1}
+
+
+def test_build_affected_resources_drops_a_zero_value_external_count():
+    result = UserManagementService._build_affected_resources([], external_counts={"avatar": 0})
+    assert result == {}
+
+
+def test_build_affected_resources_merges_external_count_into_existing_db_key():
+    from tables.services.rbac.delete_collector import ModelCount
+
+    by_model = [ModelCount(model="tables.OrganizationUser", count=2)]
+    result = UserManagementService._build_affected_resources(
+        by_model, external_counts={"memberships": 3}
+    )
+    assert result == {"memberships": 5}
+
+
+def test_self_account_deletion_error_shape():
+    error = SelfAccountDeletionError()
+    assert error.status_code == 400
+    assert error.default_code == "cannot_delete_self"
+
+
+@pytest.fixture
+def actor(db, django_user_model):
+    user = django_user_model.objects.create_user(
+        email="delete-actor@x.com", password="StrongPass123!"
+    )
+    user.is_superadmin = True
+    user.save(update_fields=["is_superadmin"])
+    return user
+
+
+@pytest.fixture
+def target_user(db, django_user_model):
+    return django_user_model.objects.create_user(
+        email="delete-target@x.com", password="StrongPass123!"
+    )
+
+
+@pytest.mark.django_db
+def test_delete_user_unknown_id_raises_not_found(db, actor):
+    with pytest.raises(UserNotFoundError):
+        UserManagementService().preview_delete(
+            actor=actor, target_user_id=999999
+        )
+
+
+@pytest.mark.django_db
+def test_delete_user_dry_run_deletes_nothing(actor, target_user):
+    UserManagementService().preview_delete(
+        actor=actor, target_user_id=target_user.pk
+    )
+    target_user.refresh_from_db()
+    assert target_user.pk is not None
+
+
+@pytest.mark.django_db
+def test_delete_user_dry_run_prediction_matches_what_the_delete_actually_removes(
+    actor, target_user, issue_api_key, settings, tmp_path
+):
+    """The load-bearing guarantee: the delete removes exactly the rows the preview predicted, and nothing else."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    org = Organization.objects.create(name="Cross-check Membership Org")
+    role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    OrganizationUser.objects.create(user=target_user, org=org, role=role)
+    issue_api_key(user=target_user, name="cross-check-key")
+    settings.MEDIA_ROOT = str(tmp_path)
+    target_user.avatar.save(
+        "face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True
+    )
+
+    service = UserManagementService()
+    preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
+    actual = service.delete_user(actor=actor, target_user_id=target_user.pk)
+
+    assert preview.affected_resources == actual.affected_resources
+
+
+@pytest.mark.django_db
+def test_delete_user_report_passes_through_the_documented_serializer(actor, target_user):
+    """UserDeleteReportSerializer must accept the real preview_delete output, not just a hand-written fixture."""
+    import dataclasses
+
+    from tables.serializers.delete_serializers import UserDeleteReportSerializer
+
+    report = UserManagementService().preview_delete(
+        actor=actor, target_user_id=target_user.pk
+    )
+
+    serializer = UserDeleteReportSerializer(data=dataclasses.asdict(report))
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_delete_user_report_is_stable_across_calls(actor, target_user):
+    """Two service calls against the same target report an identical affected_resources block."""
+    # Enriched with a real outstanding refresh token, minted the same way
+    # `test_deleting_a_user_blacklists_their_refresh_tokens` does, so this
+    # exercises the same `blacklist_all_for_user` path the reports must agree
+    # across.
+    from rest_framework_simplejwt.tokens import RefreshToken
+
+    RefreshToken.for_user(target_user)
+
+    service = UserManagementService()
+    preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
+    actual = service.delete_user(actor=actor, target_user_id=target_user.pk)
+    assert preview.affected_resources == actual.affected_resources
+
+
+@pytest.mark.django_db
+def test_real_delete_removes_the_user(actor, target_user, django_user_model):
+    UserManagementService().delete_user(
+        actor=actor, target_user_id=target_user.pk
+    )
+    assert not django_user_model.objects.filter(pk=target_user.pk).exists()
+
+
+@pytest.mark.django_db
+def test_deleting_a_user_preserves_their_authored_content(actor, target_user):
+    org = Organization.objects.create(name="Authored Org")
+    graph = Graph.objects.create(name="kept", org=org, created_by=target_user)
+
+    UserManagementService().delete_user(
+        actor=actor, target_user_id=target_user.pk
+    )
+
+    graph.refresh_from_db()
+    assert graph.created_by is None
+
+
+@pytest.mark.django_db
+def test_deleting_a_user_removes_their_memberships(actor, target_user):
+    org = Organization.objects.create(name="Membership Org")
+    role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    OrganizationUser.objects.create(user=target_user, org=org, role=role)
+
+    UserManagementService().delete_user(
+        actor=actor, target_user_id=target_user.pk
+    )
+
+    assert not OrganizationUser.objects.filter(org=org).exists()
+
+
+@pytest.mark.django_db
+def test_cannot_delete_self(actor):
+    with pytest.raises(SelfAccountDeletionError):
+        UserManagementService().preview_delete(actor=actor, target_user_id=actor.pk)
+
+
+@pytest.mark.django_db
+def test_cannot_delete_self_in_real_mode_too(actor):
+    """The self-deletion guard applies whether or not dry_run is set."""
+    with pytest.raises(SelfAccountDeletionError):
+        UserManagementService().delete_user(actor=actor, target_user_id=actor.pk)
+
+
+@pytest.mark.django_db
+def test_cannot_delete_the_last_superadmin(db, django_user_model, actor):
+    other_actor = django_user_model.objects.create_user(
+        email="delete-other@x.com", password="StrongPass123!"
+    )
+    other_actor.is_superadmin = True
+    other_actor.save(update_fields=["is_superadmin"])
+    # `actor` is the only OTHER superadmin; remove it so the target is last.
+    django_user_model.objects.filter(pk=actor.pk).update(is_superadmin=False)
+
+    with pytest.raises(LastSuperadminError):
+        UserManagementService().preview_delete(
+            actor=actor, target_user_id=other_actor.pk
+        )
+
+
+@pytest.mark.django_db
+def test_deleting_a_user_blacklists_their_refresh_tokens(actor, target_user):
+    """Access tokens outlive the row by up to 15 min; refresh must not."""
+    from rest_framework_simplejwt.token_blacklist.models import (
+        BlacklistedToken,
+        OutstandingToken,
+    )
+    from rest_framework_simplejwt.tokens import RefreshToken
+
+    RefreshToken.for_user(target_user)
+    token_ids = list(
+        OutstandingToken.objects.filter(user=target_user).values_list("id", flat=True)
+    )
+    assert token_ids, "fixture failed to mint an outstanding token"
+
+    UserManagementService().delete_user(
+        actor=actor, target_user_id=target_user.pk
+    )
+
+    assert BlacklistedToken.objects.filter(token_id__in=token_ids).count() == len(token_ids)
+
+
+@pytest.mark.django_db
+def test_delete_user_locked_recheck_takes_a_lock_on_the_target_row_even_when_not_a_superadmin(
+    db, actor, target_user, mocker
+):
+    """delete_user's locked recheck always issues a locking query on the target's own row, not just when it's already flagged superadmin."""
+    from tables.models.rbac_models import User
+
+    mock_select_for_update = mocker.patch.object(User.objects, "select_for_update")
+    mock_select_for_update.return_value.get.return_value = target_user
+    try:
+        UserManagementService().delete_user(
+            actor=actor, target_user_id=target_user.pk
+        )
+    except Exception:
+        pass
+    assert mock_select_for_update.called, (
+        "delete_user's locked recheck must always take a lock on the target's own "
+        "row, even when instance.is_superadmin is False at the unlocked read"
+    )
+
+
+@pytest.mark.django_db
+def test_user_avatar_is_previewed_and_removed_from_disk(
+    actor, target_user, settings, tmp_path, django_capture_on_commit_callbacks
+):
+    """The avatar lives on local disk, not in MinIO: the report names it and the real delete removes the file."""
+    from pathlib import Path
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    target_user.avatar.save(
+        "face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True
+    )
+    avatar_name = target_user.avatar.name
+    stored = Path(settings.MEDIA_ROOT) / avatar_name
+    assert stored.exists(), "fixture failed to write the avatar"
+
+    service = UserManagementService()
+    preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
+    assert preview.affected_resources["avatar"] == 1
+    assert stored.exists(), "a dry run must not touch the file"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        service.delete_user(actor=actor, target_user_id=target_user.pk)
+
+    assert not stored.exists()
+
+
+@pytest.mark.django_db
+def test_avatar_cleanup_failure_does_not_undo_a_committed_delete(
+    actor, target_user, django_user_model, settings, tmp_path, mocker, django_capture_on_commit_callbacks
+):
+    """A storage failure while deleting the orphaned avatar is logged, never re-raised, and never undoes the already-committed delete."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    target_user.avatar.save(
+        "face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True
+    )
+    mocker.patch.object(
+        target_user.avatar.storage, "delete", side_effect=RuntimeError("storage unavailable")
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        UserManagementService().delete_user(
+            actor=actor, target_user_id=target_user.pk
+        )
+
+    assert not django_user_model.objects.filter(pk=target_user.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_user_registers_cleanup_via_on_commit_not_synchronously(
+    actor, target_user, mocker
+):
+    """delete_user's real on_commit(...) call is what defers _cleanup_user_delete_external, not a direct call."""
+    mock_on_commit = mocker.patch(
+        "tables.services.rbac.user_management_service.transaction.on_commit"
+    )
+    UserManagementService().delete_user(
+        actor=actor, target_user_id=target_user.pk
+    )
+    mock_on_commit.assert_called_once()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_on_commit_callback_does_not_fire_if_the_enclosing_transaction_rolls_back(
+    actor, target_user, mocker
+):
+    """A cleanup callback registered via delete_user's on_commit before an enclosing rollback never fires."""
+    from django.db import transaction as dj_transaction
+
+    mock_cleanup = mocker.patch.object(UserManagementService, "_cleanup_user_delete_external")
+
+    with pytest.raises(RuntimeError):
+        with dj_transaction.atomic():
+            UserManagementService().delete_user(
+                actor=actor, target_user_id=target_user.pk
+            )
+            raise RuntimeError("force a rollback after on_commit was registered")
+
+    mock_cleanup.assert_not_called()

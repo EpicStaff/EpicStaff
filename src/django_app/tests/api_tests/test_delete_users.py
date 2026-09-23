@@ -89,8 +89,7 @@ def test_superadmin_dry_run_returns_a_report(superadmin, victim):
     client.force_authenticate(user=superadmin)
     response = client.delete(f"{url(victim.pk)}?dry_run=true")
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["dry_run"] is True
-    assert response.data["target"]["email"] == victim.email
+    assert response.data["user_id"] == victim.pk
 
 
 @pytest.mark.django_db
@@ -103,13 +102,18 @@ def test_dry_run_does_not_delete(superadmin, victim, django_user_model):
 
 @pytest.mark.django_db
 def test_report_is_stable_across_calls(superadmin, victim):
-    """Two calls against the same target return identical database and field_updates blocks."""
+    """Two calls against the same target return an identical affected_resources block."""
+    # Enriched with a real outstanding refresh token so this exercises the
+    # `blacklist_all_for_user` path over the HTTP surface, not just the service.
+    from rest_framework_simplejwt.tokens import RefreshToken
+
+    RefreshToken.for_user(victim)
+
     client = APIClient()
     client.force_authenticate(user=superadmin)
     preview = client.delete(f"{url(victim.pk)}?dry_run=true").data
     actual = client.delete(url(victim.pk)).data
-    assert preview["database"] == actual["database"]
-    assert preview["field_updates"] == actual["field_updates"]
+    assert preview["affected_resources"] == actual["affected_resources"]
 
 
 @pytest.mark.django_db
@@ -118,7 +122,6 @@ def test_delete_without_dry_run_removes_the_user(superadmin, victim, django_user
     client.force_authenticate(user=superadmin)
     response = client.delete(url(victim.pk))
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["dry_run"] is False
     assert not django_user_model.objects.filter(pk=victim.pk).exists()
 
 
@@ -142,28 +145,6 @@ def test_cannot_delete_self(superadmin):
 
 
 @pytest.mark.django_db
-def test_cannot_delete_last_superadmin(
-    superadmin, second_superadmin, db, django_user_model
-):
-    """`superadmin` acts while `second_superadmin` is the only active superadmin left."""
-    django_user_model.objects.filter(is_superadmin=True).exclude(
-        pk=second_superadmin.pk
-    ).update(is_superadmin=False)
-    # The actor keeps the flag it needs to pass the view gate; the target is the
-    # last ACTIVE superadmin, so the blocker — not the self-delete guard — fires.
-    django_user_model.objects.filter(pk=superadmin.pk).update(
-        is_superadmin=True, is_active=False
-    )
-
-    client = APIClient()
-    client.force_authenticate(user=superadmin)
-    response = client.delete(url(second_superadmin.pk))
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "last_superadmin"
-
-
-@pytest.mark.django_db
 def test_unknown_user_is_404(superadmin):
     client = APIClient()
     client.force_authenticate(user=superadmin)
@@ -173,9 +154,20 @@ def test_unknown_user_is_404(superadmin):
 
 
 @pytest.mark.django_db
-def test_invalid_dry_run_value_is_400(superadmin, victim):
+def test_unrecognized_dry_run_value_performs_a_real_delete(superadmin, victim, django_user_model):
+    """Only `true`/`1` previews; any other value, like `RoleAdminViewSet`, is treated as a real delete."""
     client = APIClient()
     client.force_authenticate(user=superadmin)
     response = client.delete(f"{url(victim.pk)}?dry_run=maybe")
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid"
+    assert response.status_code == status.HTTP_200_OK
+    assert not django_user_model.objects.filter(pk=victim.pk).exists()
+
+
+@pytest.mark.django_db
+def test_bare_dry_run_flag_performs_a_real_delete(superadmin, victim, django_user_model):
+    """A `?dry_run` flag with no value is falsy, same as `RoleAdminViewSet._is_truthy`."""
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(f"{url(victim.pk)}?dry_run")
+    assert response.status_code == status.HTTP_200_OK
+    assert not django_user_model.objects.filter(pk=victim.pk).exists()

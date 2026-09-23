@@ -259,6 +259,72 @@ def test_concurrent_set_user_active_false_preserves_invariant():
 
 
 # ---------------------------------------------------------------------------
+# Test 2b: concurrent delete_user on the last two active superadmins
+#
+# Unlike the two tests above, this drives real concurrent threads racing on
+# the actual delete_user() entry point rather than a patched save() hook, and
+# asserts the weaker "at least one survives" property rather than "exactly
+# one succeeds" -- both are load-bearing: a delete cannot be retried the way
+# a revoke/deactivate can.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_concurrent_deletes_of_the_only_two_superadmins_leave_at_least_one():
+    """The exact race the design exists to close: A deletes B while B deletes A -- at most one may succeed."""
+    # The losing side must raise `LastSuperadminError` specifically, not just
+    # "some exception": a broad `except Exception` here would also accept a
+    # Postgres deadlock abort (`OperationalError`), which is exactly the
+    # wrong, unhandled-500 failure mode the locked recheck's lock ordering
+    # exists to rule out (see the ordering fix in
+    # `UserManagementService.delete_user`). A test that can't tell the two
+    # apart can't catch a regression to unordered/reversed locking.
+    a = _make_active_superadmin("a-concurrent-delete@example.com")
+    b = _make_active_superadmin("b-concurrent-delete@example.com")
+
+    results = {}
+
+    def _delete(actor_id, target_id, key):
+        try:
+            UserManagementService().delete_user(
+                actor=UserModel.objects.get(pk=actor_id),
+                target_user_id=target_id,
+            )
+            results[key] = "succeeded"
+        except Exception as exc:
+            results[key] = exc
+        finally:
+            connection.close()
+
+    t1 = threading.Thread(target=_delete, args=(a.pk, b.pk, "a_deletes_b"))
+    t2 = threading.Thread(target=_delete, args=(b.pk, a.pk, "b_deletes_a"))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+    assert not t1.is_alive() and not t2.is_alive(), "a thread hung past the timeout"
+
+    remaining_superadmins = UserModel.objects.filter(
+        is_superadmin=True, is_active=True
+    ).count()
+    assert remaining_superadmins >= 1, (
+        f"Both concurrent deletes reported success ({results}) but left zero "
+        f"active superadmins -- the race the locked recheck exists to close."
+    )
+
+    outcomes = list(results.values())
+    successes = [r for r in outcomes if r == "succeeded"]
+    failures = [r for r in outcomes if r != "succeeded"]
+    assert len(successes) + len(failures) == 2, f"expected 2 outcomes, got {results}"
+    for failure in failures:
+        assert isinstance(failure, LastSuperadminError), (
+            f"the losing side must raise LastSuperadminError, not {failure!r} "
+            f"({type(failure).__name__}) -- a deadlock abort (e.g. "
+            f"OperationalError) means the lock ordering regressed"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Test 3: mixed concurrency -- revoke_superadmin vs set_user_active(False)
 # ---------------------------------------------------------------------------
 
