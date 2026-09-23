@@ -489,3 +489,50 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class PersistenceKeyInvalidError(CustomAPIExeption):
+    status_code = 400
+    default_code = "persistence_key_invalid"
+
+    def __init__(self, key: str, max_length: int):
+        super().__init__(
+            f"Key must be 1-{max_length} characters, got {len(key)}.", code=self.default_code
+        )
+
+
+class PersistenceValueTooLargeError(CustomAPIExeption):
+    status_code = 400
+    default_code = "persistence_value_too_large"
+
+    def __init__(self, size_bytes: int, max_bytes: int):
+        super().__init__(
+            f"Value is {size_bytes} bytes; the limit is {max_bytes} bytes.", code=self.default_code
+        )
+
+
+class PersistenceTableInUseError(CustomAPIExeption):
+    status_code = 409
+    default_code = "persistence_table_in_use"
+
+    def __init__(self, flow_names: list[str]):
+        self.flow_names = flow_names
+        super().__init__(
+            f"Table is used by flows: {', '.join(flow_names)}.", code=self.default_code
+        )
+
+
+class PersistenceSessionNotActiveError(CustomAPIExeption):
+    status_code = 409
+    default_code = "persistence_session_not_active"
+
+    def __init__(self, session_id: int):
+        super().__init__(f"Session {session_id} is not running.", code=self.default_code)
+
+
+class PersistenceTableNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_code = "persistence_table_not_found"
+
+    def __init__(self, table_id: int):
+        super().__init__(f"Persistence table {table_id} not found.", code=self.default_code)
