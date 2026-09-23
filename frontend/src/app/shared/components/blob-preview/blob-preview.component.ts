@@ -2,6 +2,7 @@ import { DecimalPipe, JsonPipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
+    computed,
     effect,
     ElementRef,
     inject,
@@ -26,6 +27,35 @@ interface SheetData {
     activeSheet: string;
     headers: string[];
     rows: string[][];
+    isCapped: boolean;
+}
+
+// Every row becomes DOM nodes (no virtual scroll), so a long sheet would freeze the tab.
+const MAX_SHEET_ROWS = 1000;
+// One <pre> is laid out on the main thread: measured ~0.2 s for 256 KB, ~4.5 s for 5 MB.
+const MAX_TEXT_PREVIEW_CHARS = 256 * 1024;
+
+function getExtension(fileName: string): string {
+    return fileName.split('.').pop()?.toLowerCase() ?? '';
+}
+
+function resolvePreviewType(fileName: string): PreviewType {
+    const ext = getExtension(fileName);
+    const textExts = ['txt', 'md', 'log', 'py', 'js', 'ts', 'html', 'css', 'xml', 'yaml', 'yml'];
+    if (textExts.includes(ext)) return 'text';
+    if (ext === 'json') return 'json';
+    if (ext === 'pdf') return 'pdf';
+    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
+    if (['xlsx', 'xlsm', 'csv'].includes(ext)) return 'sheet';
+    if (ext === 'docx') return 'docx';
+    return 'unsupported';
+}
+
+/** Whether the preview still makes sense for only the first bytes of this file
+ *  (a cut JSON won't parse, so it is shown as plain text). */
+export function canPreviewFilePart(fileName: string): boolean {
+    const type = resolvePreviewType(fileName);
+    return type === 'text' || type === 'json' || getExtension(fileName) === 'csv';
 }
 
 @Component({
@@ -39,6 +69,8 @@ export class BlobPreviewComponent {
     blob = input<Blob | null>(null);
     fileName = input<string>('');
     size = input<number | null | undefined>(null);
+    /** The blob holds only the beginning of the file. */
+    truncated = input<boolean>(false);
     showDownload = input<boolean>(false);
     downloadClick = output<void>();
 
@@ -55,6 +87,11 @@ export class BlobPreviewComponent {
     isLoading = signal<boolean>(false);
     previewError = signal<string | null>(null);
     csvDelimiter = signal<string>('auto');
+    isTextCapped = signal<boolean>(false);
+    readonly partialNotice = computed(() => {
+        if (this.sheetData()?.isCapped) return `Showing the first ${MAX_SHEET_ROWS} rows`;
+        return this.truncated() || this.isTextCapped() ? 'Showing only the beginning of the file' : null;
+    });
 
     readonly csvDelimiters = [
         { label: 'Auto', value: 'auto' },
@@ -83,7 +120,7 @@ export class BlobPreviewComponent {
     }
 
     get isCsv(): boolean {
-        return this.getExtension(this.fileName()) === 'csv';
+        return getExtension(this.fileName()) === 'csv';
     }
 
     get previewBadge(): string | null {
@@ -116,6 +153,7 @@ export class BlobPreviewComponent {
         const version = ++this.processVersion;
         this.revokeBlobUrl();
         this.textContent.set('');
+        this.isTextCapped.set(false);
         this.jsonContent.set(null);
         this.pdfUrl.set(null);
         this.imageUrl.set(null);
@@ -132,8 +170,7 @@ export class BlobPreviewComponent {
             return;
         }
 
-        const ext = this.getExtension(fileName);
-        const type = this.resolvePreviewType(ext);
+        const type = resolvePreviewType(fileName);
         this.previewType.set(type);
 
         if (type === 'unsupported') return;
@@ -149,17 +186,24 @@ export class BlobPreviewComponent {
             case 'text':
                 blob.text().then((text) => {
                     if (!guard()) return;
-                    this.textContent.set(text);
+                    this.setTextContent(text);
                     this.isLoading.set(false);
                 });
                 break;
             case 'json':
                 blob.text().then((text) => {
                     if (!guard()) return;
+                    // Pretty-printing a big document is even heavier than the raw text.
+                    if (text.length > MAX_TEXT_PREVIEW_CHARS) {
+                        this.setTextContent(text);
+                        this.previewType.set('text');
+                        this.isLoading.set(false);
+                        return;
+                    }
                     try {
                         this.jsonContent.set(JSON.parse(text));
                     } catch {
-                        this.textContent.set(text);
+                        this.setTextContent(text);
                         this.previewType.set('text');
                     }
                     this.isLoading.set(false);
@@ -211,10 +255,17 @@ export class BlobPreviewComponent {
         }
     }
 
+    private setTextContent(text: string): void {
+        this.isTextCapped.set(text.length > MAX_TEXT_PREVIEW_CHARS);
+        this.textContent.set(text.slice(0, MAX_TEXT_PREVIEW_CHARS));
+    }
+
     private parseCsv(text: string, delimiter: string): SheetData {
         const config: Papa.ParseConfig = {
             header: false,
             skipEmptyLines: true,
+            // Header + one row past the cap, so a capped sheet can be told apart.
+            preview: MAX_SHEET_ROWS + 2,
         };
         if (delimiter !== 'auto') {
             config.delimiter = delimiter;
@@ -222,8 +273,9 @@ export class BlobPreviewComponent {
         const result = Papa.parse<string[]>(text, config);
         const rows = result.data as string[][];
         const headers = rows.length > 0 ? rows[0].map(String) : [];
-        const dataRows = rows.slice(1).map((r) => headers.map((_, i) => String(r[i] ?? '')));
-        return { sheetNames: ['Sheet1'], activeSheet: 'Sheet1', headers, rows: dataRows };
+        const dataRows = rows.slice(1, MAX_SHEET_ROWS + 1).map((r) => headers.map((_, i) => String(r[i] ?? '')));
+        const isCapped = rows.length - 1 > MAX_SHEET_ROWS;
+        return { sheetNames: ['Sheet1'], activeSheet: 'Sheet1', headers, rows: dataRows, isCapped };
     }
 
     private rowsToSheetData(
@@ -233,8 +285,9 @@ export class BlobPreviewComponent {
     ): SheetData {
         const rows = data.map((row) => row.map((cell) => String(cell ?? '')));
         const headers = rows.length > 0 ? rows[0] : [];
-        const dataRows = rows.slice(1).map((r) => headers.map((_, i) => r[i] ?? ''));
-        return { sheetNames, activeSheet, headers, rows: dataRows };
+        const dataRows = rows.slice(1, MAX_SHEET_ROWS + 1).map((r) => headers.map((_, i) => r[i] ?? ''));
+        const isCapped = rows.length - 1 > MAX_SHEET_ROWS;
+        return { sheetNames, activeSheet, headers, rows: dataRows, isCapped };
     }
 
     private async renderDocx(blob: Blob, container: HTMLElement): Promise<void> {
@@ -254,21 +307,6 @@ export class BlobPreviewComponent {
         } catch {
             this.previewError.set('Failed to render document preview');
         }
-    }
-
-    private resolvePreviewType(ext: string): PreviewType {
-        const textExts = ['txt', 'md', 'log', 'py', 'js', 'ts', 'html', 'css', 'xml', 'yaml', 'yml'];
-        if (textExts.includes(ext)) return 'text';
-        if (ext === 'json') return 'json';
-        if (ext === 'pdf') return 'pdf';
-        if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
-        if (['xlsx', 'xlsm', 'csv'].includes(ext)) return 'sheet';
-        if (ext === 'docx') return 'docx';
-        return 'unsupported';
-    }
-
-    private getExtension(fileName: string): string {
-        return fileName.split('.').pop()?.toLowerCase() ?? '';
     }
 
     private revokeBlobUrl(): void {

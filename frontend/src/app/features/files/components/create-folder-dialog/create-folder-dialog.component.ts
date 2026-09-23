@@ -1,22 +1,31 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, HostListener, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
+    ConfirmationDialogService,
     DragDropAreaComponent,
     FileUploaderComponent,
     HelpTooltipComponent,
     Spinner2Component,
 } from '@shared/components';
-import { EMPTY, of, switchMap } from 'rxjs';
+import { extractHttpErrorMessage } from '@shared/utils';
+import { catchError, EMPTY, merge, Observable, of, switchMap } from 'rxjs';
+import { filter, map, tap, toArray } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
+import { StorageUploadBatchResult } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
+import { StorageUploadService, toUploadBatchResult } from '../../services/storage-upload.service';
+import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.utils';
+import { describeUploadError, describeUploadFailures, UploadErrorDescription } from '../../utils/upload-error.utils';
+import { describeUploadLimits, isArchiveForLimits, usableUploadLimits } from '../../utils/upload-limits.utils';
 
 export interface CreateFolderDialogData {
     /** Pre-fill the destination folder path */
@@ -70,6 +79,8 @@ export class CreateFolderDialogComponent {
     private dialogRef = inject(DialogRef<CreateFolderDialogResult | undefined>);
     private data: CreateFolderDialogData = inject(DIALOG_DATA, { optional: true }) ?? {};
     private storageApiService = inject(StorageApiService);
+    private storageUploadService = inject(StorageUploadService);
+    private confirmationDialogService = inject(ConfirmationDialogService);
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
 
@@ -156,21 +167,42 @@ export class CreateFolderDialogComponent {
 
     readonly isUploading = signal(false);
     private confirmInFlight = false;
-    /** Maps filename → error label returned by the server (e.g. archive contains executables) */
-    readonly fileServerErrors = signal<Map<string, string>>(new Map());
+    /** Every file that landed so far, recorded as each one completes (not when its batch
+     *  ends), so closing mid-upload reports them; they are not sent again. */
+    private readonly uploadedFiles = new Set<File>();
+    /** The "close during upload" question is open. */
+    private isConfirmingClose = false;
+    /** The batch succeeded while that question was open: close once it is answered. */
+    private closeDeferredByConfirmation = false;
+    /** Maps filename → why the server did not take that file on the last attempt */
+    readonly fileServerErrors = signal<Map<string, UploadErrorDescription>>(new Map());
     readonly hasBlockedFiles = computed(
-        () => this.files().some((f) => this.isBlocked(f) || this.isZeroSize(f)) || this.fileServerErrors().size > 0
+        () =>
+            this.files().some((f) => this.isBlocked(f) || this.isZeroSize(f)) ||
+            [...this.fileServerErrors().values()].some((error) => !error.canRetry)
     );
     readonly isValid = computed(
         () => !this.hasBlockedFiles() && (this.files().length > 0 || this.folderName().trim().length > 0)
     );
     readonly totalSizeBytes = computed(() => this.files().reduce((sum, f) => sum + f.size, 0));
+    /** The backend's limits and archive naming; null until loaded, or when unknown. */
+    private readonly uploadLimits = toSignal(
+        this.storageApiService.getUploadLimits().pipe(
+            map(usableUploadLimits),
+            catchError(() => of(null))
+        ),
+        { initialValue: null }
+    );
+    /** Size caps shown next to the file list; null (nothing shown) when they are unknown. */
+    protected readonly uploadLimitsHint = computed(() => describeUploadLimits(this.uploadLimits()));
+    protected readonly uploadLimitsHintId = 'create-folder-dialog-upload-limits';
 
     ngOnInit(): void {
         if (this.data.folderPath) {
             this.selectedPath.set(this.data.folderPath);
         }
         this.loadLevel('', null);
+        this.closeThroughCancelOnDismiss();
     }
 
     @HostListener('document:click')
@@ -237,6 +269,10 @@ export class CreateFolderDialogComponent {
     }
 
     isArchive(file: File): boolean {
+        // Once known, the backend's own rule decides what gets unpacked ("x.sql.gz" is stored
+        // as is); until then the local guess only drives the badge.
+        const limits = this.uploadLimits();
+        if (limits) return isArchiveForLimits(file.name, limits);
         const name = file.name.toLowerCase();
         if (name.match(/\.tar\.(gz|bz2|xz)$/)) return true;
         return CreateFolderDialogComponent.ARCHIVE_EXTENSIONS.has(name.split('.').pop() ?? '');
@@ -251,7 +287,7 @@ export class CreateFolderDialogComponent {
         return file.size === 0;
     }
 
-    getFileError(file: File): string | null {
+    getFileError(file: File): UploadErrorDescription | null {
         return this.fileServerErrors().get(file.name) ?? null;
     }
 
@@ -261,6 +297,11 @@ export class CreateFolderDialogComponent {
         const subfolder = this.folderName().trim();
         const targetPath = subfolder ? (destination ? `${destination}/${subfolder}` : subfolder) : destination;
         const files = this.files();
+        if (!files.length && this.uploadedFiles.size > 0) {
+            // Everything left over after a partial upload was removed: nothing more to send.
+            this.closeWithUploads();
+            return;
+        }
         const mkdirOnly = files.length === 0;
 
         this.fileServerErrors.set(new Map());
@@ -273,21 +314,26 @@ export class CreateFolderDialogComponent {
                 switchMap((confirmed) => {
                     if (!confirmed) return EMPTY;
                     this.isUploading.set(true);
-                    return this.storageApiService.handleAddFilesResult({ targetPath, files, mkdirOnly });
+                    return mkdirOnly ? this.createFolder(targetPath) : this.uploadFiles(targetPath, files);
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: (res) => this.dialogRef.close(res),
+                next: (res) => {
+                    if (res.type === 'mkdir') {
+                        this.dialogRef.close(res);
+                        return;
+                    }
+                    this.applyUploadBatch(res.batch);
+                },
+                // Upload failures come back in the batch; only mkdir or the overwrite check error.
                 error: (error: unknown) => {
                     this.confirmInFlight = false;
                     this.isUploading.set(false);
-                    const perFileErrors = this.extractPerFileErrors(error);
-                    if (perFileErrors.size > 0) {
-                        this.fileServerErrors.set(perFileErrors);
-                    } else {
-                        this.toastService.error(this.getUploadErrorMessage(error));
-                    }
+                    const fallback = mkdirOnly ? 'Failed to create folder' : 'Failed to check existing files';
+                    this.toastService.error(
+                        error instanceof HttpErrorResponse ? extractHttpErrorMessage(error, fallback) : fallback
+                    );
                 },
                 complete: () => {
                     this.confirmInFlight = false;
@@ -296,8 +342,51 @@ export class CreateFolderDialogComponent {
             });
     }
 
+    /** Cancel button, Escape and backdrop. While files are uploading, closing would cancel
+     *  them, so it asks first. */
     onCancel(): void {
+        if (this.isConfirmingClose) return;
+        if (!this.isUploading()) {
+            this.closeKeepingUploads();
+            return;
+        }
+        this.isConfirmingClose = true;
+        this.confirmationDialogService
+            .confirm(CLOSE_DURING_UPLOAD_CONFIRMATION)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                this.isConfirmingClose = false;
+                // Always an 'upload' result, even with none counted: a file cancelled
+                // mid-send may still have landed, so the opener reloads its tree.
+                if (result === true || this.closeDeferredByConfirmation) this.closeWithUploads();
+            });
+    }
+
+    private closeKeepingUploads(): void {
+        if (this.uploadedFiles.size > 0) {
+            this.closeWithUploads();
+            return;
+        }
         this.dialogRef.close();
+    }
+
+    private createFolder(path: string): Observable<{ type: 'mkdir'; path: string }> {
+        if (!path) return EMPTY;
+        return this.storageApiService.mkdir(path).pipe(map(() => ({ type: 'mkdir' as const, path })));
+    }
+
+    private uploadFiles(
+        targetPath: string,
+        files: File[]
+    ): Observable<{ type: 'upload'; batch: StorageUploadBatchResult }> {
+        // The stream endpoint creates missing folders on the way, so no mkdir first.
+        return this.storageUploadService.uploadEach(targetPath, files).pipe(
+            tap((outcome) => {
+                if (outcome.ok) this.uploadedFiles.add(outcome.file);
+            }),
+            toArray(),
+            map((outcomes) => ({ type: 'upload' as const, batch: toUploadBatchResult(outcomes) }))
+        );
     }
 
     private loadLevel(path: string, parent: FolderNode | null): void {
@@ -370,65 +459,39 @@ export class CreateFolderDialogComponent {
         });
     }
 
-    private extractPerFileErrors(error: unknown): Map<string, string> {
-        const result = new Map<string, string>();
-        if (!(error instanceof HttpErrorResponse) || error.status !== 400) return result;
-
-        const message = this.getFullRawErrorText(error);
-        if (!message) return result;
-
-        // Matches both "contains executable files" and "contains protected files"
-        const re = /Archive '([^']+)' contains (?:executable|protected) files/g;
-        let match: RegExpExecArray | null;
-        while ((match = re.exec(message)) !== null) {
-            result.set(match[1], 'Contains restricted files');
-        }
-
-        return result;
-    }
-
-    /** Returns the widest possible string from the error body for regex scanning. */
-    private getFullRawErrorText(error: HttpErrorResponse): string {
-        const r = error.error;
-        if (typeof r === 'string') return r;
-        if (r && typeof r === 'object') {
-            // Serialize the whole object so nested Python-dict strings are also scanned
-            try {
-                return JSON.stringify(r);
-            } catch {
-                const p = r as { detail?: unknown; message?: unknown; error?: unknown; reason?: unknown };
-                const v = p.detail ?? p.message ?? p.error ?? p.reason;
-                if (typeof v === 'string') return v;
+    private applyUploadBatch(batch: StorageUploadBatchResult): void {
+        if (!batch.failed.length) {
+            if (this.isConfirmingClose) {
+                this.closeDeferredByConfirmation = true;
+                return;
             }
+            this.closeWithUploads();
+            return;
         }
-        return '';
+        // Keep only what failed, so the next Confirm sends just those files again.
+        this.files.update((list) => list.filter((file) => !this.uploadedFiles.has(file)));
+        this.fileServerErrors.set(
+            new Map(batch.failed.map((failure) => [failure.file.name, describeUploadError(failure.error)]))
+        );
+        this.toastService.error(describeUploadFailures(batch.failed));
     }
 
-    private getRawErrorMessage(error: HttpErrorResponse): string {
-        const r = error.error;
-        if (typeof r === 'string') return r;
-        if (r && typeof r === 'object') {
-            const p = r as { detail?: unknown; message?: unknown; error?: unknown; reason?: unknown };
-            const v = p.detail ?? p.message ?? p.error ?? p.reason;
-            if (typeof v === 'string') return v;
-        }
-        return '';
+    private closeWithUploads(): void {
+        this.dialogRef.close({ type: 'upload', count: this.uploadedFiles.size });
     }
 
-    private getUploadErrorMessage(error: unknown): string {
-        const fallbackMessage = 'Failed to upload files';
-        if (!(error instanceof HttpErrorResponse)) return fallbackMessage;
-
-        const responseError = error.error;
-        if (typeof responseError === 'string' && responseError.trim()) return responseError;
-
-        if (responseError && typeof responseError === 'object') {
-            const payload = responseError as { detail?: unknown; error?: unknown; message?: unknown; reason?: unknown };
-            const backendMessage = payload.detail ?? payload.error ?? payload.message ?? payload.reason;
-            if (typeof backendMessage === 'string' && backendMessage.trim()) return backendMessage;
-        }
-
-        if (typeof error.message === 'string' && error.message.trim()) return error.message;
-        return fallbackMessage;
+    /** Backdrop click and Escape go through onCancel, so files that already landed
+     *  still reach the opener and its tree reloads, and an upload is never dropped unasked. */
+    private closeThroughCancelOnDismiss(): void {
+        this.dialogRef.disableClose = true;
+        merge(
+            this.dialogRef.backdropClick,
+            this.dialogRef.keydownEvents.pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event)),
+                tap((event) => event.preventDefault())
+            )
+        )
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.onCancel());
     }
 }

@@ -64,8 +64,48 @@ export interface StorageArchiveUploadResult {
 
 export type StorageUploadResult = StorageFileUploadResult | StorageArchiveUploadResult;
 
-export interface StorageUploadResponse {
-    uploaded: StorageUploadResult[];
+export interface UploadedFile {
+    file: File;
+    result: StorageUploadResult;
+}
+
+export interface UploadFailure {
+    file: File;
+    error: unknown;
+}
+
+/** How a multi-file upload ended: every file lands in exactly one of the two lists. */
+export interface StorageUploadBatchResult {
+    uploaded: UploadedFile[];
+    failed: UploadFailure[];
+}
+
+/** One file streamed to POST storage/upload/stream: `size` on a plain file,
+ *  `extracted` when the backend unpacked an archive into a new folder. */
+export interface StorageStreamUploadResponse {
+    status: 'DONE';
+    path: string;
+    size?: number;
+    extracted?: string[];
+}
+
+/** How one file of a batch ended: its result, or the error it failed with. */
+export type StorageUploadOutcome =
+    | { ok: true; file: File; result: StorageUploadResult }
+    | { ok: false; file: File; error: unknown };
+
+/** GET storage/upload-limits/: sizes in bytes. */
+export interface StorageUploadLimits {
+    /** Null when plain files are not capped. */
+    max_file_size: number | null;
+    /** Applies to names the backend treats as archives (see isArchiveForLimits). */
+    max_archive_size: number;
+    /** Room left in the organization's storage; changes after every upload. */
+    free_bytes: number;
+    /** Lower-case with a leading dot (".tar.gz"). Older backends omit both lists. */
+    archive_suffixes: string[];
+    /** Names ending in one of these are never archives, even when they end in an archive suffix (".docx"). */
+    document_extensions: string[];
 }
 
 export interface SessionOutputFile {

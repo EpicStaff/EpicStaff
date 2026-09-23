@@ -1,23 +1,57 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { catchError, EMPTY, Observable, of, switchMap, throwError } from 'rxjs';
+import { catchError, Observable, of, retry, switchMap, throwError, timer } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config';
-import { AddFilesPayload } from '../components/create-folder-dialog/create-folder-dialog.component';
 import {
     GraphFileRecord,
     SessionOutputFile,
     StorageFileRecord,
     StorageItem,
     StorageItemInfo,
+    StorageStreamUploadResponse,
     StorageTreeResponse,
-    StorageUploadResponse,
+    StorageUploadLimits,
 } from '../models/storage.models';
 import { isArchiveFileName } from '../utils/storage-file.utils';
+import { getUploadErrorCode, UploadErrorCode } from '../utils/upload-error.utils';
+
+/** Attempts per file, the first one included, while the server answers 429/503. */
+export const UPLOAD_MAX_ATTEMPTS = 5;
+/** Waits used when a 429/503 carries no readable Retry-After. */
+export const UPLOAD_RETRY_FALLBACK_SECONDS = 30;
+export const STORAGE_UNAVAILABLE_RETRY_FALLBACK_SECONDS = 5;
+/** Upper bound on one wait, whatever Retry-After says. */
+const UPLOAD_RETRY_MAX_SECONDS = 120;
+
+/** 429 (org upload limit) and 503 (slots busy, storage unavailable) are the only
+ *  answers where sending the same file again later can succeed. */
+const RETRYABLE_UPLOAD_STATUSES = new Set([429, 503]);
+
+/** How long to wait before re-sending after `error`, or null when it must not be retried. */
+function uploadRetryDelayMs(error: unknown): number | null {
+    if (!(error instanceof HttpErrorResponse) || !RETRYABLE_UPLOAD_STATUSES.has(error.status)) return null;
+    const fallback =
+        getUploadErrorCode(error) === UploadErrorCode.StorageUnavailable
+            ? STORAGE_UNAVAILABLE_RETRY_FALLBACK_SECONDS
+            : UPLOAD_RETRY_FALLBACK_SECONDS;
+    const seconds = parseRetryAfterSeconds(error.headers.get('Retry-After')) ?? fallback;
+    return Math.min(seconds, UPLOAD_RETRY_MAX_SECONDS) * 1000;
+}
+
+/** Retry-After is either delay-seconds or an HTTP date (RFC 9110 §10.2.3). */
+function parseRetryAfterSeconds(header: string | null): number | null {
+    if (!header) return null;
+    const value = header.trim();
+    if (/^\d+$/.test(value)) return Number(value);
+    const date = Date.parse(value);
+    if (Number.isNaN(date)) return null;
+    return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
 
 interface OverwritePreview {
     fileConflicts: string[];
@@ -53,27 +87,6 @@ export class StorageApiService {
                 }),
             })
             .pipe(map((res) => res.items ?? []));
-    }
-
-    handleAddFilesResult(
-        result: AddFilesPayload,
-        filterFiles: (files: File[]) => File[] = (f) => f
-    ): Observable<{ type: 'mkdir'; path: string } | { type: 'upload'; count: number }> {
-        const targetPath = result.targetPath;
-
-        if (result.mkdirOnly) {
-            if (!targetPath) return EMPTY;
-            return this.mkdir(targetPath).pipe(map(() => ({ type: 'mkdir' as const, path: targetPath })));
-        }
-
-        const validFiles = filterFiles(result.files);
-        if (!validFiles.length) return EMPTY;
-
-        const upload$ = targetPath
-            ? this.ensureFolderAndUpload(targetPath, validFiles).pipe(map((r) => r.uploadedCount))
-            : this.uploadMany('', validFiles).pipe(map(() => validFiles.length));
-
-        return upload$.pipe(map((count) => ({ type: 'upload' as const, count })));
     }
 
     confirmOverwrite(targetPath: string, files: File[]): Observable<boolean> {
@@ -194,14 +207,6 @@ export class StorageApiService {
             .replace(/'/g, '&#39;');
     }
 
-    ensureFolderAndUpload(targetFolder: string, files: File[]): Observable<{ uploadedCount: number }> {
-        const normalizedTarget = this.normalizePath(targetFolder);
-        if (!files.length) {
-            return of({ uploadedCount: 0 });
-        }
-        return this.uploadMany(normalizedTarget, files).pipe(map(() => ({ uploadedCount: files.length })));
-    }
-
     tree(path = ''): Observable<StorageTreeResponse> {
         return this.http.get<StorageTreeResponse>(`${this.apiUrl}tree/`, {
             params: { path },
@@ -222,32 +227,48 @@ export class StorageApiService {
         });
     }
 
-    download(path: string): void {
-        const url = `${this.apiUrl}download/?path=${encodeURIComponent(path)}`;
-        window.open(url, '_blank');
-    }
-
-    getDownloadUrl(path: string): string {
-        return `${this.apiUrl}download/?path=${encodeURIComponent(path)}`;
-    }
-
-    downloadBlob(path: string): Observable<Blob> {
+    /** `maxBytes` asks for only the first bytes of the file (HTTP Range). */
+    downloadBlob(path: string, maxBytes?: number): Observable<Blob> {
         return this.http.get(`${this.apiUrl}download/`, {
             params: { path },
             responseType: 'blob',
+            headers: maxBytes !== undefined ? new HttpHeaders({ Range: `bytes=0-${maxBytes - 1}` }) : undefined,
         });
     }
 
-    upload(path: string, file: File): Observable<StorageUploadResponse> {
-        return this.uploadMany(path, [file]);
+    /** The backend's size caps and free space. Without Files/Read no request is made and
+     *  it emits null: the limits are unknown (the backend still enforces them). */
+    getUploadLimits(): Observable<StorageUploadLimits | null> {
+        return this.http.get<StorageUploadLimits | null>(`${this.apiUrl}upload-limits/`, {
+            context: withPermission<StorageUploadLimits | null>(ResourceCode.Files, ActionCode.Read, null),
+        });
     }
 
-    uploadMany(path: string, files: File[]): Observable<StorageUploadResponse> {
-        const formData = new FormData();
-        files.forEach((file) => formData.append('files', file));
-        formData.append('path', this.normalizePath(path) || '/');
+    /** One file, one request; a 429/503 is re-sent after its Retry-After, up to UPLOAD_MAX_ATTEMPTS. */
+    uploadStream(path: string, file: File): Observable<StorageStreamUploadResponse> {
+        const normalized = this.normalizePath(path);
+        // Built by hand because HttpParams leaves "+" unescaped and Django reads it
+        // back as a space, silently renaming files like "a+b.txt".
+        const query =
+            `?filename=${encodeURIComponent(file.name)}` +
+            (normalized ? `&path=${encodeURIComponent(normalized)}` : '');
 
-        return this.http.post<StorageUploadResponse>(`${this.apiUrl}upload/`, formData);
+        // The File itself is the body: the browser streams it from disk. Wrapping it
+        // in FormData, or reading it into memory first, defeats the whole endpoint.
+        return this.http
+            .post<StorageStreamUploadResponse>(`${this.apiUrl}upload/stream${query}`, file, {
+                headers: new HttpHeaders({ 'Content-Type': 'application/octet-stream' }),
+            })
+            .pipe(
+                // A busy server (429/503) says when to come back; anything else is final.
+                retry({
+                    count: UPLOAD_MAX_ATTEMPTS - 1,
+                    delay: (error: unknown) => {
+                        const delayMs = uploadRetryDelayMs(error);
+                        return delayMs === null ? throwError(() => error) : timer(delayMs);
+                    },
+                })
+            );
     }
 
     downloadZip(paths: string[]): Observable<Blob> {

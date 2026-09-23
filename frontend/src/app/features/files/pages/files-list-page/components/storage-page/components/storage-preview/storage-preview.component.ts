@@ -1,13 +1,29 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, BlobPreviewComponent, ButtonComponent } from '@shared/components';
+import { AppSvgIconComponent, BlobPreviewComponent, ButtonComponent, canPreviewFilePart } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { catchError, EMPTY, Observable, switchMap, tap } from 'rxjs';
 
 import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
 import { StorageItem } from '../../../../../../models/storage.models';
 import { StorageApiService } from '../../../../../../services/storage-api.service';
+
+// The preview is rendered on the main thread; past this size only the beginning of a
+// text-like file is fetched, and other types are not previewed at all.
+const MAX_PREVIEW_FILE_SIZE = 5 * 1024 * 1024;
+// How much of a larger text-like file is fetched: enough for the rows/characters the
+// preview renders (see blob-preview), so the rest is never downloaded.
+const PARTIAL_PREVIEW_BYTES = 1024 * 1024;
+
+type PreviewMode = 'none' | 'full' | 'partial' | 'too-large';
+
+function resolvePreviewMode(item: StorageItem | null): PreviewMode {
+    if (!item || item.type === 'folder') return 'none';
+    if ((item.size ?? 0) <= MAX_PREVIEW_FILE_SIZE) return 'full';
+    return canPreviewFilePart(item.name) ? 'partial' : 'too-large';
+}
 
 @Component({
     selector: 'app-storage-preview',
@@ -35,11 +51,16 @@ export class StoragePreviewComponent {
     previewError = signal<string | null>(null);
     kebabMenuOpen = signal<boolean>(false);
     kebabMenuPosition = signal<{ right: number; top: number }>({ right: 0, top: 0 });
+    readonly previewMode = computed(() => resolvePreviewMode(this.item()));
 
     constructor() {
-        effect(() => {
-            this.loadPreview(this.item());
-        });
+        // switchMap drops the previous file's download, so a late answer can't land under the new file.
+        toObservable(this.item)
+            .pipe(
+                switchMap((item) => this.loadPreview(item)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     get breadcrumbs(): string[] {
@@ -60,7 +81,7 @@ export class StoragePreviewComponent {
     onDownload(): void {
         const item = this.item();
         if (item) {
-            this.storageApiService.download(item.path);
+            this.contextAction.emit({ action: 'download', item });
         }
     }
 
@@ -88,29 +109,27 @@ export class StoragePreviewComponent {
         }
     }
 
-    private loadPreview(currentItem: StorageItem | null): void {
+    private loadPreview(currentItem: StorageItem | null): Observable<Blob> {
+        const mode = resolvePreviewMode(currentItem);
         this.previewBlob.set(null);
-        this.previewError.set(null);
+        this.previewError.set(mode === 'too-large' ? 'File is too large to preview' : null);
+        this.isLoadingPreview.set(mode === 'full' || mode === 'partial');
 
-        if (!currentItem || currentItem.type === 'folder') {
-            this.isLoadingPreview.set(false);
-            return;
-        }
+        if (!currentItem || !this.isLoadingPreview()) return EMPTY;
 
-        this.isLoadingPreview.set(true);
-        this.storageApiService
-            .downloadBlob(currentItem.path)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => {
+        return this.storageApiService
+            .downloadBlob(currentItem.path, mode === 'partial' ? PARTIAL_PREVIEW_BYTES : undefined)
+            .pipe(
+                tap((blob) => {
                     this.previewBlob.set(blob);
                     this.isLoadingPreview.set(false);
-                },
-                error: () => {
+                }),
+                catchError(() => {
                     this.previewError.set('Failed to load file preview');
                     this.isLoadingPreview.set(false);
-                },
-            });
+                    return EMPTY;
+                })
+            );
     }
 
     protected readonly ResourceCode = ResourceCode;
