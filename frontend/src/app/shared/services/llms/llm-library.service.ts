@@ -164,20 +164,35 @@ export class LLMLibraryService {
         ];
     });
 
-    loadConfigs(): Observable<void> {
+    loadLlmData(): Observable<void> {
         return forkJoin({
             configs: this.configStorage.getAllConfigs(),
             models: this.llmModelsStorage.getModels(),
-            llmProviders: this.providersStorage.getProvidersByType(ModelTypes.LLM),
-            embeddingConfigs: this.embeddingConfigStorage.getAllConfigs(),
-            embeddingModels: this.embeddingModelsStorage.getModels(),
-            embeddingProviders: this.providersStorage.getProvidersByType(ModelTypes.EMBEDDING),
-            realtimeConfigs: this.realtimeConfigStorage.getAllConfigs(),
-            realtimeModels: this.realtimeModelsStorage.getModels(),
-            realtimeProviders: this.providersStorage.getProvidersByType(ModelTypes.REALTIME),
-            transcriptionConfigs: this.transcriptionConfigStorage.getAllConfigs(),
-            transcriptionModels: this.transcriptionModelsStorage.getModels(),
-            transcriptionProviders: this.providersStorage.getProvidersByType(ModelTypes.TRANSCRIPTION),
+            providers: this.providersStorage.getProvidersByType(ModelTypes.LLM),
+        }).pipe(map(() => void 0));
+    }
+
+    loadEmbeddingData(): Observable<void> {
+        return forkJoin({
+            configs: this.embeddingConfigStorage.getAllConfigs(),
+            models: this.embeddingModelsStorage.getModels(),
+            providers: this.providersStorage.getProvidersByType(ModelTypes.EMBEDDING),
+        }).pipe(map(() => void 0));
+    }
+
+    loadRealtimeData(): Observable<void> {
+        return forkJoin({
+            configs: this.realtimeConfigStorage.getAllConfigs(),
+            models: this.realtimeModelsStorage.getModels(),
+            providers: this.providersStorage.getProvidersByType(ModelTypes.REALTIME),
+        }).pipe(map(() => void 0));
+    }
+
+    loadTranscriptionData(): Observable<void> {
+        return forkJoin({
+            configs: this.transcriptionConfigStorage.getAllConfigs(),
+            models: this.transcriptionModelsStorage.getModels(),
+            providers: this.providersStorage.getProvidersByType(ModelTypes.TRANSCRIPTION),
         }).pipe(map(() => void 0));
     }
 

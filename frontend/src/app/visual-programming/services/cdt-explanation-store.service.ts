@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
+import { NodeType } from '@shared/models';
 
-import { NodeType } from '../core/enums/node-type';
 import { CdtExplanation } from '../core/models/classification-decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../core/models/node.model';
 import { CdtExplanationCacheService } from './cdt-explanation-cache.service';

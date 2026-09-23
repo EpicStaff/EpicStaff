@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
-import { NODE_COLORS, NODE_ICONS } from '../../../core/enums/node-config';
-import { NodeType } from '../../../core/enums/node-type';
 import { FlowService } from '../../../services/flow.service';
 
 interface FlowGraphBlock {

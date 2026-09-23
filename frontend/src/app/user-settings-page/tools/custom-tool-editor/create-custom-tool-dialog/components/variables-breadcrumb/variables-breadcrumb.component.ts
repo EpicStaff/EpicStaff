@@ -11,8 +11,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '@shared/components';
 
 export interface BreadcrumbItem {
     label: string;

@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { AppSvgIconComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
@@ -28,8 +29,7 @@ import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
-import { ConfigService } from '../../../services/config/config.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ConfigService } from '../../../services/config';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
@@ -241,9 +241,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     }
 
     public ngAfterViewInit(): void {
-        // COMMIT_COMMENTS: Widget's internal syncAgentsFromApi does not reliably fire in
-        // custom-element mode. Instead, we use AGENT_REMOVE + AGENT_CREATE per flow —
-        // idempotent sync that works on every load without creating duplicates.
         if (this.isEpicChatEnabled) {
             setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
         }

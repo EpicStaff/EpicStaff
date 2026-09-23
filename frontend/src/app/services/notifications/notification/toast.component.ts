@@ -1,8 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 import { Subscription } from 'rxjs';
 
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
 
 @Component({

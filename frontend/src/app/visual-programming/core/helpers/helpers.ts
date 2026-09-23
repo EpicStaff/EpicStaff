@@ -1,4 +1,5 @@
-import { NodeType } from '../enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { ConnectionModel } from '../models/connection.model';
 import { ConditionGroup } from '../models/decision-table.model';
 import { BaseNodeModel } from '../models/node.model';
